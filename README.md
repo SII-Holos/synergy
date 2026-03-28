@@ -2,6 +2,10 @@
 
 A next-generation general-purpose agent for the Open Agentic Web.
 
+<p align="center">
+  <img src="assets/preparing-release.png" alt="Synergy mascot preparing the open-source release" width="360" />
+</p>
+
 > Open-source release in preparation.  
 > This repository is being prepared for the public open-source release of Synergy. Code, documentation, and release artifacts will be published here gradually.
 
