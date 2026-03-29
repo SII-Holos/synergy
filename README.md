@@ -3,7 +3,7 @@
 A next-generation general-purpose agent for the Open Agentic Web.
 
 <p align="center">
-  <img src="assets/preparing-release.png" alt="Synergy mascot preparing the open-source release" width="360" />
+  <img src="assets/github-preparing.png" alt="Synergy mascot preparing the open-source release" width="360" />
 </p>
 
 > Open-source release in preparation.  
