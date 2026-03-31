@@ -3,7 +3,7 @@
 **A next-generation general-purpose agent for the Open Agentic Web.**
 
 <p align="center">
-  <img src="assets/github-preparing.jpg" alt="Synergy mascot preparing the open-source release" width="360" />
+  <img src="https://cdn.jsdelivr.net/gh/SII-Holos/synergy@main/assets/github-preparing.jpg" alt="Synergy mascot preparing the open-source release" width="360" />
 </p>
 
 We're working hard to get the open-source release ready. Code, docs, and everything else will arrive here piece by piece — please bear with us while we sort it all out!
