@@ -20,8 +20,8 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://synergy.holosai.io/install | bash
-    curl -fsSL https://synergy.holosai.io/install | bash -s -- --version 1.0.180
+    curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash
+    curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 1.0.180
     ./install --binary /path/to/synergy
 EOF
 }
