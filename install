@@ -326,7 +326,7 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/synergy" "$INSTALL_DIR"
+    mv "$tmp_dir/bin/synergy" "$INSTALL_DIR/synergy"
     chmod 755 "${INSTALL_DIR}/synergy"
     rm -rf "$tmp_dir"
 }
