@@ -20,6 +20,7 @@ describe("runtime.reload", () => {
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        await Bun.write(path.join(tmp.path, ".synergy", "skill", "demo", "SKILL.md"), "---\nname: demo\n---\n")
         const configTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "synergy.jsonc"))
         const skillTarget = RuntimeReload.detectTargetsForFile(
           path.join(tmp.path, ".synergy", "skill", "demo", "SKILL.md"),
