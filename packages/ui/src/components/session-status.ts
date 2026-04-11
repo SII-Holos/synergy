@@ -46,7 +46,6 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "grep":
       case "glob":
       case "ast_grep":
-      case "codesearch":
         return "Searching the codebase"
       case "webfetch":
       case "websearch":

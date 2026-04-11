@@ -52,7 +52,6 @@ import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { WebSearchTool } from "./websearch"
-import { CodeSearchTool } from "./codesearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
@@ -157,7 +156,6 @@ export namespace ToolRegistry {
       DagReadTool,
       DagPatchTool,
       WebSearchTool,
-      CodeSearchTool,
       ArxivSearchTool,
       ArxivDownloadTool,
       SkillTool,
@@ -207,17 +205,9 @@ export namespace ToolRegistry {
 
   export async function tools(providerID: string, agent?: Agent.Info) {
     const tools = await all()
-    const filtered = tools.filter((t) => {
-      if (t.id === "codesearch") {
-        return Flag.SYNERGY_ENABLE_EXA
-      }
-      // websearch is always enabled (uses SearXNG)
-      return true
-    })
-
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
-      filtered.map(async (t) => {
+      tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
         return { id: t.id, ...def }
@@ -230,7 +220,7 @@ export namespace ToolRegistry {
       if (item.status === "fulfilled") {
         result.push(item.value)
       } else {
-        log.warn("tool skipped due to init failure", { tool: filtered[i]?.id, error: String(item.reason) })
+        log.warn("tool skipped due to init failure", { tool: tools[i]?.id, error: String(item.reason) })
       }
     }
     return result

@@ -1050,30 +1050,6 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "codesearch",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="code"
-        trigger={{
-          title: "Code Search",
-          subtitle: props.input.query || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
   name: "multiedit",
   render(props) {
     const diffComponent = useDiffComponent()

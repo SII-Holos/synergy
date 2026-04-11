@@ -206,7 +206,6 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
-            codesearch: "allow",
             runtime_reload: "deny",
             skill: {
               "agent-browser": "allow",

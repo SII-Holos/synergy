@@ -290,12 +290,6 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: "AST Search",
         subtitle: input.pattern,
       }
-    case "codesearch":
-      return {
-        icon: "code",
-        title: "Code Search",
-        subtitle: input.query,
-      }
     case "lsp":
       return {
         icon: "server",

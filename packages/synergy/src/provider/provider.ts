@@ -11,7 +11,6 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { Instance } from "../scope/instance"
-import { Flag } from "../flag/flag"
 import { SYNERGY_REFERER } from "../holos/constants"
 import { iife } from "@/util/iife"
 
@@ -827,7 +826,6 @@ export namespace Provider {
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]
-        if (model.status === "alpha" && !Flag.SYNERGY_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
         if (model.status === "deprecated") delete provider.models[modelID]
         if (
           (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||

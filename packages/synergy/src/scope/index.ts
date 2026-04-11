@@ -197,8 +197,6 @@ export namespace Scope {
 
     if (!existing.sandboxes) existing.sandboxes = []
 
-    if (Flag.SYNERGY_EXPERIMENTAL_ICON_DISCOVERY) discover(existing as Scope.Project)
-
     const persisted: z.infer<typeof Info> = {
       ...existing,
       worktree,
@@ -229,32 +227,6 @@ export namespace Scope {
     })
 
     return { scope, sandbox }
-  }
-
-  export async function discover(scope: Scope.Project) {
-    if (scope.vcs !== "git") return
-    if (scope.icon?.url) return
-    const glob = new Bun.Glob("**/{favicon}.{ico,png,svg,jpg,jpeg,webp}")
-    const matches = await Array.fromAsync(
-      glob.scan({
-        cwd: scope.worktree,
-        absolute: true,
-        onlyFiles: true,
-        followSymlinks: false,
-        dot: false,
-      }),
-    )
-    const shortest = matches.sort((a, b) => a.length - b.length)[0]
-    if (!shortest) return
-    const file = Bun.file(shortest)
-    const buffer = await file.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString("base64")
-    const mime = file.type || "image/png"
-    const url = `data:${mime};base64,${base64}`
-    await updatePersisted({
-      scopeID: scope.id,
-      icon: { url },
-    })
   }
 
   export async function listScopeIDs() {

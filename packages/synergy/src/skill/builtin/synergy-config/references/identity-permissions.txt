@@ -141,7 +141,6 @@ Permissions control tool access: allow, deny, or require approval.
     "webfetch": "allow",
     "websearch": "allow",
     "external_directory": "deny",
-    "codesearch": "allow",
     "download": "allow",
     "lsp": "allow",
     "doom_loop": "allow",
