@@ -1,33 +1,313 @@
 # Synergy
 
-**A next-generation general-purpose agent for the Open Agentic Web.**
+Synergy is an AI agent platform for software work, built by the [Holos](https://github.com/SII-Holos) team at SII.
 
-<p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/SII-Holos/synergy@main/assets/github-preparing.jpg" alt="Synergy mascot preparing the open-source release" width="360" />
-</p>
+It combines a stateless server, browser-based and CLI workflows, configurable agents, persistent sessions, scheduled automation, and a growing set of knowledge and collaboration features. Synergy is not just a coding bot: it powers server runtime, Web, `send`, session workflows, agent orchestration, channel integrations, MCP connectivity, and product-facing automation — all from a single platform.
 
-We're working hard to get the open-source release ready. Code, docs, and everything else will arrive here piece by piece — please bear with us while we sort it all out!
+Synergy is open source under the [MIT License](LICENSE). Contributions, bug reports, and feature ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
-## What is Synergy?
+## What Synergy Includes
 
-Synergy is a general-purpose agent architecture designed for a future where AI agents don't just run tasks in isolation — they collaborate, remember, grow, and participate as real members of an open digital world.
+Synergy currently spans several product surfaces and workflows:
 
-It is built around three ideas we care about deeply:
+- A central `server` process that handles requests independently of a single working directory
+- A `web` client for browser-based interaction
+- A `send` command for one-off, non-interactive execution
+- CLI commands for session, config, identity, and operational workflows
+- Configurable agents for orchestration, coding, research, writing, search, and review
+- Session persistence and session management commands
+- MCP integration for external tool ecosystems
+- Channel integrations such as Feishu / Lark
+- Identity, login, notes, memory/engram, agenda, and community-facing capabilities
 
-- **Agentic-Web-Native Collaboration** — agents should be able to work together across open networks and shared workspaces, not just orchestrate subagents inside a closed sandbox.
-- **Agent Identity and Personhood** — an agent should persist as a recognizable entity with memory, relationships, and continuity across sessions and time.
-- **Lifelong Evolution** — an agent should keep getting better after deployment, learning from its own experience rather than waiting for the next model upgrade.
+## Quick Start
 
-## Open-Source Status
+### If you already have the CLI installed
 
-The public release is currently under active preparation.
+Start the background service first:
 
-We plan to release incrementally — starting with core components, documentation, and examples, followed by broader artifacts over time. Stay tuned!
+```bash
+synergy start
+```
 
-## Stay in the Loop
+`synergy start` launches the managed background service. If you want to connect Holos, do it from the Web UI or run `synergy login` separately.
 
-⭐ **Star** or **Watch** this repo to get notified when we publish updates.
+For foreground debugging, you can still run:
 
-## License
+```bash
+synergy server
+```
 
-License details will be announced alongside the first public release.
+Then connect from another terminal:
+
+```bash
+synergy web
+# or
+synergy send "summarize the repo"
+```
+
+Attach to a non-default server when needed:
+
+```bash
+synergy web --attach http://localhost:5000
+synergy send --attach http://localhost:5000 "run the task"
+```
+
+Inspect or manage the background service when needed:
+
+```bash
+synergy status
+synergy restart
+synergy stop
+synergy logs
+```
+
+Background service management currently supports:
+
+- macOS via `launchd`
+- Linux via `systemd --user`
+- Windows via `schtasks`
+
+`synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
+
+Start and restart print a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+
+On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+### Running from this repository
+
+Install dependencies and build the frontend:
+
+```bash
+bun install
+bun run --cwd packages/app build
+```
+
+Start the server:
+
+```bash
+bun dev
+```
+
+Then connect from another terminal:
+
+```bash
+bun dev web --dev
+bun dev send "hello"
+```
+
+## Common Commands
+
+### Core runtime
+
+```bash
+synergy start              # Start the background service, optionally with Holos login
+synergy stop               # Stop the background service
+synergy restart            # Restart the background service
+synergy status             # Show background service status
+synergy server             # Start the Synergy server in foreground mode
+synergy web                # Open the web UI and attach to a server
+synergy send "message"     # Run a one-off prompt
+```
+
+### Configuration and identity
+
+```bash
+synergy config              # Manage configuration
+synergy config path         # Show config paths
+synergy config edit         # Open global config in an editor
+synergy login               # Bind to Holos platform
+synergy identity            # Work with identity-related features
+```
+
+### Models, sessions, and exports
+
+```bash
+synergy models              # List available models
+synergy session list        # List sessions
+synergy export <sessionID>  # Export session data
+synergy import <file>       # Import session data
+```
+
+### Integrations
+
+```bash
+synergy mcp                 # Manage MCP servers
+synergy channel add         # Add a channel configuration
+synergy channel start       # Start configured channels
+synergy channel status      # Show channel status
+```
+
+## Current Agent Model
+
+Synergy uses a broad agent system with specialized roles.
+
+Core built-in agents include:
+
+- `synergy` for orchestration, planning, coordination, and multi-step work
+- `master` for direct implementation and coding tasks
+- `scholar` for academic and research-heavy tasks
+- `scribe` for writing and documentation
+- `explore` for codebase exploration
+- `scout` for external technical documentation and open-source search
+- `advisor` for architecture and review
+- `anima` for background continuity and autonomous maintenance roles
+
+If you update agent names, roles, or recommended usage, update this section and `AGENTS.md` together.
+
+## Configuration
+
+Synergy configuration is layered.
+
+### Global config
+
+The active global Config Set is loaded from `~/.synergy/config`.
+
+By default, the `default` Config Set uses:
+
+```bash
+~/.synergy/config/synergy.jsonc
+```
+
+Additional global Config Sets live under:
+
+```bash
+~/.synergy/config/config-sets/<name>/synergy.jsonc
+```
+
+Useful command:
+
+```bash
+synergy config path
+```
+
+### Project config
+
+Project-level config can be provided in the project tree, typically via:
+
+```bash
+synergy.jsonc
+synergy.json
+```
+
+Synergy also supports project-scoped extension directories under:
+
+```bash
+.synergy/
+```
+
+That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
+
+### Resolution order
+
+At a high level:
+
+- well-known / remote org config can provide defaults
+- global config overrides those defaults
+- explicit custom config paths can override global config
+- project config has the highest local precedence
+- `SYNERGY_CONFIG_CONTENT` can inject config at runtime
+
+Do not document configuration examples from memory when they involve provider-specific fields or active integrations. Verify them against the current implementation before updating docs.
+
+## Package Map
+
+This repository is a Bun monorepo.
+
+### Primary packages
+
+- `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
+- `packages/app` — main web application
+- `packages/config-ui` — dedicated configuration UI package
+- `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
+- `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
+- `packages/ui` — shared UI components
+- `packages/util` — shared utilities and common helpers
+- `packages/script` — build and release utilities
+
+## Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh) ≥ 1.3 (the repo pins `bun@1.3.11` via `packageManager`)
+
+```bash
+git clone https://github.com/SII-Holos/synergy.git
+cd synergy
+bun install
+```
+
+### Running locally
+
+**Build the frontend** (required before first run):
+
+```bash
+bun run --cwd packages/app build
+```
+
+This produces static files in `packages/app/dist`. The server serves them automatically.
+
+**Start the server:**
+
+```bash
+bun dev
+```
+
+**Web UI (development mode)** — run in a second terminal while the server is up:
+
+```bash
+bun dev web --dev
+```
+
+This launches a Vite dev server for the frontend with hot-reload. Use this when working on the Web UI — no need to rebuild `packages/app/dist` each time.
+
+**One-off prompt** — send a single message without opening the Web UI:
+
+```bash
+bun dev send "hello"
+```
+
+### Quality checks
+
+```bash
+bun run typecheck       # type-check all packages via turbo
+./script/format.ts      # format with prettier
+```
+
+### Tests
+
+Run tests from `packages/synergy` — the root `test` script intentionally blocks:
+
+```bash
+cd packages/synergy
+bun test                            # full suite
+bun test test/tool/read.test.ts     # single file
+bun test --watch                    # watch mode
+```
+
+### Build and SDK generation
+
+```bash
+./packages/synergy/script/build.ts --single   # build the synergy CLI binary
+./script/generate.ts                           # regenerate the TypeScript SDK
+```
+
+Regenerate the SDK after modifying server routes or route schemas.
+
+## Documentation Rules
+
+This repository moves quickly. README drift is a real maintenance issue.
+
+Update documentation whenever you change:
+
+- CLI command names or recommended command flows
+- agent names, default roles, or user-facing descriptions
+- config paths or config schema expectations
+- package responsibilities in the monorepo
+- user-facing platform features such as MCP, channels, identity, web flows, agenda, notes, or community features
+
+If a change is visible to a user or another developer, it probably deserves a doc check.

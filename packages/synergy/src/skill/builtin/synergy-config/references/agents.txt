@@ -1,0 +1,146 @@
+# Agents
+
+## Two ways to define agents
+
+### 1. Via JSONC config (short prompts)
+
+```jsonc
+{
+  "agent": {
+    "<name>": {
+      "description": "When to use this agent",
+      "mode": "primary",
+      "model": "provider/model",
+      "prompt": "You are an expert at...",
+      "temperature": 0.7,
+      "top_p": 1.0,
+      "color": "#FF5733",
+      "steps": 50,
+      "hidden": false,
+      "disable": false,
+      "permission": { "bash": "allow", "edit": "ask" }
+    }
+  }
+}
+```
+
+### 2. Via markdown file (recommended for long prompts)
+
+Create at `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global):
+
+```markdown
+---
+description: "Expert code reviewer"
+mode: "primary"
+model: "anthropic/claude-sonnet-4-5"
+temperature: 0.3
+color: "#4CAF50"
+steps: 100
+---
+
+You are an expert code reviewer. Focus on:
+- Security vulnerabilities
+- Performance issues
+- Code clarity
+```
+
+YAML frontmatter = agent metadata. Markdown body = `prompt`.
+
+**Nested agents:** `.synergy/agent/team/reviewer.md` → agent name `team/reviewer`.
+
+## Agent fields reference
+
+| Field | Type | Description |
+|---|---|---|
+| `model` | string | `provider/model` format. Falls back to scope default. |
+| `description` | string | When to use this agent. Shown in agent selection UI. |
+| `mode` | enum | `"primary"`, `"subagent"`, or `"all"`. See below. |
+| `prompt` | string | System prompt. For markdown agents, this is the body. |
+| `temperature` | number | Generation temperature (0-2). |
+| `top_p` | number | Top-p sampling (0-1). |
+| `color` | string | Hex color (e.g., `"#FF5733"`). Must be `#` + 6 hex digits. |
+| `steps` | int | Max agentic iterations before forcing text-only response. |
+| `hidden` | bool | Hide from autocomplete (subagent mode only). Default false. |
+| `disable` | bool | Disable the agent entirely. |
+| `permission` | object | Permission overrides for this agent. See identity-permissions reference. |
+| `options` | object | Additional key-value options passed through. |
+
+## Agent modes
+
+| Mode | Meaning |
+|---|---|
+| `primary` | User-facing, selectable via `@` menu in TUI/Web. |
+| `subagent` | Called by other agents via `task` tool. Not directly selectable. |
+| `all` | Both primary and subagent. |
+
+## Built-in agents
+
+Synergy ships with these agents:
+
+**User-facing (primary):** `synergy` (default orchestrator)
+
+**Subagents:** `master` (implementation), `scholar` (academic research), `scribe` (writing), `explore` (codebase search), `scout` (external docs), `advisor` (architecture review)
+
+**Internal:** `title` (title generation), `summary` (session summaries), `compaction` (context compaction), `general` (general subagent)
+
+## Overriding built-in agents
+
+Define an agent with the same name in config. Config takes precedence over built-in definitions.
+
+Example — customize the explore agent's model:
+```jsonc
+{
+  "agent": {
+    "explore": {
+      "model": "anthropic/claude-haiku-3-5"
+    }
+  }
+}
+```
+
+Or override via markdown: `.synergy/agent/explore.md` with new prompt and frontmatter.
+
+## Permission interaction
+
+Agent-level `permission` merges with and overrides top-level `permission`:
+```jsonc
+{
+  "permission": { "bash": "ask", "edit": "allow" },
+  "agent": {
+    "safe-agent": {
+      "permission": { "bash": "deny", "edit": "deny" }
+    }
+  }
+}
+```
+
+## Options passthrough
+
+Unknown fields in agent config are extracted into `options`:
+```jsonc
+{
+  "agent": {
+    "my-agent": {
+      "model": "anthropic/claude-sonnet-4-5",
+      "custom_field": "value"
+    }
+  }
+}
+```
+`custom_field` is accessible via `agent.options.custom_field`.
+
+## Validation rules
+
+1. `mode` must be `"primary"`, `"subagent"`, or `"all"`
+2. `color` must be `#` + 6 hex digits (e.g., `"#FF5733"`)
+3. `steps` must be a positive integer
+4. For markdown agents, frontmatter must be valid YAML between `---` delimiters
+5. `description` is required for the agent to appear in selection UI
+
+## Reload
+
+```
+runtime_reload(target: "agent")
+```
+
+For markdown agent files, the file watcher auto-detects changes.

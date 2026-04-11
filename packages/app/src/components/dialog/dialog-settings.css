@@ -1,0 +1,432 @@
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tabs bar — pill style hosted in a clean strip */
+.ds-tabs-bar {
+  display: flex;
+  justify-content: center;
+  padding: 4px 20px 0;
+  flex-shrink: 0;
+}
+
+.ds-tabs-root {
+  height: auto !important;
+  background: transparent !important;
+}
+
+/* Content area */
+.ds-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--border-base) 40%, transparent) transparent;
+}
+
+/* Section container */
+.ds-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ds-section-enter {
+  animation: ds-fade-in 0.2s ease-out both;
+}
+
+/* Section headers (for MCP / Plugins) */
+.ds-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+}
+
+/* Section labels (for Advanced tab groups) */
+.ds-section-label {
+  padding: 12px 0 2px;
+  user-select: none;
+}
+
+.ds-section-label:first-child {
+  padding-top: 0;
+}
+
+.ds-section-label span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-weaker);
+}
+
+/* Setting row — horizontal label + control */
+.ds-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
+}
+
+.ds-setting-row:hover {
+  background: var(--surface-raised-base);
+}
+
+/* Segment pill control — unified track with sliding selection */
+.ds-segment {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--surface-raised-base);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border-weak-base) 60%, transparent);
+}
+
+.ds-segment-item {
+  position: relative;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ds-segment-item:hover:not(.ds-segment-item-active) {
+  color: var(--text-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.ds-segment-item-active {
+  color: var(--text-strong);
+  background: var(--surface-raised-stronger-non-alpha);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 0 0 1px color-mix(in oklch, var(--border-base) 30%, transparent);
+}
+
+/* MCP card */
+.ds-mcp-card {
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
+  background: var(--surface-raised-base);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.ds-mcp-card:hover {
+  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+}
+
+.ds-mcp-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.ds-mcp-card-header:hover {
+  background: var(--surface-raised-base-hover);
+}
+
+.ds-mcp-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 15%, transparent);
+  padding-top: 12px;
+}
+
+/* MCP status dot */
+.ds-mcp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--text-weaker);
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.ds-mcp-dot-active {
+  background: var(--icon-success);
+}
+
+/* MCP type badge */
+.ds-mcp-badge {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-weaker);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--border-weak-base) 40%, transparent);
+}
+
+/* Empty state */
+.ds-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 32px 16px;
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+/* Model role row */
+.ds-model-role-row {
+  align-items: flex-start;
+  padding: 8px 12px;
+}
+
+/* Model role select */
+.ds-model-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--input-base);
+  border: 1px solid color-mix(in oklch, var(--border-weak-base) 70%, transparent);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 500;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ds-model-select:focus {
+  outline: none;
+  box-shadow: var(--shadow-xs-border-select);
+}
+
+.ds-model-select:hover {
+  border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
+}
+
+/* Settings context bar */
+.ds-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ds-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base) 80%, transparent);
+}
+
+.ds-context-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-weaker);
+}
+
+.ds-context-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-base);
+}
+
+/* Panel cards */
+.ds-panel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base) 75%, transparent);
+}
+
+.ds-panel-card + .ds-panel-card {
+  margin-top: 12px;
+}
+
+.ds-panel-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 8px;
+}
+
+.ds-config-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
+}
+
+.ds-config-set-row:hover {
+  background: var(--surface-raised-base);
+}
+
+.ds-config-set-row-active {
+  background: color-mix(in oklch, var(--surface-raised-base-hover) 75%, transparent);
+}
+
+.ds-inline-badge {
+  padding: 2px 6px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--icon-success) 14%, transparent);
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ds-inline-badge-muted {
+  background: color-mix(in oklch, var(--border-base) 24%, transparent);
+  color: var(--text-weak);
+}
+
+.ds-inline-badge-dirty {
+  background: color-mix(in oklch, var(--icon-warning) 18%, transparent);
+  color: var(--text-strong);
+}
+
+.ds-create-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Footer */
+.ds-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 15%, transparent);
+  flex-shrink: 0;
+}
+
+/* Mode toggle (Form / JSON) */
+.ds-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border-weak-base) 50%, transparent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ds-mode-toggle:hover {
+  color: var(--text-base);
+  background: var(--surface-raised-base-hover);
+  border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
+}
+
+.ds-mode-toggle-active {
+  color: var(--text-strong);
+  background: var(--surface-raised-stronger-non-alpha);
+  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Raw editor */
+.ds-raw-editor-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+
+.ds-raw-textarea {
+  flex: 1;
+  min-height: 200px;
+  resize: none;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border-weak-base) 60%, transparent);
+  background: var(--surface-inset-base);
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--border-base) 40%, transparent) transparent;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ds-raw-textarea:focus {
+  border-color: color-mix(in oklch, var(--text-interactive-base) 50%, transparent);
+  box-shadow: var(--shadow-xs-border-select);
+}
+
+.ds-raw-validation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ds-raw-validation-error {
+  background: color-mix(in oklch, var(--icon-danger) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--icon-danger) 25%, transparent);
+  color: var(--text-strong);
+}
+
+.ds-raw-validation-warning {
+  background: color-mix(in oklch, var(--icon-warning) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--icon-warning) 25%, transparent);
+  color: var(--text-strong);
+}
+
+.ds-raw-validation-item {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+}

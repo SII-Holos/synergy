@@ -1,0 +1,120 @@
+import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { Collapsible } from "./collapsible"
+import { Icon, IconProps, IconName } from "./icon"
+import { Spinner } from "./spinner"
+
+export type TriggerTitle = {
+  title: string
+  titleClass?: string
+  subtitle?: string
+  subtitleClass?: string
+  args?: string[]
+  argsClass?: string
+  action?: JSX.Element
+}
+
+const isTriggerTitle = (val: any): val is TriggerTitle => {
+  return (
+    typeof val === "object" && val !== null && "title" in val && (typeof Node === "undefined" || !(val instanceof Node))
+  )
+}
+
+export interface BasicToolProps {
+  icon: IconName
+  trigger: TriggerTitle | JSX.Element
+  children?: JSX.Element
+  hideDetails?: boolean
+  defaultOpen?: boolean
+  forceOpen?: boolean
+  status?: string
+  onSubtitleClick?: () => void
+}
+
+export function BasicTool(props: BasicToolProps) {
+  const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  const active = () => props.status === "pending" || props.status === "running"
+
+  createEffect(() => {
+    if (props.forceOpen) setOpen(true)
+  })
+
+  return (
+    <Collapsible open={open()} onOpenChange={setOpen} variant="tool" data-tool-status={props.status ?? "completed"}>
+      <Collapsible.Trigger>
+        <div data-component="tool-trigger">
+          <div data-slot="basic-tool-tool-trigger-content">
+            <Icon name={props.icon} size="small" />
+            <div data-slot="basic-tool-tool-info">
+              <Switch>
+                <Match when={isTriggerTitle(props.trigger) && props.trigger}>
+                  {(trigger) => (
+                    <div data-slot="basic-tool-tool-info-structured">
+                      <div data-slot="basic-tool-tool-info-main">
+                        <span
+                          data-slot="basic-tool-tool-title"
+                          classList={{
+                            [trigger().titleClass ?? ""]: !!trigger().titleClass,
+                          }}
+                        >
+                          {trigger().title}
+                        </span>
+                        <Show when={trigger().subtitle}>
+                          <span
+                            data-slot="basic-tool-tool-subtitle"
+                            classList={{
+                              [trigger().subtitleClass ?? ""]: !!trigger().subtitleClass,
+                              clickable: !!props.onSubtitleClick,
+                            }}
+                            onClick={(e) => {
+                              if (props.onSubtitleClick) {
+                                e.stopPropagation()
+                                props.onSubtitleClick()
+                              }
+                            }}
+                          >
+                            {trigger().subtitle}
+                          </span>
+                        </Show>
+                        <Show when={trigger().args?.length}>
+                          <For each={trigger().args}>
+                            {(arg) => (
+                              <span
+                                data-slot="basic-tool-tool-arg"
+                                classList={{
+                                  [trigger().argsClass ?? ""]: !!trigger().argsClass,
+                                }}
+                              >
+                                {arg}
+                              </span>
+                            )}
+                          </For>
+                        </Show>
+                      </div>
+                      <Show when={trigger().action}>{trigger().action}</Show>
+                    </div>
+                  )}
+                </Match>
+                <Match when={true}>{props.trigger as JSX.Element}</Match>
+              </Switch>
+            </div>
+          </div>
+          <Switch>
+            <Match when={active()}>
+              <Spinner />
+            </Match>
+            <Match when={props.children && !props.hideDetails}>
+              <Collapsible.Arrow />
+            </Match>
+          </Switch>
+        </div>
+      </Collapsible.Trigger>
+      <Show when={props.children && !props.hideDetails}>
+        <Collapsible.Content>{props.children}</Collapsible.Content>
+      </Show>
+    </Collapsible>
+  )
+}
+
+export function GenericTool(props: { tool: string; hideDetails?: boolean }) {
+  return <BasicTool icon="settings" trigger={{ title: props.tool }} hideDetails={props.hideDetails} />
+}

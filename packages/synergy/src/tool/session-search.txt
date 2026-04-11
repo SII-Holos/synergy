@@ -1,0 +1,11 @@
+Search across session message content using regex patterns. Searches text in all messages across sessions, returning matching sessions with context around each match.
+
+Use this to find past conversations about specific topics. For browsing sessions by time or scope, use `session_list` instead. To read full context around a match, use `session_read` with the `around` parameter.
+
+The search pattern is a regular expression applied to each message's text content. Results are grouped by session and sorted by most recently updated session first.
+
+The `scope` parameter controls which sessions are searched:
+- "all" (default): Search across all project scopes
+- "current": Only search sessions in the current project scope
+
+Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "sessions from last week mentioning X".

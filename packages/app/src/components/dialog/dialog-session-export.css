@@ -1,0 +1,175 @@
+/* Session export dialog — dedicated styles */
+
+/* Body: scrollable content area with proper padding */
+.session-export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 24px 20px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.session-export-body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Session info card */
+.session-export-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base) 75%, transparent);
+}
+
+.session-export-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding-left: 26px;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.session-export-meta-dim {
+  color: var(--text-weaker);
+}
+
+/* Field group */
+.session-export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-export-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  padding-left: 2px;
+}
+
+/* Mode selector — three equal-width cards in a row */
+.session-export-mode-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.session-export-mode-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.session-export-mode-option:hover:not(.session-export-mode-option-active) {
+  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+  background: var(--surface-raised-base);
+}
+
+.session-export-mode-option-active {
+  border-color: color-mix(in oklch, var(--text-interactive-base) 50%, transparent);
+  background: color-mix(in oklch, var(--text-interactive-base) 6%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--text-interactive-base) 20%, transparent);
+}
+.session-export-mode-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.session-export-mode-option-active .session-export-mode-title {
+  color: var(--text-interactive-base);
+}
+.session-export-mode-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-weaker);
+}
+
+.session-export-mode-option-active .session-export-mode-desc {
+  color: var(--text-weak);
+}
+
+/* Footer */
+.session-export-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 15%, transparent);
+  flex-shrink: 0;
+}
+
+/* Action button — card-style with icon + label + hint */
+.session-export-action {
+  display: flex;
+  width: min(100%, 240px);
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.session-export-action:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--border-base) 50%, transparent);
+  background: var(--surface-raised-base);
+}
+
+.session-export-action:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: 80ms;
+}
+
+.session-export-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.session-export-action-primary {
+  border-color: color-mix(in oklch, var(--text-interactive-base) 30%, transparent);
+  background: color-mix(in oklch, var(--text-interactive-base) 5%, transparent);
+}
+
+.session-export-action-primary:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--text-interactive-base) 50%, transparent);
+  background: color-mix(in oklch, var(--text-interactive-base) 10%, transparent);
+}
+.session-export-action-icon {
+  color: var(--text-weak);
+}
+
+.session-export-action-primary .session-export-action-icon {
+  color: var(--text-interactive-base);
+}
+.session-export-action-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.session-export-action-primary .session-export-action-label {
+  color: var(--text-interactive-base);
+}
+
+.session-export-action-hint {
+  font-size: 11px;
+  color: var(--text-weaker);
+  text-align: center;
+  line-height: 1.3;
+}

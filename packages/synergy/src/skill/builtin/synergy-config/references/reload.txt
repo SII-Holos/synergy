@@ -1,0 +1,128 @@
+# Runtime Reload
+
+After writing config changes, use `runtime_reload` to apply without restarting.
+
+## Reload targets
+
+| Target | What it reloads | Cascades to |
+|---|---|---|
+| `config` | Re-reads all config files, detects changed fields | Auto-cascades based on changed fields |
+| `provider` | All provider SDKs, model lists, API keys | → `agent` |
+| `agent` | Agent definitions (config + markdown files) | (none) |
+| `mcp` | MCP server connections | → `command` |
+| `skill` | Skill files (SKILL.md discovery) | (none) |
+| `plugin` | Plugin files (.ts/.js) | → `tool_registry` |
+| `channel` | Channel integrations | (none) |
+| `command` | Custom commands (.md files) | (none) |
+| `tool_registry` | Tool registry (all registered tools) | (none) |
+| `lsp` | Language server connections | (none) |
+| `formatter` | Code formatter definitions | (none) |
+| `watcher` | File watcher configuration | (none) |
+| `all` | Everything above | All cascades |
+
+## Which target for each change
+
+| What you changed | Reload target | Notes |
+|---|---|---|
+| API key in credential store | `provider` | Directly reloads provider SDKs with new key |
+| Provider config in JSONC | `config` | Detects `provider` field change → cascades to `provider` → `agent` |
+| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `holos_friend_reply_model`, `vision_model` |
+| `default_agent` | `config` | Live-applied |
+| MCP server config in JSONC | `config` or `mcp` | Config detects `mcp` field → cascades to `mcp` → `command` |
+| Agent config in JSONC | `config` | Detects `agent` field → cascades to `agent` |
+| Agent markdown file | `agent` | File watcher also detects `.md` changes in agent dirs |
+| Skill file (SKILL.md) | `skill` | File watcher also detects SKILL.md changes |
+| Permission config | `config` | Detects `permission` field → cascades to `agent` |
+| Identity config | `config` | Detects `identity` field → cascades to `agent` |
+| Channel config | `config` or `channel` | Config detects `channel` field → cascades |
+| Plugin file (.ts/.js) | `plugin` | Cascades to `tool_registry` |
+| Custom command (.md) | `command` | |
+| Experimental config | `config` | Detects `experimental` field → cascades to `tool_registry` |
+| `enabled_providers` / `disabled_providers` | `config` | Cascades to `provider` → `agent` |
+| Multiple unrelated changes | `all` | Safe fallback |
+
+## Auto-cascade rules (when target is `config`)
+
+When you reload `config`, Synergy diffs old vs new config and cascades based on changed fields:
+
+| Changed field(s) | Cascaded targets |
+|---|---|
+| `provider`, `disabled_providers`, `enabled_providers` | `provider` → `agent` |
+| `agent`, `permission`, `identity`, any model role field | `agent` |
+| `mcp` | `mcp` → `command` |
+| `plugin` | `plugin` → `tool_registry` |
+| `channel` | `channel` |
+| `lsp` | `lsp` |
+| `formatter` | `formatter` |
+| `watcher` | `watcher` |
+| `command` | `command` |
+| `experimental` | `tool_registry` |
+
+Multiple cascades can trigger simultaneously if multiple fields changed.
+
+## Fields that require restart (NOT hot-reloadable)
+
+These require restarting the Synergy server process:
+- `server` (port, hostname, mdns, cors)
+- `logLevel`
+
+Attempting to reload these shows them in the `restartRequired` response field.
+
+## Fields that are client-side only
+
+Handled by TUI/Web clients, not the server runtime:
+- `theme`
+- `keybinds`
+- `tui`
+- `layout`
+
+Reloading these triggers a warning that they are client-side.
+
+## Scope parameter
+
+```
+runtime_reload(target: "config", scope: "auto")
+```
+
+| Scope | Behavior |
+|---|---|
+| `auto` (default) | Reloads project config if project config file exists, otherwise global |
+| `global` | Only reloads global config (active Config Set) |
+| `project` | Only reloads project config |
+
+Project config files are detected at:
+- `<project>/.synergy/synergy.jsonc`
+- `<project>/.synergy/synergy.json`
+- `<project>/synergy.jsonc`
+- `<project>/synergy.json`
+
+## File watcher behavior
+
+Synergy watches for changes to config-related files and auto-triggers appropriate reloads:
+
+- **Config files** (synergy.jsonc, synergy.json) → `config` reload with auto-cascade
+- **SKILL.md files** in skill directories → `skill` reload
+- **Tool files** (.ts/.js in tool directories) → `tool_registry` reload
+- **Agent .md files** → detected via config reload cascade
+
+The watcher reduces the need for manual `runtime_reload` calls when editing files directly.
+
+## Usage patterns
+
+```
+runtime_reload(target: "config")          // edited config file
+runtime_reload(target: "provider")        // updated credential store only
+runtime_reload(target: "mcp")             // added/changed MCP server
+runtime_reload(target: "agent")           // edited agent markdown file
+runtime_reload(target: "skill")           // edited SKILL.md
+runtime_reload(target: "all")             // many changes, or when in doubt
+runtime_reload(target: "config", scope: "global")   // force global reload
+runtime_reload(target: ["config", "mcp"])  // multiple targets
+```
+
+## Troubleshooting
+
+- **Changes not taking effect?** — check you edited the right file (global vs project scope). Use `scope: "global"` or `scope: "project"` explicitly.
+- **Provider not loading after adding key?** — ensure the credential store entry's key matches the provider ID. Reload `provider` not just `config`.
+- **Server config changes?** — `server` and `logLevel` require process restart. Reload won't help.
+- **Built-in source code edits?** — edits under `packages/synergy/src` require restarting the backend process. Runtime reload only refreshes runtime state from config/data files.

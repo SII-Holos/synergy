@@ -1,0 +1,232 @@
+# Providers and API Keys
+
+## Adding a provider — step-by-step procedure
+
+When a user wants to connect a provider (e.g., "configure MiniMax", "add my OpenAI key"), you MUST follow this procedure in order. Do NOT skip Step 1.
+
+### Step 1: Check the Models.dev registry (MANDATORY)
+
+Before writing ANY provider config, you MUST first check whether the provider already exists in the Models.dev registry. Fetch `https://models.dev/api.json` (use `webfetch`) and search for the provider by name or ID. If the online fetch fails, fall back to reading the local cache at `~/.synergy/cache/models.json`.
+
+The registry contains most popular providers — including many you might not expect. Do NOT assume a provider needs custom config just because you haven't seen it configured before.
+
+Each registry entry has: provider ID, name, API URL, SDK package (`npm`), env var names (`env`), and a full model catalog with limits and pricing.
+
+IMPORTANT: A single provider may have **multiple variants** in the registry (e.g., `minimax` vs `minimax-coding-plan` vs `minimax-cn` vs `minimax-cn-coding-plan`). When searching, list ALL matching entries and pick the correct one based on:
+- **Plan type**: Coding Plan / Token Plan keys (often prefixed `sk-cp-`) need the `-coding-plan` variant. Pay-as-you-go keys use the base variant.
+- **Region**: `-cn` variants use Chinese endpoints (e.g., `minimaxi.com`), base variants use international endpoints (e.g., `minimax.io`). Region usually CANNOT be determined from the key alone — ask the user which platform they registered on if multiple region variants exist.
+
+The provider ID you choose here is the exact key you MUST use in the credential store.
+
+**If found → go to Step 2a. If NOT found → go to Step 2b.**
+
+### Step 2a: Provider IS in registry → ONLY save API key
+
+If the provider is in the registry, it is a **built-in provider**. All metadata (name, API URL, SDK, models) is already defined. You ONLY need to save the API key to the credential store.
+
+IMPORTANT: Do NOT write provider config to `synergy.jsonc` for built-in providers. It is unnecessary and can cause conflicts.
+
+```
+1. Read ~/.synergy/data/auth/api-key.json (create with {} if missing)
+2. Add/merge: "<provider-id>": { "type": "api", "key": "<user's key>" }
+   - The provider ID is the key from the registry (e.g., "minimax", "anthropic", "openai")
+3. Write back the file
+4. runtime_reload(target: "provider")
+5. Done — models are auto-discovered from the registry
+```
+
+### Step 2b: Provider is NOT in registry → write config + save API key
+
+If the provider is not in the registry (e.g., a local vLLM server, a private proxy, a niche provider), you need BOTH credential store entry AND provider config in `synergy.jsonc`:
+
+```
+1. Read ~/.synergy/data/auth/api-key.json (create with {} if missing)
+2. Add/merge: "<provider-id>": { "type": "api", "key": "<user's key>" }
+3. Write back the file
+4. Add provider config to ~/.synergy/config/synergy.jsonc under "provider":
+   "<provider-id>": {
+     "name": "Display Name",
+     "npm": "<sdk-package>",
+     "options": { "baseURL": "https://..." },
+     "models": {
+       "<model-name>": {
+         "id": "<api-model-id>",
+         "name": "<display-name>",
+         "limit": { "context": <tokens>, "output": <tokens> }
+       }
+     }
+   }
+5. runtime_reload(target: "provider")
+```
+
+### Optional: override built-in provider settings
+
+If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL), add ONLY the overrides — not the full provider definition:
+
+```
+"provider": {
+  "<provider-id>": {
+    "whitelist": ["Model-A", "Model-B"],
+    "options": { "timeout": 600000 }
+  }
+}
+```
+
+## How providers work
+
+Synergy loads providers from two sources:
+1. **Built-in providers** — auto-discovered from the Models.dev registry (cached at `~/.synergy/cache/models.json`). They require only an API key to activate.
+2. **Custom providers** — defined in config under `"provider"`. Required for providers not in the registry, or to override registry defaults.
+
+## Credential resolution chain
+
+When loading a provider, Synergy resolves credentials in this order (highest priority last):
+
+1. **Environment variables** — provider-specific env vars (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Each provider in the registry defines which env vars it checks.
+2. **Credential store** — `~/.synergy/data/auth/api-key.json`. This is the preferred method.
+3. **Config inline** — `provider.<id>.options.apiKey` in config. Supports `{env:VAR_NAME}` references.
+4. **Plugin auth loaders** — for providers like GitHub Copilot that use OAuth flows.
+
+For built-in providers, adding the API key to the credential store is ALL you need. No config changes required.
+
+## Credential store
+
+Located at `~/.synergy/data/auth/api-key.json`. File is chmod 600, separate from config.
+
+Format — JSON object mapping provider IDs to auth entries:
+```json
+{
+  "anthropic": { "type": "api", "key": "sk-ant-..." },
+  "openai": { "type": "api", "key": "sk-..." },
+  "minimax": { "type": "api", "key": "sk-cp-..." }
+}
+```
+
+Auth entry types:
+- `{ "type": "api", "key": "<key>" }` — standard API key (most common)
+- `{ "type": "oauth", "refresh": "...", "access": "...", "expires": <timestamp> }` — OAuth token (managed by plugins)
+- `{ "type": "holos", "agentId": "...", "agentSecret": "..." }` — Holos identity auth
+- `{ "type": "wellknown", "key": "...", "token": "..." }` — well-known remote config auth
+
+## Environment variable references
+
+For inline config keys, use `{env:VAR_NAME}`:
+```jsonc
+{ "provider": { "my-provider": { "options": { "apiKey": "{env:MY_KEY}" } } } }
+```
+Resolved at config load time. The env var must exist in Synergy's shell.
+
+## Custom provider config fields
+
+```jsonc
+{
+  "provider": {
+    "<provider-id>": {
+      "name": "Display Name",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api.example.com/v1"
+      },
+      "models": {
+        "<model-name>": {
+          "id": "api-model-id",
+          "name": "Display Name",
+          "cost": { "input": 3, "output": 15 },
+          "limit": { "context": 200000, "output": 8192 }
+        }
+      },
+      "whitelist": ["model-a"],
+      "blacklist": ["model-b"]
+    }
+  }
+}
+```
+
+Fields:
+- `name` — human-readable display name
+- `npm` — AI SDK package (see bundled list below)
+- `api` — base API URL (alternative to `options.baseURL`)
+- `env` — array of env var names to check for API key
+- `options` — passed to SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `enterpriseUrl`, `setCacheKey`
+- `options.timeout` — request timeout in ms (default 300000). Set `false` to disable.
+- `models` — manually specify models. Key is display name, `id` is what's sent to API.
+- `models.<name>.cost` — `input` and `output` per million tokens
+- `models.<name>.limit` — `context` and `output` token limits
+- `whitelist` — only load these models (from registry)
+- `blacklist` — exclude these models
+
+## Bundled SDK packages
+
+These are bundled and don't need installation:
+
+| Provider type | `npm` value |
+|---|---|
+| OpenAI-compatible (most common) | `@ai-sdk/openai-compatible` |
+| OpenAI | `@ai-sdk/openai` |
+| Anthropic | `@ai-sdk/anthropic` |
+| Google Generative AI | `@ai-sdk/google` |
+| Google Vertex AI | `@ai-sdk/google-vertex` |
+| Google Vertex Anthropic | `@ai-sdk/google-vertex/anthropic` |
+| Azure OpenAI | `@ai-sdk/azure` |
+| Amazon Bedrock | `@ai-sdk/amazon-bedrock` |
+| xAI (Grok) | `@ai-sdk/xai` |
+| Mistral | `@ai-sdk/mistral` |
+| Groq | `@ai-sdk/groq` |
+| DeepInfra | `@ai-sdk/deepinfra` |
+| Cerebras | `@ai-sdk/cerebras` |
+| Cohere | `@ai-sdk/cohere` |
+| Together AI | `@ai-sdk/togetherai` |
+| Perplexity | `@ai-sdk/perplexity` |
+| Vercel AI Gateway | `@ai-sdk/vercel` |
+| AI Gateway | `@ai-sdk/gateway` |
+| OpenRouter | `@openrouter/ai-sdk-provider` |
+
+For unlisted SDKs, Synergy auto-installs via `bun add`.
+
+## SDK selection guide (only needed for custom providers)
+
+- **`@ai-sdk/openai-compatible`** — default for ANY OpenAI-compatible API (third-party providers, local servers like Ollama/vLLM/LM Studio)
+- **`@ai-sdk/anthropic`** — ONLY for official Anthropic API or providers using Anthropic Messages API with `x-api-key` auth
+- **`@ai-sdk/openai`** — ONLY for official OpenAI. Uses the Responses API by default (not Chat Completions)
+- **Provider-specific SDKs** — use when available for correct auth/model routing
+
+## Provider-specific behaviors
+
+### Anthropic
+- Adds `anthropic-beta` header for extended features.
+- Rejects empty content messages — Synergy filters these automatically.
+- Credential store key: `"anthropic"`
+
+### Amazon Bedrock
+- Uses AWS credential chain: config `region`/`profile` → `AWS_REGION`/`AWS_PROFILE` env vars → default `us-east-1`.
+- Supports `AWS_BEARER_TOKEN_BEDROCK` env var or credential store key.
+- Automatically prefixes model IDs with region for cross-region inference.
+- Config options: `region`, `profile`, `endpoint` (or `baseURL`).
+
+### Google Vertex AI
+- Requires `GOOGLE_CLOUD_PROJECT` (or `GCP_PROJECT`) env var.
+- Optional: `GOOGLE_CLOUD_LOCATION` (default: `us-east5`).
+- No API key needed — uses Google Cloud ADC.
+
+### GitHub Copilot
+- Uses OAuth flow managed by a plugin. Auth stored as OAuth type in credential store.
+- Enterprise variant: `"github-copilot-enterprise"` with `enterpriseUrl` in options.
+
+### Cloudflare AI Gateway
+- Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` env vars.
+- Uses `cf-aig-authorization` header instead of standard `Authorization`.
+
+### OpenRouter / Vercel
+- Adds `HTTP-Referer` and `X-Title` headers automatically.
+
+## Enable/disable providers
+
+```jsonc
+{
+  "disabled_providers": ["openrouter", "together"],
+  "enabled_providers": ["anthropic", "openai"]
+}
+```
+
+- `disabled_providers` — subtractive: listed providers are skipped.
+- `enabled_providers` — exclusive: when set, ONLY listed providers load.

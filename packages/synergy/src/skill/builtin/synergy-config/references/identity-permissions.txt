@@ -1,0 +1,216 @@
+# Identity and Permissions
+
+## Identity — Embedding and Reranking
+
+The `identity` section configures models used by the memory/engram system.
+
+### Embedding and rerank config
+
+```jsonc
+{
+  "identity": {
+    "embedding": {
+      "baseURL": "https://api.siliconflow.cn/v1",
+      "apiKey": "{env:SILICONFLOW_API_KEY}",
+      "model": "Qwen/Qwen3-Embedding-8B"
+    },
+    "rerank": {
+      "baseURL": "https://api.siliconflow.cn/v1",
+      "apiKey": "{env:SILICONFLOW_API_KEY}",
+      "model": "Qwen/Qwen3-Reranker-8B"
+    },
+    "autonomy": true
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `embedding.baseURL` | Base URL for embedding API |
+| `embedding.apiKey` | API key (supports `{env:VAR}`) |
+| `embedding.model` | Embedding model name |
+| `rerank.baseURL` | Base URL for rerank API |
+| `rerank.apiKey` | Rerank API key (falls back to `embedding.apiKey`) |
+| `rerank.model` | Rerank model name |
+| `autonomy` | Enable autonomous background routines like anima (default: true) |
+
+### Evolution config
+
+Controls the dual-mode learning system:
+
+```jsonc
+{
+  "identity": {
+    "evolution": {
+      "passive": true,
+      "active": true
+    }
+  }
+}
+```
+
+- `"evolution": false` — disable all learning
+- `"evolution": true` or omit — enable all (default)
+- `passive` — RL-enhanced experience learning from conversations
+- `active` — agent-initiated memory curation via memory tools
+
+### Passive evolution (advanced)
+
+```jsonc
+{
+  "identity": {
+    "evolution": {
+      "passive": {
+        "encode": true,
+        "retrieve": true,
+        "learning": {
+          "alpha": 0.3,
+          "qInit": 0.5,
+          "dedupIntentThreshold": 0.85,
+          "dedupScriptThreshold": 0.8,
+          "qHistorySize": 50,
+          "snapThreshold": 0.5,
+          "rewardDelay": 5,
+          "rewardWeights": {
+            "outcome": 0.35,
+            "intent": 0.25,
+            "execution": 0.2,
+            "orchestration": 0.1,
+            "expression": 0.1
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Active evolution (advanced)
+
+```jsonc
+{
+  "identity": {
+    "evolution": {
+      "active": {
+        "retrieve": {
+          "simThreshold": 0.5,
+          "topK": 5,
+          "categories": {
+            "interaction": { "simThreshold": 0.4, "topK": 6 },
+            "coding": { "simThreshold": 0.55, "topK": 8 },
+            "knowledge": { "simThreshold": 0.6, "topK": 10 }
+          }
+        },
+        "memoryDedupThreshold": 0.75
+      }
+    }
+  }
+}
+```
+
+Memory categories: `user`, `self`, `relationship`, `interaction`, `workflow`, `coding`, `writing`, `asset`, `insight`, `knowledge`, `personal`, `general`.
+
+Memory retrieval is driven per row by `recallMode`: `always`, `contextual`, or `search_only`. Use `always` sparingly for durable identity and interaction rules rather than assuming a whole category is always loaded.
+
+---
+
+## Permissions
+
+Permissions control tool access: allow, deny, or require approval.
+
+### Permission actions
+
+| Action | Meaning |
+|---|---|
+| `"allow"` | Execute without user approval |
+| `"ask"` | User must approve each invocation |
+| `"deny"` | Blocked entirely |
+
+### Top-level permissions (all agents)
+
+```jsonc
+{
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "bash": "ask",
+    "task": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "external_directory": "deny",
+    "codesearch": "allow",
+    "download": "allow",
+    "lsp": "allow",
+    "doom_loop": "allow",
+    "dagwrite": "allow",
+    "dagread": "allow",
+    "question": "allow",
+    "todowrite": "allow",
+    "todoread": "allow",
+    "skill": "allow"
+  }
+}
+```
+
+### Per-agent permissions
+
+Override in agent config:
+```jsonc
+{
+  "agent": {
+    "safe-agent": {
+      "permission": { "bash": "deny", "edit": "deny" }
+    }
+  }
+}
+```
+
+Agent permissions merge with and override top-level permissions.
+
+### Path-scoped permissions
+
+Some tools support pattern-based rules:
+
+```jsonc
+{
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "git *": "allow",
+      "npm test": "allow",
+      "rm *": "deny"
+    },
+    "edit": {
+      "*": "ask",
+      "src/**": "allow",
+      "*.config.*": "deny"
+    },
+    "read": {
+      "*": "allow",
+      ".env*": "deny"
+    }
+  }
+}
+```
+
+`*` is the default rule. More specific patterns override it. Rules are evaluated in order — first matching rule wins.
+
+### Shorthand
+
+Top-level shorthand for all tools:
+```jsonc
+{ "permission": "allow" }
+```
+
+Equivalent to setting all tools to `"allow"`.
+
+## Reload
+
+```
+runtime_reload(target: "config")
+```
+
+Identity and permission changes cascade to agent reload automatically.

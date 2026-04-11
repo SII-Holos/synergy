@@ -1,0 +1,121 @@
+[data-component="dag-graph"] {
+  position: relative;
+  width: 100%;
+
+  [data-slot="dag-graph-canvas"] {
+    position: relative;
+  }
+
+  [data-slot="dag-graph-edges"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+
+  [data-slot="dag-graph-edge"] {
+    fill: none;
+    stroke: var(--border-weak-base);
+    stroke-width: 1.5;
+
+    &[data-status="completed"] {
+      stroke: #34d399;
+    }
+    &[data-status="running"] {
+      stroke: var(--border-warning-base);
+    }
+    &[data-status="failed"] {
+      stroke: var(--border-critical-base);
+    }
+  }
+
+  [data-slot="dag-graph-card"] {
+    position: absolute;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-weak-base);
+    background: var(--surface-base);
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+
+    &[data-status="completed"] {
+      border-color: #34d399;
+      opacity: 0.75;
+    }
+    &[data-status="running"] {
+      border-color: var(--border-warning-base);
+    }
+    &[data-status="failed"] {
+      border-color: var(--border-critical-base);
+    }
+    &[data-ready="true"] {
+      border-color: var(--border-warning-base);
+    }
+  }
+
+  [data-slot="dag-graph-card-header"] {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  [data-slot="dag-graph-status-dot"] {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-weaker);
+
+    [data-status="completed"] & {
+      background: #34d399;
+    }
+    [data-status="running"] & {
+      background: var(--text-warning-base, #f0b429);
+    }
+    [data-status="failed"] & {
+      background: var(--text-critical-base, #e53e3e);
+    }
+  }
+
+  [data-slot="dag-graph-status-label"] {
+    font-family: var(--font-family-sans);
+    font-size: 10px;
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0.05em;
+    color: var(--text-weaker);
+
+    [data-status="completed"] & {
+      color: #34d399;
+    }
+    [data-status="running"] & {
+      color: var(--text-warning-base, #f0b429);
+    }
+    [data-status="failed"] & {
+      color: var(--text-critical-base, #e53e3e);
+    }
+  }
+
+  [data-slot="dag-graph-assign"] {
+    font-family: var(--font-family-sans);
+    font-size: 10px;
+    color: var(--text-weaker);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  [data-slot="dag-graph-card-content"] {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    line-height: 1.4;
+    color: var(--text-base);
+    word-break: break-word;
+
+    [data-status="completed"] & {
+      color: var(--text-weak);
+    }
+  }
+}

@@ -1,0 +1,119 @@
+labels:
+  # GitHub default triage labels
+  - name: bug
+    color: d73a4a
+    description: Something isn't working
+  - name: enhancement
+    color: a2eeef
+    description: New feature or product improvement
+  - name: documentation
+    color: 0075ca
+    description: Improvements or additions to documentation
+  - name: duplicate
+    color: cfd3d7
+    description: This issue or pull request already exists
+  - name: good first issue
+    color: 7057ff
+    description: Good for newcomers
+  - name: help wanted
+    color: 008672
+    description: Extra attention is needed
+  - name: invalid
+    color: e4e669
+    description: This doesn't seem right
+  - name: question
+    color: d876e3
+    description: Further information is requested
+  - name: wontfix
+    color: ffffff
+    description: This will not be worked on
+
+  # Change type labels
+  - name: "type: refactor"
+    color: c2e0c6
+    description: Internal restructuring without intended product behavior change
+  - name: "type: performance"
+    color: c5def5
+    description: Performance-focused improvement
+  - name: "type: test"
+    color: fef2c0
+    description: Test-only changes
+  - name: "type: security"
+    color: b60205
+    description: Security-related hardening or fixes
+  - name: "type: maintenance"
+    color: eeeeee
+    description: Repository maintenance such as CI, dependencies, tooling, or housekeeping
+
+  # Product area labels
+  - name: "area: sessions"
+    color: 1d76db
+    description: Session lifecycle, switching, or session UX
+  - name: "area: workflow"
+    color: 1d76db
+    description: User workflow, task flow, or orchestration UX
+  - name: "area: scope"
+    color: 1d76db
+    description: Scope, project, or global context handling
+  - name: "area: memory"
+    color: 0e8a16
+    description: Long-term memory, retrieval, recall, and related behavior
+  - name: "area: ux"
+    color: 0366d6
+    description: User experience improvements including UI polish, onboarding, mobile, and interaction flow
+  - name: "area: web"
+    color: 0366d6
+    description: Web application behavior and interfaces
+  - name: "area: automation"
+    color: fbca04
+    description: Agenda, triggers, scheduling, and task automation behavior
+  - name: "area: visualization"
+    color: 5319e7
+    description: Visual output capabilities such as charts, timelines, trees, diagrams, and related rendering
+  - name: "area: tools"
+    color: 5319e7
+    description: Built-in tool behavior, tool registry changes, or cross-tool UX that does not belong to a specific product area
+  - name: "area: integrations"
+    color: 006b75
+    description: External integrations including providers, channels, MCP, and interoperability surfaces
+  - name: "area: sdk"
+    color: 006b75
+    description: SDK surface and generated clients
+  - name: "area: cli"
+    color: bfdadc
+    description: CLI commands, terminal flows, or TUI entrypoints
+  - name: "area: server"
+    color: bfdadc
+    description: Server routes, runtime APIs, or backend behavior
+
+  # Release and workflow metadata labels
+  - name: breaking-change
+    color: b60205
+    description: Public behavior or compatibility change that may require user action
+  - name: regression
+    color: d93f0b
+    description: A previously working behavior broke and was fixed or tracked
+  - name: semver-major
+    color: b60205
+    description: Change is expected to require a major version bump
+  - name: semver-minor
+    color: fbca04
+    description: Change is expected to require a minor version bump
+  - name: semver-patch
+    color: 0e8a16
+    description: Change is expected to require a patch version bump
+  - name: ignore-for-release
+    color: eeeeee
+    description: Exclude this pull request from release notes
+  - name: internal
+    color: 5319e7
+    description: Internal-only change not meant for public release highlights
+  - name: release
+    color: 0052cc
+    description: Release preparation, tagging, or publishing workflow work
+  - name: needs-triage
+    color: fef2c0
+    description: Needs product or maintainer classification before merge
+  - name: blocked
+    color: d93f0b
+    description: Work is blocked on another change, decision, or dependency

@@ -1,0 +1,5 @@
+List agenda items in the current scope. Returns items sorted by creation time (newest first), including status, triggers, next/last run info, and run count.
+
+Use this to find items before calling `agenda_update`, `agenda_delete`, `agenda_trigger`, or `agenda_logs` — all of which require an item ID.
+
+Filter by `status` to find e.g. only active or paused items. Filter by `tag` to narrow by category.

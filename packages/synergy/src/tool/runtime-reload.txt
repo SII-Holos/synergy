@@ -1,0 +1,13 @@
+Reload Synergy runtime state after self-configuration changes.
+
+Use this when configuration, skills, providers, MCP servers, channels, commands, or custom tools were changed and you need the current backend process to pick up those changes without a restart.
+
+Prefer targeted reloads over `all` when you know what changed. Use `all` as a forceful fallback when multiple runtime areas may be stale.
+
+Parameters:
+- `target` — One target or an array of targets to reload. Available targets: `config`, `skill`, `provider`, `agent`, `plugin`, `mcp`, `lsp`, `formatter`, `watcher`, `channel`, `command`, `tool_registry`, `all`.
+- `scope` — Config reload scope. `auto` chooses project config when present, otherwise global.
+- `force` — Reserved for future expansion. Safe to omit.
+- `reason` — Optional short note about why the reload is happening.
+
+Returns a structured summary including which targets were requested, which were executed, any cascaded reloads, changed config fields, live-applied fields, restart-required fields, and warnings.

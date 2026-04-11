@@ -1,0 +1,28 @@
+{
+  "name": "@ericsanchezok/synergy-config-ui",
+  "version": "1.1.26",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@tsconfig/node22": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-ui": "workspace:*",
+    "@kobalte/core": "catalog:",
+    "jsonc-parser": "3.3.1",
+    "lucide-solid": "0.577.0",
+    "solid-js": "catalog:",
+    "tailwindcss": "catalog:"
+  }
+}

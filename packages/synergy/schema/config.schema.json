@@ -1,0 +1,1403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "ref": "Config",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "JSON schema reference for configuration validation",
+      "type": "string"
+    },
+    "theme": {
+      "description": "Theme name to use for the interface",
+      "type": "string"
+    },
+    "logLevel": {
+      "description": "Log level",
+      "ref": "LogLevel",
+      "type": "string",
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR"
+      ]
+    },
+    "server": {
+      "description": "Server configuration for synergy serve and web commands",
+      "ref": "ServerConfig",
+      "type": "object",
+      "properties": {
+        "port": {
+          "description": "Port to listen on",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hostname": {
+          "description": "Hostname to listen on",
+          "type": "string"
+        },
+        "mdns": {
+          "description": "Enable mDNS service discovery",
+          "type": "boolean"
+        },
+        "cors": {
+          "description": "Additional domains to allow for CORS",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "description": "Command configuration",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "template": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "watcher": {
+      "type": "object",
+      "properties": {
+        "ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugin": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "snapshot": {
+      "type": "boolean"
+    },
+    "autoupdate": {
+      "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string",
+          "const": "notify"
+        }
+      ]
+    },
+    "disabled_providers": {
+      "description": "Disable providers that are loaded automatically",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enabled_providers": {
+      "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model": {
+      "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
+      "type": "string"
+    },
+    "nano_model": {
+      "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
+      "type": "string"
+    },
+    "mini_model": {
+      "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
+      "type": "string"
+    },
+    "mid_model": {
+      "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
+      "type": "string"
+    },
+    "thinking_model": {
+      "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "long_context_model": {
+      "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "creative_model": {
+      "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "holos_friend_reply_model": {
+      "description": "Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "vision_model": {
+      "description": "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
+      "type": "string"
+    },
+    "default_agent": {
+      "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
+      "type": "string"
+    },
+    "username": {
+      "description": "Custom username to display in conversations instead of system username",
+      "type": "string"
+    },
+    "agent": {
+      "description": "Agent configuration",
+      "type": "object",
+      "properties": {
+        "master": {
+          "ref": "AgentConfig"
+        },
+        "general": {
+          "ref": "AgentConfig"
+        },
+        "explore": {
+          "ref": "AgentConfig"
+        },
+        "title": {
+          "ref": "AgentConfig"
+        },
+        "summary": {
+          "ref": "AgentConfig"
+        },
+        "compaction": {
+          "ref": "AgentConfig"
+        }
+      },
+      "additionalProperties": {
+        "ref": "AgentConfig"
+      }
+    },
+    "provider": {
+      "description": "Custom provider configurations and model overrides",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "ref": "ProviderConfig",
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "npm": {
+            "type": "string"
+          },
+          "models": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "family": {
+                  "type": "string"
+                },
+                "release_date": {
+                  "type": "string"
+                },
+                "attachment": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "temperature": {
+                  "type": "boolean"
+                },
+                "tool_call": {
+                  "type": "boolean"
+                },
+                "interleaved": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "reasoning_content",
+                            "reasoning_details"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cache_read": {
+                      "type": "number"
+                    },
+                    "cache_write": {
+                      "type": "number"
+                    },
+                    "context_over_200k": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cache_read": {
+                          "type": "number"
+                        },
+                        "cache_write": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "input",
+                        "output"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "context",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "modalities": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "audio",
+                          "image",
+                          "video",
+                          "pdf"
+                        ]
+                      }
+                    },
+                    "output": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "audio",
+                          "image",
+                          "video",
+                          "pdf"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "experimental": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "alpha",
+                    "beta",
+                    "deprecated"
+                  ]
+                },
+                "options": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "headers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "npm": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "npm"
+                  ],
+                  "additionalProperties": false
+                },
+                "variants": {
+                  "description": "Variant-specific configuration",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "disabled": {
+                        "description": "Disable this variant for the model",
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "whitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              },
+              "enterpriseUrl": {
+                "description": "GitHub Enterprise URL for copilot authentication",
+                "type": "string"
+              },
+              "setCacheKey": {
+                "description": "Enable promptCacheKey for this provider (default false)",
+                "type": "boolean"
+              },
+              "timeout": {
+                "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                "anyOf": [
+                  {
+                    "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "description": "Disable timeout for this provider entirely.",
+                    "type": "boolean",
+                    "const": false
+                  }
+                ]
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "identity": {
+      "description": "Identity configuration for embedding and evolution",
+      "ref": "IdentityConfig",
+      "type": "object",
+      "properties": {
+        "embedding": {
+          "description": "Embedding model configuration for memory and retrieval",
+          "type": "object",
+          "properties": {
+            "baseURL": {
+              "description": "Base URL for the embedding API",
+              "type": "string"
+            },
+            "apiKey": {
+              "description": "API key for the embedding service",
+              "type": "string"
+            },
+            "model": {
+              "description": "Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rerank": {
+          "description": "Rerank model configuration for memory retrieval refinement",
+          "type": "object",
+          "properties": {
+            "baseURL": {
+              "description": "Base URL for the rerank API",
+              "type": "string"
+            },
+            "apiKey": {
+              "description": "API key for the rerank service (falls back to embedding.apiKey)",
+              "type": "string"
+            },
+            "model": {
+              "description": "Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "evolution": {
+          "description": "Dual-mode evolution system: passive experience learning + active memory curation (default: true)",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "ref": "EvolutionConfig",
+              "type": "object",
+              "properties": {
+                "passive": {
+                  "description": "RL-enhanced passive experience learning (default: true)",
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "ref": "EvolutionPassive",
+                      "type": "object",
+                      "properties": {
+                        "encode": {
+                          "description": "Learn from conversations — extract intent, reward, and scripts (default: true)",
+                          "type": "boolean"
+                        },
+                        "retrieve": {
+                          "description": "Inject relevant past experiences into new conversations (default: true)",
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "ref": "PassiveRetrievalConfig",
+                              "type": "object",
+                              "properties": {
+                                "simThreshold": {
+                                  "description": "Minimum cosine similarity for retrieval candidates (default: 0.5)",
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "topK": {
+                                  "description": "Number of experiences to retrieve (default: 5)",
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 9007199254740991
+                                },
+                                "epsilon": {
+                                  "description": "ε-greedy exploration probability (default: 0.1)",
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "wSim": {
+                                  "description": "Weight for similarity in hybrid score (default: 0.5)",
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "wQ": {
+                                  "description": "Weight for Q-value in hybrid score (default: 0.5)",
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "explorationConstant": {
+                                  "description": "UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)",
+                                  "type": "number",
+                                  "minimum": 0
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "learning": {
+                          "description": "Hyperparameters for the experience learning pipeline",
+                          "ref": "LearningConfig",
+                          "type": "object",
+                          "properties": {
+                            "alpha": {
+                              "description": "Q-learning step size / learning rate (default: 0.3)",
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "qInit": {
+                              "description": "Optimistic Q-value initialization per reward dimension (default: 1.0)",
+                              "type": "number"
+                            },
+                            "dedupIntentThreshold": {
+                              "description": "Intent cosine similarity threshold for deduplicating experiences (default: 0.85)",
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "dedupScriptThreshold": {
+                              "description": "Script cosine similarity threshold for deduplicating experiences (default: 0.8)",
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "qHistorySize": {
+                              "description": "Maximum Q-value history entries per experience (default: 50)",
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            },
+                            "snapThreshold": {
+                              "description": "Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)",
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "legacyRewardConfidence": {
+                              "description": "Default confidence for legacy scalar reward format (default: 0.3)",
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "encoderRetries": {
+                              "description": "LLM retry count for intent/script/reward generation (default: 3)",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "digestToolOutputBudget": {
+                              "description": "Max estimated tokens for tool output in turn digest (default: 800)",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "encoderToolFieldBudget": {
+                              "description": "Max chars per tool input field in encoder context (default: 500)",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "encoderToolOutputBudget": {
+                              "description": "Max chars for tool output in encoder context (default: 300)",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "rewardWeights": {
+                              "description": "Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)",
+                              "type": "object",
+                              "properties": {
+                                "outcome": {
+                                  "description": "Weight for outcome dimension (default: 0.35)",
+                                  "type": "number"
+                                },
+                                "intent": {
+                                  "description": "Weight for intent dimension (default: 0.25)",
+                                  "type": "number"
+                                },
+                                "execution": {
+                                  "description": "Weight for execution dimension (default: 0.2)",
+                                  "type": "number"
+                                },
+                                "orchestration": {
+                                  "description": "Weight for orchestration dimension (default: 0.1)",
+                                  "type": "number"
+                                },
+                                "expression": {
+                                  "description": "Weight for expression dimension (default: 0.1)",
+                                  "type": "number"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "rewardDelay": {
+                              "description": "Number of subsequent turns to wait before evaluating reward (default: 2)",
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "active": {
+                  "description": "Agent-initiated active memory curation via memory tools (default: true)",
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "ref": "EvolutionActive",
+                      "type": "object",
+                      "properties": {
+                        "retrieve": {
+                          "description": "Auto-inject relevant memories into new conversations (default: true)",
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "simThreshold": {
+                                  "description": "Default minimum similarity for auto-injection (default: 0.5)",
+                                  "type": "number"
+                                },
+                                "topK": {
+                                  "description": "Default maximum entries per category to contextually retrieve (default: 5)",
+                                  "type": "number"
+                                },
+                                "categories": {
+                                  "description": "Per-category contextual retrieval overrides",
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string",
+                                    "enum": [
+                                      "user",
+                                      "self",
+                                      "relationship",
+                                      "interaction",
+                                      "workflow",
+                                      "coding",
+                                      "writing",
+                                      "asset",
+                                      "insight",
+                                      "knowledge",
+                                      "personal",
+                                      "general"
+                                    ]
+                                  },
+                                  "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                      "simThreshold": {
+                                        "description": "Minimum similarity for contextual retrieval",
+                                        "type": "number"
+                                      },
+                                      "topK": {
+                                        "description": "Maximum contextual entries to retrieve",
+                                        "type": "number"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "memoryDedupThreshold": {
+                          "description": "Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)",
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "autonomy": {
+          "description": "Enable autonomous background routines like anima daily wake (default: true)",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcp": {
+      "description": "MCP (Model Context Protocol) server configurations",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "ref": "McpLocalConfig",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "description": "Type of MCP server connection",
+                    "type": "string",
+                    "const": "local"
+                  },
+                  "command": {
+                    "description": "Command and arguments to run the MCP server",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "environment": {
+                    "description": "Environment variables to set when running the MCP server",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
+                  },
+                  "timeout": {
+                    "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "type",
+                  "command"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "ref": "McpRemoteConfig",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "description": "Type of MCP server connection",
+                    "type": "string",
+                    "const": "remote"
+                  },
+                  "url": {
+                    "description": "URL of the remote MCP server",
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
+                  },
+                  "headers": {
+                    "description": "Headers to send with the request",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "oauth": {
+                    "description": "OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.",
+                    "anyOf": [
+                      {
+                        "ref": "McpOAuthConfig",
+                        "type": "object",
+                        "properties": {
+                          "clientId": {
+                            "description": "OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.",
+                            "type": "string"
+                          },
+                          "clientSecret": {
+                            "description": "OAuth client secret (if required by the authorization server)",
+                            "type": "string"
+                          },
+                          "scope": {
+                            "description": "OAuth scopes to request during authorization",
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "boolean",
+                        "const": false
+                      }
+                    ]
+                  },
+                  "timeout": {
+                    "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "channel": {
+      "description": "Channel configurations for messaging platform integrations",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "ref": "ChannelFeishuConfig",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "feishu"
+              },
+              "accounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "ref": "ChannelFeishuAccountConfig",
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "appId": {
+                      "description": "Feishu app ID",
+                      "type": "string"
+                    },
+                    "appSecret": {
+                      "description": "Feishu app secret",
+                      "type": "string"
+                    },
+                    "domain": {
+                      "description": "Feishu domain (feishu for China, lark for international)",
+                      "type": "string",
+                      "enum": [
+                        "feishu",
+                        "lark"
+                      ]
+                    },
+                    "allowDM": {
+                      "description": "Allow direct messages",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "allowGroup": {
+                      "description": "Allow group messages",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "requireMention": {
+                      "description": "Require @mention in group chats",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "botOpenId": {
+                      "description": "Bot open_id used to verify real @mentions in group chats",
+                      "type": "string"
+                    },
+                    "streaming": {
+                      "description": "Enable streaming card updates",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "streamingThrottleMs": {
+                      "description": "Minimum interval between streaming card updates in ms",
+                      "default": 100,
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "groupSessionScope": {
+                      "description": "Session scoping strategy for group chats",
+                      "default": "group",
+                      "type": "string",
+                      "enum": [
+                        "group",
+                        "group_sender",
+                        "group_topic",
+                        "group_topic_sender"
+                      ]
+                    },
+                    "inboundDebounceMs": {
+                      "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "resolveSenderNames": {
+                      "description": "Resolve sender display names via Feishu contact API",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "replyInThread": {
+                      "description": "Reply in thread when message is part of a topic",
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "appId",
+                    "appSecret",
+                    "allowDM",
+                    "allowGroup",
+                    "requireMention",
+                    "streaming",
+                    "streamingThrottleMs",
+                    "groupSessionScope",
+                    "inboundDebounceMs",
+                    "resolveSenderNames",
+                    "replyInThread"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "domain": {
+                "description": "Default domain for all accounts",
+                "type": "string",
+                "enum": [
+                  "feishu",
+                  "lark"
+                ]
+              },
+              "streaming": {
+                "description": "Default streaming setting for all accounts",
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "accounts",
+              "streaming"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "holos": {
+      "description": "Holos platform configuration",
+      "ref": "HolosConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the Holos runtime connection",
+          "default": true,
+          "type": "boolean"
+        },
+        "apiUrl": {
+          "description": "Holos API base URL",
+          "default": "https://api.holosai.io",
+          "type": "string"
+        },
+        "wsUrl": {
+          "description": "Holos WebSocket base URL",
+          "default": "wss://api.holosai.io",
+          "type": "string"
+        },
+        "portalUrl": {
+          "description": "Holos portal URL for browser-facing pages (bind/start)",
+          "default": "https://www.holosai.io",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "apiUrl",
+        "wsUrl",
+        "portalUrl"
+      ],
+      "additionalProperties": false
+    },
+    "email": {
+      "description": "Outgoing email configuration",
+      "ref": "EmailConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable outgoing email features",
+          "type": "boolean"
+        },
+        "from": {
+          "description": "Sender identity for outgoing emails",
+          "ref": "EmailFromConfig",
+          "type": "object",
+          "properties": {
+            "address": {
+              "description": "Sender email address",
+              "type": "string"
+            },
+            "name": {
+              "description": "Sender display name",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "smtp": {
+          "description": "SMTP transport settings for outgoing emails",
+          "ref": "EmailSmtpConfig",
+          "type": "object",
+          "properties": {
+            "host": {
+              "description": "SMTP server hostname",
+              "type": "string"
+            },
+            "port": {
+              "description": "SMTP server port",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "secure": {
+              "description": "Use TLS/SSL for the SMTP connection",
+              "type": "boolean"
+            },
+            "username": {
+              "description": "SMTP username",
+              "type": "string"
+            },
+            "password": {
+              "description": "SMTP password or app token",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "formatter": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": false
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "disabled": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "environment": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "extensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "lsp": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": false
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "disabled": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "disabled"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "extensions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "initialization": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "instructions": {
+      "description": "Additional instruction files or patterns to include",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "layout": {
+      "description": "@deprecated Always uses stretch layout.",
+      "ref": "LayoutConfig",
+      "type": "string",
+      "enum": [
+        "auto",
+        "stretch"
+      ]
+    },
+    "permission": {
+      "ref": "PermissionConfig"
+    },
+    "tools": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "enterprise": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "Enterprise URL",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "agora": {
+      "description": "Agora Q&A platform configuration",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "Agora API base URL (defaults to https://agora.holosai.io)",
+          "type": "string"
+        },
+        "tokenUrl": {
+          "description": "Holos API URL for Agora token exchange (defaults to https://www.holosai.io)",
+          "type": "string"
+        },
+        "giteaSSHHost": {
+          "description": "Override SSH hostname used for Agora's Gitea remote",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compaction": {
+      "type": "object",
+      "properties": {
+        "auto": {
+          "description": "Enable automatic compaction when context is full (default: true)",
+          "type": "boolean"
+        },
+        "prune": {
+          "description": "Enable pruning of old tool outputs (default: true)",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "category": {
+      "description": "Custom category configurations for background tasks. Categories define model and prompt presets.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "ref": "CategoryConfig",
+        "type": "object",
+        "properties": {
+          "model": {
+            "description": "Model to use for this category (e.g., 'sii-openai/GPT-5.2')",
+            "type": "string"
+          },
+          "temperature": {
+            "description": "Temperature override for this category",
+            "type": "number"
+          },
+          "promptAppend": {
+            "description": "Additional prompt context to inject for this category",
+            "type": "string"
+          },
+          "description": {
+            "description": "Description of when to use this category",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

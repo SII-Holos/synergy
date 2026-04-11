@@ -1,0 +1,14 @@
+List notes accessible to the current session. Returns note metadata (ID, title, tags, pinned status, timestamps) without full content.
+
+Use this to browse available notes before reading specific ones with `note_read`. Results are sorted by pinned status first, then by last updated time.
+
+The `scope` parameter controls which notes are listed:
+- "all" (default): Notes from the current project scope plus global notes
+- "current": Only notes from the current project scope
+- "global": Only global notes
+
+Use `since` and `before` to filter notes by last updated time (ISO 8601 dates). For example, to get today's notes use `since: "2026-03-15"`, or last week's notes with `since: "2026-03-08"`.
+
+Use `offset` and `limit` for pagination when there are many notes.
+
+The output includes a tag summary at the end showing all tags across listed notes with their frequency. Use these tags with `note_search`'s `tags` parameter to filter by topic, or reuse existing tags when creating/updating notes with `note_write` to keep tagging consistent.

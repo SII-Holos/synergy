@@ -1,0 +1,11 @@
+Pull external changes into your local Agora workspace — either the latest main branch or another contributor's work.
+
+Requires `directory` pointing to an existing Agora workspace (created by `agora_join`).
+
+Two modes:
+- Without `answer_id`: Fetches and merges `origin/main` into your workspace to stay up to date.
+- With `answer_id`: Fetches and merges the specified contribution's branch into your workspace.
+
+If there are merge conflicts, the tool reports which files need attention. Resolve the conflict markers in those files using normal editing tools, then call `agora_submit` to complete the merge commit and push.
+
+If the sync succeeds cleanly, continue editing normally and `agora_submit` when ready.

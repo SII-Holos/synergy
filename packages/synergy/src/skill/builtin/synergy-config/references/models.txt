@@ -1,0 +1,94 @@
+# Models and Model Roles
+
+## Model format
+
+All model references use: `"provider-id/model-name"`
+
+Examples: `"anthropic/claude-sonnet-4-5"`, `"openai/gpt-4o"`, `"minimax/MiniMax-M1"`
+
+## Model role system
+
+Synergy uses model roles for different internal tasks. Each falls back through a chain:
+
+| Config field | Purpose | Fallback chain |
+|---|---|---|
+| `model` | Default model for conversations | (root — no fallback) |
+| `nano_model` | Cheapest: trivial extraction, title generation | → `mini_model` → `mid_model` → `model` |
+| `mini_model` | Lightweight: intent extraction, simple classification | → `mid_model` → `model` |
+| `mid_model` | Mid-tier: internal agents, code exploration, evaluation | → `model` |
+| `thinking_model` | Deep reasoning: complex architecture, planning | → `model` |
+| `long_context_model` | Extra-large context for very long inputs | → `model` |
+| `creative_model` | Creative/visual: UI design, writing, artistry | → `model` |
+| `holos_friend_reply_model` | Holos automatic friend replies | → `model` |
+| `vision_model` | Vision: image/PDF/video analysis via `look_at` tool | (disabled if not set) |
+
+**Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`.
+
+## Config example
+
+```jsonc
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "nano_model": "anthropic/claude-haiku-3-5",
+  "mini_model": "anthropic/claude-haiku-3-5",
+  "mid_model": "anthropic/claude-sonnet-4-5",
+  "thinking_model": "anthropic/claude-sonnet-4-5",
+  "vision_model": "openai/gpt-4o",
+  "creative_model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+You don't need to set all roles. Unset roles fall back through their chain. At minimum, set `model`.
+
+## Default agent
+
+```jsonc
+{ "default_agent": "synergy" }
+```
+
+Must be a primary-mode agent. Falls back to `"synergy"` if not set or invalid.
+
+## Category model overrides
+
+Categories can override models for specific background task types:
+
+```jsonc
+{
+  "category": {
+    "quick": { "model": "anthropic/claude-haiku-3-5", "description": "Fast, cheap tasks" },
+    "visual-engineering": { "model": "anthropic/claude-sonnet-4-5", "temperature": 0.7 },
+    "most-capable": { "model": "anthropic/claude-sonnet-4-5" }
+  }
+}
+```
+
+Category fields: `model`, `temperature`, `promptAppend`, `description`.
+
+## Model variants
+
+Models can have variants (e.g., different reasoning effort levels). Variants are auto-detected from the provider registry. To disable a variant:
+
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "models": {
+        "claude-sonnet-4-5": {
+          "variants": {
+            "high-reasoning": { "disabled": true }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Reload
+
+Model role fields are live-applied:
+```
+runtime_reload(target: "config")
+```
+
+Config reload auto-cascades to agent reload when model role fields change.

@@ -1,0 +1,25 @@
+Lightweight status update for DAG nodes. Use this instead of `dagwrite` when you only need to change the status of one or more nodes without rewriting the entire DAG.
+
+## When to Use
+
+- Mark a self-executed node as `completed`
+- Mark a node as `failed`
+- Cancel a node
+- Retry a failed node (set back to `pending`)
+
+You do NOT need this for background tasks launched with `dag_node_id` — those auto-update.
+
+## Examples
+
+```
+dagpatch({ nodes: [{ id: "research", status: "completed" }] })
+```
+
+```
+dagpatch({ nodes: [
+  { id: "impl", status: "completed" },
+  { id: "broken", status: "failed" }
+] })
+```
+
+After patching, downstream nodes whose deps are now all completed will be auto-promoted to `running`.

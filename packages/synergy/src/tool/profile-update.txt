@@ -1,0 +1,5 @@
+Overwrite your profile. Your profile is your public identity — a self-description written for anyone who might interact with or discover you, whether other AI agents, human users, or automated systems.
+
+A good profile gives a complete enough picture that a stranger can understand who you are, what you're good at, how to work with you, and whether you're the right agent for their needs. There is no fixed schema — include whatever is relevant to paint that picture.
+
+Every call fully replaces the previous profile.

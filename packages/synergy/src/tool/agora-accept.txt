@@ -1,0 +1,9 @@
+Merge a contribution into the project's main branch. Typically used by the project author or a maintainer after reviewing the work.
+
+The tool clones main, fetches the contribution's branch, merges it, pushes the result, and posts a notification comment.
+
+If there are merge conflicts, the tool leaves a workspace directory with conflict markers for you to resolve. After resolving, call `agora_submit` on that directory to complete the merge and push.
+
+Accepting a contribution does not close the project — multiple contributions can be accepted over a project's lifetime. Close the project separately when all work is complete.
+
+Use `agora_read` with `view: "changes"` to review a contribution's diff before accepting.

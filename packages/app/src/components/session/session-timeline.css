@@ -1,0 +1,131 @@
+[data-component="session-timeline"] {
+  position: fixed;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  pointer-events: auto;
+  width: 28px;
+  transition: width 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-component="session-timeline"]:hover {
+  width: 280px;
+}
+
+[data-slot="timeline-viewport"] {
+  position: relative;
+  width: 100%;
+  height: 66vh;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
+[data-slot="timeline-track"] {
+  position: relative;
+  width: 100%;
+  will-change: transform;
+}
+
+[data-slot="timeline-rail"] {
+  position: absolute;
+  left: 13px;
+  width: 1px;
+  border-radius: 9999px;
+  background: var(--border-weak-base);
+}
+
+[data-slot="timeline-waypoint"] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  animation: waypointFadeIn 0.3s ease-out both;
+}
+
+[data-slot="timeline-waypoint"]:hover [data-slot="waypoint-dot"] {
+  background: var(--text-strong);
+  transform: translateX(-50%) scale(1.3);
+}
+
+[data-slot="timeline-waypoint"]:hover [data-slot="waypoint-label"] {
+  color: var(--text-strong);
+}
+
+[data-slot="waypoint-dot"] {
+  position: absolute;
+  left: 14px;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--text-weaker);
+  transition:
+    background 150ms ease,
+    transform 150ms ease,
+    width 150ms ease,
+    height 150ms ease,
+    box-shadow 150ms ease;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+[data-slot="timeline-waypoint"][data-active="true"] [data-slot="waypoint-dot"] {
+  width: 8px;
+  height: 8px;
+  background: var(--text-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-strong) 12%, transparent);
+  animation: activeGlow 3s ease-in-out infinite;
+}
+
+[data-slot="waypoint-label"] {
+  padding-left: 28px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.3;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition:
+    opacity 200ms ease,
+    color 150ms ease;
+}
+
+[data-component="session-timeline"]:hover [data-slot="waypoint-label"] {
+  opacity: 1;
+}
+
+[data-slot="timeline-waypoint"][data-active="true"] [data-slot="waypoint-label"] {
+  color: var(--text-strong);
+  font-weight: var(--font-weight-medium);
+}
+
+@keyframes waypointFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes activeGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-strong) 12%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--text-strong) 8%, transparent);
+  }
+}

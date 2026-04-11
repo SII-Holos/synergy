@@ -1,0 +1,61 @@
+.DS_Store
+node_modules
+.worktrees
+.sst
+sst-env.d.ts
+.env
+.idea
+.vscode
+*~
+playground
+tmp
+dist
+ts-dist
+.release/
+.turbo
+**/.serena
+.serena/
+/result
+refs
+Session.vim
+a.out
+target
+.scripts
+log/
+
+# Bun build temp files
+*.bun-build
+.bun-version.info
+
+# Windows special device files
+nul
+**/nul
+packages/synergy/nul
+
+# Local dev files
+synergy-dev
+logs/
+
+ref/
+
+# Scout agent cloned repos
+.scout-tmp/
+
+# Research and papers (not part of the product)
+holos-paper/
+awcp-paper/
+research/
+data/
+*.tgz
+
+# Runtime caches
+local_cache/
+results/
+.memos/
+.ruff_cache/
+.claude/
+
+# Project-level Synergy config (user-specific)
+.synergy/bun.lock
+
+tmp_*

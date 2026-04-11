@@ -1,0 +1,12 @@
+Read messages from a session. Returns session metadata and a paginated list of messages.
+
+The `target` parameter identifies which session to read:
+- A session ID (e.g. "ses_xxx") to read a specific session
+- "home" to read the app home session
+- A contact ID to read the conversation with a holos friend
+
+Each message includes its role, text content, timestamp, and tool call summaries (for assistant messages).
+
+Two pagination modes:
+- **Browse mode** (default): Use `offset` and `limit` to paginate through messages. Offset 0 starts from the most recent message.
+- **Anchor mode**: Use `around` with a message ID to center the view around a specific message. Returns `limit` messages surrounding it. The anchor message is marked with ◀ in the output. Useful after `session_search` to read context around a match.

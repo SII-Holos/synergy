@@ -1,0 +1,8 @@
+Send an email via SMTP. Use this tool when the user asks you to send an email, notify someone via email, or deliver content to an email address.
+
+Usage notes:
+- The `to` field accepts one or more email addresses (comma-separated or as an array)
+- The `subject` field is the email subject line
+- The `body` field is the email content in plain text
+- Optionally provide `html` for rich HTML email content
+- The email is sent from the configured sender address via 163 SMTP

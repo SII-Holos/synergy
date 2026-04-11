@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <circle cx="256" cy="256" r="256" fill="#131010"/>
+  <text x="256" y="300" font-family="system-ui, -apple-system, sans-serif" font-size="220" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">H</text>
+  <text x="256" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="500" fill="white" text-anchor="middle">Holos</text>
+</svg>

@@ -1,0 +1,70 @@
+Launch a new agent to handle complex, multistep tasks.
+
+Available agent types:
+{agents}
+
+## When to use the Task tool
+
+Task delegation enables parallel execution and access to specialized agents.
+
+Use this when:
+- The work can run independently
+- You can parallelize across multiple agents
+- A specialized agent is better suited for the task
+- The task is non-trivial (more than a single quick action)
+
+Do NOT use this when:
+- The task requires immediate back-and-forth with the user
+
+## Background mode
+
+**Prefer background=true by default.** This lets you launch multiple tasks in parallel and continue working.
+
+Use background=false only when you cannot proceed without the result.
+
+## Usage notes
+
+1. Launch multiple agents concurrently whenever possible
+2. The result is not visible to the user - summarize it back to them
+3. Each invocation is stateless unless you provide session_id
+4. Clearly tell the agent whether to write code or just research
+
+## Writing effective prompts
+
+Structure your prompt with:
+- **What to do**: Clear, specific goal
+- **Expected outcome**: What success looks like
+- **Context**: Relevant file paths, patterns, constraints
+- **What NOT to do**: Scope boundaries to prevent over-engineering
+
+## Examples
+
+### Parallel exploration
+```
+task(background: true, subagent_type: "explore", description: "Find auth logic", prompt: "...")
+task(background: true, subagent_type: "explore", description: "Find data models", prompt: "...")
+```
+
+### Parallel implementation
+```
+task(background: true, subagent_type: "master", description: "Add validation", prompt: "...")
+task(background: true, subagent_type: "master", description: "Update tests", prompt: "...")
+```
+
+### Writing documentation
+```
+task(subagent_type: "scribe", description: "Write API guide", prompt: "Create a getting-started guide for...")
+```
+
+### Synchronous (when result needed immediately)
+```
+task(background: false, subagent_type: "explore", description: "Find config", prompt: "I need this to proceed...")
+```
+
+## DAG Integration
+
+When executing a DAG node via background task, pass `dag_node_id` to link them:
+```
+task(background: true, dag_node_id: "research", subagent_type: "explore", description: "Research API", prompt: "...")
+```
+The DAG node will auto-complete when the task finishes (or auto-fail on error). No manual DAG update needed.

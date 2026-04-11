@@ -1,0 +1,144 @@
+# MCP Servers
+
+## Local MCP server (stdio process)
+
+```jsonc
+{
+  "mcp": {
+    "<name>": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/path"],
+      "environment": {},
+      "enabled": true,
+      "timeout": 5000
+    }
+  }
+}
+```
+
+**Required:** `type` (`"local"`), `command` (array of strings — NEVER a bare string).
+**Optional:** `environment` (env vars for the process), `enabled` (default true), `timeout` (ms, default 5000).
+
+## Remote MCP server (HTTP/SSE)
+
+```jsonc
+{
+  "mcp": {
+    "<name>": {
+      "type": "remote",
+      "url": "http://127.0.0.1:3845/mcp",
+      "oauth": false,
+      "headers": {},
+      "enabled": true,
+      "timeout": 5000
+    }
+  }
+}
+```
+
+**Required:** `type` (`"remote"`), `url`.
+**Optional:** `oauth`, `headers`, `enabled`, `timeout`.
+
+## OAuth configuration
+
+OAuth auto-detection is ON by default for remote servers. Control it:
+
+- `"oauth": false` — disable OAuth (use for local/trusted services)
+- `"oauth": {}` — enable with auto-detection (default)
+- `"oauth": { "clientId": "...", "clientSecret": "...", "scope": "..." }` — explicit OAuth config. If `clientId` not provided, RFC 7591 dynamic client registration is attempted.
+
+MCP OAuth credentials are stored separately at `~/.synergy/data/auth/mcp.json`.
+
+## Enable/disable
+
+Disable without removing config:
+```jsonc
+{ "mcp": { "<name>": { "enabled": false } } }
+```
+
+## Converting from other formats
+
+Users often paste configs from Claude Desktop, Cursor, or VS Code. Apply these conversions:
+
+### Conversion rules
+
+| Source | Synergy |
+|---|---|
+| `"type": "http"` or has `"url"` | `"type": "remote"` |
+| `"type": "stdio"` or has `"command"` (string) | `"type": "local"` |
+| `"command"` (string) + `"args"` (array) | `"command": ["cmd", ...args]` |
+| `"command": "string"` (no args) | `"command": ["string"]` |
+| `"env": {...}` | `"environment": {...}` |
+| Top-level `"mcpServers"` or `"servers"` | `"mcp"` |
+
+### Key rules
+
+1. Synergy type is ONLY `"local"` or `"remote"` — never `"http"` or `"stdio"`.
+2. If no `type` but has `url` → `"remote"`. If has `command` → `"local"`.
+3. `command` MUST be an array. Merge string `command` + `args` array into one: `["cmd", ...args]`.
+4. `"env"` → `"environment"` (Synergy field name).
+5. Wrapper keys `"mcpServers"`, `"servers"` → entries go under `"mcp"`.
+
+### Example — Claude Desktop stdio
+
+Input:
+```json
+{ "mcpServers": { "fs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"] } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "fs": { "type": "local", "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/home"] } } }
+```
+
+### Example — Claude Desktop with env vars
+
+Input:
+```json
+{ "mcpServers": { "db": { "command": "node", "args": ["server.js"], "env": { "DB_URL": "postgres://..." } } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "db": { "type": "local", "command": ["node", "server.js"], "environment": { "DB_URL": "postgres://..." } } } }
+```
+
+### Example — HTTP server from Cursor/VS Code
+
+Input:
+```json
+{ "servers": { "Figma": { "type": "http", "url": "http://127.0.0.1:3845/mcp" } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "Figma": { "type": "remote", "url": "http://127.0.0.1:3845/mcp", "oauth": false } } }
+```
+
+### Example — Remote with headers
+
+Input:
+```json
+{ "mcpServers": { "api": { "url": "https://mcp.example.com/sse", "headers": { "Authorization": "Bearer xxx" } } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "api": { "type": "remote", "url": "https://mcp.example.com/sse", "headers": { "Authorization": "Bearer xxx" }, "oauth": false } } }
+```
+
+## Validation rules
+
+1. `type` must be `"local"` or `"remote"`
+2. `command` must be an array of strings
+3. `environment` (not `env`) for environment variables
+4. Root config key is `"mcp"` (not `"mcpServers"` or `"servers"`)
+5. Schema is strict — unknown fields cause validation errors
+
+## Reload
+
+```
+runtime_reload(target: "mcp")
+```
+
+MCP reload cascades to command reload automatically.

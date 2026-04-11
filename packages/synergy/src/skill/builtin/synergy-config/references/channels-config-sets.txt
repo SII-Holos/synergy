@@ -1,0 +1,138 @@
+# Channels and Config Sets
+
+## Channels
+
+Channels integrate Synergy with external messaging platforms.
+
+### Feishu/Lark channel
+
+```jsonc
+{
+  "channel": {
+    "my-feishu": {
+      "type": "feishu",
+      "domain": "feishu",
+      "streaming": true,
+      "accounts": {
+        "main": {
+          "enabled": true,
+          "appId": "cli_xxx",
+          "appSecret": "xxx",
+          "domain": "feishu",
+          "allowDM": true,
+          "allowGroup": true,
+          "requireMention": true,
+          "streaming": true,
+          "streamingThrottleMs": 100,
+          "groupSessionScope": "group",
+          "inboundDebounceMs": 0,
+          "resolveSenderNames": true,
+          "replyInThread": false
+        }
+      }
+    }
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `appId` | (required) | Feishu app ID |
+| `appSecret` | (required) | Feishu app secret |
+| `domain` | auto | `"feishu"` (China) or `"lark"` (international) |
+| `enabled` | true | Enable this account |
+| `allowDM` | true | Allow direct messages |
+| `allowGroup` | true | Allow group messages |
+| `requireMention` | true | Require @mention in group chats |
+| `streaming` | true | Enable streaming card updates |
+| `streamingThrottleMs` | 100 | Min interval between streaming updates (ms) |
+| `groupSessionScope` | `"group"` | Session scoping strategy (see below) |
+| `inboundDebounceMs` | 0 | Debounce rapid-fire messages (0 = disabled) |
+| `resolveSenderNames` | true | Resolve sender names via Feishu contact API |
+| `replyInThread` | false | Reply in thread when message is part of a topic |
+
+**Group session scoping:**
+- `"group"` — one shared session per group chat
+- `"group_sender"` — separate session per sender in group
+- `"group_topic"` — separate session per thread/topic
+- `"group_topic_sender"` — separate session per thread + sender
+
+Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
+
+### Holos channel
+
+```jsonc
+{
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": { "enabled": true }
+      }
+    }
+  }
+}
+```
+
+### Reload
+
+```
+runtime_reload(target: "channel")
+```
+
+---
+
+## Config Sets
+
+Config Sets allow switching between different global configurations (e.g., work vs personal).
+
+### Concept
+
+- **Default set**: `~/.synergy/config/synergy.jsonc`
+- **Named sets**: `~/.synergy/config/config-sets/<name>/synergy.jsonc`
+- Each set has its own config directory and can have its own agents, skills, commands, plugins
+- Only one set is active at a time
+- Active set tracked in `~/.synergy/config/config-set.json` as `{ "active": "<name>" }`
+
+### File structure
+
+```
+~/.synergy/config/
+├── synergy.jsonc              # default Config Set
+├── config-set.json            # { "active": "work" }
+├── config-sets/
+│   ├── work/
+│   │   ├── synergy.jsonc
+│   │   ├── agent/
+│   │   └── skill/
+│   └── personal/
+│       └── synergy.jsonc
+├── agent/                     # agents for default set
+├── skill/                     # skills for default set
+└── command/                   # commands for default set
+```
+
+### Naming rules
+
+Must match: `^[A-Za-z0-9][A-Za-z0-9_-]*$`
+- Start with letter or number
+- Letters, numbers, hyphens, underscores only
+- Max 64 characters
+
+### Managing
+
+Config Sets are managed via CLI or Config UI:
+- Create a new set
+- Switch between sets
+- Delete a set (cannot delete default or active)
+
+After switching, a full config reload picks up the new set's config.
+
+### Key behaviors
+
+- Named sets inherit nothing from default — they are independent configurations
+- The active set name is returned by `ConfigSet.activeName()`
+- `default` is a reserved name for `~/.synergy/config/synergy.jsonc`

@@ -1,0 +1,37 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(> [data-slot="dialog-content"].dialog-confirm-compact) {
+  width: min(420px, calc(100vw - 32px));
+  height: auto;
+}
+
+[data-slot="dialog-content"].dialog-confirm-compact {
+  width: min(420px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  min-height: 0;
+}
+
+[data-slot="dialog-content"].dialog-confirm-compact [data-slot="dialog-description"] {
+  margin-top: 0;
+  padding-bottom: 0;
+}
+
+[data-slot="dialog-content"].dialog-confirm-compact [data-slot="dialog-body"] {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 16px 24px 20px;
+}
+
+.dialog-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.dialog-confirm-danger {
+  background: color-mix(in oklch, var(--icon-critical) 16%, transparent);
+  color: var(--text-strong);
+}
+
+.dialog-confirm-danger:hover {
+  background: color-mix(in oklch, var(--icon-critical) 22%, transparent);
+}
