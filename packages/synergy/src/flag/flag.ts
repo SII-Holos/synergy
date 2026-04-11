@@ -28,8 +28,6 @@ export namespace Flag {
   export const SYNERGY_EXPERIMENTAL = truthy("SYNERGY_EXPERIMENTAL")
   export const SYNERGY_EXPERIMENTAL_FILEWATCHER = truthy("SYNERGY_EXPERIMENTAL_FILEWATCHER")
   export const SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER = truthy("SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER")
-  export const SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_S = number("SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_S")
-  export const SYNERGY_EXPERIMENTAL_OUTPUT_TOKEN_MAX = number("SYNERGY_EXPERIMENTAL_OUTPUT_TOKEN_MAX")
   export const SYNERGY_EXPERIMENTAL_OXFMT = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_OXFMT")
   export const SYNERGY_EXPERIMENTAL_LSP_TY = truthy("SYNERGY_EXPERIMENTAL_LSP_TY")
   export const SYNERGY_EXPERIMENTAL_LSP_TOOL = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_LSP_TOOL")
@@ -37,12 +35,5 @@ export namespace Flag {
   function truthy(key: string) {
     const value = process.env[key]?.toLowerCase()
     return value === "true" || value === "1"
-  }
-
-  function number(key: string) {
-    const value = process.env[key]
-    if (!value) return undefined
-    const parsed = Number(value)
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
   }
 }

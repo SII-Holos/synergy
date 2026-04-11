@@ -3,7 +3,6 @@ import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@/util/lazy"
-import { Flag } from "@/flag/flag.ts"
 import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
 import { Instance } from "@/scope/instance"
@@ -11,7 +10,7 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 
-const DEFAULT_TIMEOUT_S = Flag.SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_S ?? 2 * 60
+const DEFAULT_TIMEOUT_S = 2 * 60
 
 const log = Log.create({ service: "bash-tool" })
 
