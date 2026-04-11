@@ -19,6 +19,11 @@ interface PendingRequest {
 class CodexAdapter implements ExternalAgent.Adapter {
   readonly name = "codex"
 
+  readonly capabilities: ExternalAgent.Capabilities = {
+    modelSwitch: true,
+    interrupt: true,
+  }
+
   get started(): boolean {
     return this.alive
   }
@@ -27,6 +32,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
   private requestId = 0
   private threadId = ""
   private turnId = ""
+  private cwd = ""
+  private adapterConfig: Record<string, unknown> = {}
   private pending = new Map<number, PendingRequest>()
   private queue: QueueEntry[] = []
   private queueResolve: (() => void) | undefined
@@ -55,6 +62,9 @@ class CodexAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     if (this.proc) await this.shutdown()
 
+    this.cwd = opts.cwd
+    this.adapterConfig = opts.config ?? {}
+
     this.proc = Bun.spawn(["codex", "app-server"], {
       cwd: opts.cwd,
       env: opts.env ? { ...process.env, ...opts.env } : undefined,
@@ -70,20 +80,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.watchExit()
 
     await this.initialize()
-
-    const threadParams: Record<string, unknown> = { cwd: opts.cwd }
-    if (opts.model) threadParams.model = opts.model
-    if (opts.sandbox) threadParams.approvalPolicy = mapSandbox(opts.sandbox)
-
-    const threadResult = (await this.sendRequest("thread/start", threadParams)) as any
-    this.threadId = threadResult?.id ?? threadResult?.thread?.id ?? ""
-    if (!this.threadId) {
-      throw new Error("codex thread/start did not return a threadId")
-    }
-    log.info("thread started", { threadId: this.threadId })
+    await this.startThread()
   }
 
-  async *turn(prompt: string, signal?: AbortSignal): AsyncGenerator<ExternalAgent.BridgeEvent> {
+  async *turn(context: ExternalAgent.TurnContext, signal?: AbortSignal): AsyncGenerator<ExternalAgent.BridgeEvent> {
     if (!this.proc || !this.alive) throw new Error("codex process not running")
 
     this.queue = []
@@ -96,9 +96,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
     signal?.addEventListener("abort", onAbort, { once: true })
 
     try {
+      const input = composeTurnInput(context)
       const turnResult = (await this.sendRequest("turn/start", {
         threadId: this.threadId,
-        input: [{ type: "text", text: prompt }],
+        input: [{ type: "text", text: input }],
       })) as any
       this.turnId = turnResult?.turn?.id ?? turnResult?.id ?? ""
 
@@ -128,6 +129,12 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!isNaN(numericId)) {
       this.sendResponse(numericId, { approved })
     }
+  }
+
+  async switchModel(model: string): Promise<void> {
+    this.adapterConfig = { ...this.adapterConfig, model }
+    await this.startThread()
+    log.info("switched model via new thread", { model, threadId: this.threadId })
   }
 
   async interrupt(): Promise<void> {
@@ -171,6 +178,29 @@ class CodexAdapter implements ExternalAgent.Adapter {
     log.info("codex process shut down")
   }
 
+  // ---------------------------------------------------------------------------
+  // Thread lifecycle
+  // ---------------------------------------------------------------------------
+
+  private async startThread(): Promise<void> {
+    const params: Record<string, unknown> = { cwd: this.cwd }
+    const { model, approvalPolicy, ...rest } = this.adapterConfig
+    if (model) params.model = model
+    if (approvalPolicy) params.approvalPolicy = approvalPolicy
+    Object.assign(params, rest)
+
+    const threadResult = (await this.sendRequest("thread/start", params)) as any
+    this.threadId = threadResult?.id ?? threadResult?.thread?.id ?? ""
+    if (!this.threadId) {
+      throw new Error("codex thread/start did not return a threadId")
+    }
+    log.info("thread started", { threadId: this.threadId })
+  }
+
+  // ---------------------------------------------------------------------------
+  // JSON-RPC transport
+  // ---------------------------------------------------------------------------
+
   private async initialize(): Promise<void> {
     await this.sendRequest("initialize", { clientInfo: CLIENT_INFO })
     this.sendNotification("initialized", {})
@@ -205,6 +235,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
       log.warn("stdin write failed", { error: String(e) })
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // stdout message parsing
+  // ---------------------------------------------------------------------------
 
   private async readStdout(): Promise<void> {
     if (!this.proc) return
@@ -270,6 +304,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Server-initiated requests (approvals)
+  // ---------------------------------------------------------------------------
+
   private handleServerRequest(id: number, method: string, params: Record<string, unknown>): void {
     const event = this.mapServerRequest(id, method, params)
     if (event) {
@@ -298,6 +336,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.sendResponse(id, {})
     return undefined
   }
+
+  // ---------------------------------------------------------------------------
+  // Notifications → BridgeEvents
+  // ---------------------------------------------------------------------------
 
   private handleNotification(method: string, params: Record<string, unknown>): void {
     const events = this.mapNotification(method, params)
@@ -377,6 +419,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
         return []
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Item event mapping
+  // ---------------------------------------------------------------------------
 
   private mapItemStarted(item: Record<string, any>): ExternalAgent.BridgeEvent[] {
     const type = item.type as string
@@ -463,6 +509,10 @@ class CodexAdapter implements ExternalAgent.Adapter {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
   private pushEvent(event: ExternalAgent.BridgeEvent): void {
     this.queue.push({ event })
     this.queueResolve?.()
@@ -496,17 +546,20 @@ class CodexAdapter implements ExternalAgent.Adapter {
   }
 }
 
-function mapSandbox(sandbox: string): string {
-  switch (sandbox) {
-    case "read-only":
-      return "never"
-    case "workspace-write":
-      return "on-failure"
-    case "full-access":
-      return "full-auto"
-    default:
-      return sandbox
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function composeTurnInput(context: ExternalAgent.TurnContext): string {
+  const parts: string[] = []
+  if (context.instructions) {
+    parts.push(`<project-instructions>\n${context.instructions}\n</project-instructions>`)
   }
+  if (context.taskContext) {
+    parts.push(`<task-context>\n${context.taskContext}\n</task-context>`)
+  }
+  parts.push(context.prompt)
+  return parts.join("\n\n")
 }
 
 function extractItemText(item: Record<string, any>): string {

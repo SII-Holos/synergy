@@ -50,14 +50,49 @@ export namespace ExternalAgent {
   export type BridgeEvent = z.infer<typeof BridgeEvent>
 
   // ---------------------------------------------------------------------------
+  // Turn context — structured input for a single turn
+  // ---------------------------------------------------------------------------
+
+  export interface TurnContext {
+    /** The user's current message text. */
+    prompt: string
+    /** Project-level instruction files (AGENTS.md, etc.), joined. */
+    instructions?: string
+    /** Cortex execution context when running as a delegated subtask. */
+    taskContext?: string
+  }
+
+  // ---------------------------------------------------------------------------
+  // Approval delegate — lets the processor decide approval outcomes
+  // ---------------------------------------------------------------------------
+
+  export interface ApprovalRequest {
+    id: string
+    tool: string
+    input: string
+  }
+
+  export type ApprovalDelegate = (request: ApprovalRequest) => Promise<boolean>
+
+  // ---------------------------------------------------------------------------
+  // Adapter capabilities — each adapter declares what it supports
+  // ---------------------------------------------------------------------------
+
+  export interface Capabilities {
+    /** Whether the adapter can switch models on an active session. */
+    modelSwitch: boolean
+    /** Whether the adapter supports interrupting a running turn. */
+    interrupt: boolean
+  }
+
+  // ---------------------------------------------------------------------------
   // Adapter interface — each external agent implements this
   // ---------------------------------------------------------------------------
 
   export interface Adapter {
     readonly name: string
-
-    /** Whether the adapter process is currently running. */
     readonly started: boolean
+    readonly capabilities: Capabilities
 
     /** Check whether the external binary is available on this machine. */
     discover(): Promise<{ available: boolean; path?: string; version?: string }>
@@ -66,10 +101,13 @@ export namespace ExternalAgent {
     start(opts: StartOptions): Promise<void>
 
     /** Execute a single turn, yielding streaming events. */
-    turn(prompt: string, signal?: AbortSignal): AsyncGenerator<BridgeEvent>
+    turn(context: TurnContext, signal?: AbortSignal): AsyncGenerator<BridgeEvent>
 
     /** Send an approval response back to the external agent. */
     respondApproval?(requestID: string, approved: boolean): Promise<void>
+
+    /** Switch the model for subsequent turns. Only callable when capabilities.modelSwitch is true. */
+    switchModel?(model: string): Promise<void>
 
     /** Interrupt the current turn. */
     interrupt(): Promise<void>
@@ -81,8 +119,8 @@ export namespace ExternalAgent {
   export interface StartOptions {
     cwd: string
     env?: Record<string, string>
-    model?: string
-    sandbox?: "read-only" | "workspace-write" | "full-access"
+    /** Adapter-specific configuration — shape varies per adapter. */
+    config?: Record<string, unknown>
   }
 
   // ---------------------------------------------------------------------------

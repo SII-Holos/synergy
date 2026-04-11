@@ -16,11 +16,13 @@ export namespace ExternalAgentProcessor {
     adapter: ExternalAgent.Adapter
     parentID: string
     model: { providerID: string; modelID: string }
+    context: ExternalAgent.TurnContext
+    approvalDelegate: ExternalAgent.ApprovalDelegate
     abort: AbortSignal
   }
 
   export async function process(opts: Options): Promise<MessageV2.WithParts> {
-    const { sessionID, agent, adapter, parentID, abort } = opts
+    const { sessionID, agent, adapter, parentID, abort, context, approvalDelegate } = opts
 
     const assistantMessage: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
@@ -57,14 +59,13 @@ export namespace ExternalAgentProcessor {
 
     SessionManager.setStatus(sessionID, { type: "busy", description: "External agent working..." })
 
-    const prompt = await extractPrompt(sessionID)
     const toolParts = new Map<string, MessageV2.ToolPart>()
     const toolOutputs = new Map<string, string>()
     let textPart: MessageV2.TextPart | undefined
     let reasoningPart: MessageV2.ReasoningPart | undefined
 
     try {
-      for await (const event of adapter.turn(prompt, abort)) {
+      for await (const event of adapter.turn(context, abort)) {
         if (abort.aborted) break
 
         switch (event.type) {
@@ -183,13 +184,18 @@ export namespace ExternalAgentProcessor {
           }
 
           case "approval_request": {
-            log.info("approval request from external agent", {
-              sessionID,
-              tool: event.tool,
-              id: event.id,
-            })
+            let approved = true
+            try {
+              approved = await approvalDelegate({
+                id: event.id,
+                tool: event.tool,
+                input: event.input,
+              })
+            } catch (e) {
+              log.warn("approval delegate failed, defaulting to approve", { error: String(e) })
+            }
             if (adapter.respondApproval) {
-              await adapter.respondApproval(event.id, true)
+              await adapter.respondApproval(event.id, approved)
             }
             break
           }
@@ -208,7 +214,7 @@ export namespace ExternalAgentProcessor {
     finalizeTextPart(textPart)
     finalizeReasoningPart(reasoningPart)
 
-    for (const [id, part] of toolParts) {
+    for (const [, part] of toolParts) {
       const startTime = part.state.status === "running" ? part.state.time.start : Date.now()
       await Session.updatePart({
         ...part,
@@ -239,17 +245,6 @@ export namespace ExternalAgentProcessor {
 
     const parts = await MessageV2.parts({ sessionID, messageID: assistantMessage.id })
     return { info: assistantMessage, parts }
-  }
-
-  async function extractPrompt(sessionID: string): Promise<string> {
-    const msgs = await MessageV2.filterCompacted(MessageV2.stream({ sessionID }))
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].info.role !== "user") continue
-      const textParts = msgs[i].parts.filter((p): p is MessageV2.TextPart => p.type === "text")
-      const text = textParts.map((p) => p.text).join("\n")
-      if (text.trim()) return text
-    }
-    return ""
   }
 
   function finalizeTextPart(part: MessageV2.TextPart | undefined) {

@@ -590,13 +590,14 @@ export namespace Agent {
         log.info("external agent auto_discover disabled", { name })
         continue
       }
+      const { disabled: _, path, model, auto_discover: __, ...adapterConfig } = overrides ?? {}
       const externalField = {
         adapter: info.adapter,
-        path: overrides?.path ?? info.path,
+        path: path ?? info.path,
         version: info.version,
         config: {
-          model: overrides?.model,
-          sandbox: overrides?.sandbox,
+          ...(model ? { model } : {}),
+          ...adapterConfig,
         },
       }
       if (result[name]) {

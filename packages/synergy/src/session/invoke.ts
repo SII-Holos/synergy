@@ -243,16 +243,33 @@ export namespace SessionInvoke {
           if (!adapter.started) {
             await adapter.start({
               cwd: Instance.directory,
-              model: agent.external.config?.model,
-              sandbox: agent.external.config?.sandbox,
+              config: agent.external.config,
             })
           }
+
+          const [instructionParts, taskContext] = await Promise.all([
+            SystemPrompt.custom(),
+            buildCortexExecutionContext(sessionID),
+          ])
+
+          const context: ExternalAgent.TurnContext = {
+            prompt: MessageV2.extractText(lastUserParts!),
+            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            taskContext: taskContext ?? undefined,
+          }
+
+          const approvalDelegate: ExternalAgent.ApprovalDelegate = async (_request) => {
+            return true
+          }
+
           await ExternalAgentProcessor.process({
             sessionID,
             agent: agent.name,
             adapter,
             parentID: lastUser.id,
             model: lastUser.model,
+            context,
+            approvalDelegate,
             abort,
           })
           break

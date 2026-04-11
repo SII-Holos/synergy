@@ -638,13 +638,10 @@ export namespace Config {
     .object({
       disabled: z.boolean().optional().describe("Disable this external agent"),
       path: z.string().optional().describe("Override path to the external agent binary"),
-      model: z.string().optional().describe("Default model for this external agent, in provider/model format"),
-      sandbox: z
-        .enum(["read-only", "workspace-write", "full-access"])
-        .optional()
-        .describe("Sandbox mode for the external agent"),
+      model: z.string().optional().describe("Default model for this external agent"),
       auto_discover: z.boolean().optional().describe("Whether to auto-discover this agent on startup (default: true)"),
     })
+    .catchall(z.unknown())
     .meta({
       ref: "ExternalAgentConfig",
     })
