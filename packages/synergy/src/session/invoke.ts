@@ -21,6 +21,8 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { ExternalAgentProcessor } from "@/external-agent/processor"
+import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
 import { ToolResolver } from "./tool-resolver"
 import { Config } from "@/config/config"
@@ -225,6 +227,37 @@ export namespace SessionInvoke {
         let agentName = lastUser.agent
 
         const agent = await Agent.get(agentName)
+
+        log.info("resolved agent", {
+          name: agentName,
+          hasExternal: !!agent.external,
+          adapter: agent.external?.adapter,
+        })
+
+        if (agent.external) {
+          const adapter = ExternalAgent.getAdapter(agent.external.adapter)
+          if (!adapter) {
+            log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
+            break
+          }
+          if (!adapter.started) {
+            await adapter.start({
+              cwd: Instance.directory,
+              model: agent.external.config?.model,
+              sandbox: agent.external.config?.sandbox,
+            })
+          }
+          await ExternalAgentProcessor.process({
+            sessionID,
+            agent: agent.name,
+            adapter,
+            parentID: lastUser.id,
+            model: lastUser.model,
+            abort,
+          })
+          break
+        }
+
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 

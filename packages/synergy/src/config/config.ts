@@ -634,6 +634,22 @@ export namespace Config {
     })
   export type Agent = z.infer<typeof Agent>
 
+  export const ExternalAgentConfig = z
+    .object({
+      disabled: z.boolean().optional().describe("Disable this external agent"),
+      path: z.string().optional().describe("Override path to the external agent binary"),
+      model: z.string().optional().describe("Default model for this external agent, in provider/model format"),
+      sandbox: z
+        .enum(["read-only", "workspace-write", "full-access"])
+        .optional()
+        .describe("Sandbox mode for the external agent"),
+      auto_discover: z.boolean().optional().describe("Whether to auto-discover this agent on startup (default: true)"),
+    })
+    .meta({
+      ref: "ExternalAgentConfig",
+    })
+  export type ExternalAgentConfig = z.infer<typeof ExternalAgentConfig>
+
   export const Keybinds = z
     .object({
       leader: z.string().optional().default("ctrl+x").describe("Leader key for keybind combinations"),
@@ -1359,6 +1375,10 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration"),
+      external_agent: z
+        .record(z.string(), ExternalAgentConfig)
+        .optional()
+        .describe("External agent configurations (e.g. codex, claude-code)"),
       provider: z
         .record(z.string(), Provider)
         .optional()

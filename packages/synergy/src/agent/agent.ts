@@ -29,7 +29,8 @@ import PROMPT_ANIMA from "./prompt/anima.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Log } from "@/util/log"
-import { read } from "node:fs"
+import { ExternalAgent } from "@/external-agent/bridge"
+import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -54,6 +55,7 @@ export namespace Agent {
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
+      external: ExternalAgent.Info.optional(),
     })
     .meta({
       ref: "Agent",
@@ -565,6 +567,53 @@ export namespace Agent {
         hidden: a.hidden,
       }))
       result.synergy.prompt = buildSynergyPrompt(agentInfos)
+    }
+
+    // Discover and register external agents
+    const externalConfig = cfg.external_agent ?? {}
+    try {
+      await import("@/external-agent/adapter/codex")
+    } catch (e) {
+      log.warn("failed to import codex adapter", { error: String(e) })
+    }
+    const discovered = await ExternalAgentDiscovery.discover()
+    log.info("external agent discovery results", {
+      discovered: [...discovered.keys()],
+    })
+    for (const [name, info] of discovered) {
+      const overrides = externalConfig[name]
+      if (overrides?.disabled) {
+        log.info("external agent disabled by config", { name })
+        continue
+      }
+      if (overrides?.auto_discover === false) {
+        log.info("external agent auto_discover disabled", { name })
+        continue
+      }
+      const externalField = {
+        adapter: info.adapter,
+        path: overrides?.path ?? info.path,
+        version: info.version,
+        config: {
+          model: overrides?.model,
+          sandbox: overrides?.sandbox,
+        },
+      }
+      if (result[name]) {
+        // Merge external info into existing agent entry
+        log.info("merging external agent into existing agent", { name })
+        result[name].external = externalField
+      } else {
+        result[name] = {
+          name,
+          description: `External agent: ${name}`,
+          mode: "all",
+          native: false,
+          permission: PermissionNext.merge(defaults, user),
+          options: {},
+          external: externalField,
+        }
+      }
     }
 
     return result
