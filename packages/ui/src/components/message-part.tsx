@@ -29,7 +29,7 @@ import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { BasicTool } from "./basic-tool"
-import { GenericTool } from "./basic-tool"
+import { GenericTool, SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { Icon } from "./icon"
 import { Checkbox } from "./checkbox"
@@ -877,7 +877,23 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   // @ts-expect-error
   const metadata = () => part.state?.metadata ?? emptyMetadata
 
-  const render = ToolRegistry.render(part.tool) ?? GenericTool
+  const render = ToolRegistry.render(part.tool)
+
+  // For unregistered tools (external agents, MCP, etc.), use SmartTool
+  // which classifies by semantic category for appropriate icon/title/subtitle
+  const fallbackRender = !render
+    ? (p: any) => (
+        <SmartTool
+          tool={p.tool}
+          input={p.input}
+          output={p.output}
+          status={p.status}
+          metadata={p.metadata}
+          hideDetails={p.hideDetails}
+        />
+      )
+    : undefined
+  const component = render ?? fallbackRender ?? GenericTool
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
@@ -908,7 +924,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
         </Match>
         <Match when={true}>
           <Dynamic
-            component={render}
+            component={component}
             input={input()}
             tool={part.tool}
             metadata={metadata()}

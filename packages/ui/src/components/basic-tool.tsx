@@ -1,8 +1,10 @@
-import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps, IconName } from "./icon"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
+import { ToolTextOutput } from "./tool-output-text"
+import { classifyTool } from "./semantic-tool-classifier"
 
 export type TriggerTitle = {
   title: string
@@ -122,4 +124,51 @@ export function BasicTool(props: BasicToolProps) {
 
 export function GenericTool(props: { tool: string; hideDetails?: boolean }) {
   return <BasicTool icon="settings" trigger={{ title: props.tool }} hideDetails={props.hideDetails} />
+}
+
+/**
+ * SmartTool — intelligent fallback for unregistered tools.
+ *
+ * Instead of showing a plain gray gear icon with just the tool name,
+ * SmartTool uses semantic classification to automatically:
+ * - Pick a meaningful icon based on what the tool does
+ * - Extract a human-readable title
+ * - Pull the most relevant subtitle from the input
+ * - Show contextual args badges
+ * - Display output in a scrollable pane when available
+ *
+ * This covers external agent tools (codex shell, cline execute_command,
+ * gemini read_file), MCP tools, and any future tools — all without
+ * writing a single new ToolRegistry.register() entry.
+ */
+export function SmartTool(props: {
+  tool: string
+  input: Record<string, any>
+  output?: string
+  status?: string
+  hideDetails?: boolean
+  metadata?: Record<string, any>
+}) {
+  const classified = classifyTool(props.tool, props.input, props.metadata ?? {})
+
+  return (
+    <BasicTool
+      icon={classified.spec.icon}
+      status={props.status}
+      trigger={{
+        title: classified.title,
+        subtitle: classified.subtitle,
+        args: classified.args,
+      }}
+      hideDetails={props.hideDetails}
+    >
+      <Show when={props.output}>
+        {(output) => (
+          <div data-component="tool-output" data-scrollable>
+            <ToolTextOutput text={output()} />
+          </div>
+        )}
+      </Show>
+    </BasicTool>
+  )
 }
