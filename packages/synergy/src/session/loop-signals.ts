@@ -1,6 +1,4 @@
 import { LoopJob } from "./loop-job"
-import { Config } from "@/config/config"
-import { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { Session } from "."
 import { Identifier } from "../id/id"
@@ -18,20 +16,18 @@ LoopJob.defineSignal({
 
 LoopJob.defineSignal({
   type: "overflow",
-  async detect(ctx) {
+  detect(ctx) {
     if (ctx.lastUserParts.some((p) => p.type === "compaction")) return false
     const source = ctx.lastAssistant ?? ctx.lastFinished
     if (!source) return false
     if (source.summary === true) return false
-    const config = await Config.get()
-    if (config.compaction?.auto === false) return false
-    const model = await Provider.getModel(ctx.lastUser.model.providerID, ctx.lastUser.model.modelID)
-    const context = model.limit.context
-    if (context === 0) return false
+    if (ctx.compactionAutoDisabled) return false
+    const limits = ctx.modelLimits
+    if (!limits || limits.context === 0) return false
     const tokens = source.tokens
     const count = tokens.input + tokens.cache.read + tokens.output
-    const output = Math.min(model.limit.output, LLM.OUTPUT_TOKEN_MAX) || LLM.OUTPUT_TOKEN_MAX
-    const usable = context - output
+    const output = Math.min(limits.output, LLM.OUTPUT_TOKEN_MAX) || LLM.OUTPUT_TOKEN_MAX
+    const usable = limits.context - output
     if (count <= usable) return false
 
     const part = {
@@ -41,7 +37,7 @@ LoopJob.defineSignal({
       type: "compaction" as const,
       auto: true,
     }
-    await Session.updatePart(part)
+    Session.updatePart(part).catch(() => {})
     ctx.lastUserParts.push(part)
     return true
   },

@@ -103,19 +103,21 @@ export namespace Daemon {
     return { service, spec }
   }
 
-  export async function observe(service?: DaemonService.Service): Promise<ObservedState> {
-    const resolvedService = service ?? (await DaemonService.resolve())
-    const desiredSpec = await buildSpec()
-    const manifest = await DaemonState.readManifest().catch(() => undefined)
+  export interface ObserveInputs {
+    manager: DaemonService.Manager
+    desiredSpec: Spec
+    manifest?: DaemonState.Manifest
+    serviceStatus: DaemonService.RuntimeStatus
+    reachable: boolean
+    portListening: boolean
+  }
+
+  export function computeObservedState(inputs: ObserveInputs): ObservedState {
+    const { manager, desiredSpec, manifest, serviceStatus, reachable, portListening } = inputs
     const installedSpec = manifest ? specFromManifest(manifest) : undefined
     const observedSpec = installedSpec ?? desiredSpec
-    const drifted = installedSpec ? manifestNeedsRefresh(manifest!, resolvedService.manager, desiredSpec) : false
-    const serviceStatus = await resolvedService.status(observedSpec)
+    const drifted = installedSpec ? manifestNeedsRefresh(manifest!, manager, desiredSpec) : false
     const installed = serviceStatus.installed || Boolean(installedSpec)
-    const portListening = installed
-      ? await DaemonHealth.isPortListening(observedSpec.port, observedSpec.connectHostname)
-      : false
-    const reachable = installed ? await DaemonHealth.isReachable(observedSpec.url) : false
     const runtime = normalizeRuntimeState(serviceStatus, reachable, portListening)
     const detail = normalizeStatusDetail({
       installed,
@@ -124,7 +126,7 @@ export namespace Daemon {
     })
 
     return {
-      manager: resolvedService.manager,
+      manager,
       desiredSpec,
       installedSpec,
       observedSpec,
@@ -139,6 +141,28 @@ export namespace Daemon {
       url: observedSpec.url,
       detail,
     }
+  }
+
+  export async function observe(service?: DaemonService.Service): Promise<ObservedState> {
+    const resolvedService = service ?? (await DaemonService.resolve())
+    const desiredSpec = await buildSpec()
+    const manifest = await DaemonState.readManifest().catch(() => undefined)
+    const observedSpec = manifest ? specFromManifest(manifest) : desiredSpec
+    const serviceStatus = await resolvedService.status(observedSpec)
+    const installed = serviceStatus.installed || Boolean(manifest)
+    const portListening = installed
+      ? await DaemonHealth.isPortListening(observedSpec.port, observedSpec.connectHostname)
+      : false
+    const reachable = installed ? await DaemonHealth.isReachable(observedSpec.url) : false
+
+    return computeObservedState({
+      manager: resolvedService.manager,
+      desiredSpec,
+      manifest,
+      serviceStatus,
+      reachable,
+      portListening,
+    })
   }
 
   export async function status(): Promise<Status> {
@@ -194,7 +218,7 @@ export namespace Daemon {
     })
   }
 
-  function specFromManifest(manifest: DaemonState.Manifest): Spec {
+  export function specFromManifest(manifest: DaemonState.Manifest): Spec {
     return {
       label: manifest.label,
       hostname: manifest.hostname,
@@ -210,7 +234,7 @@ export namespace Daemon {
     }
   }
 
-  function manifestNeedsRefresh(manifest: DaemonState.Manifest, manager: DaemonService.Manager, spec: Spec) {
+  export function manifestNeedsRefresh(manifest: DaemonState.Manifest, manager: DaemonService.Manager, spec: Spec) {
     if (manifest.manager !== manager) return true
     if (manifest.label !== spec.label) return true
     if (manifest.hostname !== spec.hostname) return true
@@ -244,7 +268,7 @@ export namespace Daemon {
     "SYNERGY_CONFIG_CONTENT",
   ]
 
-  function normalizeRuntimeState(
+  export function normalizeRuntimeState(
     serviceStatus: DaemonService.RuntimeStatus,
     reachable: boolean,
     portListening: boolean,
@@ -257,7 +281,7 @@ export namespace Daemon {
     return portListening ? "unknown" : "stopped"
   }
 
-  function normalizeStatusDetail(input: DetailInput) {
+  export function normalizeStatusDetail(input: DetailInput) {
     const detail = input.detail?.trim()
     if (!detail) {
       if (!input.installed) return "Service not installed"

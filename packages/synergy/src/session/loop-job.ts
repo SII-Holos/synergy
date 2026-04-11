@@ -18,6 +18,8 @@ export namespace LoopJob {
     lastFinishedParts?: MessageV2.Part[]
     lastAssistant?: MessageV2.Assistant
     abort: AbortSignal
+    compactionAutoDisabled?: boolean
+    modelLimits?: { context: number; output: number }
   }
 
   export interface JobInstance {

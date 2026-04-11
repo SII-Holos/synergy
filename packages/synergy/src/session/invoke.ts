@@ -187,6 +187,10 @@ export namespace SessionInvoke {
           lastFinishedParts,
           lastAssistant,
           abort,
+          compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
+          modelLimits: await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+            .then((m) => m.limit)
+            .catch(() => undefined),
         }
         const firedSignals = await LoopJob.detectSignals(jobCtx)
 

@@ -1,9 +1,8 @@
-import { describe, expect, test, beforeAll, mock } from "bun:test"
+import { describe, expect, test, beforeAll } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
 import { LLM } from "../../src/session/llm"
 import { Log } from "../../src/util/log"
 import { Identifier } from "../../src/id/id"
-import type { Provider } from "../../src/provider/provider"
 import type { MessageV2 } from "../../src/session/message-v2"
 import type { Info } from "../../src/session/types"
 import type { Scope } from "../../src/scope/types"
@@ -11,30 +10,6 @@ import type { Scope } from "../../src/scope/types"
 Log.init({ print: false })
 
 // ─── helpers ───────────────────────────────────────────────────────
-
-function createModel(opts: { context: number; output: number }): Provider.Model {
-  return {
-    id: "test-model",
-    providerID: "test-provider",
-    name: "Test",
-    limit: { context: opts.context, output: opts.output },
-    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-    capabilities: {
-      toolcall: true,
-      attachment: false,
-      reasoning: false,
-      temperature: true,
-      input: { text: true, image: false, audio: false, video: false, pdf: false },
-      output: { text: true, image: false, audio: false, video: false, pdf: false },
-      interleaved: false,
-    },
-    api: { id: "test", url: "http://localhost", npm: "@ai-sdk/openai" },
-    options: {},
-    headers: {},
-    status: "active",
-    release_date: "2025-01-01",
-  } as Provider.Model
-}
 
 function makeTokens(input: number, output: number, cacheRead = 0) {
   return { input, output, reasoning: 0, cache: { read: cacheRead, write: 0 } }
@@ -80,6 +55,8 @@ function makeSession(): Info {
   } as Info
 }
 
+const MODEL_LIMITS = { context: 200_000, output: 8_192 }
+
 function makeContext(overrides: Partial<LoopJob.Context>): LoopJob.Context {
   return {
     session: makeSession(),
@@ -89,31 +66,10 @@ function makeContext(overrides: Partial<LoopJob.Context>): LoopJob.Context {
     lastUser: makeUserMsg(),
     lastUserParts: [],
     abort: new AbortController().signal,
+    modelLimits: MODEL_LIMITS,
     ...overrides,
   }
 }
-
-// ─── mocks ─────────────────────────────────────────────────────────
-
-const TEST_MODEL = createModel({ context: 200_000, output: 8_192 })
-
-mock.module("../../src/config/config", () => ({
-  Config: {
-    get: async () => ({}),
-  },
-}))
-
-mock.module("../../src/provider/provider", () => ({
-  Provider: {
-    getModel: async () => TEST_MODEL,
-  },
-}))
-
-mock.module("../../src/session", () => ({
-  Session: {
-    updatePart: async (part: any) => part,
-  },
-}))
 
 // ─── import signals (registers them into LoopJob) ──────────────────
 
@@ -174,7 +130,6 @@ describe("loop-signals: overflow signal", () => {
   })
 
   test("does not fire when token usage is within limit", async () => {
-    // usable = 200000 - 8192 = 191808; count = 105000 < 191808
     const ctx = makeContext({
       lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(100_000, 5_000) }),
       lastUserParts: [],
@@ -184,7 +139,6 @@ describe("loop-signals: overflow signal", () => {
   })
 
   test("fires when token usage exceeds usable context", async () => {
-    // usable = 200000 - 8192 = 191808; count = 195000 > 191808
     const ctx = makeContext({
       lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(180_000, 15_000) }),
       lastUserParts: [],
@@ -194,7 +148,6 @@ describe("loop-signals: overflow signal", () => {
   })
 
   test("includes cache.read in token count", async () => {
-    // count = 100000 + 80000 + 15000 = 195000 > 191808
     const ctx = makeContext({
       lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(100_000, 15_000, 80_000) }),
       lastUserParts: [],
@@ -222,18 +175,33 @@ describe("loop-signals: overflow signal", () => {
   })
 
   test("caps output reserve at OUTPUT_TOKEN_MAX", () => {
-    expect(Math.min(TEST_MODEL.limit.output, LLM.OUTPUT_TOKEN_MAX)).toBe(8_192)
+    expect(Math.min(MODEL_LIMITS.output, LLM.OUTPUT_TOKEN_MAX)).toBe(8_192)
+    expect(Math.min(100_000, LLM.OUTPUT_TOKEN_MAX)).toBe(LLM.OUTPUT_TOKEN_MAX)
+  })
 
-    const highOutputModel = createModel({ context: 200_000, output: 100_000 })
-    expect(Math.min(highOutputModel.limit.output, LLM.OUTPUT_TOKEN_MAX)).toBe(LLM.OUTPUT_TOKEN_MAX)
+  test("does not fire when compaction auto is disabled", async () => {
+    const ctx = makeContext({
+      lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(180_000, 15_000) }),
+      lastUserParts: [],
+      compactionAutoDisabled: true,
+    })
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("overflow")
+  })
+
+  test("does not fire when modelLimits is not provided", async () => {
+    const ctx = makeContext({
+      lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(180_000, 15_000) }),
+      lastUserParts: [],
+      modelLimits: undefined,
+    })
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("overflow")
   })
 })
 
 describe("loop-signals: overflow via lastAssistant (regression)", () => {
   test("fires during tool loop when lastAssistant has high tokens but lastFinished is stale", async () => {
-    // Scenario: agent is mid-tool-loop. lastFinished points to a previous turn's
-    // terminal message with low tokens; lastAssistant is the latest tool-calls
-    // message with current (high) token usage.
     const ctx = makeContext({
       step: 8,
       lastFinished: makeAssistantMsg({ finish: "stop", tokens: makeTokens(40_000, 5_000) }),
@@ -245,8 +213,6 @@ describe("loop-signals: overflow via lastAssistant (regression)", () => {
   })
 
   test("fires in first turn when no terminal assistant exists yet", async () => {
-    // First user message triggers a long tool loop. No lastFinished at all,
-    // but lastAssistant reflects the growing context.
     const ctx = makeContext({
       step: 15,
       lastFinished: undefined,
@@ -269,7 +235,6 @@ describe("loop-signals: overflow via lastAssistant (regression)", () => {
   })
 
   test("falls back to lastFinished when lastAssistant is undefined", async () => {
-    // Edge case: lastAssistant somehow not set, but lastFinished exists with high tokens
     const ctx = makeContext({
       lastFinished: makeAssistantMsg({ finish: "stop", tokens: makeTokens(180_000, 15_000) }),
       lastAssistant: undefined,
@@ -280,7 +245,6 @@ describe("loop-signals: overflow via lastAssistant (regression)", () => {
   })
 
   test("prefers lastAssistant over lastFinished for token check", async () => {
-    // lastFinished says low tokens; lastAssistant says high tokens → should fire
     const ctx = makeContext({
       lastFinished: makeAssistantMsg({ finish: "stop", tokens: makeTokens(10_000, 2_000) }),
       lastAssistant: makeAssistantMsg({ finish: "tool-calls", tokens: makeTokens(190_000, 5_000) }),
@@ -289,7 +253,6 @@ describe("loop-signals: overflow via lastAssistant (regression)", () => {
     const fired = await LoopJob.detectSignals(ctx)
     expect(fired).toContain("overflow")
 
-    // Inverse: lastFinished says high, lastAssistant says low → should NOT fire
     const ctxInverse = makeContext({
       lastFinished: makeAssistantMsg({ finish: "stop", tokens: makeTokens(190_000, 5_000) }),
       lastAssistant: makeAssistantMsg({ finish: "tool-calls", tokens: makeTokens(10_000, 2_000) }),
@@ -300,8 +263,6 @@ describe("loop-signals: overflow via lastAssistant (regression)", () => {
   })
 
   test("does not re-trigger after compaction summary", async () => {
-    // After compaction, the summary message becomes lastAssistant.
-    // Its summary=true flag prevents re-triggering.
     const ctx = makeContext({
       lastAssistant: makeAssistantMsg({ summary: true, finish: "stop", tokens: makeTokens(10_000, 2_000) }),
       lastUserParts: [],

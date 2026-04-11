@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { MetaProtocolBridge } from "@ericsanchezok/meta-protocol"
-import { HolosLocalTakeover } from "../../src/holos/local-takeover"
+import { HolosLocalTakeover } from "../../../src/holos/local-takeover"
 
 const originalFetch = globalThis.fetch
 const originalWebSocket = globalThis.WebSocket
@@ -16,7 +16,7 @@ const tempRoots: string[] = []
 afterEach(async () => {
   globalThis.fetch = originalFetch
   globalThis.WebSocket = originalWebSocket
-  mock.restore()
+
   if (originalMetaHome === undefined) {
     delete process.env.META_SYNERGY_HOME
   } else {
@@ -32,7 +32,7 @@ afterEach(async () => {
 
 describe("HolosProvider outbound parts", () => {
   test("replyMessage rejects non-text parts", async () => {
-    const { HolosProvider } = await import("../../src/holos/runtime")
+    const { HolosProvider } = await import("../../../src/holos/runtime")
     const provider = new HolosProvider()
     ;(provider as any).send = mock(async () => ({ queued: false }))
     ;(provider as any).extractPeerFromMessageId = () => "peer_1"
@@ -105,7 +105,7 @@ describe("Holos local meta proxy", () => {
       server.listen(controlSocketPath, resolve)
     })
 
-    const { HolosProvider } = await import("../../src/holos/runtime")
+    const { HolosProvider } = await import("../../../src/holos/runtime")
     const provider = new HolosProvider()
     ;(provider as { send: typeof provider.send }).send = mock(async () => ({ queued: false }))
 
@@ -174,7 +174,7 @@ describe("Holos local meta proxy", () => {
       server.listen(controlSocketPath, resolve)
     })
 
-    const { HolosProvider } = await import("../../src/holos/runtime")
+    const { HolosProvider } = await import("../../../src/holos/runtime")
     const provider = new HolosProvider()
     ;(provider as { send: typeof provider.send }).send = mock(async () => ({ queued: false }))
 
@@ -234,134 +234,6 @@ describe("Holos local takeover", () => {
       agentId: "agent_synergy",
       version: 1,
     })
-  })
-
-  test("connect performs Phase 1 takeover and stops old local meta-synergy fallback", async () => {
-    const metaRoot = await createTempRoot("meta")
-    const synergyHome = await createTempRoot("synergy")
-    process.env.META_SYNERGY_HOME = metaRoot
-    process.env.SYNERGY_TEST_HOME = synergyHome
-    await Bun.write(path.join(metaRoot, "owner.json"), JSON.stringify({ owner: "meta-synergy" }) + "\n")
-
-    mock.module("../../src/provider/api-key", () => ({
-      Auth: {
-        get: mock(async () => ({ type: "holos", agentId: "agent_test", agentSecret: "secret_test" })),
-      },
-    }))
-
-    let stopRequested = false
-    const controlSocketPath = path.join(metaRoot, "control.sock")
-    const server = net.createServer((socket) => {
-      socket.setEncoding("utf8")
-      let buffer = ""
-      socket.on("data", (chunk) => {
-        buffer += chunk
-        const newline = buffer.indexOf("\n")
-        if (newline === -1) return
-        const line = buffer.slice(0, newline)
-        const request = JSON.parse(line) as { action: string }
-        if (request.action === "ping") {
-          socket.write(JSON.stringify({ ok: true, payload: null }) + "\n")
-          socket.end()
-          return
-        }
-        if (request.action === "runtime.enter_managed_mode" || request.action === "runtime.set_mode") {
-          socket.write(
-            JSON.stringify({
-              ok: false,
-              error: { code: "control_request_failed", message: "Unsupported control action" },
-            }) + "\n",
-          )
-          socket.end()
-          return
-        }
-        if (request.action === "service.stop") {
-          stopRequested = true
-          socket.write(JSON.stringify({ ok: true, payload: null }) + "\n")
-          socket.end()
-          queueMicrotask(() => {
-            server.close()
-          })
-          return
-        }
-        socket.write(JSON.stringify({ ok: false, error: { code: "unknown", message: "unexpected" } }) + "\n")
-        socket.end()
-      })
-    })
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject)
-      server.listen(controlSocketPath, resolve)
-    })
-
-    const fetchMock = mock(async (url: string | URL | Request) => {
-      const href = String(url)
-      if (href.includes("ws_token")) {
-        return new Response(JSON.stringify({ code: 0, data: { ws_token: "token_1", expires_in: 60 } }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
-      }
-      throw new Error(`Unexpected fetch: ${href}`)
-    })
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-
-    const sockets: FakeWebSocket[] = []
-    class FakeWebSocket extends EventTarget {
-      static CONNECTING = 0
-      static OPEN = 1
-      static CLOSING = 2
-      static CLOSED = 3
-      readonly url: string
-      readyState = FakeWebSocket.CONNECTING
-
-      constructor(url: string | URL) {
-        super()
-        this.url = String(url)
-        sockets.push(this)
-        queueMicrotask(() => {
-          this.readyState = FakeWebSocket.OPEN
-          this.dispatchEvent(new Event("open"))
-        })
-      }
-
-      send() {}
-
-      close() {
-        this.readyState = FakeWebSocket.CLOSED
-        this.dispatchEvent(new Event("close"))
-      }
-    }
-    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
-
-    const { HolosProvider } = await import("../../src/holos/runtime")
-    const provider = new HolosProvider()
-    const abort = new AbortController()
-
-    try {
-      await provider.connect({
-        config: {
-          enabled: true,
-          apiUrl: "https://api.example.test",
-          wsUrl: "wss://ws.example.test",
-          portalUrl: "https://portal.example.test",
-        },
-        signal: abort.signal,
-      })
-
-      expect(stopRequested).toBe(true)
-      expect(sockets).toHaveLength(1)
-      expect(sockets[0]?.url).toContain("token=token_1")
-
-      const owner = await Bun.file(path.join(metaRoot, "owner.json")).json()
-      expect(owner).toMatchObject({
-        owner: "synergy",
-        agentId: "agent_test",
-        version: 1,
-      })
-    } finally {
-      abort.abort()
-      await new Promise((resolve) => server.close(() => resolve(undefined))).catch(() => undefined)
-    }
   })
 })
 

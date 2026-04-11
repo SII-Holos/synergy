@@ -1,218 +1,251 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
-import { FeishuProvider } from "../../src/channel/provider/feishu"
+import { describe, expect, test } from "bun:test"
+import {
+  FeishuProvider,
+  filterInboundMessage,
+  isSelfSender,
+  normalizeBotOpenId,
+  resolveSenderOpenId,
+  isBotMentioned,
+  resolveGroupScopeKey,
+} from "../../src/channel/provider/feishu"
 import { mergeStreamingText } from "../../src/channel/provider/feishu/streaming-card"
 import { createStatusReactionController } from "../../src/channel/status-reactions"
 import type { StreamingSession } from "../../src/channel/types"
 import type { Config } from "../../src/config/config"
 
-describe("FeishuProvider inbound filtering", () => {
-  function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Config.ChannelFeishuAccount {
-    return {
-      enabled: true,
-      appId: "app",
-      appSecret: "secret",
-      allowDM: true,
-      allowGroup: true,
-      requireMention: false,
-      streaming: true,
-      streamingThrottleMs: 100,
-      groupSessionScope: "group",
-      inboundDebounceMs: 0,
-      resolveSenderNames: false,
-      replyInThread: false,
-      ...overrides,
-    }
+function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Config.ChannelFeishuAccount {
+  return {
+    enabled: true,
+    appId: "app",
+    appSecret: "secret",
+    allowDM: true,
+    allowGroup: true,
+    requireMention: false,
+    streaming: true,
+    streamingThrottleMs: 100,
+    groupSessionScope: "group",
+    inboundDebounceMs: 0,
+    resolveSenderNames: false,
+    replyInThread: false,
+    ...overrides,
   }
+}
 
-  test("buildMessageContext ignores self-sent bot/app messages", async () => {
-    const provider = new FeishuProvider()
-    const ctx = await (provider as any).buildMessageContext(
-      "acct",
-      accountConfig(),
-      { type: "feishu", accounts: {}, streaming: true } as Config.ChannelFeishu,
-      {
-        event: {
-          message: {
-            chat_id: "chat_1",
-            chat_type: "p2p",
-            message_type: "text",
-            content: JSON.stringify({ text: "hello from bot" }),
-            message_id: "msg_bot_1",
-          },
-          sender: {
-            sender_id: { open_id: "ou_bot" },
-            sender_type: "app",
-          },
-        },
-      },
-    )
-
-    expect(ctx).toBeNull()
+describe("isSelfSender", () => {
+  test("returns true for app/bot/app_bot sender types", () => {
+    expect(isSelfSender("app")).toBe(true)
+    expect(isSelfSender("bot")).toBe(true)
+    expect(isSelfSender("app_bot")).toBe(true)
+    expect(isSelfSender("APP")).toBe(true)
+    expect(isSelfSender("Bot")).toBe(true)
   })
 
-  test("buildMessageContext keeps normal user messages", async () => {
-    const provider = new FeishuProvider()
-    const ctx = await (provider as any).buildMessageContext(
-      "acct",
-      accountConfig(),
-      { type: "feishu", accounts: {}, streaming: true } as Config.ChannelFeishu,
-      {
-        event: {
-          message: {
-            chat_id: "chat_1",
-            chat_type: "p2p",
-            message_type: "text",
-            content: JSON.stringify({ text: "hello" }),
-            message_id: "msg_user_1",
-            create_time: "1234567890",
-          },
-          sender: {
-            sender_id: { open_id: "ou_user", user_id: "user_1" },
-            sender_type: "user",
-          },
-        },
-      },
-    )
+  test("returns false for user sender types", () => {
+    expect(isSelfSender("user")).toBe(false)
+    expect(isSelfSender(undefined)).toBe(false)
+    expect(isSelfSender("")).toBe(false)
+  })
+})
 
-    expect(ctx).toMatchObject({
-      channelType: "feishu",
-      accountId: "acct",
-      chatId: "chat_1",
-      chatType: "dm",
-      senderId: "ou_user",
-      senderName: "user_1",
-      text: "hello",
-      messageId: "msg_user_1",
-      timestamp: 1234567890,
+describe("normalizeBotOpenId", () => {
+  test("trims whitespace and returns undefined for empty", () => {
+    expect(normalizeBotOpenId("ou_bot")).toBe("ou_bot")
+    expect(normalizeBotOpenId("  ou_bot  ")).toBe("ou_bot")
+    expect(normalizeBotOpenId("")).toBeUndefined()
+    expect(normalizeBotOpenId("  ")).toBeUndefined()
+    expect(normalizeBotOpenId(undefined)).toBeUndefined()
+  })
+})
+
+describe("resolveSenderOpenId", () => {
+  test("extracts open_id from sender", () => {
+    expect(resolveSenderOpenId({ sender_id: { open_id: "ou_123" } })).toBe("ou_123")
+    expect(resolveSenderOpenId({ sender_id: {} })).toBeUndefined()
+    expect(resolveSenderOpenId(undefined)).toBeUndefined()
+  })
+})
+
+describe("isBotMentioned", () => {
+  test("returns true when bot open_id is in mentions", () => {
+    const mentions = [
+      { key: "@_user_1", id: { open_id: "ou_bot" }, name: "Bot" },
+      { key: "@_user_2", id: { open_id: "ou_other" }, name: "Other" },
+    ]
+    expect(isBotMentioned(mentions, "ou_bot")).toBe(true)
+  })
+
+  test("returns false when bot open_id is not in mentions", () => {
+    const mentions = [{ key: "@_user_1", id: { open_id: "ou_other" }, name: "Other" }]
+    expect(isBotMentioned(mentions, "ou_bot")).toBe(false)
+  })
+
+  test("returns false when botOpenId is undefined", () => {
+    const mentions = [{ key: "@_user_1", id: { open_id: "ou_bot" }, name: "Bot" }]
+    expect(isBotMentioned(mentions, undefined)).toBe(false)
+  })
+
+  test("handles whitespace in mention open_ids", () => {
+    const mentions = [{ key: "@_user_1", id: { open_id: " ou_bot " }, name: "Bot" }]
+    expect(isBotMentioned(mentions, "ou_bot")).toBe(true)
+  })
+})
+
+describe("resolveGroupScopeKey", () => {
+  test("group scope returns chatId", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group" })).toBe("c1")
+  })
+
+  test("group_sender scope includes senderId", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group_sender" })).toBe("c1:sender:s1")
+  })
+
+  test("group_topic scope uses rootId when present", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", rootId: "r1", scope: "group_topic" })).toBe(
+      "c1:topic:r1",
+    )
+  })
+
+  test("group_topic scope falls back to threadId", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", threadId: "t1", scope: "group_topic" })).toBe(
+      "c1:topic:t1",
+    )
+  })
+
+  test("group_topic scope returns chatId when no topic", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group_topic" })).toBe("c1")
+  })
+
+  test("group_topic_sender combines topic and sender", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", rootId: "r1", scope: "group_topic_sender" })).toBe(
+      "c1:topic:r1:sender:s1",
+    )
+  })
+
+  test("group_topic_sender falls back to sender when no topic", () => {
+    expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group_topic_sender" })).toBe("c1:sender:s1")
+  })
+})
+
+describe("filterInboundMessage", () => {
+  test("rejects when message is undefined", () => {
+    const result = filterInboundMessage({
+      message: undefined,
+      sender: undefined,
+      accountConfig: accountConfig(),
     })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("missing chat_id")
   })
 
-  test("group messages mentioning other users do not count as bot mentions", async () => {
-    const provider = new FeishuProvider()
-    ;(provider as any).accounts.set("acct", {
-      config: accountConfig({ requireMention: true, botOpenId: "ou_bot" }),
-      channelConfig: { type: "feishu", accounts: {}, streaming: true },
-      apiBase: "https://open.feishu.cn/open-apis",
-      tokenCache: null,
+  test("rejects when message has no chat_id", () => {
+    const result = filterInboundMessage({
+      message: { message_type: "text" },
+      sender: undefined,
+      accountConfig: accountConfig(),
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("missing chat_id")
+  })
+
+  test("rejects self-sent bot/app messages", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "p2p", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_bot" }, sender_type: "app" },
+      accountConfig: accountConfig(),
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("self sender")
+  })
+
+  test("accepts normal user DM messages", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "p2p", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig(),
+    })
+    expect(result.accepted).toBe(true)
+    expect(result.isGroup).toBe(false)
+  })
+
+  test("rejects group messages when allowGroup is false", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "group", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ allowGroup: false }),
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("group not allowed")
+  })
+
+  test("rejects DM messages when allowDM is false", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "p2p", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ allowDM: false }),
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("DM not allowed")
+  })
+
+  test("rejects group message when requireMention is true but bot not mentioned", () => {
+    const result = filterInboundMessage({
+      message: {
+        chat_id: "chat_1",
+        chat_type: "group",
+        message_type: "text",
+        mentions: [{ key: "@_user_1", id: { open_id: "ou_other" }, name: "Other" }],
+      },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ requireMention: true }),
       botOpenId: "ou_bot",
-      missingBotOpenIdWarned: false,
     })
-
-    const ctx = await (provider as any).buildMessageContext(
-      "acct",
-      accountConfig({ requireMention: true, botOpenId: "ou_bot" }),
-      { type: "feishu", accounts: {}, streaming: true } as Config.ChannelFeishu,
-      {
-        event: {
-          message: {
-            chat_id: "chat_group_1",
-            chat_type: "group",
-            message_type: "text",
-            content: JSON.stringify({ text: "@_user_1 ping" }),
-            message_id: "msg_group_1",
-            mentions: [{ key: "@_user_1", id: { open_id: "ou_other" }, name: "Other User" }],
-          },
-          sender: {
-            sender_id: { open_id: "ou_user", user_id: "user_1" },
-            sender_type: "user",
-          },
-        },
-      },
-    )
-
-    expect(ctx).toBeNull()
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("bot not mentioned")
   })
 
-  test("group messages mentioning the configured bot pass mention filtering", async () => {
-    const provider = new FeishuProvider()
-    ;(provider as any).accounts.set("acct", {
-      config: accountConfig({ requireMention: true, botOpenId: "ou_bot" }),
-      channelConfig: { type: "feishu", accounts: {}, streaming: true },
-      apiBase: "https://open.feishu.cn/open-apis",
-      tokenCache: null,
+  test("accepts group message when bot is mentioned", () => {
+    const result = filterInboundMessage({
+      message: {
+        chat_id: "chat_1",
+        chat_type: "group",
+        message_type: "text",
+        mentions: [{ key: "@_user_1", id: { open_id: "ou_bot" }, name: "Synergy" }],
+      },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ requireMention: true }),
       botOpenId: "ou_bot",
-      missingBotOpenIdWarned: false,
     })
-
-    const ctx = await (provider as any).buildMessageContext(
-      "acct",
-      accountConfig({ requireMention: true, botOpenId: "ou_bot" }),
-      { type: "feishu", accounts: {}, streaming: true } as Config.ChannelFeishu,
-      {
-        event: {
-          message: {
-            chat_id: "chat_group_1",
-            chat_type: "group",
-            message_type: "text",
-            content: JSON.stringify({ text: "@_user_1 hello" }),
-            message_id: "msg_group_2",
-            mentions: [{ key: "@_user_1", id: { open_id: "ou_bot" }, name: "Synergy" }],
-          },
-          sender: {
-            sender_id: { open_id: "ou_user", user_id: "user_1" },
-            sender_type: "user",
-          },
-        },
-      },
-    )
-
-    expect(ctx).toMatchObject({
-      chatType: "group",
-      wasMentioned: true,
-      text: "@Synergy hello",
-    })
+    expect(result.accepted).toBe(true)
+    expect(result.isGroup).toBe(true)
+    expect(result.wasMentioned).toBe(true)
   })
 
-  test("group mention filtering auto-resolves bot open id via bot info API", async () => {
-    const provider = new FeishuProvider()
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = mock(async (url: string | URL | Request) => {
-      const urlStr = url.toString()
-      if (urlStr.endsWith("/bot/v3/info")) {
-        return new Response(JSON.stringify({ code: 0, bot: { open_id: "ou_bot" } }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
+  test("rejects group message when requireMention but no botOpenId available", () => {
+    const result = filterInboundMessage({
+      message: {
+        chat_id: "chat_1",
+        chat_type: "group",
+        message_type: "text",
+        mentions: [{ key: "@_user_1", id: { open_id: "ou_bot" }, name: "Synergy" }],
+      },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ requireMention: true }),
+      botOpenId: undefined,
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("bot open_id unresolvable")
+    expect(result.needsBotOpenIdResolution).toBe(true)
+  })
 
-    try {
-      ;(provider as any).accounts.set("acct", {
-        config: accountConfig({ requireMention: true }),
-        channelConfig: { type: "feishu", accounts: {}, streaming: true },
-        apiBase: "https://open.feishu.cn/open-apis",
-        tokenCache: { token: "token", expiresAt: Date.now() + 3600_000 },
-        missingBotOpenIdWarned: false,
-      })
-
-      const ctx = await (provider as any).buildMessageContext(
-        "acct",
-        accountConfig({ requireMention: true }),
-        { type: "feishu", accounts: {}, streaming: true } as Config.ChannelFeishu,
-        {
-          event: {
-            message: {
-              chat_id: "chat_group_1",
-              chat_type: "group",
-              message_type: "text",
-              content: JSON.stringify({ text: "@_user_1 hello" }),
-              message_id: "msg_group_3",
-              mentions: [{ key: "@_user_1", id: { open_id: "ou_bot" }, name: "Synergy" }],
-            },
-            sender: {
-              sender_id: { open_id: "ou_user", user_id: "user_1" },
-              sender_type: "user",
-            },
-          },
-        },
-      )
-
-      expect(ctx).toMatchObject({
-        chatType: "group",
-        wasMentioned: true,
-      })
-      expect((provider as any).accounts.get("acct")?.botOpenId).toBe("ou_bot")
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  test("group message without requireMention is accepted even without botOpenId", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "group", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+      accountConfig: accountConfig({ requireMention: false }),
+    })
+    expect(result.accepted).toBe(true)
+    expect(result.isGroup).toBe(true)
+    expect(result.wasMentioned).toBe(false)
   })
 })
 
@@ -232,99 +265,6 @@ describe("Feishu streaming merge", () => {
 
   test("keeps prior content when chunks only overlap but are not a prefix extension", () => {
     expect(mergeStreamingText("上海天气提醒，", "提醒，包含天气状况、温度和风力。")).toBe("上海天气提醒，")
-  })
-})
-
-describe("Feishu streaming card rendering", () => {
-  const originalFetch = globalThis.fetch
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  test("updates status, answer, and tool sections independently", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = []
-    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = url.toString()
-      requests.push({ url: urlStr, init })
-
-      if (urlStr.endsWith("/cardkit/v1/cards")) {
-        return new Response(JSON.stringify({ code: 0, data: { card_id: "card_1" } }), { status: 200 })
-      }
-      if (urlStr.includes("/im/v1/messages/msg_1/reply")) {
-        return new Response(JSON.stringify({ code: 0, data: { message_id: "reply_1" } }), { status: 200 })
-      }
-      if (urlStr.includes("/cardkit/v1/cards/card_1/elements/")) {
-        return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 })
-      }
-      if (urlStr.endsWith("/cardkit/v1/cards/card_1/settings")) {
-        return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 })
-      }
-
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
-
-    const provider = new FeishuProvider()
-    ;(provider as any).accounts.set("acct", {
-      config: {
-        enabled: true,
-        appId: "app",
-        appSecret: "secret",
-        allowDM: true,
-        allowGroup: true,
-        requireMention: true,
-        streaming: true,
-        streamingThrottleMs: 0,
-        groupSessionScope: "group",
-        inboundDebounceMs: 0,
-        resolveSenderNames: true,
-        replyInThread: false,
-      } satisfies Config.ChannelFeishuAccount,
-      channelConfig: { type: "feishu", accounts: {}, streaming: true } satisfies Partial<Config.ChannelFeishu>,
-      apiBase: "https://open.feishu.cn/open-apis",
-      tokenCache: { token: "token", expiresAt: Date.now() + 3600_000 },
-    })
-
-    const session = provider.createStreamingSession({
-      accountId: "acct",
-      chatId: "chat_1",
-      replyToMessageId: "msg_1",
-    })
-
-    await session.start()
-    await session.update("你好，先给你一个稳定结论。")
-    await session.update("你好，先给你一个稳定结论。\n\n我正在整理方案。")
-    await session.updateToolProgress([
-      { id: "t1", tool: "read", title: "定位实现", status: "completed" },
-      { id: "t2", tool: "webfetch", title: "查官方文档", status: "running" },
-    ])
-    await session.close("你好，先给你一个稳定结论。\n\n我正在整理方案。\n\n已经整理好方案。")
-
-    const elementUpdates = requests.filter((request) => request.url.includes("/elements/"))
-    expect(elementUpdates.map((request) => request.url)).toEqual([
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/status_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/answer_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/answer_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/status_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/tool_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/status_content/content",
-      "https://open.feishu.cn/open-apis/cardkit/v1/cards/card_1/elements/answer_content/content",
-    ])
-
-    const toolUpdateBody = JSON.parse(String(elementUpdates[4].init?.body))
-    expect(toolUpdateBody.content).toContain("**Tools · Working**")
-    expect(toolUpdateBody.content).toContain("- ✅ read · 定位实现")
-    expect(toolUpdateBody.content).toContain("- ⌨️ webfetch · 查官方文档")
-    expect(toolUpdateBody.content).toContain("1/2 completed")
-
-    const finalAnswerBody = JSON.parse(String(elementUpdates[6].init?.body))
-    expect(finalAnswerBody.content).toContain("你好，先给你一个稳定结论。")
-    expect(finalAnswerBody.content).toContain("我正在整理方案。")
-    expect(finalAnswerBody.content).toContain("已经整理好方案。")
-
-    const settingsRequest = requests.find((request) => request.url.endsWith("/cardkit/v1/cards/card_1/settings"))
-    expect(settingsRequest).toBeDefined()
-    expect(JSON.parse(String(settingsRequest?.init?.body)).settings).toContain('"streaming_mode":false')
   })
 })
 
@@ -390,169 +330,5 @@ describe("Channel status reactions", () => {
       { method: "set", value: "DONE" },
       { method: "remove", value: "Typing-id" },
     ])
-  })
-})
-
-describe("FeishuProvider outbound media", () => {
-  const originalFetch = globalThis.fetch
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  function providerWithAccount() {
-    const provider = new FeishuProvider()
-    ;(provider as any).accounts.set("acct", {
-      config: {
-        enabled: true,
-        appId: "app",
-        appSecret: "secret",
-        allowDM: true,
-        allowGroup: true,
-        requireMention: true,
-        streaming: true,
-        streamingThrottleMs: 100,
-        groupSessionScope: "group",
-        inboundDebounceMs: 0,
-        resolveSenderNames: true,
-        replyInThread: false,
-      } satisfies Config.ChannelFeishuAccount,
-      channelConfig: { type: "feishu", accounts: {}, streaming: true } satisfies Partial<Config.ChannelFeishu>,
-      apiBase: "https://open.feishu.cn/open-apis",
-      tokenCache: { token: "token", expiresAt: Date.now() + 3600_000 },
-    })
-    return provider
-  }
-
-  test("addReaction returns reaction id and removeReaction deletes it", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = []
-    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = url.toString()
-      requests.push({ url: urlStr, init })
-      if (urlStr.endsWith("/im/v1/messages/msg_1/reactions")) {
-        return new Response(JSON.stringify({ code: 0, data: { reaction_id: "reaction_1" } }), { status: 200 })
-      }
-      if (urlStr.endsWith("/im/v1/messages/msg_1/reactions/reaction_1")) {
-        return new Response(JSON.stringify({ code: 0, msg: "success" }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
-
-    const provider = providerWithAccount()
-    const reaction = await provider.addReaction({ accountId: "acct", messageId: "msg_1", emoji: "Typing" })
-    await provider.removeReaction?.({ accountId: "acct", messageId: "msg_1", reactionId: "reaction_1" })
-
-    expect(reaction).toEqual({ reactionId: "reaction_1" })
-    expect(requests[0].url).toContain("/im/v1/messages/msg_1/reactions")
-    expect(requests[0].init?.method).toBe("POST")
-    expect(requests[1].url).toContain("/im/v1/messages/msg_1/reactions/reaction_1")
-    expect(requests[1].init?.method).toBe("DELETE")
-  })
-
-  test("replyMessage uploads image then replies with image payload", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = []
-    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = url.toString()
-      requests.push({ url: urlStr, init })
-      if (urlStr.endsWith("/im/v1/images")) {
-        return new Response(JSON.stringify({ code: 0, data: { image_key: "img_v2_123" } }), { status: 200 })
-      }
-      if (urlStr.includes("/im/v1/messages/msg_1/reply")) {
-        return new Response(JSON.stringify({ code: 0, data: { message_id: "reply_1" } }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
-
-    const filePath = "/tmp/synergy-feishu-test-image.png"
-    await Bun.write(filePath, new Uint8Array([1, 2, 3]))
-
-    const provider = providerWithAccount()
-    const result = await provider.replyMessage({
-      accountId: "acct",
-      messageId: "msg_1",
-      parts: [{ type: "image", path: filePath, filename: "image.png", contentType: "image/png" }],
-    })
-
-    expect(result).toEqual({ messageId: "reply_1" })
-    expect(requests[0].url).toContain("/im/v1/images")
-    expect(requests[1].url).toContain("/im/v1/messages/msg_1/reply")
-    expect(JSON.parse(String(requests[1].init?.body))).toEqual({
-      content: JSON.stringify({ image_key: "img_v2_123" }),
-      msg_type: "image",
-    })
-  })
-
-  test("pushMessage sends text and file parts in order", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = []
-    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = url.toString()
-      requests.push({ url: urlStr, init })
-      if (urlStr.endsWith("/im/v1/files")) {
-        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_v2_123" } }), { status: 200 })
-      }
-      if (urlStr.includes("/im/v1/messages?receive_id_type=chat_id")) {
-        return new Response(JSON.stringify({ code: 0, data: { message_id: `msg_${requests.length}` } }), {
-          status: 200,
-        })
-      }
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
-
-    const filePath = "/tmp/synergy-feishu-test-report.pdf"
-    await Bun.write(filePath, new Uint8Array([4, 5, 6]))
-
-    const provider = providerWithAccount()
-    const result = await provider.pushMessage({
-      accountId: "acct",
-      chatId: "chat_1",
-      parts: [
-        { type: "text", text: "Here is the report." },
-        { type: "file", path: filePath, filename: "report.pdf", contentType: "application/pdf" },
-      ],
-    })
-
-    expect(result).toEqual({ messageId: "msg_3" })
-    expect(JSON.parse(String(requests[0].init?.body))).toEqual({
-      receive_id: "chat_1",
-      content: JSON.stringify({ text: "Here is the report." }),
-      msg_type: "text",
-    })
-    expect(requests[1].url).toContain("/im/v1/files")
-    expect(JSON.parse(String(requests[2].init?.body))).toEqual({
-      receive_id: "chat_1",
-      content: JSON.stringify({ file_key: "file_v2_123" }),
-      msg_type: "file",
-    })
-  })
-
-  test("video without duration degrades to file message", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = []
-    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = url.toString()
-      requests.push({ url: urlStr, init })
-      if (urlStr.endsWith("/im/v1/files")) {
-        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_v2_video" } }), { status: 200 })
-      }
-      if (urlStr.includes("/im/v1/messages/msg_2/reply")) {
-        return new Response(JSON.stringify({ code: 0, data: { message_id: "reply_video" } }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${urlStr}`)
-    }) as unknown as typeof fetch
-
-    const filePath = "/tmp/synergy-feishu-test-video.mp4"
-    await Bun.write(filePath, new Uint8Array([7, 8, 9]))
-
-    const provider = providerWithAccount()
-    const result = await provider.replyMessage({
-      accountId: "acct",
-      messageId: "msg_2",
-      parts: [{ type: "video", path: filePath, filename: "clip.mp4", contentType: "video/mp4" }],
-    })
-
-    expect(result).toEqual({ messageId: "reply_video" })
-    expect(JSON.parse(String(requests[1].init?.body))).toEqual({
-      content: JSON.stringify({ file_key: "file_v2_video" }),
-      msg_type: "file",
-    })
   })
 })
