@@ -83,6 +83,49 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "memory_write":
       case "memory_edit":
         return "Forming memory"
+      case "note_list":
+      case "note_read":
+      case "note_search":
+      case "note_write":
+        return "Working with notes"
+      case "session_list":
+      case "session_read":
+      case "session_search":
+        return "Browsing sessions"
+      case "session_send":
+        return "Sending message"
+      case "agenda_create":
+      case "agenda_list":
+      case "agenda_update":
+      case "agenda_delete":
+      case "agenda_trigger":
+      case "agenda_logs":
+        return "Managing schedule"
+      case "agora_search":
+      case "agora_read":
+        return "Browsing projects"
+      case "agora_post":
+      case "agora_join":
+      case "agora_sync":
+      case "agora_submit":
+      case "agora_accept":
+      case "agora_comment":
+        return "Collaborating on Agora"
+      case "profile_get":
+      case "profile_update":
+        return "Updating profile"
+      case "email":
+        return "Sending email"
+      case "attach":
+        return "Preparing files"
+      case "diagram":
+        return "Drawing diagram"
+      case "runtime_reload":
+        return "Reloading config"
+      case "task_list":
+        return "Managing tasks"
+      case "batch":
+        return "Running batch"
       default:
         return undefined
     }
