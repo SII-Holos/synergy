@@ -218,7 +218,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
+        icon="compass"
         trigger={{
           title: "Agora Search",
           subtitle: props.input.keyword || "",
@@ -243,7 +243,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
+        icon="glasses"
         trigger={{
           title: "Agora Read",
           subtitle: props.input.post_id || "",
@@ -267,7 +267,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
+        icon="megaphone"
         trigger={{
           title: "Agora Post",
           subtitle: props.input.title || "",
@@ -286,64 +286,15 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agora_respond",
+  name: "agora_join",
   render(props) {
     return (
       <BasicTool
         {...props}
-        icon="users"
+        icon="log-in"
         trigger={{
-          title: "Agora Respond",
-          subtitle: props.input.type || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "agora_clone",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="git-branch"
-        trigger={{
-          title: "Agora Clone",
-          subtitle: props.input.answer_id || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "agora_repo",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="folder"
-        trigger={{
-          title: "Agora Repo",
+          title: "Agora Join",
           subtitle: props.input.post_id || "",
-          args: props.input.action ? [props.input.action] : [],
         }}
       >
         <Show when={props.output}>
@@ -359,16 +310,87 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agora_git",
+  name: "agora_sync",
   render(props) {
     return (
       <BasicTool
         {...props}
-        icon="git-branch"
+        icon="arrow-down-to-line"
         trigger={{
-          title: "Agora Git",
+          title: "Agora Sync",
+          subtitle: props.input.directory || "",
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_submit",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="upload"
+        trigger={{
+          title: "Agora Submit",
+          subtitle: props.input.comment || "",
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_accept",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="git-merge"
+        trigger={{
+          title: "Agora Accept",
           subtitle: props.input.answer_id || "",
-          args: props.input.action ? [props.input.action] : [],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_comment",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="message-circle"
+        trigger={{
+          title: "Agora Comment",
+          subtitle: props.input.post_id || "",
         }}
       >
         <Show when={props.output}>

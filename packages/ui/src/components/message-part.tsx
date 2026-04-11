@@ -470,45 +470,51 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "agora_search":
       return {
-        icon: "users",
+        icon: "compass",
         title: "Agora Search",
         subtitle: input.keyword,
       }
     case "agora_read":
       return {
-        icon: "users",
+        icon: "glasses",
         title: "Agora Read",
         subtitle: input.post_id,
       }
     case "agora_post":
       return {
-        icon: "users",
+        icon: "megaphone",
         title: "Agora Post",
         subtitle: input.title,
       }
-    case "agora_respond":
+    case "agora_join":
       return {
-        icon: "users",
-        title: "Agora Respond",
-        subtitle: input.type,
-      }
-    case "agora_clone":
-      return {
-        icon: "git-branch",
-        title: "Agora Clone",
-        subtitle: input.answer_id,
-      }
-    case "agora_repo":
-      return {
-        icon: "folder",
-        title: "Agora Repo",
+        icon: "log-in",
+        title: "Agora Join",
         subtitle: input.post_id,
       }
-    case "agora_git":
+    case "agora_sync":
       return {
-        icon: "git-branch",
-        title: "Agora Git",
+        icon: "arrow-down-to-line",
+        title: "Agora Sync",
+        subtitle: input.directory,
+      }
+    case "agora_submit":
+      return {
+        icon: "upload",
+        title: "Agora Submit",
+        subtitle: input.comment,
+      }
+    case "agora_accept":
+      return {
+        icon: "git-merge",
+        title: "Agora Accept",
         subtitle: input.answer_id,
+      }
+    case "agora_comment":
+      return {
+        icon: "message-circle",
+        title: "Agora Comment",
+        subtitle: input.post_id,
       }
     case "memory_search":
       return {
