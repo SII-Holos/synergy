@@ -27,6 +27,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +40,7 @@ jobs:
         run: bun install
 
       - name: Run tests
-        run: bun test
+        run: bun test --timeout 30000
         working-directory: packages/synergy
 
   format:

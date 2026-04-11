@@ -36,6 +36,11 @@ try {
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
+// Disable plugins and LSP download to avoid hangs in CI
+process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
+process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
+// Disable file watcher to avoid native module / inotify hangs in CI
+process.env["SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]
