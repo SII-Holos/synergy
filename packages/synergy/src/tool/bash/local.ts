@@ -11,7 +11,7 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 
-const DEFAULT_TIMEOUT = Flag.SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
+const DEFAULT_TIMEOUT_S = Flag.SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_S ?? 2 * 60
 
 const log = Log.create({ service: "bash-tool" })
 
@@ -52,7 +52,7 @@ export const LocalBashBackend: BashBackend = {
     if (params.timeout !== undefined && params.timeout < 0) {
       throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
     }
-    const timeout = params.timeout ?? DEFAULT_TIMEOUT
+    const timeout = params.timeout ?? DEFAULT_TIMEOUT_S
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
       throw new Error("Failed to parse command")
@@ -211,18 +211,21 @@ export const LocalBashBackend: BashBackend = {
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true
-      void kill()
-    }, timeout + 100)
+    const timeoutTimer = setTimeout(
+      () => {
+        timedOut = true
+        void kill()
+      },
+      timeout * 1000 + 100,
+    )
 
-    const yieldMs = params.yieldMs
+    const yieldS = params.yieldSeconds
     const yieldResult = await new Promise<"exited" | "yielded" | "error">((resolve, reject) => {
-      const yieldTimer = yieldMs
+      const yieldTimer = yieldS
         ? setTimeout(() => {
             yielded = true
             resolve("yielded")
-          }, yieldMs)
+          }, yieldS * 1000)
         : undefined
 
       const cleanup = () => {
@@ -256,7 +259,7 @@ export const LocalBashBackend: BashBackend = {
           backend: "local",
         },
         output:
-          `Command auto-backgrounded after ${yieldMs}ms.\n\n` +
+          `Command auto-backgrounded after ${yieldS}s.\n\n` +
           `Process ID: ${regProc.id}\n` +
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
@@ -270,7 +273,7 @@ export const LocalBashBackend: BashBackend = {
     const resultMetadata: string[] = []
 
     if (timedOut) {
-      resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout} ms`)
+      resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout}s`)
     }
 
     if (aborted) {

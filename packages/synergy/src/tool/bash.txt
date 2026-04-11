@@ -26,13 +26,13 @@ Usage notes:
   - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
   - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
   - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
-  - You can specify an optional timeout in milliseconds. If not specified, commands will time out after 120000ms (2 minutes).
+  - You can specify an optional timeout in seconds. If not specified, commands will time out after 120 seconds (2 minutes).
 
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output - just run the command directly.
   - For long-running commands, consider using background execution:
     - Set `background: true` to run the command in background and return immediately with a processId.
-    - Set `yieldMs` to auto-background if the command takes longer than the specified milliseconds.
+    - Set `yieldSeconds` to auto-background if the command takes longer than the specified seconds.
     - Use the `process` tool to monitor/interact with background sessions (list, poll, log, write, send-keys, kill).
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:

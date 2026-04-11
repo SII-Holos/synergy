@@ -83,14 +83,21 @@ export class ProcessRegistry {
       return this.#backgroundResult(launched.record, envID, request.description, "Background")
     }
 
-    if (request.yieldMs && request.yieldMs > 0) {
+    if (request.yieldSeconds && request.yieldSeconds > 0) {
+      const yieldMs = request.yieldSeconds * 1000
       const autoBackground = await Promise.race([
         this.#waitForExit(launched.record.processId).then(() => false),
-        Platform.sleep(request.yieldMs).then(() => !launched.record.exited),
+        Platform.sleep(yieldMs).then(() => !launched.record.exited),
       ])
       if (autoBackground) {
         launched.record.backgrounded = true
-        return this.#backgroundResult(launched.record, envID, request.description, "Auto-Background", request.yieldMs)
+        return this.#backgroundResult(
+          launched.record,
+          envID,
+          request.description,
+          "Auto-Background",
+          request.yieldSeconds,
+        )
       }
     }
 
@@ -547,10 +554,12 @@ export class ProcessRegistry {
     envID: string,
     description: string,
     mode: "Background" | "Auto-Background",
-    yieldMs?: number,
+    yieldSeconds?: number,
   ): MetaProtocolBash.Result {
     const prefix =
-      mode === "Auto-Background" ? `Command auto-backgrounded after ${yieldMs}ms.` : "Command started in background."
+      mode === "Auto-Background"
+        ? `Command auto-backgrounded after ${yieldSeconds}s.`
+        : "Command started in background."
     return {
       title: `[${mode}] ${description}`,
       metadata: {
