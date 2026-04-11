@@ -19,6 +19,7 @@ const HOLOS_EVENTS = new Set([
   "holos.friend_request.updated",
   "holos.friend_request.removed",
   "holos.profile.updated",
+  "holos.connection.status_changed",
 ])
 
 const CARD_ENTER_STYLE = `
@@ -35,6 +36,7 @@ export function HolosPanel() {
   const dialogCtx = useDialog()
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
+  const [reconnecting, setReconnecting] = createSignal(false)
 
   const unsub = globalSDK.event.listen((e) => {
     const eventType = e.details?.type
@@ -87,10 +89,11 @@ export function HolosPanel() {
   }
 
   async function handleReconnect() {
+    if (reconnecting()) return
+    setReconnecting(true)
     try {
       await globalSDK.client.holos.reconnect()
       showToast({ title: "Reconnecting..." })
-      setTimeout(() => void holos.refresh(), 2000)
     } catch (error: unknown) {
       const msg =
         error instanceof Error
@@ -103,6 +106,8 @@ export function HolosPanel() {
         return
       }
       showToast({ title: "Reconnect failed", description: msg || "Failed to reconnect" })
+    } finally {
+      setReconnecting(false)
     }
   }
 
@@ -120,7 +125,7 @@ export function HolosPanel() {
       if (auth.status === "guest" && agentId) {
         auth.loginWithToken(agentId, { id: agentId })
       }
-      setTimeout(() => void holos.refresh(), 2000)
+      void holos.refresh()
       showToast({ title: "Connected to Holos" })
     },
     onError: (msg) => showToast({ title: msg }),
@@ -162,6 +167,7 @@ export function HolosPanel() {
               loggedIn={holos.state.identity.loggedIn}
               isGuest={auth.status === "guest"}
               connecting={connecting()}
+              reconnecting={reconnecting()}
               capabilityItems={holos.state.capability.items}
               entitlements={holos.state.entitlement}
               onEditProfile={handleEditProfile}

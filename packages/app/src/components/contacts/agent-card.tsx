@@ -17,6 +17,7 @@ export function AgentCard(props: {
   loggedIn: boolean
   isGuest: boolean
   connecting?: boolean
+  reconnecting?: boolean
   onEditProfile: () => void
   onDisconnect: () => void
   onReconnect: () => void
@@ -91,10 +92,11 @@ export function AgentCard(props: {
                   <Show when={canReconnect()}>
                     <button
                       type="button"
-                      class="text-10-medium text-text-interactive-base hover:underline transition-all"
+                      class="text-10-medium text-text-interactive-base hover:underline transition-all disabled:opacity-60"
                       onClick={props.onReconnect}
+                      disabled={props.reconnecting}
                     >
-                      Reconnect
+                      {props.reconnecting ? "Reconnecting…" : "Reconnect"}
                     </button>
                   </Show>
                   <DropdownMenu>

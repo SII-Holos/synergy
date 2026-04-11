@@ -146,10 +146,25 @@ export namespace HolosRuntime {
 
   export const Event = {
     Connected: BusEvent.define("holos.connected", z.object({ peerId: z.string() })),
+    StatusChanged: BusEvent.define(
+      "holos.connection.status_changed",
+      z.object({ status: z.string(), error: z.string().optional() }),
+    ),
     PresenceUpdate: BusEvent.define(
       "holos.presence",
       z.object({ peerId: z.string(), status: HolosProtocol.PeerStatus }),
     ),
+  }
+
+  function setStatus(current: RuntimeConnection, next: Status) {
+    const prev = current.status.status
+    current.status = next
+    if (prev !== next.status) {
+      Bus.publish(Event.StatusChanged, {
+        status: next.status,
+        ...("error" in next ? { error: next.error } : {}),
+      }).catch((err) => log.warn("failed to publish status change", { error: err }))
+    }
   }
 
   const appEventHandlers = new Set<AppEventHandler>()
@@ -210,25 +225,25 @@ export namespace HolosRuntime {
     current.abort = new AbortController()
     current.holosConfig = holos ?? null
     current.provider = null
-    current.status = { status: "disconnected" }
+    setStatus(current, { status: "disconnected" })
 
     if (!holos || !holos.enabled) {
-      current.status = { status: "disabled" }
+      setStatus(current, { status: "disabled" })
       return
     }
 
-    current.status = { status: "connecting" }
+    setStatus(current, { status: "connecting" })
 
     void start().catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
-      current.status = { status: "failed", error: message }
+      setStatus(current, { status: "failed", error: message })
     })
   }
 
   export async function start(): Promise<void> {
     const current = await state()
     if (!current.holosConfig) {
-      current.status = { status: "disabled" }
+      setStatus(current, { status: "disabled" })
       return
     }
 
@@ -238,26 +253,28 @@ export namespace HolosRuntime {
     }
     current.abort.abort()
     current.abort = new AbortController()
-    current.status = { status: "connecting" }
+    const signal = current.abort.signal
+    setStatus(current, { status: "connecting" })
 
     const provider = new HolosProvider()
     await provider.connect({
       config: current.holosConfig,
-      signal: current.abort.signal,
+      signal,
       onDisconnect: (reason) => {
-        if (current.abort.signal.aborted) return
+        if (signal.aborted) return
         current.provider = null
         void syncRemoteExecutionState(current).catch((err) =>
           log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
         )
-        const status: Status = { status: "disconnected" }
-        current.status = status
+        setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
       },
     })
 
+    if (signal.aborted) return
+
     current.provider = provider
-    current.status = { status: "connected" }
+    setStatus(current, { status: "connected" })
     await syncRemoteExecutionState(current)
   }
 
@@ -269,7 +286,7 @@ export namespace HolosRuntime {
     }
     current.provider = null
     current.abort.abort()
-    current.status = { status: "disconnected" }
+    setStatus(current, { status: "disconnected" })
     await syncRemoteExecutionState(current).catch((err) =>
       log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
     )
@@ -286,14 +303,12 @@ export namespace HolosRuntime {
       if (!current.holosConfig || current.abort.signal.aborted) return
 
       if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-        const status: Status = { status: "failed", error: "max reconnect attempts exceeded" }
-        current.status = status
+        setStatus(current, { status: "failed", error: "max reconnect attempts exceeded" })
         return
       }
 
       const delayMs = Math.min(RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS)
-      const status: Status = { status: "connecting" }
-      current.status = status
+      setStatus(current, { status: "connecting" })
 
       if (current.reconnectTimer) clearTimeout(current.reconnectTimer)
       current.reconnectTimer = setTimeout(() => {
@@ -301,8 +316,7 @@ export namespace HolosRuntime {
         if (current.abort.signal.aborted) return
         start().catch((err) => {
           const message = err instanceof Error ? err.message : String(err)
-          const failed: Status = { status: "failed", error: message }
-          current.status = failed
+          setStatus(current, { status: "failed", error: message })
           log.warn("holos reconnect failed", { attempt: attempt + 1, reason, error: message })
           scheduleReconnect({ attempt: attempt + 1, reason })
         })

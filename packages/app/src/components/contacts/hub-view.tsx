@@ -15,6 +15,7 @@ export function HubView(props: {
   loggedIn: boolean
   isGuest: boolean
   connecting: boolean
+  reconnecting: boolean
   capabilityItems: HolosState["capability"]["items"]
   entitlements: HolosState["entitlement"]
   onEditProfile: () => void
@@ -42,6 +43,7 @@ export function HubView(props: {
         loggedIn={props.loggedIn}
         isGuest={props.isGuest}
         connecting={props.connecting}
+        reconnecting={props.reconnecting}
         onEditProfile={props.onEditProfile}
         onDisconnect={props.onDisconnect}
         onReconnect={props.onReconnect}
@@ -105,10 +107,16 @@ export function HubView(props: {
               <button
                 type="button"
                 class="w-full h-8 mt-3 flex items-center justify-center rounded-lg text-12-medium transition-all active:scale-[0.98] bg-text-interactive-base text-white hover:opacity-90 disabled:opacity-60"
-                disabled={props.connecting}
+                disabled={props.connecting || (isLogin ? false : props.reconnecting)}
                 onClick={isLogin ? props.onConnectHolos : props.onReconnect}
               >
-                {props.connecting ? "Connecting…" : isLogin ? "Sign in to Holos" : "Reconnect to Holos"}
+                {props.connecting
+                  ? "Connecting…"
+                  : props.reconnecting
+                    ? "Reconnecting…"
+                    : isLogin
+                      ? "Sign in to Holos"
+                      : "Reconnect to Holos"}
               </button>
             )
           })()}
