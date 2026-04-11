@@ -3,7 +3,6 @@ import { Config } from "../config/config"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Session } from "../session"
-import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
@@ -54,7 +53,6 @@ export namespace Cortex {
       scope: parent.scope as import("@/scope").Scope,
       parentID: input.parentSessionID,
       title: `[Cortex] ${input.description} (@${input.agent})`,
-      interaction: SessionInteraction.unattended("cortex"),
       permission: [
         { permission: "question", pattern: "*", action: "deny" },
         ...(executionRole === "delegated_subagent"
