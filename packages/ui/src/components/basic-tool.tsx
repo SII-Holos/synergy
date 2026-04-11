@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps, IconName } from "./icon"
 import { Spinner } from "./spinner"
+import { Countdown } from "./countdown"
 
 export type TriggerTitle = {
   title: string
@@ -27,6 +28,7 @@ export interface BasicToolProps {
   defaultOpen?: boolean
   forceOpen?: boolean
   status?: string
+  countdown?: number
   onSubtitleClick?: () => void
 }
 
@@ -100,6 +102,9 @@ export function BasicTool(props: BasicToolProps) {
           </div>
           <Switch>
             <Match when={active()}>
+              <Show when={props.countdown != null}>
+                <Countdown seconds={props.countdown!} active={active()} />
+              </Show>
               <Spinner />
             </Match>
             <Match when={props.children && !props.hideDetails}>

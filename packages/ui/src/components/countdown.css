@@ -1,0 +1,18 @@
+[data-component="countdown"] {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-large);
+  color: var(--text-weak);
+  flex-shrink: 0;
+  transition: color 0.3s ease;
+
+  &[data-urgent="true"] {
+    color: var(--icon-warning-base);
+  }
+
+  &[data-expired="true"] {
+    color: var(--icon-warning-active);
+  }
+}

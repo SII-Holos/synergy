@@ -464,6 +464,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="mouse-pointer-2"
+        countdown={props.input.timeout ?? 30}
         trigger={{
           title: "Webfetch",
           subtitle: props.input.url || "",
@@ -566,10 +567,17 @@ ToolRegistry.register({
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
+    const countdown = () => {
+      if (props.input.background) return undefined
+      const timeout = props.input.timeout ?? 120
+      const yieldS = props.input.yieldSeconds
+      return yieldS != null ? Math.min(timeout, yieldS) : timeout
+    }
     return (
       <BasicTool
         {...props}
         icon="terminal"
+        countdown={countdown()}
         trigger={{
           title: "Shell",
           subtitle: props.input.description,
@@ -1249,10 +1257,15 @@ ToolRegistry.register({
       if (props.input.processId) result.push(shortId())
       return result
     }
+    const countdown = () => {
+      if (props.input.action !== "poll" || !props.input.block) return undefined
+      return props.input.timeout ?? 30
+    }
     return (
       <BasicTool
         {...props}
         icon="terminal"
+        countdown={countdown()}
         trigger={{
           title: "Process",
           subtitle: props.input.action || "",
@@ -1293,25 +1306,23 @@ ToolRegistry.register({
   name: "task_output",
   render(props) {
     const description = () => props.metadata.description as string | undefined
-    const timeout = () => props.metadata.timeout as number | undefined
     const shortId = () => {
       const id = props.input.task_id || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
-    const args = () => {
-      const parts: string[] = []
-      if (description()) parts.push(shortId())
-      if (timeout()) parts.push(`timeout: ${timeout()}s`)
-      return parts
+    const countdown = () => {
+      if (!props.input.block) return undefined
+      return props.input.timeout ?? 60
     }
     return (
       <BasicTool
         {...props}
         icon="list-todo"
+        countdown={countdown()}
         trigger={{
           title: "Task Output",
           subtitle: description() || shortId(),
-          args: args(),
+          args: description() ? [shortId()] : [],
         }}
       />
     )
