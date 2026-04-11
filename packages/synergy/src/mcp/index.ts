@@ -182,11 +182,7 @@ export namespace MCP {
 
   export const Ready = BusEvent.define("mcp.ready", z.object({}))
 
-  async function prewarmDiscoveryCaches(
-    clientName: string,
-    client: MCPClient,
-    timeout = DEFAULT_TIMEOUT,
-  ) {
+  async function prewarmDiscoveryCaches(clientName: string, client: MCPClient, timeout = DEFAULT_TIMEOUT) {
     const [promptCache, resourceCache] = await Promise.all([
       fetchPromptsForClient(clientName, client, timeout),
       fetchResourcesForClient(clientName, client, timeout),

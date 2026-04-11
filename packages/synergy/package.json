@@ -104,6 +104,7 @@
     "ulid": "catalog:",
     "unpdf": "1.4.0",
     "vscode-jsonrpc": "8.2.1",
+    "vscode-languageserver-types": "3.17.5",
     "web-tree-sitter": "0.25.10",
     "xlsx": "0.18.5",
     "yargs": "18.0.0",

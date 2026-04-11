@@ -220,7 +220,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
 
-    const eventDispatcher = new Lark.EventDispatcher({}).register<{
+    const eventDispatcher = new Lark.EventDispatcher({ logger }).register<{
       "card.action.trigger"?: (data: unknown) => Promise<unknown> | unknown
     }>({
       "im.message.receive_v1": (data: unknown) => {
