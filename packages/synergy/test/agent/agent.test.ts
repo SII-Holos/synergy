@@ -413,6 +413,18 @@ test("default permission includes doom_loop allow and external_directory ask", a
   })
 })
 
+test("openclaw external agent is registered without model switching claims", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const openclaw = await Agent.get("openclaw")
+      expect(openclaw?.external?.adapter).toBe("openclaw")
+      expect(openclaw?.external?.config?.modelSwitch).toBeUndefined()
+    },
+  })
+})
+
 test("webfetch is allowed by default", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({

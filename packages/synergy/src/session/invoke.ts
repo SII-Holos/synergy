@@ -236,17 +236,25 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const adapter = ExternalAgent.getAdapter(agent.external.adapter)
+          const allowAll = await PermissionNext.isAllowingAll(sessionID)
+          let adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
           }
-          if (!adapter.started) {
-            const allowAll = await PermissionNext.isAllowingAll(sessionID)
-            const startConfig = { ...agent.external.config }
-            if (allowAll && !startConfig.approvalPolicy) {
-              startConfig.approvalPolicy = "never"
+
+          const currentConfig = (adapter as any).adapterConfig as Record<string, unknown> | undefined
+          if (adapter.started && externalAdapterNeedsRestart(adapter.name, currentConfig, allowAll)) {
+            await ExternalAgent.shutdownAdapter(agent.external.adapter, sessionID)
+            adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
+            if (!adapter) {
+              log.error("external adapter not found after restart", { adapter: agent.external.adapter, sessionID })
+              break
             }
+          }
+
+          if (!adapter.started) {
+            const startConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
 
             const override = await resolveExternalModelOverride(lastUser.model)
             if (override) {
@@ -260,12 +268,14 @@ export namespace SessionInvoke {
               config: startConfig,
               env: override?.apiKey ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined,
             })
-          } else if (adapter.capabilities.modelSwitch) {
-            // For adapters that support model switching, update the model on each turn
-            const override = await resolveExternalModelOverride(lastUser.model)
-            if (override) {
-              const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
-              if (cfg) {
+          } else {
+            const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
+            if (cfg) {
+              applyExternalPermissionMode(cfg, adapter.name, allowAll)
+            }
+            if (adapter.capabilities.modelSwitch) {
+              const override = await resolveExternalModelOverride(lastUser.model)
+              if (override && cfg) {
                 cfg.model = override.model
                 if (override.baseURL) cfg.baseURL = override.baseURL
               }
@@ -287,18 +297,19 @@ export namespace SessionInvoke {
           const approvalDelegate: ExternalAgent.ApprovalDelegate = async (request) => {
             if (await PermissionNext.isAllowingAll(sessionID)) return true
             try {
-              const label = request.tool || "external-agent"
               await PermissionNext.ask({
                 sessionID,
-                permission: label,
-                patterns: [label],
+                permission: "external-agent",
+                patterns: ["*"],
                 metadata: {
                   input: request.input,
                   source: "external-agent",
                   adapter: adapter.name,
+                  tool: request.tool,
+                  category: request.category,
                   ...PermissionNext.requestMetadata(session),
                 },
-                ruleset: [],
+                ruleset: PermissionNext.sessionRuleset(session),
               })
               return true
             } catch (e) {
@@ -696,6 +707,45 @@ export namespace SessionInvoke {
     providerID?: string
     baseURL?: string
     apiKey?: string
+  }
+
+  export function applyExternalPermissionMode(
+    config: Record<string, unknown>,
+    adapterName: string,
+    allowAll: boolean,
+  ): Record<string, unknown> {
+    if (adapterName === "claude-code") {
+      delete config.skipPermissions
+      config.permissionMode = allowAll ? "bypassPermissions" : "default"
+      return config
+    }
+
+    if (adapterName === "codex") {
+      config.approvalPolicy = allowAll ? "never" : "on-request"
+      return config
+    }
+
+    return config
+  }
+
+  export function externalAdapterNeedsRestart(
+    adapterName: string,
+    config: Record<string, unknown> | undefined,
+    allowAll: boolean,
+  ): boolean {
+    if (!config) return false
+
+    if (adapterName === "claude-code") {
+      const desired = allowAll ? "bypassPermissions" : "default"
+      return config.permissionMode !== desired || config.skipPermissions === true
+    }
+
+    if (adapterName === "codex") {
+      const desired = allowAll ? "never" : "on-request"
+      return config.approvalPolicy !== desired
+    }
+
+    return false
   }
 
   async function resolveExternalModelOverride(userModel: {

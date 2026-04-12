@@ -12,15 +12,14 @@ const log = Log.create({ service: "external-agent.openclaw" })
  * JSON output is on **stderr** (v2026.4.x change), stdout is empty.
  * Must strip ANSI escape codes from stderr before JSON parsing.
  *
- * Model switching is handled internally by OpenClaw's own model routing — we don't
- * need to manage it. modelSwitch is true because changing the model doesn't require
- * a new session.
+ * Model switching is currently not wired through this adapter safely.
+ * Keep modelSwitch false until the adapter explicitly applies per-turn model overrides.
  */
 class OpenClawAdapter implements ExternalAgent.Adapter {
   readonly name = "openclaw"
 
   readonly capabilities: ExternalAgent.Capabilities = {
-    modelSwitch: true,
+    modelSwitch: false,
     interrupt: true,
   }
 

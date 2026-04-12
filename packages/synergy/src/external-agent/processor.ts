@@ -116,9 +116,9 @@ export namespace ExternalAgentProcessor {
               },
             })) as MessageV2.ToolPart
             toolParts.set(event.id, part)
-            finalizeTextPart(textPart)
+            await finalizeTextPart(textPart)
             textPart = undefined
-            finalizeReasoningPart(reasoningPart)
+            await finalizeReasoningPart(reasoningPart)
             reasoningPart = undefined
             break
           }
@@ -190,6 +190,7 @@ export namespace ExternalAgentProcessor {
               approved = await Promise.race([
                 approvalDelegate({
                   id: event.id,
+                  category: event.category,
                   tool: event.tool,
                   input: event.input,
                 }),
@@ -220,8 +221,8 @@ export namespace ExternalAgentProcessor {
       }
     }
 
-    finalizeTextPart(textPart)
-    finalizeReasoningPart(reasoningPart)
+    await finalizeTextPart(textPart)
+    await finalizeReasoningPart(reasoningPart)
 
     for (const [, part] of toolParts) {
       const startTime = part.state.status === "running" ? part.state.time.start : Date.now()
@@ -256,16 +257,18 @@ export namespace ExternalAgentProcessor {
     return { info: assistantMessage, parts }
   }
 
-  function finalizeTextPart(part: MessageV2.TextPart | undefined) {
+  async function finalizeTextPart(part: MessageV2.TextPart | undefined) {
     if (!part) return
     part.text = part.text.trimEnd()
     part.time = { start: part.time?.start ?? Date.now(), end: Date.now() }
+    await Session.updatePart(part)
   }
 
-  function finalizeReasoningPart(part: MessageV2.ReasoningPart | undefined) {
+  async function finalizeReasoningPart(part: MessageV2.ReasoningPart | undefined) {
     if (!part) return
     part.text = part.text.trimEnd()
     part.time = { ...part.time, end: Date.now() }
+    await Session.updatePart(part)
   }
 
   function tryParseJSON(input?: string): Record<string, any> {

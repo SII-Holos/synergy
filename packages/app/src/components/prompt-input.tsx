@@ -361,6 +361,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return (sync.data.message[params.id] ?? []).length > 0
   })
   const isCurrentAgentExternal = createMemo(() => !!local.agent.current()?.external)
+  const isCurrentExternalModelLocked = createMemo(() => {
+    const external = local.agent.current()?.external
+    if (!external) return false
+    if (!sessionHasMessages()) return false
+    return external.adapter === "codex"
+  })
   const cortexRunning = createMemo(() => {
     const id = params.id
     if (!id) return 0
@@ -2110,15 +2116,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       </ToolbarSelectorPopover>
                     </TooltipKeybind>
                     <Show
-                      when={!isCurrentAgentExternal()}
+                      when={!isCurrentExternalModelLocked()}
                       fallback={
-                        <Tooltip placement="top" value="Model is managed by external agent">
+                        <Tooltip
+                          placement="top"
+                          value="Model is locked for this external agent after the session starts"
+                        >
                           <button
                             type="button"
                             class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base transition-colors text-12-medium text-text-subtle cursor-default opacity-60"
                           >
                             <Icon name="sparkles" size="small" class="text-icon-weak" />
-                            <span>{local.agent.current()?.name ?? "External"}</span>
+                            <span>{local.model.current()?.name ?? "Model locked"}</span>
                           </button>
                         </Tooltip>
                       }

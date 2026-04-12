@@ -72,6 +72,7 @@ export namespace ExternalAgent {
 
   export interface ApprovalRequest {
     id: string
+    category: string
     tool: string
     input: string
   }
@@ -145,6 +146,10 @@ export namespace ExternalAgent {
   const adapters = new Map<string, () => Adapter>()
   const instances = new Map<string, Adapter>()
 
+  function instanceKey(name: string, sessionID?: string) {
+    return sessionID ? `${name}:${sessionID}` : name
+  }
+
   export function register(name: string, factory: () => Adapter) {
     adapters.set(name, factory)
   }
@@ -153,13 +158,14 @@ export namespace ExternalAgent {
     return [...adapters.keys()]
   }
 
-  export function getAdapter(name: string): Adapter | undefined {
-    let instance = instances.get(name)
+  export function getAdapter(name: string, sessionID?: string): Adapter | undefined {
+    const key = instanceKey(name, sessionID)
+    let instance = instances.get(key)
     if (instance) return instance
     const factory = adapters.get(name)
     if (!factory) return undefined
     instance = factory()
-    instances.set(name, instance)
+    instances.set(key, instance)
     return instance
   }
 
@@ -173,5 +179,17 @@ export namespace ExternalAgent {
     })
     await Promise.allSettled(tasks)
     instances.clear()
+  }
+
+  export async function shutdownAdapter(name: string, sessionID?: string): Promise<void> {
+    const key = instanceKey(name, sessionID)
+    const adapter = instances.get(key)
+    if (!adapter) return
+    instances.delete(key)
+    try {
+      await adapter.shutdown()
+    } catch (e) {
+      log.warn("shutdown failed", { adapter: key, error: String(e) })
+    }
   }
 }

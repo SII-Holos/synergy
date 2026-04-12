@@ -11,7 +11,7 @@ type QueueEntry = { event: ExternalAgent.BridgeEvent } | { done: true }
  * Integration model: spawn `claude` per turn with `--print --output-format stream-json --verbose`.
  * Multi-turn is achieved via `--resume <session_id>`.
  * Model switching is supported without starting a new session — just pass `--model <model>`.
- * Permission control is handled via `--dangerously-skip-permissions` or `--permission-mode`.
+ * Permission control is handled via Claude Code CLI modes; Synergy currently maps session-level allowAll to a coarse permission mode.
  * No persistent process — each turn spawns a fresh subprocess.
  */
 class ClaudeCodeAdapter implements ExternalAgent.Adapter {
@@ -153,9 +153,9 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
     // Permission mode
     const permissionMode = this.adapterConfig.permissionMode as string | undefined
     const skipPermissions = this.adapterConfig.skipPermissions as boolean | undefined
-    if (skipPermissions || !permissionMode) {
+    if (skipPermissions) {
       args.push("--dangerously-skip-permissions")
-    } else {
+    } else if (permissionMode) {
       args.push("--permission-mode", permissionMode)
     }
 
