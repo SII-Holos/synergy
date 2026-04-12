@@ -31,6 +31,7 @@ import { StopCommand } from "./cli/cmd/stop"
 import { RestartCommand } from "./cli/cmd/restart"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
+import { PluginCommand } from "./cli/cmd/plugin"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -111,6 +112,7 @@ const cli = yargs(hideBin(process.argv))
   .command(RestartCommand)
   .command(StatusCommand)
   .command(LogsCommand)
+  .command(PluginCommand)
   .fail((msg) => {
     if (
       msg?.startsWith("Unknown argument") ||

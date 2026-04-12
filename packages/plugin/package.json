@@ -26,6 +26,11 @@
       "bun": "./src/tool.ts",
       "types": "./src/tool.ts",
       "import": "./dist/tool.js"
+    },
+    "./hooks": {
+      "bun": "./src/hooks.ts",
+      "types": "./src/hooks.ts",
+      "import": "./dist/hooks.js"
     }
   },
   "files": [

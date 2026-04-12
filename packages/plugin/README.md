@@ -188,6 +188,8 @@ A few things to know about plugin tools:
 
 ## Hooks overview
 
+If you want a current CLI list instead of reading source, run `synergy plugin hooks` or `synergy plugin hooks --json`.
+
 Hooks fall into two broad categories.
 
 ### Observation hooks
