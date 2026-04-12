@@ -573,11 +573,11 @@ export namespace Agent {
     const externalConfig = cfg.external_agent ?? {}
     const externalDescriptions: Record<string, string> = {
       codex:
-        "OpenAI Codex CLI agent for autonomous coding tasks. Spawns a persistent app-server process with per-session threads. Supports tool execution, file editing, and shell commands. Model switching requires a new session.",
+        "OpenAI Codex agent. Strong at autonomous multi-step coding: implementing features, debugging, refactoring, and running shell commands. Best when the task is well-scoped and implementation-focused.",
       "claude-code":
-        "Anthropic Claude Code CLI agent for autonomous coding tasks. Spawns per-turn with streaming NDJSON events. Supports tool execution (Bash, Edit, Read), thinking/reasoning, and multi-turn via session resume. Model switching is supported without requiring a new session.",
+        "Anthropic Claude Code agent. Excels at complex reasoning, nuanced code review, large-scale refactoring, and tasks requiring deep understanding of codebases. Supports extended thinking for hard problems.",
       openclaw:
-        "OpenClaw multi-channel AI gateway with embedded agent mode. Runs as a local CLI subprocess per turn with persistent session storage. Supports 39+ tools, multi-model routing, and rich permission controls. No mid-turn streaming in CLI mode.",
+        "OpenClaw multi-model agent platform. Versatile generalist with 39+ built-in tools including web search, browser, image generation, and multi-provider model routing. Good for tasks that need diverse tool access beyond pure coding.",
     }
     try {
       await import("@/external-agent/adapter/codex")
