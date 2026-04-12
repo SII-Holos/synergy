@@ -17,7 +17,7 @@ const VISUALS: Record<string, AgentVisual> = {
   scholar: { icon: "brain", label: "Scholar", color: "rgba(245, 158, 11, 0.35)" },
   scout: { icon: "compass", label: "Scout", color: "rgba(6, 182, 212, 0.35)" },
   advisor: { icon: "glasses", label: "Advisor", color: "rgba(236, 72, 153, 0.35)" },
-  codex: { icon: "sparkles", label: "Codex", color: "rgba(14, 165, 233, 0.35)", external: true },
+  codex: { icon: "terminal", label: "Codex", color: "rgba(14, 165, 233, 0.35)", external: true },
   "claude-code": { icon: "bot", label: "Claude Code", color: "rgba(249, 115, 22, 0.35)", external: true },
   openclaw: { icon: "workflow", label: "OpenClaw", color: "rgba(16, 185, 129, 0.35)", external: true },
 }
@@ -58,6 +58,7 @@ export function AgentGlyph(props: {
   class?: string
   size?: "small" | "normal" | "large"
   style?: JSX.CSSProperties
+  quiet?: boolean
 }) {
   const visual = getAgentVisual(props.agent)
   return (
@@ -65,7 +66,7 @@ export function AgentGlyph(props: {
       class={`inline-flex items-center justify-center rounded-full border border-border-base bg-surface-raised-stronger-non-alpha ${props.class ?? ""}`}
       style={{
         color: "var(--icon-base)",
-        "box-shadow": `0 0 0 2px color-mix(in srgb, ${visual.color} 45%, transparent)`,
+        ...(props.quiet ? {} : { "box-shadow": `0 0 0 2px color-mix(in srgb, ${visual.color} 45%, transparent)` }),
         ...props.style,
       }}
     >
@@ -79,14 +80,19 @@ export function AgentPill(props: {
   showLabel?: boolean
   showExternalBadge?: boolean
   class?: string
+  quiet?: boolean
 }) {
   const visual = getAgentVisual(props.agent)
   return (
     <span
       class={`inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-11-medium text-text-weak ${props.class ?? ""}`}
-      style={{
-        "box-shadow": `0 0 0 2px color-mix(in srgb, ${visual.color} 35%, transparent)`,
-      }}
+      style={
+        props.quiet
+          ? undefined
+          : {
+              "box-shadow": `0 0 0 2px color-mix(in srgb, ${visual.color} 35%, transparent)`,
+            }
+      }
     >
       <Icon name={visual.icon} size="small" class="text-icon-base" />
       {props.showLabel !== false && <span>{visual.label}</span>}

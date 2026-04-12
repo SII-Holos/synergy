@@ -6,7 +6,6 @@ import { useCommand } from "@/context/command"
 import { usePanel } from "@/context/panel"
 import { useLayout, getAvatarColors } from "@/context/layout"
 import { useRecentSessions, type RecentSessionItem } from "@/context/recent-sessions"
-import { AgentPill } from "@/components/agent-visual"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -134,18 +133,6 @@ function SessionIdentitySwitcher() {
     return currentSession()?.title || "New session"
   })
   const summary = createMemo(() => recent.summary().label)
-  const currentAgent = createMemo(() => {
-    const dir = projectDirectory()
-    const session = currentSession()
-    if (!dir || !session) return undefined
-    const [child] = globalSync.child(dir)
-    const messages = child.message[session.id] ?? []
-    const assistant = [...messages].reverse().find((message) => message.role === "assistant")
-    if (assistant?.agent) {
-      return child.agent.find((agent) => agent.name === assistant.agent)
-    }
-    return undefined
-  })
 
   const close = () => {
     setStore("open", false)
@@ -213,9 +200,6 @@ function SessionIdentitySwitcher() {
             </div>
             <div class="sid-trigger-title-row">
               <span class="sid-trigger-title truncate">{sessionTitle()}</span>
-              <Show when={currentAgent()}>
-                {(agent) => <AgentPill agent={agent()} showExternalBadge class="max-w-full" />}
-              </Show>
             </div>
           </Show>
         </div>
