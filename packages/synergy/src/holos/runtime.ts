@@ -55,6 +55,7 @@ type ConnectionState = {
   ws: WebSocket | null
   peerId: string | null
   heartbeatTimer: ReturnType<typeof setInterval> | null
+  managedLeaseTimer: ReturnType<typeof setInterval> | null
   pendingSends: Map<string, PendingSend>
   presencePoller: { stop: () => void } | null
   retryLoop: { stop: () => void } | null
@@ -358,6 +359,7 @@ export class HolosProvider {
     ws: null,
     peerId: null,
     heartbeatTimer: null,
+    managedLeaseTimer: null,
     pendingSends: new Map(),
     presencePoller: null,
     retryLoop: null,
@@ -399,6 +401,7 @@ export class HolosProvider {
       ws,
       peerId: credentials.agentId,
       heartbeatTimer: null,
+      managedLeaseTimer: null,
       pendingSends: new Map(),
       presencePoller: null,
       retryLoop: null,
@@ -413,6 +416,7 @@ export class HolosProvider {
         if (cleanedUp) return
         cleanedUp = true
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
+        if (this.state.managedLeaseTimer) clearInterval(this.state.managedLeaseTimer)
         this.state.presencePoller?.stop()
         this.state.retryLoop?.stop()
         for (const unsub of subs) unsub()
@@ -437,6 +441,13 @@ export class HolosProvider {
           }
         }, HEARTBEAT_INTERVAL_MS)
         this.state.heartbeatTimer.unref?.()
+
+        this.state.managedLeaseTimer = setInterval(() => {
+          void this.refreshManagedLease().catch((err: unknown) =>
+            log.warn("managed lease refresh failed", { error: err instanceof Error ? err.message : String(err) }),
+          )
+        }, 5_000)
+        this.state.managedLeaseTimer.unref?.()
 
         Instance.provide({
           scope: capturedScope,
@@ -531,6 +542,11 @@ export class HolosProvider {
     const requestId = crypto.randomUUID()
     this.state.ws.send(Envelope.wsSend({ targetAgentId: agentId, event: "presence.ping", payload: {}, requestId }))
     this.trackSend(requestId, agentId)
+  }
+
+  private async refreshManagedLease(): Promise<void> {
+    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN || !this.state.peerId) return
+    await HolosLocalTakeover.refreshManagedLease(this.state.peerId)
   }
 
   async refreshPresence(): Promise<{ count: number }> {

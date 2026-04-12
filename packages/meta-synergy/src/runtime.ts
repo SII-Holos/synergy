@@ -95,7 +95,7 @@ export class MetaSynergyRuntime {
 
     if (
       runtime.state.runtimeMode === "managed" &&
-      MetaSynergyOwnerRegistry.activeOwnerExpired(runtime.state.ownerRegistry)
+      !MetaSynergyOwnerRegistry.hasActiveLocalOwner(runtime.state.ownerRegistry)
     ) {
       runtime.state.runtimeMode = "standalone"
       runtime.state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(runtime.state.ownerRegistry)
@@ -127,12 +127,6 @@ export class MetaSynergyRuntime {
     state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(state.ownerRegistry)
     if (state.runtimeMode === "standalone") {
       MetaSynergyOwnerRegistry.releaseLocalOwner(state.ownerRegistry)
-      await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
-    } else if (!state.ownerRegistry.local.activeOwnerID) {
-      MetaSynergyOwnerRegistry.declareLocalOwner(
-        state.ownerRegistry,
-        state.envID ?? this.host.envID ?? crypto.randomUUID(),
-      )
       await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
     }
     state.connectionStatus = state.runtimeMode === "managed" ? "disconnected" : "connecting"
@@ -357,30 +351,15 @@ export class MetaSynergyRuntime {
     await this.#setConnectionStatus("disconnected")
     await MetaSynergyStore.saveState(state)
 
-    if (state.service.runtimeStatus === "running" && !this.#stopping) {
-      const auth = await MetaSynergyHolosAuth.load()
-      if (auth) {
-        try {
-          await this.#connectClient()
-        } catch (error) {
-          MetaSynergyLog.error("runtime.connection.recover_failed", {
-            reason: input?.reason,
-            error: error instanceof Error ? error.message : String(error),
-          })
-          this.#scheduleReconnect(input?.reason ?? "standalone_transition_failed")
-        }
-      } else {
-        MetaSynergyLog.warn("runtime.connection.recover_skipped_missing_auth", {
-          reason: input?.reason,
-        })
-      }
-    }
-
     MetaSynergyLog.info("runtime.mode.changed", {
       from: previousMode,
       to: state.runtimeMode,
       reason: input?.reason,
     })
+
+    if (state.service.runtimeStatus === "running" && !this.#stopping) {
+      void this.#resumeStandaloneConnection(input?.reason)
+    }
 
     return {
       mode: state.runtimeMode,
@@ -918,6 +897,25 @@ export class MetaSynergyRuntime {
         error: error instanceof Error ? error.message : String(error),
       })
       this.#scheduleReconnect("scheduled_reconnect_failed")
+    }
+  }
+
+  async #resumeStandaloneConnection(reason?: string) {
+    const state = this.state
+    if (!state || state.runtimeMode !== "standalone" || this.#stopping) return
+    const auth = await MetaSynergyHolosAuth.load()
+    if (!auth) {
+      MetaSynergyLog.warn("runtime.connection.recover_skipped_missing_auth", { reason })
+      return
+    }
+    try {
+      await this.#connectClient()
+    } catch (error) {
+      MetaSynergyLog.error("runtime.connection.recover_failed", {
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      this.#scheduleReconnect(reason ?? "standalone_transition_failed")
     }
   }
 

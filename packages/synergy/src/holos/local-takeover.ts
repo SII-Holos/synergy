@@ -113,6 +113,27 @@ export namespace HolosLocalTakeover {
       handoff: "stopped",
     }
   }
+
+  export async function refreshManagedLease(agentId: string, controlSocketPath = paths().controlSocketPath) {
+    try {
+      const response = await HolosLocalMeta.request(
+        {
+          action: "runtime.set_mode",
+          mode: "managed",
+          owner: "synergy",
+          ownerAgentId: agentId,
+          leaseExpiresAt: Date.now() + LEASE_MS,
+        },
+        { controlSocketPath, timeoutMs: CONTROL_TIMEOUT_MS },
+      )
+      return response.ok
+    } catch (error) {
+      log.warn("managed lease refresh request failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+  }
 }
 
 async function isControlAvailable(controlSocketPath: string): Promise<boolean> {

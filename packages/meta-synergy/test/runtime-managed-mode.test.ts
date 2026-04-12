@@ -28,7 +28,24 @@ describe("meta-synergy managed mode", () => {
   test("startup stays healthy without Holos auth or websocket", async () => {
     const state = await MetaSynergyStore.loadState()
     state.runtimeMode = "managed"
+    state.ownerRegistry.local.activeOwnerID = "synergy:test"
+    state.ownerRegistry.local.ownerIDs = ["synergy:test"]
+    state.ownerRegistry.local.leaseExpiresAt = Date.now() + 60_000
     await MetaSynergyStore.saveState(state)
+    await writeFile(
+      MetaSynergyStore.ownerRegistryPath(),
+      JSON.stringify(
+        {
+          local: {
+            ownerIDs: ["synergy:test"],
+            activeOwnerID: "synergy:test",
+            leaseExpiresAt: Date.now() + 60_000,
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    )
 
     const runtime = await MetaSynergyRuntime.create()
     const originalLogin = runtime.login.bind(runtime)
@@ -45,15 +62,13 @@ describe("meta-synergy managed mode", () => {
     expect(runtime.state?.runtimeMode).toBe("managed")
     expect(runtime.state?.connectionStatus).toBe("disconnected")
     expect(runtime.state?.service.runtimeStatus).toBe("running")
-    expect(runtime.state?.ownerRegistry.local.activeOwnerID).toMatch(/^env_/)
+    expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBe("synergy:test")
 
     const status = await runtime.getStatusPayload()
     expect(status.mode).toBe("managed")
-    expect(status.auth).toEqual({
-      loggedIn: false,
-      agentID: null,
-      source: null,
-    })
+    expect(status.auth.loggedIn).toBe(true)
+    expect(status.auth.source).toBe("shared")
+    expect(status.auth.hiddenReason).toBe("managed")
     expect(status.ownership.local.owned).toBe(true)
 
     const reconnect = await runtime.reconnect()
@@ -67,21 +82,21 @@ describe("meta-synergy managed mode", () => {
     ])
   })
 
-  test("startup recovers orphaned managed state back to standalone", async () => {
+  test("startup recovers managed state without an active owner back to standalone", async () => {
     const state = await MetaSynergyStore.loadState()
     state.runtimeMode = "managed"
-    state.ownerRegistry.local.activeOwnerID = "synergy:stale"
-    state.ownerRegistry.local.ownerIDs = ["synergy:stale"]
-    state.ownerRegistry.local.leaseExpiresAt = Date.now() - 1_000
+    state.ownerRegistry.local.activeOwnerID = undefined
+    state.ownerRegistry.local.ownerIDs = []
+    state.ownerRegistry.local.leaseExpiresAt = undefined
     await MetaSynergyStore.saveState(state)
     await writeFile(
       MetaSynergyStore.ownerRegistryPath(),
       JSON.stringify(
         {
           local: {
-            ownerIDs: ["synergy:stale"],
-            activeOwnerID: "synergy:stale",
-            leaseExpiresAt: Date.now() - 1_000,
+            ownerIDs: [],
+            activeOwnerID: null,
+            leaseExpiresAt: null,
           },
         },
         null,
