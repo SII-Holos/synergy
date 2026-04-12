@@ -10,6 +10,14 @@ import { ExperienceEncoder } from "@/engram/experience-encoder"
 export namespace ExternalAgentProcessor {
   const log = Log.create({ service: "external-agent.processor" })
 
+  function formatAgentLabel(agent: string) {
+    return agent
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  }
+
   export interface Options {
     sessionID: string
     agent: string
@@ -57,7 +65,10 @@ export namespace ExternalAgentProcessor {
       type: "step-start",
     })
 
-    SessionManager.setStatus(sessionID, { type: "busy", description: "External agent working..." })
+    SessionManager.setStatus(sessionID, {
+      type: "busy",
+      description: `${formatAgentLabel(agent)} working...`,
+    })
 
     const toolParts = new Map<string, MessageV2.ToolPart>()
     const toolOutputs = new Map<string, string>()

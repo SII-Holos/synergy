@@ -22,7 +22,7 @@ import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
-import { Icon, type IconName } from "./icon"
+import { Icon } from "./icon"
 import { Card } from "./card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
@@ -351,36 +351,6 @@ export function SessionTurn(
     const msg = lastAssistantMessage()
     return titlecaseStatusLabel(msg?.agent ?? "Synergy")
   })
-  const agentIcon = createMemo<IconName>(() => {
-    const agent = lastAssistantMessage()?.agent ?? "synergy"
-    switch (agent) {
-      case "master":
-        return "code"
-      case "explore":
-        return "search"
-      case "scribe":
-        return "pen-line"
-      case "scholar":
-        return "brain"
-      case "scout":
-        return "compass"
-      case "advisor":
-        return "glasses"
-      case "codex":
-        return "sparkles"
-      case "claude-code":
-        return "bot"
-      case "openclaw":
-        return "workflow"
-      default:
-        return "sparkles"
-    }
-  })
-  const isExternalAgent = createMemo(() => {
-    const agent = lastAssistantMessage()?.agent
-    return agent === "codex" || agent === "claude-code" || agent === "openclaw"
-  })
-
   const workingPhrase = createMemo(() =>
     computeWorkingPhrase({
       agentName: agentName(),
@@ -550,17 +520,7 @@ export function SessionTurn(
                               <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
                             </Match>
                             <Match when={working()}>
-                              <span class="inline-flex items-center gap-1.5">
-                                <span class="inline-flex items-center justify-center rounded-full border border-border-base bg-surface-raised-stronger-non-alpha p-1">
-                                  <Icon name={agentIcon()} size="small" />
-                                </span>
-                                <span>{store.status ?? statusDescription() ?? workingPhrase()}</span>
-                                <Show when={isExternalAgent()}>
-                                  <span class="rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-                                    External
-                                  </span>
-                                </Show>
-                              </span>
+                              <span>{store.status ?? statusDescription() ?? workingPhrase()}</span>
                               <Show when={store.duration}>
                                 <span data-slot="session-turn-separator">·</span>
                                 <span data-slot="session-turn-duration">{store.duration}</span>
