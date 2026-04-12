@@ -25,6 +25,7 @@ import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
 import { ToolResolver } from "./tool-resolver"
+import { PermissionNext } from "@/permission/next"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -241,9 +242,23 @@ export namespace SessionInvoke {
             break
           }
           if (!adapter.started) {
+            const allowAll = await PermissionNext.isAllowingAll(sessionID)
+            const startConfig = { ...agent.external.config }
+            if (allowAll && !startConfig.approvalPolicy) {
+              startConfig.approvalPolicy = "never"
+            }
+
+            const override = await resolveExternalModelOverride(lastUser.model)
+            if (override) {
+              startConfig.model = override.model
+              if (override.providerID) startConfig.providerID = override.providerID
+              if (override.baseURL) startConfig.baseURL = override.baseURL
+            }
+
             await adapter.start({
               cwd: Instance.directory,
-              config: agent.external.config,
+              config: startConfig,
+              env: override?.apiKey ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined,
             })
           }
 
@@ -253,13 +268,40 @@ export namespace SessionInvoke {
           ])
 
           const context: ExternalAgent.TurnContext = {
+            sessionID,
             prompt: MessageV2.extractText(lastUserParts!),
             instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
             taskContext: taskContext ?? undefined,
           }
 
-          const approvalDelegate: ExternalAgent.ApprovalDelegate = async (_request) => {
-            return true
+          const approvalDelegate: ExternalAgent.ApprovalDelegate = async (request) => {
+            if (await PermissionNext.isAllowingAll(sessionID)) return true
+            try {
+              const label = request.tool || "external-agent"
+              await PermissionNext.ask({
+                sessionID,
+                permission: label,
+                patterns: [label],
+                metadata: {
+                  input: request.input,
+                  source: "external-agent",
+                  adapter: adapter.name,
+                  ...PermissionNext.requestMetadata(session),
+                },
+                ruleset: [],
+              })
+              return true
+            } catch (e) {
+              if (
+                e instanceof PermissionNext.DeniedError ||
+                e instanceof PermissionNext.RejectedError ||
+                e instanceof PermissionNext.CorrectedError
+              ) {
+                return false
+              }
+              log.warn("approval delegate unexpected error, denying", { error: String(e) })
+              return false
+            }
           }
 
           await ExternalAgentProcessor.process({
@@ -637,6 +679,38 @@ export namespace SessionInvoke {
     const remainingHours = hours % 24
     if (remainingHours === 0) return `${days} day${days !== 1 ? "s" : ""}`
     return `${days} day${days !== 1 ? "s" : ""} ${remainingHours} hour${remainingHours !== 1 ? "s" : ""}`
+  }
+
+  interface ExternalModelInfo {
+    model: string
+    providerID?: string
+    baseURL?: string
+    apiKey?: string
+  }
+
+  async function resolveExternalModelOverride(userModel: {
+    providerID: string
+    modelID: string
+  }): Promise<ExternalModelInfo | undefined> {
+    try {
+      const provider = await Provider.getProvider(userModel.providerID)
+      const model = await Provider.getModel(userModel.providerID, userModel.modelID)
+      if (!provider || !model) return undefined
+
+      const options: Record<string, any> = { ...provider.options, ...model.options }
+      const baseURL = (options["baseURL"] as string) || model.api.url
+      const apiKey = (options["apiKey"] as string) || provider.key
+
+      return {
+        model: model.api.id,
+        providerID: userModel.providerID,
+        baseURL: baseURL || undefined,
+        apiKey: apiKey || undefined,
+      }
+    } catch (e) {
+      log.warn("resolveExternalModelOverride failed, falling back", { error: String(e) })
+      return undefined
+    }
   }
 
   export const CommandInput = z.object({

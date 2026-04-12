@@ -201,7 +201,10 @@ export type ChannelInfo = {
   type: string
   accountId?: string
   chatId: string
+  chatType?: "dm" | "group"
+  chatName?: string
   senderId?: string
+  senderName?: string
   scopeKey?: string
   createdAt?: number
 }
@@ -727,7 +730,6 @@ export type PermissionConfig =
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
       websearch?: PermissionActionConfig
-      codesearch?: PermissionActionConfig
       download?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
@@ -792,6 +794,26 @@ export type AgentConfig = {
     | undefined
 }
 
+export type ExternalAgentConfig = {
+  /**
+   * Disable this external agent
+   */
+  disabled?: boolean
+  /**
+   * Override path to the external agent binary
+   */
+  path?: string
+  /**
+   * Default model for this external agent
+   */
+  model?: string
+  /**
+   * Whether to auto-discover this agent on startup (default: true)
+   */
+  auto_discover?: boolean
+  [key: string]: unknown | boolean | string | undefined
+}
+
 export type ProviderConfig = {
   api?: string
   name?: string
@@ -833,7 +855,6 @@ export type ProviderConfig = {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
         output: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
-      experimental?: boolean
       status?: "alpha" | "beta" | "deprecated"
       options?: {
         [key: string]: unknown
@@ -1428,6 +1449,12 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
+   * External agent configurations (e.g. codex, claude-code)
+   */
+  external_agent?: {
+    [key: string]: ExternalAgentConfig
+  }
+  /**
    * Custom provider configurations and model overrides
    */
   provider?: {
@@ -1527,27 +1554,6 @@ export type Config = {
     prune?: boolean
   }
   experimental?: {
-    hook?: {
-      file_edited?: {
-        [key: string]: Array<{
-          command: Array<string>
-          environment?: {
-            [key: string]: string
-          }
-        }>
-      }
-      session_completed?: Array<{
-        command: Array<string>
-        environment?: {
-          [key: string]: string
-        }
-      }>
-    }
-    /**
-     * Number of retries for chat completions on failure
-     */
-    chatMaxRetries?: number
-    disable_paste_summary?: boolean
     /**
      * Enable the batch tool
      */
@@ -2958,6 +2964,15 @@ export type FriendReplyMapping = Array<{
   subSessionId: string
 }>
 
+export type ExternalAgentInfo = {
+  adapter: string
+  path?: string
+  version?: string
+  config?: {
+    [key: string]: unknown
+  }
+}
+
 export type Agent = {
   name: string
   description?: string
@@ -2977,6 +2992,7 @@ export type Agent = {
     [key: string]: unknown
   }
   steps?: number
+  external?: ExternalAgentInfo
 }
 
 export type McpStatusConnected = {
@@ -3483,6 +3499,14 @@ export type EventHolosConnected = {
   }
 }
 
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
 export type EventHolosPresence = {
   type: "holos.presence"
   properties: {
@@ -3676,6 +3700,7 @@ export type Event =
   | EventHolosQueueDelivered
   | EventHolosQueueExpired
   | EventHolosConnected
+  | EventHolosConnectionStatusChanged
   | EventHolosPresence
   | EventSessionCompacted
   | EventAgendaItemCreated
@@ -6167,7 +6192,6 @@ export type ProviderListResponses = {
             input: Array<"text" | "audio" | "image" | "video" | "pdf">
             output: Array<"text" | "audio" | "image" | "video" | "pdf">
           }
-          experimental?: boolean
           status?: "alpha" | "beta" | "deprecated"
           options: {
             [key: string]: unknown

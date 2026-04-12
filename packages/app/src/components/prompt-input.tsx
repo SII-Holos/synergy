@@ -356,6 +356,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
   })
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+  const isCurrentAgentExternal = createMemo(() => !!local.agent.current()?.external)
   const cortexRunning = createMemo(() => {
     const id = params.id
     if (!id) return 0
@@ -2086,7 +2091,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         {(close) => (
                           <List
                             class="p-1"
-                            items={local.agent.list().filter((a) => !a.hidden && a.mode !== "primary")}
+                            items={local.agent
+                              .list()
+                              .filter(
+                                (a) => !a.hidden && a.mode !== "primary" && (!a.external || !sessionHasMessages()),
+                              )}
                             current={local.agent.current()}
                             key={(x) => x.name}
                             filterKeys={["name"]}
@@ -2101,33 +2110,56 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       </ToolbarSelectorPopover>
                     </TooltipKeybind>
                     <Show
-                      when={providers.paid().length > 0}
+                      when={!isCurrentAgentExternal()}
                       fallback={
-                        <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
+                        <Tooltip placement="top" value="Model is managed by external agent">
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
-                            onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base transition-colors text-12-medium text-text-subtle cursor-default opacity-60"
                           >
-                            <Icon name="sparkles" size="small" class="text-icon-base" />
-                            <span>{local.model.current()?.name ?? "Select model"}</span>
-                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            <Icon name="sparkles" size="small" class="text-icon-weak" />
+                            <span>{local.agent.current()?.name ?? "External"}</span>
                           </button>
-                        </TooltipKeybind>
+                        </Tooltip>
                       }
                     >
-                      <ModelSelectorPopover>
-                        <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                      <Show
+                        when={providers.paid().length > 0}
+                        fallback={
+                          <TooltipKeybind
+                            placement="top"
+                            title="Choose model"
+                            keybind={command.keybind("model.choose")}
                           >
-                            <Icon name="sparkles" size="small" class="text-icon-base" />
-                            <span>{local.model.current()?.name ?? "Select model"}</span>
-                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
-                          </button>
-                        </TooltipKeybind>
-                      </ModelSelectorPopover>
+                            <button
+                              type="button"
+                              class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                              onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                            >
+                              <Icon name="sparkles" size="small" class="text-icon-base" />
+                              <span>{local.model.current()?.name ?? "Select model"}</span>
+                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            </button>
+                          </TooltipKeybind>
+                        }
+                      >
+                        <ModelSelectorPopover>
+                          <TooltipKeybind
+                            placement="top"
+                            title="Choose model"
+                            keybind={command.keybind("model.choose")}
+                          >
+                            <button
+                              type="button"
+                              class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                            >
+                              <Icon name="sparkles" size="small" class="text-icon-base" />
+                              <span>{local.model.current()?.name ?? "Select model"}</span>
+                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            </button>
+                          </TooltipKeybind>
+                        </ModelSelectorPopover>
+                      </Show>
                     </Show>
                     <Show when={local.model.variant.list().length > 0}>
                       <TooltipKeybind

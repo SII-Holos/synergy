@@ -20,7 +20,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   readonly name = "codex"
 
   readonly capabilities: ExternalAgent.Capabilities = {
-    modelSwitch: true,
+    modelSwitch: false,
     interrupt: true,
   }
 
@@ -30,15 +30,18 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
   private proc: import("bun").Subprocess<"pipe", "pipe", "pipe"> | undefined
   private requestId = 0
-  private threadId = ""
+  private threads = new Map<string, string>()
+  private activeSessionID = ""
   private turnId = ""
   private cwd = ""
   private adapterConfig: Record<string, unknown> = {}
   private pending = new Map<number, PendingRequest>()
+  private pendingApprovals = new Map<number, string>()
   private queue: QueueEntry[] = []
   private queueResolve: (() => void) | undefined
   private alive = false
   private lastUsage: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } | undefined
+  private streamedAgentMessages = new Set<string>()
 
   async discover(): Promise<{ available: boolean; path?: string; version?: string }> {
     const binPath = Bun.which("codex")
@@ -65,22 +68,42 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
 
-    this.proc = Bun.spawn(["codex", "app-server"], {
+    const args = ["codex", "app-server"]
+    const env: Record<string, string | undefined> = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
+
+    const model = this.adapterConfig.model as string | undefined
+    const providerID = this.adapterConfig.providerID as string | undefined
+    const baseURL = this.adapterConfig.baseURL as string | undefined
+    const apiKey = env["SYNERGY_CODEX_API_KEY"]
+
+    if (model || baseURL) {
+      const alias = providerID ?? "synergy"
+      if (model) args.push("-c", `model="${model}"`)
+      if (baseURL) {
+        args.push("-c", `model_provider="${alias}"`)
+        args.push("-c", `model_providers.${alias}.base_url="${baseURL}"`)
+        if (apiKey) {
+          args.push("-c", `model_providers.${alias}.env_key="SYNERGY_CODEX_API_KEY"`)
+        }
+      }
+    }
+
+    this.proc = Bun.spawn(args, {
       cwd: opts.cwd,
-      env: opts.env ? { ...process.env, ...opts.env } : undefined,
+      env,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
     })
     this.alive = true
 
-    log.info("spawned codex app-server", { pid: this.proc.pid, cwd: opts.cwd })
+    log.info("spawned codex app-server", { pid: this.proc.pid, cwd: opts.cwd, overrideArgs: args.slice(2) })
 
     this.readStdout()
+    this.readStderr()
     this.watchExit()
 
     await this.initialize()
-    await this.startThread()
   }
 
   async *turn(context: ExternalAgent.TurnContext, signal?: AbortSignal): AsyncGenerator<ExternalAgent.BridgeEvent> {
@@ -89,19 +112,27 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.queue = []
     this.queueResolve = undefined
     this.lastUsage = undefined
+    this.streamedAgentMessages.clear()
 
     const onAbort = () => {
+      log.warn("turn aborted via signal")
       this.interrupt().catch(() => {})
+      this.drainQueue()
     }
     signal?.addEventListener("abort", onAbort, { once: true })
 
     try {
+      const threadId = await this.ensureThread(context.sessionID)
+      this.activeSessionID = context.sessionID
       const input = composeTurnInput(context)
+      log.info("sending turn/start", { sessionID: context.sessionID, threadId, inputLength: input.length })
       const turnResult = (await this.sendRequest("turn/start", {
-        threadId: this.threadId,
+        threadId,
         input: [{ type: "text", text: input }],
       })) as any
       this.turnId = turnResult?.turn?.id ?? turnResult?.id ?? ""
+      const turnStatus = turnResult?.turn?.status ?? turnResult?.status ?? "unknown"
+      log.info("turn/start resolved", { turnId: this.turnId, status: turnStatus })
 
       while (true) {
         if (signal?.aborted) return
@@ -126,22 +157,27 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
   async respondApproval(requestID: string, approved: boolean): Promise<void> {
     const numericId = Number(requestID)
-    if (!isNaN(numericId)) {
-      this.sendResponse(numericId, { approved })
-    }
-  }
+    if (isNaN(numericId)) return
+    const entry = this.pendingApprovals.get(numericId)
+    this.pendingApprovals.delete(numericId)
 
-  async switchModel(model: string): Promise<void> {
-    this.adapterConfig = { ...this.adapterConfig, model }
-    await this.startThread()
-    log.info("switched model via new thread", { model, threadId: this.threadId })
+    let result: Record<string, unknown>
+    if (entry === "permissions") {
+      result = approved ? { permissions: {}, scope: "session" } : { permissions: {}, scope: "turn" }
+    } else {
+      result = { decision: approved ? "accept" : "decline" }
+    }
+    log.info("respondApproval", { requestID, numericId, approved, category: entry, result })
+    this.sendResponse(numericId, result)
   }
 
   async interrupt(): Promise<void> {
-    if (!this.threadId || !this.alive) return
+    const threadId = this.threads.get(this.activeSessionID)
+    if (!threadId || !this.alive) return
+    log.info("interrupt called", { sessionID: this.activeSessionID, threadId, turnId: this.turnId })
     try {
       await this.sendRequest("turn/interrupt", {
-        threadId: this.threadId,
+        threadId,
         turnId: this.turnId,
       })
     } catch (e) {
@@ -154,9 +190,11 @@ class CodexAdapter implements ExternalAgent.Adapter {
     const proc = this.proc
     this.proc = undefined
     this.alive = false
-    this.threadId = ""
+    this.threads.clear()
+    this.activeSessionID = ""
     this.turnId = ""
     this.drainQueue()
+    this.pendingApprovals.clear()
 
     try {
       proc.kill("SIGTERM")
@@ -182,19 +220,24 @@ class CodexAdapter implements ExternalAgent.Adapter {
   // Thread lifecycle
   // ---------------------------------------------------------------------------
 
-  private async startThread(): Promise<void> {
+  private async ensureThread(sessionID: string): Promise<string> {
+    const existing = this.threads.get(sessionID)
+    if (existing) return existing
+
     const params: Record<string, unknown> = { cwd: this.cwd }
-    const { model, approvalPolicy, ...rest } = this.adapterConfig
+    const { model, approvalPolicy, providerID: _p, baseURL: _b, ...rest } = this.adapterConfig
     if (model) params.model = model
     if (approvalPolicy) params.approvalPolicy = approvalPolicy
     Object.assign(params, rest)
 
     const threadResult = (await this.sendRequest("thread/start", params)) as any
-    this.threadId = threadResult?.id ?? threadResult?.thread?.id ?? ""
-    if (!this.threadId) {
+    const threadId = threadResult?.id ?? threadResult?.thread?.id ?? ""
+    if (!threadId) {
       throw new Error("codex thread/start did not return a threadId")
     }
-    log.info("thread started", { threadId: this.threadId })
+    this.threads.set(sessionID, threadId)
+    log.info("thread started", { sessionID, threadId })
+    return threadId
   }
 
   // ---------------------------------------------------------------------------
@@ -231,40 +274,58 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!this.proc) return
     try {
       this.proc.stdin.write(line + "\n")
+      log.debug("stdin write ok", { bytes: line.length + 1 })
     } catch (e) {
       log.warn("stdin write failed", { error: String(e) })
     }
   }
 
   // ---------------------------------------------------------------------------
-  // stdout message parsing
+  // stdout / stderr parsing
   // ---------------------------------------------------------------------------
 
-  private async readStdout(): Promise<void> {
+  private readStdout(): void {
     if (!this.proc) return
-    const reader = this.proc.stdout.getReader()
-    const decoder = new TextDecoder()
+    const { Readable } = require("node:stream")
+    const nodeStream: import("node:stream").Readable = Readable.fromWeb(this.proc.stdout)
     let buffer = ""
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        let newline: number
-        while ((newline = buffer.indexOf("\n")) !== -1) {
-          const line = buffer.slice(0, newline).trim()
-          buffer = buffer.slice(newline + 1)
-          if (!line) continue
-          this.handleMessage(line)
-        }
+    nodeStream.on("data", (chunk: Buffer) => {
+      log.debug("stdout chunk", { bytes: chunk.length })
+      buffer += chunk.toString()
+      let newline: number
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline).trim()
+        buffer = buffer.slice(newline + 1)
+        if (!line) continue
+        this.handleMessage(line)
       }
-    } catch (e) {
+    })
+    nodeStream.on("end", () => {
+      log.warn("stdout stream ended", { alive: this.alive, pid: this.proc?.pid })
+    })
+    nodeStream.on("error", (e: Error) => {
       if (this.alive) {
         log.warn("stdout read error", { error: String(e) })
       }
-    }
+    })
+  }
+
+  private readStderr(): void {
+    if (!this.proc) return
+    const { Readable } = require("node:stream")
+    const nodeStream: import("node:stream").Readable = Readable.fromWeb(this.proc.stderr)
+    let buffer = ""
+    nodeStream.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString()
+      let newline: number
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline).trim()
+        buffer = buffer.slice(newline + 1)
+        if (!line) continue
+        log.warn("codex stderr", { line: line.slice(0, 500) })
+      }
+    })
+    nodeStream.on("error", () => {})
   }
 
   private handleMessage(raw: string): void {
@@ -280,6 +341,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     const hasMethod = "method" in msg
 
     if (hasId && hasMethod) {
+      log.info("server-request", { id: msg.id, method: msg.method })
       this.handleServerRequest(msg.id as number, msg.method as string, (msg.params ?? {}) as Record<string, unknown>)
       return
     }
@@ -291,6 +353,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
         this.pending.delete(id)
         if (msg.error) {
           const errObj = msg.error as Record<string, unknown>
+          log.warn("response error", { id, error: JSON.stringify(errObj).slice(0, 300) })
           p.reject(new Error(String(errObj.message ?? JSON.stringify(errObj))))
         } else {
           p.resolve(msg.result)
@@ -322,16 +385,49 @@ class CodexAdapter implements ExternalAgent.Adapter {
     method: string,
     params: Record<string, unknown>,
   ): ExternalAgent.BridgeEvent | undefined {
-    if (method.includes("approval") || method.includes("confirm")) {
-      const command = (params.command ?? params.tool ?? method) as string
-      const args = (params.args ?? params.input ?? JSON.stringify(params)) as string
+    if (method === "item/commandExecution/requestApproval") {
+      const command = (params.command as string) ?? "shell"
+      this.pendingApprovals.set(id, "command")
       return {
         type: "approval_request",
         id: String(id),
+        category: "command",
         tool: command,
-        input: typeof args === "string" ? args : JSON.stringify(args),
+        input: JSON.stringify({
+          command,
+          cwd: params.cwd,
+          reason: params.reason,
+        }),
       }
     }
+
+    if (method === "item/fileChange/requestApproval") {
+      this.pendingApprovals.set(id, "file_change")
+      return {
+        type: "approval_request",
+        id: String(id),
+        category: "file_change",
+        tool: "file_edit",
+        input: JSON.stringify({
+          reason: params.reason,
+        }),
+      }
+    }
+
+    if (method === "item/permissions/requestApproval") {
+      this.pendingApprovals.set(id, "permissions")
+      return {
+        type: "approval_request",
+        id: String(id),
+        category: "permissions",
+        tool: "permissions",
+        input: JSON.stringify({
+          reason: params.reason,
+          permissions: params.permissions,
+        }),
+      }
+    }
+
     log.debug("unhandled server request", { id, method })
     this.sendResponse(id, {})
     return undefined
@@ -342,6 +438,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   // ---------------------------------------------------------------------------
 
   private handleNotification(method: string, params: Record<string, unknown>): void {
+    log.info("notification", { method })
     const events = this.mapNotification(method, params)
     for (const event of events) {
       this.pushEvent(event)
@@ -351,6 +448,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
   private mapNotification(method: string, params: Record<string, unknown>): ExternalAgent.BridgeEvent[] {
     switch (method) {
       case "item/agentMessage/delta": {
+        const itemId = (params.itemId ?? "") as string
+        if (itemId) this.streamedAgentMessages.add(itemId)
         const raw = params.delta
         if (typeof raw === "string") {
           return [{ type: "text_delta", text: raw }]
@@ -434,8 +533,12 @@ class CodexAdapter implements ExternalAgent.Adapter {
           {
             type: "tool_start",
             id,
-            name: item.command ?? "shell",
-            input: item.args ? JSON.stringify(item.args) : item.cwd,
+            name: "shell",
+            input: JSON.stringify({
+              command: item.command,
+              args: item.args,
+              cwd: item.cwd,
+            }),
           },
         ]
 
@@ -472,7 +575,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
           {
             type: "tool_end",
             id,
-            name: item.command ?? "shell",
+            name: "shell",
             result: item.aggregatedOutput ?? item.output ?? "",
             error: item.exitCode !== 0 ? `exit code ${item.exitCode}` : undefined,
           },
@@ -495,6 +598,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
       }
 
       case "agentMessage": {
+        if (this.streamedAgentMessages.has(id)) return []
         const text = extractItemText(item)
         if (text) return [{ type: "text_delta", text }]
         return []
@@ -520,6 +624,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   }
 
   private drainQueue(): void {
+    log.info("drainQueue called")
     this.queue.push({ done: true })
     this.queueResolve?.()
     this.queueResolve = undefined

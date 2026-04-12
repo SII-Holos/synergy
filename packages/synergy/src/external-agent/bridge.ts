@@ -32,6 +32,8 @@ export namespace ExternalAgent {
     z.object({
       type: z.literal("approval_request"),
       id: z.string(),
+      /** Approval category — adapter-specific (e.g., "command", "file_change", "permissions"). */
+      category: z.string(),
       tool: z.string(),
       input: z.string(),
     }),
@@ -54,6 +56,8 @@ export namespace ExternalAgent {
   // ---------------------------------------------------------------------------
 
   export interface TurnContext {
+    /** The Synergy session ID — used for per-session thread isolation. */
+    sessionID: string
     /** The user's current message text. */
     prompt: string
     /** Project-level instruction files (AGENTS.md, etc.), joined. */
@@ -105,9 +109,6 @@ export namespace ExternalAgent {
 
     /** Send an approval response back to the external agent. */
     respondApproval?(requestID: string, approved: boolean): Promise<void>
-
-    /** Switch the model for subsequent turns. Only callable when capabilities.modelSwitch is true. */
-    switchModel?(model: string): Promise<void>
 
     /** Interrupt the current turn. */
     interrupt(): Promise<void>

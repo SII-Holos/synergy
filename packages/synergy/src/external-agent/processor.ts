@@ -184,16 +184,25 @@ export namespace ExternalAgentProcessor {
           }
 
           case "approval_request": {
+            log.info("approval_request received", { id: event.id, tool: event.tool })
             let approved = true
             try {
-              approved = await approvalDelegate({
-                id: event.id,
-                tool: event.tool,
-                input: event.input,
-              })
+              approved = await Promise.race([
+                approvalDelegate({
+                  id: event.id,
+                  tool: event.tool,
+                  input: event.input,
+                }),
+                new Promise<boolean>((_, reject) => {
+                  if (abort.aborted) return reject(new Error("aborted"))
+                  abort.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+                }),
+              ])
             } catch (e) {
-              log.warn("approval delegate failed, defaulting to approve", { error: String(e) })
+              log.warn("approval delegate failed or aborted, declining", { error: String(e) })
+              approved = false
             }
+            log.info("approval_request resolved", { id: event.id, approved })
             if (adapter.respondApproval) {
               await adapter.respondApproval(event.id, approved)
             }

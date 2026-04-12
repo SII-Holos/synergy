@@ -4979,9 +4979,6 @@
                                   },
                                   "required": ["input", "output"]
                                 },
-                                "experimental": {
-                                  "type": "boolean"
-                                },
                                 "status": {
                                   "type": "string",
                                   "enum": ["alpha", "beta", "deprecated"]
@@ -7904,94 +7901,6 @@
         ]
       }
     },
-    "/holos/status": {
-      "get": {
-        "operationId": "holos.status",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get Holos runtime status",
-        "description": "Return the current Holos runtime connection status.",
-        "responses": {
-          "200": {
-            "description": "Holos runtime status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "connected"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "connecting"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "disconnected"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "disabled"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "failed"
-                        },
-                        "error": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["status", "error"]
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.status({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/holos/state": {
       "get": {
         "operationId": "holos.state",
@@ -10895,7 +10804,17 @@
           "chatId": {
             "type": "string"
           },
+          "chatType": {
+            "type": "string",
+            "enum": ["dm", "group"]
+          },
+          "chatName": {
+            "type": "string"
+          },
           "senderId": {
+            "type": "string"
+          },
+          "senderName": {
             "type": "string"
           },
           "scopeKey": {
@@ -11724,9 +11643,6 @@
               "websearch": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
-              "codesearch": {
-                "$ref": "#/components/schemas/PermissionActionConfig"
-              },
               "download": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
@@ -11812,6 +11728,28 @@
           },
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "ExternalAgentConfig": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "description": "Disable this external agent",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Override path to the external agent binary",
+            "type": "string"
+          },
+          "model": {
+            "description": "Default model for this external agent",
+            "type": "string"
+          },
+          "auto_discover": {
+            "description": "Whether to auto-discover this agent on startup (default: true)",
+            "type": "boolean"
           }
         },
         "additionalProperties": {}
@@ -11955,9 +11893,6 @@
                     }
                   },
                   "required": ["input", "output"]
-                },
-                "experimental": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
@@ -12873,6 +12808,16 @@
               "$ref": "#/components/schemas/AgentConfig"
             }
           },
+          "external_agent": {
+            "description": "External agent configurations (e.g. codex, claude-code)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExternalAgentConfig"
+            }
+          },
           "provider": {
             "description": "Custom provider configurations and model overrides",
             "type": "object",
@@ -13110,72 +13055,6 @@
           "experimental": {
             "type": "object",
             "properties": {
-              "hook": {
-                "type": "object",
-                "properties": {
-                  "file_edited": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "command": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "environment": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "required": ["command"]
-                      }
-                    }
-                  },
-                  "session_completed": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "command": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "environment": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "required": ["command"]
-                    }
-                  }
-                }
-              },
-              "chatMaxRetries": {
-                "description": "Number of retries for chat completions on failure",
-                "type": "number"
-              },
-              "disable_paste_summary": {
-                "type": "boolean"
-              },
               "batch_tool": {
                 "description": "Enable the batch tool",
                 "type": "boolean"
@@ -15541,9 +15420,43 @@
                 "builtin": {
                   "type": "boolean"
                 },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "synergy", "claude", "openclaw", "codex", "generic"]
+                },
                 "scope": {
                   "type": "string",
-                  "enum": ["builtin", "global", "project"]
+                  "enum": ["builtin", "project", "global", "workspace", "external"]
+                },
+                "compatibility": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": ["native", "compatible", "partial"]
+                    },
+                    "warnings": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "unsupported": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["level"]
+                },
+                "entryFile": {
+                  "type": "string"
+                },
+                "baseDir": {
+                  "type": "string"
                 },
                 "references": {
                   "type": "array",
@@ -17008,6 +16921,28 @@
           "required": ["triggerMessageId", "subSessionId"]
         }
       },
+      "ExternalAgentInfo": {
+        "type": "object",
+        "properties": {
+          "adapter": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["adapter"]
+      },
       "Agent": {
         "type": "object",
         "properties": {
@@ -17065,6 +17000,9 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "external": {
+            "$ref": "#/components/schemas/ExternalAgentInfo"
           }
         },
         "required": ["name", "mode", "permission", "options"]
@@ -17592,6 +17530,58 @@
               }
             },
             "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.prompts.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.prompts.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.resources.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.resources.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.ready": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.ready"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -18451,6 +18441,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.holos.presence": {
         "type": "object",
         "properties": {
@@ -18867,6 +18879,15 @@
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
+            "$ref": "#/components/schemas/Event.mcp.prompts.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.resources.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
             "$ref": "#/components/schemas/Event.command.executed"
           },
           {
@@ -18979,6 +19000,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
           },
           {
             "$ref": "#/components/schemas/Event.holos.presence"
