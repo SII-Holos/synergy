@@ -4,12 +4,24 @@ import { MetaSynergyCLIBackend, type MetaSynergyTrustSubject } from "./cli-backe
 import type { MetaSynergyApprovalMode } from "./state/store"
 import { MetaSynergyRuntime } from "./runtime"
 import { MetaSynergyService } from "./service"
+import { MetaSynergyHolosLogin } from "./holos/login"
 
 interface CLIContext {
   json: boolean
   printLogs: boolean
   invocationEntry?: string
   launcherPath: string
+}
+
+interface GlobalFlags {
+  help: boolean
+  json: boolean
+  printLogs: boolean
+}
+
+interface MetaSynergyLoginOptions {
+  agentID?: string
+  agentSecret?: string
 }
 
 interface CommandSuccess {
@@ -246,9 +258,52 @@ async function showLogs(args: string[], context: CLIContext): Promise<CommandRes
 }
 
 async function login(args: string[]): Promise<CommandResult> {
-  if (args.length > 0) {
-    return invalidUsage("Usage: meta-synergy login")
+  const parsed = parseLoginArgs(args)
+  if (!parsed.ok) {
+    return invalidUsage(parsed.usage)
   }
+
+  if (parsed.options.agentID || parsed.options.agentSecret) {
+    if (!parsed.options.agentID || !parsed.options.agentSecret) {
+      return {
+        ok: false,
+        message: "`--agent-id` and `--agent-secret` must be provided together.",
+        usage: loginUsage(),
+      }
+    }
+
+    const result = await MetaSynergyCLIBackend.login({
+      agentID: parsed.options.agentID,
+      agentSecret: parsed.options.agentSecret,
+    })
+    return {
+      ok: true,
+      message: `Logged in as ${result.agentID}.`,
+      data: result,
+    }
+  }
+
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const mode = await MetaSynergyHolosLogin.promptLoginMode()
+    if (mode === "existing") {
+      const credentials = await MetaSynergyHolosLogin.promptForExistingCredentials()
+      if (!credentials) {
+        return {
+          ok: false,
+          message: "Login cancelled.",
+          exitCode: 1,
+        }
+      }
+
+      const result = await MetaSynergyCLIBackend.login(credentials)
+      return {
+        ok: true,
+        message: `Logged in as ${result.agentID}.`,
+        data: result,
+      }
+    }
+  }
+
   const result = await MetaSynergyCLIBackend.login()
   return {
     ok: true,
@@ -535,7 +590,7 @@ function parseArgv(
       continue
     }
     if (token.startsWith("-")) {
-      if (command[0] === "logs") {
+      if (command[0] === "logs" || command[0] === "login") {
         command.push(token)
         continue
       }
@@ -631,7 +686,7 @@ function rootUsage() {
     "Commands:",
     "  server [--print-logs]",
     "  start | stop | restart | status | logs",
-    "  login | logout | whoami | reconnect | doctor",
+    "  login [--agent-id ID --agent-secret SECRET] | logout | whoami | reconnect | doctor",
     "  mode <status|managed>",
     "  collaboration <enable|disable|status>",
     "  requests <list|show|approve|deny>",
@@ -654,7 +709,7 @@ function usageMap(): Record<string, string> {
     restart: "Usage: meta-synergy restart",
     status: "Usage: meta-synergy status",
     logs: "Usage: meta-synergy logs [-f] [--tail N] [--since DURATION]",
-    login: "Usage: meta-synergy login",
+    login: loginUsage(),
     logout: "Usage: meta-synergy logout",
     whoami: "Usage: meta-synergy whoami",
     reconnect: "Usage: meta-synergy reconnect",
@@ -904,6 +959,43 @@ function formatDoctor(value: { ok: boolean; checks: Array<{ name: string; ok: bo
     `Overall: ${value.ok ? "ok" : "issues found"}`,
     ...value.checks.map((check) => `${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`),
   ].join("\n")
+}
+
+function loginUsage() {
+  return [
+    "Usage: meta-synergy login [--agent-id ID --agent-secret SECRET]",
+    "",
+    "Without flags, interactive TTY sessions let you choose browser login or importing existing credentials.",
+  ].join("\n")
+}
+
+function parseLoginArgs(args: string[]): { ok: true; options: MetaSynergyLoginOptions } | { ok: false; usage: string } {
+  const options: MetaSynergyLoginOptions = {}
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]
+    if (token === "--agent-id") {
+      const next = args[index + 1]
+      if (!next || next.startsWith("-")) {
+        return { ok: false, usage: loginUsage() }
+      }
+      options.agentID = next
+      index += 1
+      continue
+    }
+    if (token === "--agent-secret") {
+      const next = args[index + 1]
+      if (!next || next.startsWith("-")) {
+        return { ok: false, usage: loginUsage() }
+      }
+      options.agentSecret = next
+      index += 1
+      continue
+    }
+    return { ok: false, usage: loginUsage() }
+  }
+
+  return { ok: true, options }
 }
 
 function parseLogsArgs(

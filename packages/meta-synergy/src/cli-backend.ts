@@ -5,6 +5,7 @@ import { MetaSynergyService } from "./service"
 import {
   MetaSynergyStore,
   type MetaSynergyApprovalMode,
+  type MetaSynergyAuthState,
   type MetaSynergyPendingRequest,
   type MetaSynergyState,
 } from "./state/store"
@@ -62,8 +63,14 @@ export namespace MetaSynergyCLIBackend {
     }
   }
 
-  export async function login() {
-    const result = await MetaSynergyHolosLogin.login()
+  export async function login(options?: { agentID?: string; agentSecret?: string }) {
+    const result =
+      options?.agentID && options?.agentSecret
+        ? await MetaSynergyHolosLogin.loginWithExistingCredentials({
+            agentID: options.agentID,
+            agentSecret: options.agentSecret,
+          })
+        : await MetaSynergyHolosLogin.login()
     return {
       agentID: result.agentID,
       service: await MetaSynergyService.status(),

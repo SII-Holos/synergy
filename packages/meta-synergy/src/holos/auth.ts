@@ -1,10 +1,23 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { applyEdits, modify } from "jsonc-parser"
 import z from "zod"
 import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store"
 
 export type MetaSynergyHolosAuthSource = "shared" | "legacy-migrated"
+
+export const HOLOS_API_HOST = "api.holosai.io"
+export const HOLOS_PORTAL_HOST = "www.holosai.io"
+export const HOLOS_URL = `https://${HOLOS_API_HOST}`
+export const HOLOS_WS_URL = `wss://${HOLOS_API_HOST}`
+export const HOLOS_PORTAL_URL = `https://${HOLOS_PORTAL_HOST}`
+
+const JSONC_FORMATTING = {
+  insertSpaces: true,
+  tabSize: 2,
+  eol: "\n",
+} as const
 
 const SynergyHolosAuth = z.object({
   type: z.literal("holos"),
@@ -13,10 +26,31 @@ const SynergyHolosAuth = z.object({
 })
 
 const SynergyAuthRecord = z.record(z.string(), z.unknown())
+const SynergyConfigSetMetadata = z.object({ active: z.string().min(1).default("default") })
 
 export namespace MetaSynergyHolosAuth {
+  export function synergyRoot() {
+    return path.join(process.env.SYNERGY_TEST_HOME || os.homedir(), ".synergy")
+  }
+
   export function sharedAuthPath() {
-    return path.join(process.env.SYNERGY_TEST_HOME || os.homedir(), ".synergy", "data", "auth", "api-key.json")
+    return path.join(synergyRoot(), "data", "auth", "api-key.json")
+  }
+
+  export function configMetadataPath() {
+    return path.join(synergyRoot(), "config", "config-set.json")
+  }
+
+  export async function globalConfigPath() {
+    try {
+      const raw = await readFile(configMetadataPath(), "utf8")
+      const metadata = SynergyConfigSetMetadata.parse(JSON.parse(raw))
+      return metadata.active === "default"
+        ? path.join(synergyRoot(), "config", "synergy.jsonc")
+        : path.join(synergyRoot(), "config", "config-sets", metadata.active, "synergy.jsonc")
+    } catch {
+      return path.join(synergyRoot(), "config", "synergy.jsonc")
+    }
   }
 
   export async function inspect(): Promise<
@@ -52,6 +86,30 @@ export namespace MetaSynergyHolosAuth {
   export async function save(auth: MetaSynergyAuthState): Promise<void> {
     await saveShared(auth)
     await MetaSynergyStore.saveLegacyAuth(auth)
+    await configureHolos()
+  }
+
+  export async function configureHolos(): Promise<void> {
+    const filePath = await globalConfigPath()
+    const source = await loadGlobalConfigSource(filePath)
+    const next = applyEdits(
+      source,
+      modify(
+        source,
+        ["holos"],
+        {
+          enabled: true,
+          apiUrl: HOLOS_URL,
+          wsUrl: HOLOS_WS_URL,
+          portalUrl: HOLOS_PORTAL_URL,
+        },
+        { formattingOptions: JSONC_FORMATTING },
+      ),
+    )
+
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, next.endsWith("\n") ? next : `${next}\n`)
+    await chmod(filePath, 0o600).catch(() => undefined)
   }
 
   export async function clear(): Promise<void> {
@@ -78,9 +136,10 @@ export namespace MetaSynergyHolosAuth {
   }
 
   async function saveShared(auth: MetaSynergyAuthState): Promise<void> {
+    const filePath = sharedAuthPath()
     let data: Record<string, unknown> = {}
     try {
-      data = SynergyAuthRecord.parse(JSON.parse(await readFile(sharedAuthPath(), "utf8")))
+      data = SynergyAuthRecord.parse(JSON.parse(await readFile(filePath, "utf8")))
     } catch {
       data = {}
     }
@@ -94,8 +153,9 @@ export namespace MetaSynergyHolosAuth {
       },
     }
 
-    await mkdir(path.dirname(sharedAuthPath()), { recursive: true })
-    await writeFile(sharedAuthPath(), JSON.stringify(next, null, 2) + "\n")
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, JSON.stringify(next, null, 2) + "\n")
+    await chmod(filePath, 0o600)
   }
 
   async function removeShared(): Promise<void> {
@@ -110,5 +170,14 @@ export namespace MetaSynergyHolosAuth {
     delete data.holos
     await mkdir(path.dirname(sharedAuthPath()), { recursive: true })
     await writeFile(sharedAuthPath(), JSON.stringify(data, null, 2) + "\n")
+  }
+
+  async function loadGlobalConfigSource(filePath: string): Promise<string> {
+    try {
+      const source = await readFile(filePath, "utf8")
+      return source.trim().length > 0 ? source : "{}\n"
+    } catch {
+      return "{}\n"
+    }
   }
 }

@@ -1,17 +1,18 @@
 import process from "node:process"
 import { createServer, type IncomingMessage } from "node:http"
 import { spawn } from "node:child_process"
-import { MetaSynergyStore } from "../state/store"
-import { MetaSynergyHolosAuth } from "./auth"
+import { createInterface } from "node:readline/promises"
+import { stdin as input, stdout as output } from "node:process"
+import { MetaSynergyStore, type MetaSynergyAuthState } from "../state/store"
+import { HOLOS_PORTAL_URL, HOLOS_URL, MetaSynergyHolosAuth } from "./auth"
 import { MetaSynergyHolosProtocol } from "./protocol"
 
-const HOLOS_HOST = "www.holosai.io"
-const HOLOS_URL = `https://${HOLOS_HOST}`
+const LOGIN_TIMEOUT_MS = 5 * 60_000
 
 export namespace MetaSynergyHolosLogin {
   export function createBindURL(input: { callbackURL: string; state: string }) {
     return (
-      `${HOLOS_URL}/api/v1/holos/agent_tunnel/bind/start` +
+      `${HOLOS_PORTAL_URL}/api/v1/holos/agent_tunnel/bind/start` +
       `?local_callback=${encodeURIComponent(input.callbackURL)}` +
       `&state=${encodeURIComponent(input.state)}`
     )
@@ -26,6 +27,57 @@ export namespace MetaSynergyHolosLogin {
       return { valid: false, reason: body.success ? (body.data.message ?? "Invalid response") : "Invalid response" }
     }
     return { valid: true }
+  }
+
+  export async function loginWithExistingCredentials(auth: MetaSynergyAuthState): Promise<{ agentID: string }> {
+    const verification = await verifySecret(auth.agentSecret)
+    if (!verification.valid) {
+      throw new Error(`Credential validation failed: ${verification.reason}`)
+    }
+
+    await MetaSynergyHolosAuth.save(auth)
+    return { agentID: auth.agentID }
+  }
+
+  export async function promptForExistingCredentials(): Promise<MetaSynergyAuthState | null> {
+    const agentID = await promptText("Agent ID: ")
+    if (!agentID) {
+      return null
+    }
+
+    const agentSecret = await promptSecret("Agent Secret: ")
+    if (!agentSecret) {
+      return null
+    }
+
+    return {
+      agentID,
+      agentSecret,
+    }
+  }
+
+  export async function promptLoginMode(): Promise<"browser" | "existing" | null> {
+    if (!input.isTTY || !output.isTTY) {
+      return null
+    }
+
+    while (true) {
+      output.write(
+        ["Choose login mode:", "  1) Browser login", "  2) Import existing agent credentials", "Select [1]: "].join(
+          "\n",
+        ),
+      )
+
+      const answer = await readLine()
+      const normalized = answer.trim().toLowerCase()
+      if (normalized === "" || normalized === "1" || normalized === "browser" || normalized === "b") {
+        return "browser"
+      }
+      if (normalized === "2" || normalized === "existing" || normalized === "import" || normalized === "i") {
+        return "existing"
+      }
+      output.write("Invalid selection. Enter 1 or 2.\n\n")
+    }
   }
 
   export async function login(): Promise<{ agentID: string }> {
@@ -76,7 +128,7 @@ export namespace MetaSynergyHolosLogin {
       const timer = setTimeout(() => {
         server.close()
         reject(new Error("Login timed out."))
-      }, 5 * 60_000)
+      }, LOGIN_TIMEOUT_MS)
       timer.unref?.()
     })
 
@@ -114,12 +166,10 @@ export namespace MetaSynergyHolosLogin {
       throw new Error("Holos exchange did not return an agent secret.")
     }
 
-    await MetaSynergyHolosAuth.save({
+    return await loginWithExistingCredentials({
       agentID: exchangeBody.data.agent_id,
       agentSecret,
     })
-
-    return { agentID: exchangeBody.data.agent_id }
   }
 }
 
@@ -142,6 +192,95 @@ async function launchBrowser(url: string): Promise<void> {
         : ["xdg-open", url]
   const child = spawn(command[0], command.slice(1), { stdio: "ignore", detached: true })
   child.unref()
+}
+
+async function promptText(prompt: string): Promise<string | null> {
+  if (!input.isTTY || !output.isTTY) {
+    return null
+  }
+
+  output.write(prompt)
+  const answer = await readLine()
+  const value = answer.trim()
+  return value ? value : null
+}
+
+async function promptSecret(prompt: string): Promise<string | null> {
+  if (!input.isTTY || !output.isTTY) {
+    return null
+  }
+
+  output.write(prompt)
+  const secret = await readSecretLine()
+  output.write("\n")
+  const value = secret.trim()
+  return value ? value : null
+}
+
+async function readLine(): Promise<string> {
+  const rl = createInterface({ input, output, terminal: false })
+  try {
+    return await rl.question("")
+  } finally {
+    rl.close()
+  }
+}
+
+async function readSecretLine(): Promise<string> {
+  if (!input.isTTY) {
+    return await readLine()
+  }
+
+  const previousRawMode = typeof input.setRawMode === "function" ? input.isRaw : undefined
+  const chunks: string[] = []
+
+  return await new Promise<string>((resolve, reject) => {
+    const cleanup = () => {
+      input.off("data", onData)
+      input.off("error", onError)
+      if (typeof input.setRawMode === "function") {
+        input.setRawMode(Boolean(previousRawMode))
+      }
+      input.pause()
+    }
+
+    const finish = () => {
+      cleanup()
+      resolve(chunks.join(""))
+    }
+
+    const onError = (error: Error) => {
+      cleanup()
+      reject(error)
+    }
+
+    const onData = (chunk: Buffer | string) => {
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8")
+      for (const char of text) {
+        if (char === "\r" || char === "\n") {
+          finish()
+          return
+        }
+        if (char === "\u0003") {
+          cleanup()
+          reject(new Error("Cancelled"))
+          return
+        }
+        if (char === "\u007f" || char === "\b") {
+          chunks.pop()
+          continue
+        }
+        chunks.push(char)
+      }
+    }
+
+    if (typeof input.setRawMode === "function") {
+      input.setRawMode(true)
+    }
+    input.resume()
+    input.on("data", onData)
+    input.on("error", onError)
+  })
 }
 
 function htmlPage(input: { title: string; status: "success" | "failed"; heading: string; message: string }): string {

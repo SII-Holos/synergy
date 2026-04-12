@@ -67,6 +67,34 @@ async function reconnectHolosIfServerRunning(
   }
 }
 
+async function finishHolosLogin(agentId: string) {
+  prompts.log.success(`Logged in as ${agentId}`)
+
+  const connection = await reconnectHolosIfServerRunning(Server.DEFAULT_URL)
+  if (connection.kind === "connected") {
+    prompts.log.success("Holos connected to the running server")
+  } else if (connection.kind === "failed") {
+    prompts.log.warn(`Holos save succeeded, but live reconnect failed: ${connection.error}`)
+  } else {
+    prompts.log.info("Holos configured — will auto-connect on next server start")
+  }
+
+  prompts.outro("Done")
+}
+
+async function importExistingHolosCredentials(input: { agentId: string; agentSecret: string }) {
+  const result = await HolosAuth.verifyCredentials(input.agentSecret)
+  if (!result.valid) {
+    prompts.log.error(`Credential validation failed: ${result.reason}`)
+    prompts.outro("Login failed")
+    return false
+  }
+
+  await HolosAuth.saveCredentialsAndConfigure(input.agentId, input.agentSecret)
+  await finishHolosLogin(input.agentId)
+  return true
+}
+
 export const HolosCommand = cmd({
   command: "holos",
   describe: "manage Holos identity and runtime",
@@ -83,9 +111,23 @@ export const HolosCommand = cmd({
   async handler() {},
 })
 
-export async function runHolosLoginFlow() {
+export async function runHolosLoginFlow(options?: { agentId?: string; agentSecret?: string }) {
   UI.empty()
   prompts.intro("Holos Login")
+
+  if (options?.agentId || options?.agentSecret) {
+    if (!options.agentId || !options.agentSecret) {
+      prompts.log.error("`--agent-id` and `--agent-secret` must be provided together")
+      prompts.outro("Login failed")
+      return
+    }
+
+    await importExistingHolosCredentials({
+      agentId: options.agentId,
+      agentSecret: options.agentSecret,
+    })
+    return
+  }
 
   const mode = await prompts.select({
     message: "How would you like to log in?",
@@ -113,26 +155,7 @@ export async function runHolosLoginFlow() {
       return
     }
 
-    const result = await HolosAuth.verifyCredentials(agentSecret)
-    if (!result.valid) {
-      prompts.log.error(`Credential validation failed: ${result.reason}`)
-      prompts.outro("Login failed")
-      return
-    }
-
-    await HolosAuth.saveCredentialsAndConfigure(agentId, agentSecret)
-    prompts.log.success(`Logged in as ${agentId}`)
-
-    const connection = await reconnectHolosIfServerRunning(Server.DEFAULT_URL)
-    if (connection.kind === "connected") {
-      prompts.log.success("Holos connected to the running server")
-    } else if (connection.kind === "failed") {
-      prompts.log.warn(`Holos save succeeded, but live reconnect failed: ${connection.error}`)
-    } else {
-      prompts.log.info("Holos configured — will auto-connect on next server start")
-    }
-
-    prompts.outro("Done")
+    await importExistingHolosCredentials({ agentId, agentSecret })
     return
   }
 
@@ -142,23 +165,27 @@ export async function runHolosLoginFlow() {
     return
   }
 
-  const connection = await reconnectHolosIfServerRunning(Server.DEFAULT_URL)
-  if (connection.kind === "connected") {
-    prompts.log.success("Holos connected to the running server")
-  } else if (connection.kind === "failed") {
-    prompts.log.warn(`Holos save succeeded, but live reconnect failed: ${connection.error}`)
-  } else {
-    prompts.log.info("Holos configured — will auto-connect on next server start")
-  }
-
-  prompts.outro("Done")
+  await finishHolosLogin(result.agentId)
 }
 
 export const HolosLoginCommand = cmd({
   command: "login",
   describe: "bind to Holos platform",
-  async handler() {
-    await runHolosLoginFlow()
+  builder: (yargs) =>
+    yargs
+      .option("agent-id", {
+        type: "string",
+        describe: "log in with an existing Holos agent ID",
+      })
+      .option("agent-secret", {
+        type: "string",
+        describe: "log in with an existing Holos agent secret",
+      }),
+  async handler(args) {
+    await runHolosLoginFlow({
+      agentId: typeof args.agentId === "string" ? args.agentId : undefined,
+      agentSecret: typeof args.agentSecret === "string" ? args.agentSecret : undefined,
+    })
   },
 })
 
