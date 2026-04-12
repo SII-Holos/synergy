@@ -1,6 +1,6 @@
 import { $ } from "bun"
 import path from "path"
-import { npmAuthFlag, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
+import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
 import { NPM_REGISTRY } from "./packages"
 
 function distExports(exportsField: Record<string, unknown>) {
@@ -48,9 +48,9 @@ export async function publishGenericWorkspacePackage(options: {
       await $`rm -f *.tgz`.cwd(options.dir).nothrow()
       await $`bun pm pack`.cwd(options.dir)
       const tgz = (await $`ls *.tgz`.cwd(options.dir).text()).trim()
-      const authFlag = npmAuthFlag()
+      const authArgs = npmAuthArgs()
       await retry(() =>
-        $`npm publish ${tgz} --tag ${options.channel} --registry ${NPM_REGISTRY} --access public ${authFlag}`.cwd(
+        $`npm publish ${tgz} --tag ${options.channel} --registry ${NPM_REGISTRY} --access public ${authArgs}`.cwd(
           options.dir,
         ),
       )
