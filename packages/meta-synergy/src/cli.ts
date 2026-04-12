@@ -362,10 +362,10 @@ async function doctor(args: string[]): Promise<CommandResult> {
 async function handleMode(args: string[]): Promise<CommandResult> {
   const [action, ...rest] = args
   if (!action || action === "help") {
-    return invalidUsage("Usage: meta-synergy mode <status|managed>")
+    return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
   }
   if (rest.length > 0) {
-    return invalidUsage("Usage: meta-synergy mode <status|managed>")
+    return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
   }
   if (action === "status") {
     return {
@@ -380,7 +380,14 @@ async function handleMode(args: string[]): Promise<CommandResult> {
       data: await MetaSynergyCLIBackend.enterManagedMode(),
     }
   }
-  return invalidUsage("Usage: meta-synergy mode <status|managed>")
+  if (action === "standalone") {
+    return {
+      ok: true,
+      message: "Standalone mode enabled.",
+      data: await MetaSynergyCLIBackend.enterStandaloneMode(),
+    }
+  }
+  return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
 }
 
 async function handleCollaboration(args: string[]): Promise<CommandResult> {
@@ -687,7 +694,7 @@ function rootUsage() {
     "  server [--print-logs]",
     "  start | stop | restart | status | logs",
     "  login [--agent-id ID --agent-secret SECRET] | logout | whoami | reconnect | doctor",
-    "  mode <status|managed>",
+    "  mode <status|managed|standalone>",
     "  collaboration <enable|disable|status>",
     "  requests <list|show|approve|deny>",
     "  session <status|kick|block>",
@@ -714,7 +721,7 @@ function usageMap(): Record<string, string> {
     whoami: "Usage: meta-synergy whoami",
     reconnect: "Usage: meta-synergy reconnect",
     doctor: "Usage: meta-synergy doctor",
-    mode: "Usage: meta-synergy mode <status|managed>",
+    mode: "Usage: meta-synergy mode <status|managed|standalone>",
     collaboration: "Usage: meta-synergy collaboration <enable|disable|status>",
     requests: "Usage: meta-synergy requests <list|show|approve|deny> [request-id]",
     session: "Usage: meta-synergy session <status|kick|block>",
@@ -806,6 +813,7 @@ function isWhoamiResult(value: unknown): value is {
   auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
   mode?: string
   ownership?: { local?: { activeOwnerID?: string | null; owned?: boolean } }
+  envID?: string | null
   label: string | null
   service: { running: boolean }
 } {
@@ -889,6 +897,7 @@ function formatWhoami(value: {
   auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
   mode?: string
   ownership?: { local?: { activeOwnerID?: string | null } }
+  envID?: string | null
   label: string | null
   service: { running: boolean }
 }) {
@@ -897,6 +906,7 @@ function formatWhoami(value: {
     `Local owner: ${value.ownership?.local?.activeOwnerID ?? "none"}`,
     `Logged in: ${value.auth.loggedIn ? "yes" : "no"}`,
     `Agent ID: ${value.auth.agentID ?? "none"}`,
+    `Env ID: ${value.envID ?? "none"}`,
     `Auth source: ${value.auth.source ?? "none"}`,
     `Label: ${value.label ?? "none"}`,
     `Service: ${value.service.running ? "running" : "stopped"}`,

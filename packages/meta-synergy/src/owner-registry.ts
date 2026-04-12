@@ -4,6 +4,7 @@ import { MetaSynergyStore } from "./state/store"
 export interface MetaSynergyLocalOwnerRegistryState {
   ownerIDs: string[]
   activeOwnerID?: string
+  leaseExpiresAt?: number
 }
 
 export interface MetaSynergyOwnerRegistryState {
@@ -33,6 +34,10 @@ export namespace MetaSynergyOwnerRegistry {
     const ownerIDs = uniqueStrings(Array.isArray(local?.ownerIDs) ? local.ownerIDs : undefined)
     const activeOwnerID =
       typeof local?.activeOwnerID === "string" && local.activeOwnerID.length > 0 ? local.activeOwnerID : undefined
+    const leaseExpiresAt =
+      typeof local?.leaseExpiresAt === "number" && Number.isFinite(local.leaseExpiresAt)
+        ? local.leaseExpiresAt
+        : undefined
 
     if (activeOwnerID && !ownerIDs.includes(activeOwnerID)) {
       ownerIDs.unshift(activeOwnerID)
@@ -42,17 +47,50 @@ export namespace MetaSynergyOwnerRegistry {
       local: {
         ownerIDs,
         activeOwnerID,
+        leaseExpiresAt,
       },
     }
   }
 
-  export function declareLocalOwner(registry: MetaSynergyOwnerRegistryState, ownerID: string) {
+  export function declareLocalOwner(
+    registry: MetaSynergyOwnerRegistryState,
+    ownerID: string,
+    options?: { leaseExpiresAt?: number },
+  ) {
     const normalizedOwnerID = normalizeOwnerID(ownerID)
     if (!registry.local.ownerIDs.includes(normalizedOwnerID)) {
       registry.local.ownerIDs.unshift(normalizedOwnerID)
     }
     registry.local.activeOwnerID = normalizedOwnerID
+    registry.local.leaseExpiresAt = normalizeLeaseExpiresAt(options?.leaseExpiresAt)
     return snapshot(registry)
+  }
+
+  export function releaseLocalOwner(registry: MetaSynergyOwnerRegistryState, ownerID?: string) {
+    const normalizedOwnerID = ownerID ? normalizeOwnerID(ownerID) : undefined
+    if (!normalizedOwnerID || registry.local.activeOwnerID === normalizedOwnerID) {
+      registry.local.activeOwnerID = undefined
+      registry.local.leaseExpiresAt = undefined
+    }
+    return snapshot(registry)
+  }
+
+  export function hasActiveLocalOwner(registry: MetaSynergyOwnerRegistryState, now = Date.now()) {
+    const hydrated = hydrate(registry)
+    if (!hydrated.local.activeOwnerID) return false
+    if (hydrated.local.leaseExpiresAt !== undefined && hydrated.local.leaseExpiresAt <= now) {
+      return false
+    }
+    return true
+  }
+
+  export function activeOwnerExpired(registry: MetaSynergyOwnerRegistryState, now = Date.now()) {
+    const hydrated = hydrate(registry)
+    return (
+      hydrated.local.activeOwnerID !== undefined &&
+      hydrated.local.leaseExpiresAt !== undefined &&
+      hydrated.local.leaseExpiresAt <= now
+    )
   }
 
   export function snapshot(registry: MetaSynergyOwnerRegistryState) {
@@ -61,7 +99,8 @@ export namespace MetaSynergyOwnerRegistry {
       local: {
         ownerIDs: hydrated.local.ownerIDs,
         activeOwnerID: hydrated.local.activeOwnerID ?? null,
-        owned: hydrated.local.activeOwnerID !== undefined,
+        leaseExpiresAt: hydrated.local.leaseExpiresAt ?? null,
+        owned: hasActiveLocalOwner(hydrated),
       },
     }
   }
@@ -91,6 +130,14 @@ function normalizeOwnerID(ownerID: string) {
     throw new Error("Owner ID is required.")
   }
   return normalized
+}
+
+function normalizeLeaseExpiresAt(value: number | undefined) {
+  if (value === undefined) return undefined
+  if (!Number.isFinite(value)) {
+    throw new Error("Lease expiration must be a finite timestamp.")
+  }
+  return value
 }
 
 function uniqueStrings(values: unknown[] | undefined): string[] {

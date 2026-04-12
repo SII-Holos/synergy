@@ -36,6 +36,12 @@ export const ControlRequestSchema = z.discriminatedUnion("action", [
     mode: z.enum(["managed", "standalone"]),
     owner: z.string().optional(),
     ownerAgentId: z.string().optional(),
+    leaseExpiresAt: z.number().optional(),
+  }),
+  z.object({
+    action: z.literal("runtime.release_managed"),
+    owner: z.string().optional(),
+    ownerAgentId: z.string().optional(),
   }),
   z.object({ action: z.literal("runtime.reconnect") }),
   z.object({ action: z.literal("collaboration.status") }),

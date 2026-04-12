@@ -24,7 +24,7 @@ import { Envelope } from "./envelope"
 import { FriendRequest } from "./friend-request"
 import { HolosAuth } from "./auth"
 import { HolosLocalMeta, LocalMetaError } from "./local-meta"
-import { HolosLocalTakeover } from "./local-takeover"
+import { releaseManagedMode, HolosLocalTakeover } from "./local-takeover"
 import { HolosMessageMetadata } from "./message-metadata"
 import { HolosOutbound } from "./outbound"
 import { HolosProfile } from "./profile"
@@ -280,12 +280,18 @@ export namespace HolosRuntime {
 
   export async function stop(): Promise<void> {
     const current = await state()
+    const peerId = current.provider?.peerId ?? null
     if (current.reconnectTimer) {
       clearTimeout(current.reconnectTimer)
       current.reconnectTimer = null
     }
     current.provider = null
     current.abort.abort()
+    if (peerId) {
+      await releaseManagedMode(peerId).catch((err) =>
+        log.warn("managed release failed during stop", { error: err instanceof Error ? err.message : String(err) }),
+      )
+    }
     setStatus(current, { status: "disconnected" })
     await syncRemoteExecutionState(current).catch((err) =>
       log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
@@ -359,6 +365,10 @@ export class HolosProvider {
   private sentMessageIds = new Map<string, number>()
   private idCounter = 0
   private static readonly PROBE_WAIT_MS = 2_000
+
+  get peerId() {
+    return this.state.peerId
+  }
 
   async connect(input: ConnectInput): Promise<void> {
     const { config: holosConfig, signal, onDisconnect } = input

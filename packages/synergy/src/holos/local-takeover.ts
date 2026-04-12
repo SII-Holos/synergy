@@ -9,6 +9,7 @@ const log = Log.create({ service: "holos.local-takeover" })
 const CONTROL_TIMEOUT_MS = 500
 const STOP_WAIT_MS = 1_500
 const STOP_POLL_MS = 50
+const LEASE_MS = 15_000
 
 const OwnerRegistry = z.object({
   owner: z.literal("synergy"),
@@ -118,6 +119,28 @@ async function isControlAvailable(controlSocketPath: string): Promise<boolean> {
   return await HolosLocalMeta.isAvailable(controlSocketPath, CONTROL_TIMEOUT_MS)
 }
 
+export async function releaseManagedMode(
+  agentId: string,
+  controlSocketPath = HolosLocalMeta.paths().controlSocketPath,
+) {
+  try {
+    const response = await HolosLocalMeta.request(
+      {
+        action: "runtime.release_managed",
+        owner: "synergy",
+        ownerAgentId: agentId,
+      },
+      { controlSocketPath, timeoutMs: CONTROL_TIMEOUT_MS },
+    )
+    return response.ok
+  } catch (error) {
+    log.warn("managed release request failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return false
+  }
+}
+
 async function requestManagedMode(controlSocketPath: string, agentId: string): Promise<boolean> {
   const requests = [
     {
@@ -131,6 +154,7 @@ async function requestManagedMode(controlSocketPath: string, agentId: string): P
       mode: "managed",
       owner: "synergy",
       ownerAgentId: agentId,
+      leaseExpiresAt: Date.now() + LEASE_MS,
     },
   ]
 

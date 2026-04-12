@@ -54,6 +54,22 @@ describe("meta-synergy control socket", () => {
 
       expect(managed.connectionStatus).toBe("disconnected")
 
+      const standalone = await MetaSynergyControlClient.request<{
+        mode: string
+        ownership: { local: { owned: boolean; activeOwnerID: string | null } }
+        connectionStatus: string
+      }>({ action: "runtime.set_mode", mode: "standalone" })
+      expect(standalone.mode).toBe("standalone")
+      expect(standalone.ownership.local.owned).toBe(false)
+
+      const managedAgain = await MetaSynergyControlClient.request<{
+        mode: string
+        ownership: { local: { owned: boolean; activeOwnerID: string | null } }
+        connectionStatus: string
+      }>({ action: "runtime.enter_managed" })
+      expect(managedAgain.mode).toBe("managed")
+      expect(managedAgain.ownership.local.owned).toBe(true)
+
       await MetaSynergyControlClient.request({ action: "approval.set", mode: "trusted-only" })
       const collaboration = await MetaSynergyControlClient.request<{ enabled: boolean; approvalMode: string }>({
         action: "collaboration.status",

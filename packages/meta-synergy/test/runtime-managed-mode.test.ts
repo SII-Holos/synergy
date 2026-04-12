@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
@@ -65,5 +65,32 @@ describe("meta-synergy managed mode", () => {
       startPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error("runtime.start did not settle after stop")), 2_000)),
     ])
+  })
+
+  test("startup recovers orphaned managed state back to standalone", async () => {
+    const state = await MetaSynergyStore.loadState()
+    state.runtimeMode = "managed"
+    state.ownerRegistry.local.activeOwnerID = "synergy:stale"
+    state.ownerRegistry.local.ownerIDs = ["synergy:stale"]
+    state.ownerRegistry.local.leaseExpiresAt = Date.now() - 1_000
+    await MetaSynergyStore.saveState(state)
+    await writeFile(
+      MetaSynergyStore.ownerRegistryPath(),
+      JSON.stringify(
+        {
+          local: {
+            ownerIDs: ["synergy:stale"],
+            activeOwnerID: "synergy:stale",
+            leaseExpiresAt: Date.now() - 1_000,
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    )
+
+    const runtime = await MetaSynergyRuntime.create()
+    expect(runtime.state?.runtimeMode).toBe("standalone")
+    expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBeUndefined()
   })
 })

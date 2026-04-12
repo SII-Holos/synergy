@@ -63,6 +63,23 @@ export namespace MetaSynergyCLIBackend {
     }
   }
 
+  export async function enterStandaloneMode() {
+    if (await MetaSynergyControlClient.isAvailable()) {
+      return await MetaSynergyControlClient.request({ action: "runtime.set_mode", mode: "standalone" })
+    }
+    const state = await MetaSynergyStore.loadState()
+    state.runtimeMode = "standalone"
+    MetaSynergyOwnerRegistry.releaseLocalOwner(state.ownerRegistry)
+    state.connectionStatus = "disconnected"
+    await MetaSynergyStore.saveState(state)
+    return {
+      mode: state.runtimeMode,
+      ownership: MetaSynergyOwnerRegistry.snapshot(state.ownerRegistry),
+      connectionStatus: state.connectionStatus,
+      service: await MetaSynergyService.status(),
+    }
+  }
+
   export async function login(options?: { agentID?: string; agentSecret?: string }) {
     const result =
       options?.agentID && options?.agentSecret
@@ -102,6 +119,7 @@ export namespace MetaSynergyCLIBackend {
       auth: snapshot.auth,
       mode: snapshot.mode,
       ownership: snapshot.ownership,
+      envID: snapshot.state.envID ?? null,
       label: snapshot.state.label ?? null,
       service: snapshot.service,
     }
