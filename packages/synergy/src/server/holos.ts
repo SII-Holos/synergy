@@ -175,23 +175,29 @@ export const HolosRoute = new Hono()
   .delete(
     "/credentials",
     describeRoute({
-      summary: "Clear Holos credentials",
-      description: "Remove stored Holos credentials and stop the Holos runtime. Used for sign-out.",
-      operationId: "holos.logout",
+      summary: "Disconnect Holos channel",
+      description: "Disconnect the Holos channel without removing stored Holos credentials.",
+      operationId: "holos.disconnect",
       responses: {
         200: {
-          description: "Credentials cleared",
+          description: "Holos channel disconnected",
           content: {
             "application/json": {
-              schema: resolver(z.object({ success: z.literal(true) }).meta({ ref: "HolosLogoutResponse" })),
+              schema: resolver(z.object({ success: z.literal(true) }).meta({ ref: "HolosDisconnectResponse" })),
             },
           },
         },
       },
     }),
     async (c) => {
-      await HolosRuntime.stop()
-      await HolosAuth.clearCredentials()
+      const { Channel } = await import("../channel")
+      const statuses = await Channel.status()
+      for (const key of Object.keys(statuses)) {
+        if (key.startsWith("holos:")) {
+          const [channelType, accountId] = key.split(":")
+          await Channel.disconnect(channelType, accountId).catch(() => {})
+        }
+      }
       return c.json({ success: true as const })
     },
   )

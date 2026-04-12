@@ -3,8 +3,10 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import pkg from "../package.json"
+import { isHostedMode } from "@/utils/runtime"
 
 const root = document.getElementById("root")
+const nativeFetch = globalThis.fetch.bind(globalThis)
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(
     "Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?",
@@ -14,6 +16,13 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 const platform: Platform = {
   platform: "web",
   version: pkg.version,
+  fetch: ((input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    if (!isHostedMode()) return nativeFetch(request)
+    return nativeFetch(request, {
+      credentials: "include",
+    })
+  }) as typeof fetch,
   openLink(url: string) {
     window.open(url, "_blank")
   },
@@ -51,6 +60,8 @@ const platform: Platform = {
       .catch(() => undefined)
   },
 }
+
+;(globalThis as { fetch: typeof fetch }).fetch = platform.fetch!
 
 render(
   () => (

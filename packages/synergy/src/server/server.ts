@@ -57,6 +57,7 @@ import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from
 import { SkillRoute } from "./skill-route"
 import { HolosRoute, HolosDataRoute } from "./holos"
 import { RuntimeRoute } from "./runtime-route"
+import { Hosted } from "./hosted"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -77,6 +78,11 @@ export namespace Server {
   let _corsWhitelist: string[] = []
   let _appMounted = false
 
+  function exemptFromHostedAuth(pathname: string, method: string) {
+    if (method === "OPTIONS") return true
+    return pathname === "/global/health"
+  }
+
   function isLoopbackOrigin(input: string) {
     try {
       const url = new URL(input)
@@ -96,6 +102,16 @@ export namespace Server {
     return (
       pathname === "/global" ||
       pathname.startsWith("/global/") ||
+      pathname === "/path" ||
+      pathname.startsWith("/path/") ||
+      pathname === "/scope" ||
+      pathname.startsWith("/scope/") ||
+      pathname === "/provider" ||
+      pathname.startsWith("/provider/") ||
+      pathname === "/config" ||
+      pathname.startsWith("/config/") ||
+      pathname === "/auth" ||
+      pathname.startsWith("/auth/") ||
       pathname === "/holos" ||
       pathname.startsWith("/holos/") ||
       pathname === "/channel" ||
@@ -104,12 +120,16 @@ export namespace Server {
   }
 
   async function resolveScopedRequestScope(c: Context): Promise<Scope> {
-    let directory = c.req.query("directory") || c.req.header("x-synergy-directory") || Flag.SYNERGY_CWD || process.cwd()
+    let directory =
+      c.req.query("directory") ||
+      c.req.header("x-synergy-directory") ||
+      (Hosted.enabled() ? Hosted.defaultDirectory() : (Flag.SYNERGY_CWD || process.cwd()))
     try {
       directory = decodeURIComponent(directory)
     } catch {
       // fallback to original value
     }
+    directory = Hosted.resolveDirectory(directory)
     return directory === "global" ? Scope.global() : (await Scope.fromDirectory(directory)).scope
   }
 
@@ -147,6 +167,7 @@ export namespace Server {
             let status: ContentfulStatusCode
             if (err instanceof Storage.NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
+            else if (Hosted.DirectoryAccessError.isInstance(err)) status = 403
             else if (err.name === "ChannelStartError") status = 400
             else if (ConfigSet.NotFoundError.isInstance(err)) status = 404
             else if (
@@ -164,16 +185,37 @@ export namespace Server {
           })
         })
         .use(async (c, next) => {
+          const headerRequestId = c.req.header("x-request-id")?.trim()
+          const requestId = headerRequestId || crypto.randomUUID()
+          const xForwardedFor = c.req.header("x-forwarded-for")
+          const fromCloudfront = c.req.header("x-from-cloudfront")
+          let clientIp = ""
+          if (xForwardedFor) {
+            const items = xForwardedFor
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+            if (items.length > 0) {
+              clientIp = fromCloudfront && items.length >= 2 ? items[items.length - 2] : items[items.length - 1]
+            }
+          }
+          if (!clientIp) {
+            clientIp = c.req.header("x-real-ip") || c.req.header("cf-connecting-ip") || "unknown"
+          }
+          ;(c as any).set("requestId", requestId)
+          ;(c as any).set("clientIp", clientIp)
           const reqPath = c.req.path
           const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
           const start = Date.now()
-          const requestId = crypto.randomUUID().slice(0, 8)
           try {
             await next()
           } finally {
+            c.header("X-Request-ID", requestId)
+            c.header("X-Timestamp", new Date().toISOString())
             if (!skipLogging) {
               log.info("request", {
                 rid: requestId,
+                ip: clientIp,
                 method: c.req.method,
                 path: reqPath,
                 status: c.res.status,
@@ -201,6 +243,29 @@ export namespace Server {
             },
           }),
         )
+        .use(async (c, next) => {
+          if (!Hosted.authEnabled() || exemptFromHostedAuth(c.req.path, c.req.method)) {
+            return next()
+          }
+
+          const token = Hosted.readToken({
+            cookie: c.req.header("cookie"),
+            authorization: c.req.header("authorization"),
+          })
+          if (!token) {
+            return c.json({ error: "unauthorized", reason: "missing_token" }, 401)
+          }
+
+          try {
+            const user = await Hosted.verifyJwt(token)
+            ;(c as any).set("authUser", user)
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : "invalid_token"
+            return c.json({ error: "unauthorized", reason }, 401)
+          }
+
+          return next()
+        })
         .use(provideRequestScope)
         .get(
           "/global/health",

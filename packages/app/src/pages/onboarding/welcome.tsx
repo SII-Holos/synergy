@@ -1,6 +1,7 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
+import { isHostedMode } from "@/utils/runtime"
 import { createSignal, onMount, Show, Switch, Match } from "solid-js"
 
 interface LocalCredentials {
@@ -32,6 +33,10 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
       if (res.ok) {
         const data: LocalCredentials = await res.json()
         setLocalCreds(data)
+        if (isHostedMode() && data.exists) {
+          await authenticateLocal()
+          return
+        }
       }
     } catch {
       setCredScanFailed(true)

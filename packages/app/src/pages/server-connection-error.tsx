@@ -1,12 +1,13 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Logo } from "@ericsanchezok/synergy-ui/logo"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { Show } from "solid-js"
 
 interface ServerConnectionErrorPageProps {
   retrying?: boolean
   serverUrl: string
   onRetry: () => void
-  onChangeServer: () => void
+  onChangeServer?: () => void
 }
 
 export function ServerConnectionErrorPage(props: ServerConnectionErrorPageProps) {
@@ -34,9 +35,11 @@ export function ServerConnectionErrorPage(props: ServerConnectionErrorPageProps)
           <Button size="large" onClick={props.onRetry} disabled={props.retrying}>
             {props.retrying ? "Retrying..." : "Retry"}
           </Button>
-          <Button size="large" variant="secondary" onClick={props.onChangeServer}>
-            Change server
-          </Button>
+          <Show when={props.onChangeServer}>
+            <Button size="large" variant="secondary" onClick={() => props.onChangeServer?.()}>
+              Change server
+            </Button>
+          </Show>
         </div>
       </div>
     </div>

@@ -1,0 +1,9 @@
+.git
+.turbo
+logs
+node_modules
+packages/*/node_modules
+packages/app/dist
+dist
+coverage
+.DS_Store

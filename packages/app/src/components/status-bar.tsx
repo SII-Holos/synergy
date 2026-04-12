@@ -12,6 +12,7 @@ import { DialogSettings } from "@/components/dialog/dialog-settings"
 import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { isHostedMode } from "@/utils/runtime"
 
 function ConfigSetStatus() {
   const globalSync = useGlobalSync()
@@ -121,31 +122,52 @@ export function StatusBar() {
   const params = useParams()
   const server = useServer()
   const dialog = useDialog()
+  const hosted = isHostedMode()
 
   return (
     <div class="flex items-center justify-center gap-2 py-1">
-      <Button
-        size="small"
-        variant="ghost"
-        class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
-        onClick={() => dialog.show(() => <DialogSelectServer />)}
+      <Show
+        when={!hosted}
+        fallback={
+          <Button size="small" variant="ghost" class="rounded-full px-2.5 h-7">
+            <div class="flex items-center gap-2">
+              <div
+                classList={{
+                  "size-1.5 rounded-full shadow-[0_0_0_2px_color-mix(in_srgb,currentColor_20%,transparent)]": true,
+                  "bg-icon-success-base text-icon-success-base animate-[statusPulse_3s_ease-in-out_infinite]":
+                    server.healthy() === true,
+                  "bg-icon-critical-base text-icon-critical-base animate-[statusPulse_1.5s_ease-in-out_infinite]":
+                    server.healthy() === false,
+                  "bg-border-strong text-border-strong": server.healthy() === undefined,
+                }}
+              />
+              <span class="text-12-medium text-text-base truncate max-w-24">{server.name}</span>
+            </div>
+          </Button>
+        }
       >
-        <div class="flex items-center gap-2">
-          <div
-            classList={{
-              "size-1.5 rounded-full shadow-[0_0_0_2px_color-mix(in_srgb,currentColor_20%,transparent)]": true,
-              "bg-icon-success-base text-icon-success-base animate-[statusPulse_3s_ease-in-out_infinite]":
-                server.healthy() === true,
-              "bg-icon-critical-base text-icon-critical-base animate-[statusPulse_1.5s_ease-in-out_infinite]":
-                server.healthy() === false,
-              "bg-border-strong text-border-strong": server.healthy() === undefined,
-            }}
-          />
-          <span class="text-12-medium text-text-base truncate max-w-24">{server.name}</span>
-        </div>
-      </Button>
-
-      <ConfigSetStatus />
+        <Button
+          size="small"
+          variant="ghost"
+          class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
+          onClick={() => dialog.show(() => <DialogSelectServer />)}
+        >
+          <div class="flex items-center gap-2">
+            <div
+              classList={{
+                "size-1.5 rounded-full shadow-[0_0_0_2px_color-mix(in_srgb,currentColor_20%,transparent)]": true,
+                "bg-icon-success-base text-icon-success-base animate-[statusPulse_3s_ease-in-out_infinite]":
+                  server.healthy() === true,
+                "bg-icon-critical-base text-icon-critical-base animate-[statusPulse_1.5s_ease-in-out_infinite]":
+                  server.healthy() === false,
+                "bg-border-strong text-border-strong": server.healthy() === undefined,
+              }}
+            />
+            <span class="text-12-medium text-text-base truncate max-w-24">{server.name}</span>
+          </div>
+        </Button>
+        <ConfigSetStatus />
+      </Show>
       <HolosStatusIndicator />
 
       <Show when={params.dir}>

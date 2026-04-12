@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { Persist, persisted } from "@/utils/persist"
+import { isHostedMode } from "@/utils/runtime"
 
 export interface AuthUser {
   id: string
@@ -17,6 +18,7 @@ interface AuthState {
 export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
   name: "Auth",
   init: () => {
+    const hosted = isHostedMode()
     const [persistedStore, setPersistedStore, , ready] = persisted(
       Persist.global("auth", ["auth.v1"]),
       createStore<{ token: string | null; user: AuthUser | null }>({
@@ -30,7 +32,7 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       user: null,
     })
 
-    if (persistedStore.token && persistedStore.user) {
+    if (!hosted && persistedStore.token && persistedStore.user) {
       setStore({ status: "authenticated", user: persistedStore.user })
     }
 
@@ -39,12 +41,16 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
     }
 
     function loginWithToken(token: string, user: AuthUser) {
-      setPersistedStore({ token, user })
+      if (!hosted) {
+        setPersistedStore({ token, user })
+      }
       setStore({ status: "authenticated", user })
     }
 
     function logout() {
-      setPersistedStore({ token: null, user: null })
+      if (!hosted) {
+        setPersistedStore({ token: null, user: null })
+      }
       setStore({ status: "unauthenticated", user: null })
     }
 
