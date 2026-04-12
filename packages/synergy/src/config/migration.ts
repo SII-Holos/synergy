@@ -59,16 +59,17 @@ async function migrateFile(filepath: string): Promise<boolean> {
       : undefined
 
   if (!legacyHolos) return false
-  if (config.holos !== undefined) {
-    log.warn("skipping legacy holos config migration because top-level holos already exists", { path: filepath })
-    return false
-  }
 
   let text = raw
-  text = applyEdits(
-    text,
-    modify(text, ["holos"], legacyHolos, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
-  )
+  const hasTopLevelHolos = config.holos !== undefined
+
+  if (!hasTopLevelHolos) {
+    text = applyEdits(
+      text,
+      modify(text, ["holos"], legacyHolos, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+    )
+  }
+
   text = applyEdits(
     text,
     modify(text, ["channel", "holos"], undefined, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
@@ -88,7 +89,9 @@ async function migrateFile(filepath: string): Promise<boolean> {
 
   await fs.mkdir(path.dirname(filepath), { recursive: true })
   await Bun.write(filepath, text)
-  log.info("migrated legacy channel.holos config", { path: filepath })
+  log.info(hasTopLevelHolos ? "removed legacy channel.holos config" : "migrated legacy channel.holos config", {
+    path: filepath,
+  })
   return true
 }
 
@@ -96,6 +99,21 @@ export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
     description: "Migrate Holos config from channel.holos to top-level holos",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await migrateFile(filepath)
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260413-config-holos-legacy-cleanup",
+    description: "Remove legacy channel.holos config when top-level holos already exists",
     async up(progress) {
       const files = await findConfigFiles()
       if (files.length === 0) return

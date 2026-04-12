@@ -11,7 +11,7 @@ import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./global/installation"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { FormatError } from "./cli/error"
+import { FormatError, FormatUnknownError } from "./cli/error"
 import { ServerCommand } from "./cli/cmd/server"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
@@ -37,16 +37,35 @@ async function flushCliOutput() {
   await Bun.sleep(25)
 }
 
+function printUnhandledFailure(kind: string, error: unknown) {
+  const detail = FormatUnknownError(error)
+  const logfile = (() => {
+    try {
+      return Log.file()
+    } catch {
+      return undefined
+    }
+  })()
+  const lines = [
+    `${kind}: ${error instanceof Error ? error.message : String(error)}`,
+    detail,
+    logfile ? `Check log file at ${logfile} for more details.` : undefined,
+  ].filter(Boolean)
+  console.error(lines.join(EOL))
+}
+
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
     e: e instanceof Error ? e.message : e,
   })
+  printUnhandledFailure("Unhandled rejection", e)
 })
 
 process.on("uncaughtException", (e) => {
   Log.Default.error("exception", {
     e: e instanceof Error ? e.message : e,
   })
+  printUnhandledFailure("Uncaught exception", e)
 })
 
 const cli = yargs(hideBin(process.argv))

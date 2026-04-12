@@ -8,6 +8,9 @@ import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { parse as parseJsonc } from "jsonc-parser"
+import { runMigrations } from "../../src/migration"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 
 test("loads config with defaults when no files exist", async () => {
   await using tmp = await tmpdir()
@@ -867,6 +870,74 @@ test("permission config preserves key order", async () => {
       ])
     },
   })
+})
+
+test("migrates legacy channel holos config to top-level holos", async () => {
+  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
+  await fs.mkdir(path.dirname(target), { recursive: true })
+  await Bun.write(
+    target,
+    `{
+  "$schema": "file:///test/config.schema.json",
+  "channel": {
+    "holos": {
+      "enabled": true,
+      "apiUrl": "https://api.holosai.io",
+      "wsUrl": "wss://api.holosai.io",
+      "portalUrl": "https://www.holosai.io"
+    }
+  }
+}`,
+  )
+
+  await Storage.remove(StoragePath.metaMigrationLog())
+  await runMigrations()
+
+  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+  expect(migrated.holos).toEqual({
+    enabled: true,
+    apiUrl: "https://api.holosai.io",
+    wsUrl: "wss://api.holosai.io",
+    portalUrl: "https://www.holosai.io",
+  })
+  expect(migrated.channel).toBeUndefined()
+})
+
+test("removes legacy channel holos config when top-level holos already exists", async () => {
+  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
+  await fs.mkdir(path.dirname(target), { recursive: true })
+  await Bun.write(
+    target,
+    `{
+  "$schema": "file:///test/config.schema.json",
+  "channel": {
+    "holos": {
+      "enabled": true,
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io"
+    }
+  },
+  "holos": {
+    "enabled": true,
+    "apiUrl": "https://api.holosai.io",
+    "wsUrl": "wss://api.holosai.io",
+    "portalUrl": "https://www.holosai.io"
+  }
+}`,
+  )
+
+  await Storage.remove(StoragePath.metaMigrationLog())
+  await runMigrations()
+
+  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+  expect(migrated.holos).toEqual({
+    enabled: true,
+    apiUrl: "https://api.holosai.io",
+    wsUrl: "wss://api.holosai.io",
+    portalUrl: "https://www.holosai.io",
+  })
+  expect(migrated.channel).toBeUndefined()
 })
 
 // MCP config merging tests
