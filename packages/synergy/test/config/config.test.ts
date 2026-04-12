@@ -881,10 +881,15 @@ test("migrates legacy channel holos config to top-level holos", async () => {
   "$schema": "file:///test/config.schema.json",
   "channel": {
     "holos": {
-      "enabled": true,
+      "type": "holos",
       "apiUrl": "https://api.holosai.io",
       "wsUrl": "wss://api.holosai.io",
-      "portalUrl": "https://www.holosai.io"
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
     }
   }
 }`,
@@ -912,10 +917,15 @@ test("removes legacy channel holos config when top-level holos already exists", 
   "$schema": "file:///test/config.schema.json",
   "channel": {
     "holos": {
-      "enabled": true,
+      "type": "holos",
       "apiUrl": "https://www.holosai.io",
       "wsUrl": "wss://www.holosai.io",
-      "portalUrl": "https://www.holosai.io"
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
     }
   },
   "holos": {

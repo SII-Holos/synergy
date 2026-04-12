@@ -2,6 +2,7 @@ import { run as runServerRuntime } from "../server/runtime"
 import { Installation } from "../global/installation"
 import { Log } from "../util/log"
 import { DaemonSpec } from "./spec"
+import { ensureMigrations } from "../migration"
 
 async function main() {
   await Log.init({
@@ -10,6 +11,7 @@ async function main() {
     level: Installation.isLocal() ? "DEBUG" : "INFO",
   })
 
+  await ensureMigrations()
   const network = await DaemonSpec.resolveNetwork({ argv: process.argv })
 
   await runServerRuntime({

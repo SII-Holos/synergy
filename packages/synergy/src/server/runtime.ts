@@ -1,4 +1,4 @@
-import { runMigrations } from "../migration"
+import { ensureMigrations } from "../migration"
 import { Server } from "./server"
 import { UI } from "../cli/ui"
 import { Installation } from "../global/installation"
@@ -38,7 +38,7 @@ export interface RuntimeOptions {
 }
 
 export async function run(options: RuntimeOptions) {
-  await runMigrations()
+  await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
   // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.

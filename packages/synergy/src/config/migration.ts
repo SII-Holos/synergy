@@ -38,6 +38,29 @@ async function findConfigFiles(): Promise<string[]> {
   return [...files]
 }
 
+function normalizeLegacyHolosConfig(input: Record<string, unknown>) {
+  const accounts =
+    input.accounts && typeof input.accounts === "object" && !Array.isArray(input.accounts)
+      ? (input.accounts as Record<string, unknown>)
+      : undefined
+  const defaultAccount =
+    accounts?.default && typeof accounts.default === "object" && !Array.isArray(accounts.default)
+      ? (accounts.default as Record<string, unknown>)
+      : undefined
+
+  return {
+    enabled:
+      typeof input.enabled === "boolean"
+        ? input.enabled
+        : typeof defaultAccount?.enabled === "boolean"
+          ? defaultAccount.enabled
+          : true,
+    apiUrl: typeof input.apiUrl === "string" ? input.apiUrl : "https://api.holosai.io",
+    wsUrl: typeof input.wsUrl === "string" ? input.wsUrl : "wss://api.holosai.io",
+    portalUrl: typeof input.portalUrl === "string" ? input.portalUrl : "https://www.holosai.io",
+  }
+}
+
 async function migrateFile(filepath: string): Promise<boolean> {
   const file = Bun.file(filepath)
   if (!(await file.exists())) return false
@@ -66,7 +89,9 @@ async function migrateFile(filepath: string): Promise<boolean> {
   if (!hasTopLevelHolos) {
     text = applyEdits(
       text,
-      modify(text, ["holos"], legacyHolos, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+      modify(text, ["holos"], normalizeLegacyHolosConfig(legacyHolos), {
+        formattingOptions: { tabSize: 2, insertSpaces: true },
+      }),
     )
   }
 

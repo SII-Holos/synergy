@@ -29,6 +29,15 @@ function write(line: string, overwrite = false) {
   process.stderr.write((overwrite ? "\r" : "") + line)
 }
 
+let runningMigrations: Promise<void> | undefined
+
+export async function ensureMigrations(): Promise<void> {
+  runningMigrations ??= runMigrations().finally(() => {
+    runningMigrations = undefined
+  })
+  return runningMigrations
+}
+
 export async function runMigrations(): Promise<void> {
   const all = collect()
   if (all.length === 0) return
