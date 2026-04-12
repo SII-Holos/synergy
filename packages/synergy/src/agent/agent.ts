@@ -571,10 +571,20 @@ export namespace Agent {
 
     // Discover and register external agents
     const externalConfig = cfg.external_agent ?? {}
+    const externalDescriptions: Record<string, string> = {
+      codex:
+        "OpenAI Codex CLI agent for autonomous coding tasks. Spawns a persistent app-server process with per-session threads. Supports tool execution, file editing, and shell commands. Model switching requires a new session.",
+      "claude-code":
+        "Anthropic Claude Code CLI agent for autonomous coding tasks. Spawns per-turn with streaming NDJSON events. Supports tool execution (Bash, Edit, Read), thinking/reasoning, and multi-turn via session resume. Model switching is supported without requiring a new session.",
+      openclaw:
+        "OpenClaw multi-channel AI gateway with embedded agent mode. Runs as a local CLI subprocess per turn with persistent session storage. Supports 39+ tools, multi-model routing, and rich permission controls. No mid-turn streaming in CLI mode.",
+    }
     try {
       await import("@/external-agent/adapter/codex")
+      await import("@/external-agent/adapter/claude-code")
+      await import("@/external-agent/adapter/openclaw")
     } catch (e) {
-      log.warn("failed to import codex adapter", { error: String(e) })
+      log.warn("failed to import external agent adapters", { error: String(e) })
     }
     const discovered = await ExternalAgentDiscovery.discover()
     log.info("external agent discovery results", {
@@ -607,7 +617,7 @@ export namespace Agent {
       } else {
         result[name] = {
           name,
-          description: `External agent: ${name}`,
+          description: externalDescriptions[name] ?? `External agent: ${name}`,
           mode: "all",
           native: false,
           permission: PermissionNext.merge(defaults, user),

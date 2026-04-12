@@ -260,6 +260,16 @@ export namespace SessionInvoke {
               config: startConfig,
               env: override?.apiKey ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined,
             })
+          } else if (adapter.capabilities.modelSwitch) {
+            // For adapters that support model switching, update the model on each turn
+            const override = await resolveExternalModelOverride(lastUser.model)
+            if (override) {
+              const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
+              if (cfg) {
+                cfg.model = override.model
+                if (override.baseURL) cfg.baseURL = override.baseURL
+              }
+            }
           }
 
           const [instructionParts, taskContext] = await Promise.all([
