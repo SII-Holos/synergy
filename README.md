@@ -223,7 +223,7 @@ This repository is a Bun monorepo.
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
 - `packages/config-ui` — dedicated configuration UI package
-- `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
+- `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI components
 - `packages/util` — shared utilities and common helpers
