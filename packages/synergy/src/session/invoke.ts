@@ -245,22 +245,27 @@ export namespace SessionInvoke {
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
           const override = await resolveExternalModelOverride(lastUser.model)
-          if (override) {
-            runConfig.model = override.model
-            if (override.providerID) runConfig.providerID = override.providerID
-            if (override.baseURL) runConfig.baseURL = override.baseURL
+          if (override && adapter.capabilities.modelSwitch) {
+            applyModelOverride(runConfig, adapter.name, override)
           }
+
+          const env: Record<string, string> | undefined =
+            override?.apiKey && adapter.name === "codex" ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined
 
           if (!adapter.started) {
             await adapter.start({
               cwd: Instance.directory,
               config: runConfig,
-              env: override?.apiKey ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined,
+              env,
             })
           } else {
             const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
             if (cfg) {
               Object.assign(cfg, runConfig)
+            }
+            if (env) {
+              const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
+              if (adapterEnv) Object.assign(adapterEnv, env)
             }
           }
 
@@ -676,6 +681,21 @@ export namespace SessionInvoke {
     }
 
     return config
+  }
+
+  function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
+    switch (adapterName) {
+      case "codex":
+        config.model = override.model
+        if (override.providerID) config.providerID = override.providerID
+        if (override.baseURL) config.baseURL = override.baseURL
+        break
+      case "claude-code":
+        config.model = override.model
+        break
+      default:
+        break
+    }
   }
 
   async function resolveExternalModelOverride(userModel: {

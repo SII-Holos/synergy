@@ -81,7 +81,6 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     signal?.addEventListener("abort", onAbort, { once: true })
 
     try {
-      // OpenClaw CLI is request-response — wait for process to complete
       const [stderrText, stdoutText] = await Promise.all([
         new Response(proc.stderr).text(),
         new Response(proc.stdout).text(),
@@ -92,7 +91,14 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
       const exitCode = proc.exitCode ?? -1
       log.info("openclaw process exited", { exitCode, stderrLen: stderrText.length, stdoutLen: stdoutText.length })
 
-      // v2026.4.x: JSON is on stderr; strip ANSI codes
+      if (exitCode !== 0 && !stderrText.includes("{") && !stdoutText.includes("{")) {
+        const errMsg = this.stripAnsi(stderrText).trim() || `OpenClaw exited with code ${exitCode}`
+        log.error("openclaw process failed", { exitCode, stderr: errMsg.slice(0, 500) })
+        yield { type: "error", message: errMsg }
+        yield { type: "turn_complete" }
+        return
+      }
+
       const result = this.parseResponse(stderrText, stdoutText)
 
       if (!result) {

@@ -31,6 +31,8 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
   private queueResolve: (() => void) | undefined
   private activeToolUses = new Map<string, { name: string }>()
   private env: Record<string, string | undefined> = {}
+  private stderrBuffer = ""
+  private gotStdoutEvents = false
 
   async discover(): Promise<{ available: boolean; path?: string; version?: string }> {
     const binPath = Bun.which("claude")
@@ -64,6 +66,8 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
     this.queueResolve = undefined
     this.activeToolUses.clear()
     this.activeSessionID = context.sessionID
+    this.stderrBuffer = ""
+    this.gotStdoutEvents = false
 
     const args = this.buildArgs(context)
     log.info("spawning claude turn", { sessionID: context.sessionID, args: args.join(" ") })
@@ -77,7 +81,6 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
     })
     this.currentProc = proc
 
-    // Close stdin immediately — Claude Code in --print mode reads from args, not stdin
     try {
       proc.stdin.end()
     } catch {}
@@ -105,7 +108,6 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
 
         await new Promise<void>((resolve) => {
           this.queueResolve = resolve
-          // Also resolve when process exits
           proc.exited.then(() => resolve())
         })
       }
@@ -113,7 +115,14 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
 
-      // Ensure process is cleaned up
+      const exitCode = proc.exitCode ?? -1
+      if (exitCode !== 0 && !this.gotStdoutEvents && !signal?.aborted) {
+        const errMsg = this.stderrBuffer.trim() || `Claude Code exited with code ${exitCode}`
+        log.error("claude process failed", { exitCode, stderr: errMsg.slice(0, 500) })
+        yield { type: "error", message: errMsg }
+        yield { type: "turn_complete" }
+      }
+
       try {
         proc.kill("SIGTERM")
       } catch {}
@@ -139,10 +148,10 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
   private buildArgs(context: ExternalAgent.TurnContext): string[] {
     const args = ["-p", "--output-format", "stream-json", "--verbose"]
 
-    // Working directory
-    args.push("-C", this.cwd)
+    // Note: Claude Code uses the spawned process cwd, not a -C flag.
+    // The cwd is set via Bun.spawn({ cwd }) in turn().
 
-    // Model override
+    // Model override — Claude Code only supports Anthropic model names/aliases
     const model = this.adapterConfig.model as string | undefined
     if (model) args.push("--model", model)
 
@@ -226,7 +235,13 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
         const line = buffer.slice(0, newline).trim()
         buffer = buffer.slice(newline + 1)
         if (!line) continue
+        this.stderrBuffer += line + "\n"
         log.debug("claude stderr", { line: line.slice(0, 500) })
+      }
+    })
+    nodeStream.on("end", () => {
+      if (buffer.trim()) {
+        this.stderrBuffer += buffer.trim() + "\n"
       }
     })
     nodeStream.on("error", () => {})
@@ -241,6 +256,7 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
       return
     }
 
+    this.gotStdoutEvents = true
     const type = msg.type as string
     switch (type) {
       case "system":

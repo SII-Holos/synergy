@@ -22,6 +22,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
   private queueResolve: (() => void) | undefined
   private activeItems = new Map<string, { type: string; name: string }>()
   private env: Record<string, string | undefined> = {}
+  private stderrBuffer = ""
+  private gotStdoutEvents = false
 
   async discover(): Promise<{ available: boolean; path?: string; version?: string }> {
     const binPath = Bun.which("codex")
@@ -55,6 +57,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.queueResolve = undefined
     this.activeItems.clear()
     this.currentSessionID = context.sessionID
+    this.stderrBuffer = ""
+    this.gotStdoutEvents = false
 
     const args = this.buildArgs(context)
     log.info("spawning codex turn", { sessionID: context.sessionID, args: args.join(" ") })
@@ -101,6 +105,15 @@ class CodexAdapter implements ExternalAgent.Adapter {
     } finally {
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
+
+      const exitCode = proc.exitCode ?? -1
+      if (exitCode !== 0 && !this.gotStdoutEvents && !signal?.aborted) {
+        const errMsg = this.stderrBuffer.trim() || `Codex exited with code ${exitCode}`
+        log.error("codex process failed", { exitCode, stderr: errMsg.slice(0, 500) })
+        yield { type: "error", message: errMsg }
+        yield { type: "turn_complete" }
+      }
+
       try {
         proc.kill("SIGTERM")
       } catch {}
@@ -121,7 +134,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
   private buildArgs(context: ExternalAgent.TurnContext): string[] {
     const threadId = this.sessions.get(context.sessionID)
-    const args = threadId ? ["exec", "resume", threadId, "--json"] : ["exec", "--json"]
+    const isResume = !!threadId
+    const args = isResume ? ["exec", "resume", threadId, "--json"] : ["exec", "--json"]
 
     const model = this.adapterConfig.model as string | undefined
     if (model) args.push("--model", model)
@@ -130,22 +144,25 @@ class CodexAdapter implements ExternalAgent.Adapter {
     const providerID = this.adapterConfig.providerID as string | undefined
     if (baseURL) {
       const alias = providerID ?? "synergy"
-      args.push("-c", `model_provider=\"${alias}\"`)
-      args.push("-c", `model_providers.${alias}.base_url=\"${baseURL}\"`)
+      args.push("-c", `model_provider="${alias}"`)
+      args.push("-c", `model_providers.${alias}.name="${alias}"`)
+      args.push("-c", `model_providers.${alias}.base_url="${baseURL}"`)
       if (this.env["SYNERGY_CODEX_API_KEY"]) {
-        args.push("-c", `model_providers.${alias}.env_key=\"SYNERGY_CODEX_API_KEY\"`)
+        args.push("-c", `model_providers.${alias}.env_key="SYNERGY_CODEX_API_KEY"`)
       }
     }
 
     const allowAll = this.adapterConfig.allowAll === true
     if (allowAll) {
       args.push("--dangerously-bypass-approvals-and-sandbox")
-    } else {
+    } else if (!isResume) {
       args.push("--sandbox", "read-only")
     }
 
     args.push("--skip-git-repo-check")
-    args.push("-C", this.cwd)
+    if (!isResume) {
+      args.push("-C", this.cwd)
+    }
 
     const prompt = composeTurnInput(context)
     args.push(prompt)
@@ -189,7 +206,16 @@ class CodexAdapter implements ExternalAgent.Adapter {
         const line = buffer.slice(0, newline).trim()
         buffer = buffer.slice(newline + 1)
         if (!line || line === "Reading additional input from stdin...") continue
+        this.stderrBuffer += line + "\n"
         log.debug("codex stderr", { line: line.slice(0, 500) })
+      }
+    })
+    nodeStream.on("end", () => {
+      if (buffer.trim()) {
+        const trimmed = buffer.trim()
+        if (trimmed !== "Reading additional input from stdin...") {
+          this.stderrBuffer += trimmed + "\n"
+        }
       }
     })
     nodeStream.on("error", () => {})
@@ -204,6 +230,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
       return
     }
 
+    this.gotStdoutEvents = true
     const type = msg.type as string | undefined
     if (!type) return
 
