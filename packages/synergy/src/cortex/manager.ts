@@ -12,6 +12,7 @@ import { CortexConcurrency } from "./concurrency"
 import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
+import { Plugin } from "../plugin"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -181,6 +182,15 @@ export namespace Cortex {
 
     Bus.publish(Event.TaskCompleted, { task })
     Bus.publish(Event.TasksUpdated, { tasks: list() })
+    void Plugin.trigger(
+      "cortex.task.after",
+      {
+        task,
+      },
+      {},
+    ).catch((error) => {
+      log.error("cortex task hook failed", { taskID, error })
+    })
 
     updateDagNode(task)
 

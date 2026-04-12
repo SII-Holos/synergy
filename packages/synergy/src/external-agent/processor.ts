@@ -6,6 +6,7 @@ import { Instance } from "@/scope/instance"
 import { Log } from "@/util/log"
 import { SessionManager } from "@/session/manager"
 import { ExperienceEncoder } from "@/engram/experience-encoder"
+import { Plugin } from "@/plugin"
 
 export namespace ExternalAgentProcessor {
   const log = Log.create({ service: "external-agent.processor" })
@@ -263,6 +264,18 @@ export namespace ExternalAgentProcessor {
     })
 
     ExperienceEncoder.onComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
 
     const parts = await MessageV2.parts({ sessionID, messageID: assistantMessage.id })
     return { info: assistantMessage, parts }

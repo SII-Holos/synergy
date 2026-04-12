@@ -1,7 +1,16 @@
 import type {
+  AgendaItem,
+  AgendaRunLog,
+  CortexTask,
   Event,
   createSynergyClient,
+  MemoryCategory,
+  MemoryRecallMode,
+  MemorySearchResult,
   Model,
+  NoteCreateInput,
+  NoteInfo,
+  NotePatchInput,
   Provider,
   PermissionRequest,
   UserMessage,
@@ -221,5 +230,157 @@ export interface Hooks {
   "experimental.text.complete"?: (
     input: { sessionID: string; messageID: string; partID: string },
     output: { text: string },
+  ) => Promise<void>
+  "session.turn.after"?: (
+    input: {
+      sessionID: string
+      userMessageID: string
+      assistantMessageID: string
+      assistant: Message
+      finish?: string
+      error?: unknown
+    },
+    output: {},
+  ) => Promise<void>
+  "cortex.task.after"?: (
+    input: {
+      task: CortexTask
+    },
+    output: {},
+  ) => Promise<void>
+  "agenda.run.before"?: (
+    input: {
+      signal: {
+        type: string
+        source: string
+        payload?: Record<string, unknown>
+        timestamp: number
+      }
+      item: AgendaItem
+      scopeID: string
+    },
+    output: {
+      skip: boolean
+      item: AgendaItem
+    },
+  ) => Promise<void>
+  "agenda.run.after"?: (
+    input: {
+      signal: {
+        type: string
+        source: string
+        payload?: Record<string, unknown>
+        timestamp: number
+      }
+      item: AgendaItem
+      run: AgendaRunLog
+      scopeID: string
+    },
+    output: {},
+  ) => Promise<void>
+  "agenda.run.error"?: (
+    input: {
+      signal: {
+        type: string
+        source: string
+        payload?: Record<string, unknown>
+        timestamp: number
+      }
+      item: AgendaItem
+      scopeID: string
+      error: string
+      sessionID?: string
+    },
+    output: {},
+  ) => Promise<void>
+  "note.create.before"?: (
+    input: {
+      scopeID: string
+    },
+    output: {
+      note: NoteCreateInput
+    },
+  ) => Promise<void>
+  "note.create.after"?: (
+    input: {
+      scopeID: string
+      noteID: string
+    },
+    output: {
+      note: NoteInfo
+    },
+  ) => Promise<void>
+  "note.update.before"?: (
+    input: {
+      scopeID: string
+      noteID: string
+      current: NoteInfo
+    },
+    output: {
+      patch: NotePatchInput
+    },
+  ) => Promise<void>
+  "note.update.after"?: (
+    input: {
+      scopeID: string
+      noteID: string
+    },
+    output: {
+      note: NoteInfo
+    },
+  ) => Promise<void>
+  "note.search.before"?: (
+    input: {
+      scopeID: string
+    },
+    output: {
+      pattern: string
+      scope: "current" | "global" | "all"
+      since?: string
+      before?: string
+      tags?: string[]
+      pinned?: boolean
+    },
+  ) => Promise<void>
+  "note.search.after"?: (
+    input: {
+      scopeID: string
+      pattern: string
+    },
+    output: {
+      notes: NoteInfo[]
+    },
+  ) => Promise<void>
+  "engram.memory.search.before"?: (
+    input: {},
+    output: {
+      query: string
+      vector?: number[]
+      topK?: number
+      categories?: MemoryCategory[]
+      recallModes?: MemoryRecallMode[]
+      rerank?: boolean
+    },
+  ) => Promise<void>
+  "engram.memory.search.after"?: (
+    input: {
+      query: string
+      topK: number
+    },
+    output: {
+      results: MemorySearchResult[]
+    },
+  ) => Promise<void>
+  "engram.experience.encode.after"?: (
+    input: {
+      sessionID: string
+      userMessageID: string
+    },
+    output: {
+      encoded: boolean
+      skipped: boolean
+      duplicateOf?: string
+      experienceID?: string
+    },
   ) => Promise<void>
 }

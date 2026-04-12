@@ -12,15 +12,28 @@ import { Scope } from "../scope"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { SessionEndpoint } from "../session/endpoint"
+import { Plugin } from "../plugin"
 
 export namespace ExperienceEncoder {
   const log = Log.create({ service: "engram.encoder" })
+
+  interface EncodeOutcome {
+    encoded: boolean
+    skipped: boolean
+    duplicateOf?: string
+    experienceID?: string
+  }
 
   export function onComplete(msg: MessageV2.Assistant) {
     if (msg.error && !MessageV2.AbortedError.isInstance(msg.error)) return
     if (msg.finish === "tool-calls") return
 
     encode(msg.sessionID, msg.parentID)
+      .then(async (outcome) => {
+        await triggerEncodeAfter(msg.sessionID, msg.parentID, outcome).catch((err) =>
+          log.error("encode after hook failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }),
+        )
+      })
       .catch((err) => log.error("encoding failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }))
       .finally(async () => {
         await retryFailedEncodings(msg.sessionID, msg.parentID).catch((err) =>
@@ -32,25 +45,25 @@ export namespace ExperienceEncoder {
       })
   }
 
-  async function encode(sessionID: string, userMessageID: string) {
+  async function encode(sessionID: string, userMessageID: string): Promise<EncodeOutcome> {
     const existing = EngramDB.Experience.get(userMessageID)
     if (existing && existing.reward_status !== "encoding_failed") {
       const content = EngramDB.Experience.getContent(userMessageID)
-      if (content?.script) return
+      if (content?.script) return { encoded: false, skipped: true, experienceID: userMessageID }
     }
 
     const session = await Session.get(sessionID).catch(() => undefined)
-    if (!session?.scope) return
-    if (session.parentID) return
-    if (SessionEndpoint.type(session.endpoint) === "genesis") return
-    if (SessionEndpoint.isHolos(session.endpoint)) return
-    if (session.agenda) return
+    if (!session?.scope) return { encoded: false, skipped: true }
+    if (session.parentID) return { encoded: false, skipped: true }
+    if (SessionEndpoint.type(session.endpoint) === "genesis") return { encoded: false, skipped: true }
+    if (SessionEndpoint.isHolos(session.endpoint)) return { encoded: false, skipped: true }
+    if (session.agenda) return { encoded: false, skipped: true }
 
     const scope = session.scope as Scope
 
     const config = await Config.get()
     const evo = Config.resolveEvolution(config.identity?.evolution)
-    if (evo.encode === false) return
+    if (evo.encode === false) return { encoded: false, skipped: true }
 
     const learning = evo.learning
     const msgs = await Session.messages({ sessionID })
@@ -58,11 +71,11 @@ export namespace ExperienceEncoder {
     userMessageID = Turn.resolveRealUser(msgs, userMessageID)
 
     const userMsg = msgs.find((m) => m.info.id === userMessageID)
-    if (!userMsg) return
-    if (Turn.isSyntheticUser(userMsg)) return
+    if (!userMsg) return { encoded: false, skipped: true }
+    if (Turn.isSyntheticUser(userMsg)) return { encoded: false, skipped: true }
 
     const userText = Turn.resolveUserText(msgs, userMessageID)
-    if (!userText) return
+    if (!userText) return { encoded: false, skipped: true }
 
     using _ = log.time("encode", { sessionID, userMessageID })
 
@@ -76,7 +89,9 @@ export namespace ExperienceEncoder {
       const extracted = await TurnDigest.extractSingle(sessionID, userMessageID, {
         toolOutputBudget: learning.digestToolOutputBudget,
       })
-      if (!extracted || extracted.digest.segments.length === 0) return
+      if (!extracted || extracted.digest.segments.length === 0) {
+        return { encoded: false, skipped: true }
+      }
 
       const { digest, turn } = extracted
       const sourceAssistant = turn.assistants.at(-1)
@@ -100,7 +115,12 @@ export namespace ExperienceEncoder {
           intentSimilarity: duplicate.intentSimilarity,
           scriptSimilarity: duplicate.scriptSimilarity,
         })
-        return
+        return {
+          encoded: false,
+          skipped: false,
+          duplicateOf: duplicate.id,
+          experienceID: duplicate.id,
+        }
       }
 
       const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
@@ -122,6 +142,7 @@ export namespace ExperienceEncoder {
         qInit: learning.qInit,
       })
       log.info("encoded", { id: userMessageID })
+      return { encoded: true, skipped: false, experienceID: userMessageID }
     } catch (err) {
       const userInfo = userMsg.info as MessageV2.User
       const fallbackTurn = Turn.collectOne(msgs, userMessageID)
@@ -136,6 +157,22 @@ export namespace ExperienceEncoder {
       })
       throw err
     }
+  }
+
+  async function triggerEncodeAfter(sessionID: string, userMessageID: string, outcome: EncodeOutcome) {
+    await Plugin.trigger(
+      "engram.experience.encode.after",
+      {
+        sessionID,
+        userMessageID,
+      },
+      {
+        encoded: outcome.encoded,
+        skipped: outcome.skipped,
+        duplicateOf: outcome.duplicateOf,
+        experienceID: outcome.experienceID,
+      },
+    )
   }
 
   async function retryFailedEncodings(sessionID: string, excludeID?: string) {

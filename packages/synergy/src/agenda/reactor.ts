@@ -8,6 +8,7 @@ import { SessionInteraction } from "../session/interaction"
 import { AgendaDelivery } from "./delivery"
 import { AgendaPrompt } from "./prompt"
 import { AgendaTypes } from "./types"
+import { Plugin } from "../plugin"
 import { Log } from "../util/log"
 
 export namespace AgendaReactor {
@@ -30,11 +31,32 @@ export namespace AgendaReactor {
   }
 
   async function run(signal: AgendaTypes.FiredSignal, scopeID: string): Promise<Result> {
-    const item = await AgendaStore.get(scopeID, signal.source).catch(() => undefined as AgendaTypes.Item | undefined)
-    if (!item || item.status !== "active") {
-      log.info("skipped", { itemID: signal.source, reason: !item ? "not found" : `status=${item.status}` })
+    const storedItem = await AgendaStore.get(scopeID, signal.source).catch(
+      () => undefined as AgendaTypes.Item | undefined,
+    )
+    if (!storedItem || storedItem.status !== "active") {
+      log.info("skipped", { itemID: signal.source, reason: !storedItem ? "not found" : `status=${storedItem.status}` })
       return { nextRunAt: undefined, sessionID: undefined }
     }
+
+    const before = await Plugin.trigger(
+      "agenda.run.before",
+      {
+        signal,
+        item: storedItem,
+        scopeID,
+      },
+      {
+        skip: false,
+        item: storedItem,
+      },
+    )
+    if (before.skip) {
+      log.info("skipped by plugin", { itemID: storedItem.id, signalType: signal.type })
+      return { nextRunAt: AgendaStore.computeNextRunAt(storedItem.triggers), sessionID: undefined }
+    }
+
+    const item = before.item
 
     if (item.state.consecutiveErrors >= 5) {
       log.warn("auto-pausing item due to consecutive errors", {
@@ -115,6 +137,31 @@ export namespace AgendaReactor {
       })
       return { nextRunAt: undefined }
     })
+
+    if (error) {
+      await Plugin.trigger(
+        "agenda.run.error",
+        {
+          signal,
+          item,
+          scopeID,
+          error: error.message,
+          sessionID,
+        },
+        {},
+      )
+    } else {
+      await Plugin.trigger(
+        "agenda.run.after",
+        {
+          signal,
+          item,
+          run: runLog,
+          scopeID,
+        },
+        {},
+      )
+    }
 
     if (sessionID && !error) {
       await deliverResult(item, sessionID).catch((err) => {

@@ -459,6 +459,18 @@ export namespace SessionProcessor {
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
           ExperienceEncoder.onComplete(input.assistantMessage)
+          await Plugin.trigger(
+            "session.turn.after",
+            {
+              sessionID: input.sessionID,
+              userMessageID: input.assistantMessage.parentID,
+              assistantMessageID: input.assistantMessage.id,
+              assistant: input.assistantMessage,
+              finish: input.assistantMessage.finish,
+              error: input.assistantMessage.error,
+            },
+            {},
+          )
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"
           return "continue"
