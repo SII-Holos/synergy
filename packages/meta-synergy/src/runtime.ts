@@ -2,6 +2,7 @@ import process from "node:process"
 import { MetaSynergyControlClient } from "./control/client"
 import { MetaSynergyControlServer } from "./control/server"
 import type { MetaSynergyControlRequest } from "./control/schema"
+import { MetaSynergyDisplay } from "./display"
 import { MetaSynergyMigrationRunner } from "./migration"
 import { MetaSynergyHost } from "./host"
 import { MetaSynergyInboundHandler, type SessionOpenDecision } from "./inbound/handler"
@@ -163,7 +164,9 @@ export class MetaSynergyRuntime {
         this.#scheduleReconnect("initial_connect_failed")
       }
 
-      console.log(`MetaSynergy running as ${nextAuth.agentID}`)
+      console.log(
+        `MetaSynergy running as ${MetaSynergyDisplay.identifier(nextAuth.agentID, { hiddenReason: "policy" })}`,
+      )
     } else {
       this.#clearReconnectTimer()
       this.#client = null
@@ -539,10 +542,11 @@ export class MetaSynergyRuntime {
 
   async getStatusPayload() {
     const state = requireState(this)
-    const authInfo =
-      state.runtimeMode === "managed" ? { auth: undefined, source: null } : await MetaSynergyHolosAuth.inspect()
+    const authInfo = await MetaSynergyHolosAuth.inspect()
     return {
-      auth: sanitizeAuth(authInfo.auth, authInfo.source),
+      auth: sanitizeAuth(authInfo.auth, authInfo.source, {
+        hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
+      }),
       mode: state.runtimeMode,
       ownership: this.getOwnershipSnapshot(),
       state: sanitizeState(state),
@@ -963,17 +967,22 @@ function controlLeaseExpiresAt(request: { leaseExpiresAt?: unknown }) {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: MetaSynergyHolosAuthSource | null,
+  options?: { hiddenReason?: "managed" | "policy" | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: auth.agentID,
+        agentID: MetaSynergyDisplay.identifier(auth.agentID, {
+          hiddenReason: options?.hiddenReason,
+        }),
         source,
+        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
+        hiddenReason: null,
       }
 }
 

@@ -9,6 +9,7 @@ import {
   type MetaSynergyPendingRequest,
   type MetaSynergyState,
 } from "./state/store"
+import { MetaSynergyDisplay, type MetaSynergyHiddenReason } from "./display"
 import { MetaSynergyOwnerRegistry } from "./owner-registry"
 
 export type MetaSynergyTrustSubject = "agent" | "user"
@@ -115,8 +116,9 @@ export namespace MetaSynergyCLIBackend {
 
   export async function whoami() {
     const snapshot = await loadSnapshot()
+    const storedAuth = await MetaSynergyHolosAuth.inspect()
     return {
-      auth: snapshot.auth,
+      auth: sanitizeAuth(storedAuth.auth, storedAuth.source),
       mode: snapshot.mode,
       ownership: snapshot.ownership,
       envID: snapshot.state.envID ?? null,
@@ -140,7 +142,7 @@ export namespace MetaSynergyCLIBackend {
     const state = await MetaSynergyStore.loadState()
     const service = await MetaSynergyService.status()
     const managed = state.runtimeMode === "managed"
-    const authInfo = managed ? { auth: undefined, source: null } : await MetaSynergyHolosAuth.inspect()
+    const authInfo = await MetaSynergyHolosAuth.inspect()
     const auth = authInfo.auth
     const ownership = MetaSynergyOwnerRegistry.snapshot(state.ownerRegistry)
     const checks = [
@@ -163,7 +165,9 @@ export namespace MetaSynergyCLIBackend {
         name: "auth",
         ok: managed ? true : Boolean(auth),
         detail: managed
-          ? "Managed mode does not require Holos auth"
+          ? auth
+            ? `Stored agent ${MetaSynergyDisplay.identifier(auth.agentID, { hiddenReason: "managed" })} (${authInfo.source}) — not required in managed mode`
+            : "Managed mode does not require Holos auth"
           : auth
             ? `agent ${auth.agentID} (${authInfo.source})`
             : "No Holos credentials found",
@@ -196,7 +200,9 @@ export namespace MetaSynergyCLIBackend {
       mode: state.runtimeMode,
       ownership,
       state: sanitizeState(state),
-      auth: sanitizeAuth(auth, authInfo.source),
+      auth: sanitizeAuth(auth, authInfo.source, {
+        hiddenReason: managed ? "managed" : null,
+      }),
     }
   }
 
@@ -432,12 +438,16 @@ async function decideRequestOffline(requestID: string, status: "approved" | "den
 }
 
 async function loadSnapshot() {
-  const [state, service] = await Promise.all([MetaSynergyStore.loadState(), MetaSynergyService.status()])
-  const authInfo =
-    state.runtimeMode === "managed" ? { auth: undefined, source: null } : await MetaSynergyHolosAuth.inspect()
+  const [state, service, authInfo] = await Promise.all([
+    MetaSynergyStore.loadState(),
+    MetaSynergyService.status(),
+    MetaSynergyHolosAuth.inspect(),
+  ])
 
   return {
-    auth: sanitizeAuth(authInfo.auth, authInfo.source),
+    auth: sanitizeAuth(authInfo.auth, authInfo.source, {
+      hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
+    }),
     mode: state.runtimeMode,
     ownership: MetaSynergyOwnerRegistry.snapshot(state.ownerRegistry),
     state: sanitizeState(state),
@@ -453,17 +463,22 @@ async function loadSnapshot() {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: MetaSynergyHolosAuthSource | null,
+  options?: { hiddenReason?: MetaSynergyHiddenReason | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: auth.agentID,
+        agentID: MetaSynergyDisplay.identifier(auth.agentID, {
+          hiddenReason: options?.hiddenReason,
+        }),
         source,
+        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
+        hiddenReason: null,
       }
 }
 

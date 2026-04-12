@@ -5,6 +5,7 @@ import type { MetaSynergyApprovalMode } from "./state/store"
 import { MetaSynergyRuntime } from "./runtime"
 import { MetaSynergyService } from "./service"
 import { MetaSynergyHolosLogin } from "./holos/login"
+import { MetaSynergyDisplay } from "./display"
 
 interface CLIContext {
   json: boolean
@@ -875,13 +876,17 @@ function formatStatus(value: { auth: unknown; state: Record<string, unknown>; se
   const currentSession = isObject(state.currentSession) ? state.currentSession : null
   const ownerRegistry = isObject(state.ownerRegistry) ? state.ownerRegistry : undefined
   const localOwnership = ownerRegistry && isObject(ownerRegistry.local) ? ownerRegistry.local : undefined
+  const sessionSummary = currentSession
+    ? `${MetaSynergyDisplay.maybeIdentifier(currentSession.remoteAgentID, { unknown: "unknown" })} (${MetaSynergyDisplay.maybeIdentifier(currentSession.sessionID, { unknown: "unknown", hiddenReason: "policy" })})`
+    : "idle"
+
   return [
     `Mode: ${typeof state.runtimeMode === "string" ? state.runtimeMode : typeof (value as { mode?: unknown }).mode === "string" ? String((value as { mode?: unknown }).mode) : "unknown"}`,
-    `Local owner: ${typeof localOwnership?.activeOwnerID === "string" ? localOwnership.activeOwnerID : "none"}`,
+    `Local owner: ${MetaSynergyDisplay.maybeIdentifier(localOwnership?.activeOwnerID, { hiddenReason: "policy" })}`,
     `Logged in: ${auth.loggedIn === true ? "yes" : "no"}`,
-    `Agent ID: ${typeof auth.agentID === "string" ? auth.agentID : "none"}`,
+    `Agent ID: ${MetaSynergyDisplay.maybeIdentifier(auth.agentID)}`,
     `Auth source: ${typeof auth.source === "string" ? auth.source : "none"}`,
-    `Env ID: ${typeof state.envID === "string" ? state.envID : "none"}`,
+    `Env ID: ${MetaSynergyDisplay.maybeIdentifier(state.envID, { hiddenReason: "policy" })}`,
     `Label: ${typeof state.label === "string" ? state.label : "none"}`,
     `Service: ${service.running === true ? "running" : "stopped"}`,
     `PID: ${typeof service.pid === "number" ? String(service.pid) : "none"}`,
@@ -889,7 +894,7 @@ function formatStatus(value: { auth: unknown; state: Record<string, unknown>; se
     `Collaboration: ${state.collaborationEnabled === true ? "enabled" : "disabled"}`,
     `Approval: ${typeof state.approvalMode === "string" ? state.approvalMode : "unknown"}`,
     `Pending requests: ${Array.isArray(state.pendingRequests) ? state.pendingRequests.filter((request) => isObject(request) && request.status === "pending").length : 0}`,
-    `Session: ${currentSession ? `${String(currentSession.remoteAgentID ?? "unknown")} (${String(currentSession.sessionID ?? "unknown")})` : "idle"}`,
+    `Session: ${sessionSummary}`,
   ].join("\n")
 }
 
@@ -903,10 +908,10 @@ function formatWhoami(value: {
 }) {
   return [
     `Mode: ${value.mode ?? "unknown"}`,
-    `Local owner: ${value.ownership?.local?.activeOwnerID ?? "none"}`,
+    `Local owner: ${MetaSynergyDisplay.maybeIdentifier(value.ownership?.local?.activeOwnerID, { hiddenReason: "policy" })}`,
     `Logged in: ${value.auth.loggedIn ? "yes" : "no"}`,
-    `Agent ID: ${value.auth.agentID ?? "none"}`,
-    `Env ID: ${value.envID ?? "none"}`,
+    `Agent ID: ${MetaSynergyDisplay.maybeIdentifier(value.auth.agentID)}`,
+    `Env ID: ${MetaSynergyDisplay.maybeIdentifier(value.envID)}`,
     `Auth source: ${value.auth.source ?? "none"}`,
     `Label: ${value.label ?? "none"}`,
     `Service: ${value.service.running ? "running" : "stopped"}`,
@@ -920,9 +925,9 @@ function formatRequests(requests: Array<Record<string, unknown>>) {
 
 function formatRequest(request: Record<string, unknown>) {
   return [
-    `Request ID: ${String(request.id ?? "unknown")}`,
-    `Caller: ${String(request.callerAgentID ?? "unknown")}`,
-    `Owner User: ${String(request.callerOwnerUserID ?? "unknown")}`,
+    `Request ID: ${MetaSynergyDisplay.maybeIdentifier(request.id, { unknown: "unknown", hiddenReason: "policy" })}`,
+    `Caller: ${MetaSynergyDisplay.maybeIdentifier(request.callerAgentID, { unknown: "unknown", hiddenReason: "policy" })}`,
+    `Owner User: ${request.callerOwnerUserID == null ? "none" : String(request.callerOwnerUserID)}`,
     `Label: ${typeof request.label === "string" ? request.label : "none"}`,
     `Status: ${String(request.status ?? "unknown")}`,
     `Count: ${String(request.requestCount ?? 1)}`,
@@ -931,9 +936,9 @@ function formatRequest(request: Record<string, unknown>) {
 
 function formatTrust(value: { agents: string[]; users: number[]; blockedAgents?: string[] }) {
   return [
-    `Trusted agents: ${value.agents.length > 0 ? value.agents.join(", ") : "none"}`,
+    `Trusted agents: ${MetaSynergyDisplay.identifierList(value.agents, { hiddenReason: "policy" })}`,
     `Trusted users: ${value.users.length > 0 ? value.users.join(", ") : "none"}`,
-    `Blocked agents: ${value.blockedAgents && value.blockedAgents.length > 0 ? value.blockedAgents.join(", ") : "none"}`,
+    `Blocked agents: ${MetaSynergyDisplay.identifierList(value.blockedAgents, { hiddenReason: "policy" })}`,
   ].join("\n")
 }
 
@@ -943,9 +948,9 @@ function formatSessionStatus(value: {
   service: Record<string, unknown>
 }) {
   return [
-    `Session: ${value.session ? String(value.session.sessionID ?? "unknown") : "idle"}`,
-    `Remote agent: ${value.session ? String(value.session.remoteAgentID ?? "unknown") : "none"}`,
-    `Blocked agents: ${value.blockedAgentIDs.length > 0 ? value.blockedAgentIDs.join(", ") : "none"}`,
+    `Session: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.sessionID, { unknown: "unknown", hiddenReason: "policy" }) : "idle"}`,
+    `Remote agent: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.remoteAgentID, { unknown: "unknown", hiddenReason: "policy" }) : "none"}`,
+    `Blocked agents: ${MetaSynergyDisplay.identifierList(value.blockedAgentIDs, { hiddenReason: "policy" })}`,
     `Service: ${value.service.running === true ? "running" : "stopped"}`,
   ].join("\n")
 }
@@ -960,7 +965,7 @@ function formatCollaborationStatus(value: {
     `Enabled: ${value.enabled ? "yes" : "no"}`,
     `Approval: ${value.approvalMode}`,
     `Pending requests: ${value.pendingRequestCount}`,
-    `Session: ${value.session ? String(value.session.remoteAgentID ?? value.session.sessionID ?? "busy") : "idle"}`,
+    `Session: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.remoteAgentID ?? value.session.sessionID, { unknown: "busy", hiddenReason: "policy" }) : "idle"}`,
   ].join("\n")
 }
 
