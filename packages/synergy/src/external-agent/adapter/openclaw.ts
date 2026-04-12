@@ -23,11 +23,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     interrupt: true,
   }
 
-  get started(): boolean {
-    return this._started
-  }
-
-  private _started = false
+  started = false
   private cwd = ""
   private adapterConfig: Record<string, unknown> = {}
   private currentProc: import("bun").Subprocess<"pipe", "pipe", "pipe"> | undefined
@@ -56,7 +52,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
     this.env = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
-    this._started = true
+    this.started = true
     log.info("openclaw adapter started", { cwd: opts.cwd })
   }
 
@@ -134,7 +130,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
 
   async shutdown(): Promise<void> {
     this.killCurrentProc()
-    this._started = false
+    this.started = false
     log.info("openclaw adapter shut down")
   }
 

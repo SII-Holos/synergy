@@ -39,7 +39,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { ToolbarSelectorPopover, ToolbarSelectorTrigger } from "@/components/toolbar-selector"
+import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { ModelSelectorPopover, DialogSelectModelUnpaid } from "@/components/dialog"
@@ -360,9 +361,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!params.id) return false
     return (sync.data.message[params.id] ?? []).length > 0
   })
-  const isCurrentAgentExternal = createMemo(() => !!local.agent.current()?.external)
+  const currentAgent = createMemo(() => local.agent.current())
+  const currentAgentVisual = createMemo(() => getAgentVisual(currentAgent()))
+  const isCurrentAgentExternal = createMemo(() => !!currentAgent()?.external)
   const isCurrentExternalModelLocked = createMemo(() => {
-    const external = local.agent.current()?.external
+    const external = currentAgent()?.external
     if (!external) return false
     if (!sessionHasMessages()) return false
     return external.adapter === "codex"
@@ -2087,12 +2090,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <TooltipKeybind placement="top" title="Cycle agent" keybind={command.keybind("agent.cycle")}>
                       <ToolbarSelectorPopover
                         trigger={
-                          <ToolbarSelectorTrigger
-                            icon="bot"
-                            label={(local.agent.current()?.name ?? "Agent").replace(/^./, (c) => c.toUpperCase())}
-                          />
+                          <button
+                            type="button"
+                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                          >
+                            <AgentGlyph agent={currentAgent()} class="size-4.5" size="small" />
+                            <span>{currentAgentVisual().label}</span>
+                            <Show when={isCurrentAgentExternal()}>
+                              <span class="rounded-full bg-surface-raised-base-hover px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+                                External
+                              </span>
+                            </Show>
+                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                          </button>
                         }
                         title="Select agent"
+                        contentClass="w-72 max-h-80"
                       >
                         {(close) => (
                           <List
@@ -2102,7 +2115,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               .filter(
                                 (a) => !a.hidden && a.mode !== "primary" && (!a.external || !sessionHasMessages()),
                               )}
-                            current={local.agent.current()}
+                            current={currentAgent()}
                             key={(x) => x.name}
                             filterKeys={["name"]}
                             onSelect={(x) => {
@@ -2110,7 +2123,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               close()
                             }}
                           >
-                            {(agent) => <span class="text-13-regular capitalize">{agent.name}</span>}
+                            {(agent) => {
+                              const visual = getAgentVisual(agent)
+                              return (
+                                <div class="flex items-center justify-between gap-3 px-2 py-1.5">
+                                  <div class="min-w-0 flex items-center gap-2">
+                                    <AgentGlyph agent={agent} class="size-5 shrink-0" size="small" />
+                                    <div class="min-w-0">
+                                      <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                      <div class="text-11-regular text-text-subtle truncate">
+                                        {agent.external ? "External agent" : "Built-in agent"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Show when={agent.external}>
+                                    <span class="rounded-full border border-border-base bg-surface-base px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+                                      External
+                                    </span>
+                                  </Show>
+                                </div>
+                              )
+                            }}
                           </List>
                         )}
                       </ToolbarSelectorPopover>

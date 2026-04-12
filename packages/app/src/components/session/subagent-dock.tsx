@@ -3,25 +3,13 @@ import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
+import { getAgentVisual } from "@/components/agent-visual"
 import "./subagent-dock.css"
 
-const AGENT_CONFIG: Record<string, { emoji: string; label: string; color: string }> = {
-  master: { emoji: "\u{1F528}", label: "Master", color: "rgba(59, 130, 246, 0.35)" },
-  explore: { emoji: "\u{1F50D}", label: "Explorer", color: "rgba(168, 85, 247, 0.35)" },
-  scribe: { emoji: "\u270F\uFE0F", label: "Scribe", color: "rgba(34, 197, 94, 0.35)" },
-  scholar: { emoji: "\u{1F4DA}", label: "Scholar", color: "rgba(245, 158, 11, 0.35)" },
-  scout: { emoji: "\u{1F9ED}", label: "Scout", color: "rgba(6, 182, 212, 0.35)" },
-  advisor: { emoji: "\u{1F9D0}", label: "Advisor", color: "rgba(236, 72, 153, 0.35)" },
-}
-
-const DEFAULT_AGENT_CONFIG = { emoji: "\u{1F916}", label: "Agent", color: "rgba(107, 114, 128, 0.35)" }
 const HOLD_TO_CANCEL_MS = 700
 const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
-
-function getAgentConfig(agent: string) {
-  return AGENT_CONFIG[agent] ?? DEFAULT_AGENT_CONFIG
-}
 
 function formatElapsed(startedAt: number): string {
   const seconds = Math.floor((Date.now() - startedAt) / 1000)
@@ -40,7 +28,7 @@ interface SubagentAvatarProps {
 function SubagentAvatar(props: SubagentAvatarProps) {
   const params = useParams()
   const navigate = useNavigate()
-  const config = createMemo(() => getAgentConfig(props.task.agent))
+  const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
   const [elapsed, setElapsed] = createSignal(formatElapsed(props.task.startedAt))
   const [holdProgress, setHoldProgress] = createSignal(0)
@@ -139,9 +127,11 @@ function SubagentAvatar(props: SubagentAvatarProps) {
     return (
       <div class="subagent-popover flex flex-col gap-1.5 py-1 max-w-56">
         <div class="flex items-center gap-2">
-          <span class="text-13-medium">
-            {cfg.emoji} {cfg.label}
+          <span class="inline-flex items-center gap-1.5 text-13-medium">
+            <Icon name={cfg.icon} size="small" class="text-icon-base" />
+            <span>{cfg.label}</span>
           </span>
+
           <span class="text-11-regular text-text-subtle">{elapsed()}</span>
         </div>
         <div class="text-12-regular text-text-weak leading-relaxed line-clamp-2">{task.description}</div>
@@ -193,7 +183,9 @@ function SubagentAvatar(props: SubagentAvatarProps) {
               />
             </svg>
           </Show>
-          <span class="subagent-icon text-base leading-none select-none">{config().emoji}</span>
+          <span class="subagent-icon inline-flex items-center justify-center size-5 select-none">
+            <Icon name={config().icon} size="small" class="text-icon-base" />
+          </span>
         </button>
       </Tooltip>
     </div>

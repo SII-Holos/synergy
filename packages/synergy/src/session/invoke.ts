@@ -237,48 +237,30 @@ export namespace SessionInvoke {
 
         if (agent.external) {
           const allowAll = await PermissionNext.isAllowingAll(sessionID)
-          let adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
+          const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
           }
 
-          const currentConfig = (adapter as any).adapterConfig as Record<string, unknown> | undefined
-          if (adapter.started && externalAdapterNeedsRestart(adapter.name, currentConfig, allowAll)) {
-            await ExternalAgent.shutdownAdapter(agent.external.adapter, sessionID)
-            adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
-            if (!adapter) {
-              log.error("external adapter not found after restart", { adapter: agent.external.adapter, sessionID })
-              break
-            }
+          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
+          const override = await resolveExternalModelOverride(lastUser.model)
+          if (override) {
+            runConfig.model = override.model
+            if (override.providerID) runConfig.providerID = override.providerID
+            if (override.baseURL) runConfig.baseURL = override.baseURL
           }
 
           if (!adapter.started) {
-            const startConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
-
-            const override = await resolveExternalModelOverride(lastUser.model)
-            if (override) {
-              startConfig.model = override.model
-              if (override.providerID) startConfig.providerID = override.providerID
-              if (override.baseURL) startConfig.baseURL = override.baseURL
-            }
-
             await adapter.start({
               cwd: Instance.directory,
-              config: startConfig,
+              config: runConfig,
               env: override?.apiKey ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined,
             })
           } else {
             const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
             if (cfg) {
-              applyExternalPermissionMode(cfg, adapter.name, allowAll)
-            }
-            if (adapter.capabilities.modelSwitch) {
-              const override = await resolveExternalModelOverride(lastUser.model)
-              if (override && cfg) {
-                cfg.model = override.model
-                if (override.baseURL) cfg.baseURL = override.baseURL
-              }
+              Object.assign(cfg, runConfig)
             }
           }
 
@@ -294,36 +276,7 @@ export namespace SessionInvoke {
             taskContext: taskContext ?? undefined,
           }
 
-          const approvalDelegate: ExternalAgent.ApprovalDelegate = async (request) => {
-            if (await PermissionNext.isAllowingAll(sessionID)) return true
-            try {
-              await PermissionNext.ask({
-                sessionID,
-                permission: "external-agent",
-                patterns: ["*"],
-                metadata: {
-                  input: request.input,
-                  source: "external-agent",
-                  adapter: adapter.name,
-                  tool: request.tool,
-                  category: request.category,
-                  ...PermissionNext.requestMetadata(session),
-                },
-                ruleset: PermissionNext.sessionRuleset(session),
-              })
-              return true
-            } catch (e) {
-              if (
-                e instanceof PermissionNext.DeniedError ||
-                e instanceof PermissionNext.RejectedError ||
-                e instanceof PermissionNext.CorrectedError
-              ) {
-                return false
-              }
-              log.warn("approval delegate unexpected error, denying", { error: String(e) })
-              return false
-            }
-          }
+          const approvalDelegate: ExternalAgent.ApprovalDelegate = async () => false
 
           await ExternalAgentProcessor.process({
             sessionID,
@@ -714,38 +667,15 @@ export namespace SessionInvoke {
     adapterName: string,
     allowAll: boolean,
   ): Record<string, unknown> {
+    config.allowAll = allowAll
+
     if (adapterName === "claude-code") {
       delete config.skipPermissions
       config.permissionMode = allowAll ? "bypassPermissions" : "default"
       return config
     }
 
-    if (adapterName === "codex") {
-      config.approvalPolicy = allowAll ? "never" : "on-request"
-      return config
-    }
-
     return config
-  }
-
-  export function externalAdapterNeedsRestart(
-    adapterName: string,
-    config: Record<string, unknown> | undefined,
-    allowAll: boolean,
-  ): boolean {
-    if (!config) return false
-
-    if (adapterName === "claude-code") {
-      const desired = allowAll ? "bypassPermissions" : "default"
-      return config.permissionMode !== desired || config.skipPermissions === true
-    }
-
-    if (adapterName === "codex") {
-      const desired = allowAll ? "never" : "on-request"
-      return config.approvalPolicy !== desired
-    }
-
-    return false
   }
 
   async function resolveExternalModelOverride(userModel: {
