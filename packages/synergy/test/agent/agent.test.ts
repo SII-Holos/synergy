@@ -414,6 +414,10 @@ test("default permission includes doom_loop allow and external_directory ask", a
 })
 
 test("openclaw external agent is registered without model switching claims", async () => {
+  if (!Bun.which("openclaw")) {
+    console.log("Skipping: openclaw binary not available")
+    return
+  }
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
