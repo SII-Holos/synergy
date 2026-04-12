@@ -244,7 +244,7 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
-          const override = await resolveExternalModelOverride(lastUser.model)
+          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
@@ -545,6 +545,18 @@ export namespace SessionInvoke {
       sessionID,
     })) as MessageV2.Assistant
     ExperienceEncoder.onComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
     return {
       info: assistantMessage,
       parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),
@@ -592,6 +604,18 @@ export namespace SessionInvoke {
 
     await Session.updateMessage(assistantMessage)
     ExperienceEncoder.onComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
 
     log.info("assistant mail written", {
       sessionID,
@@ -698,14 +722,24 @@ export namespace SessionInvoke {
     }
   }
 
-  async function resolveExternalModelOverride(userModel: {
-    providerID: string
-    modelID: string
-  }): Promise<ExternalModelInfo | undefined> {
+  async function resolveExternalModelOverride(
+    userModel: { providerID: string; modelID: string },
+    adapterName: string,
+  ): Promise<ExternalModelInfo | undefined> {
     try {
       const provider = await Provider.getProvider(userModel.providerID)
       const model = await Provider.getModel(userModel.providerID, userModel.modelID)
       if (!provider || !model) return undefined
+
+      const npm = model.api.npm ?? ""
+      if (!isModelCompatibleWithAdapter(npm, adapterName)) {
+        log.info("skipping model override — incompatible provider for adapter", {
+          adapterName,
+          npm,
+          modelID: model.api.id,
+        })
+        return undefined
+      }
 
       const options: Record<string, any> = { ...provider.options, ...model.options }
       const baseURL = (options["baseURL"] as string) || model.api.url
@@ -720,6 +754,17 @@ export namespace SessionInvoke {
     } catch (e) {
       log.warn("resolveExternalModelOverride failed, falling back", { error: String(e) })
       return undefined
+    }
+  }
+
+  function isModelCompatibleWithAdapter(npm: string, adapterName: string): boolean {
+    switch (adapterName) {
+      case "codex":
+        return npm.includes("openai") || npm.includes("openrouter")
+      case "claude-code":
+        return npm.includes("anthropic")
+      default:
+        return false
     }
   }
 

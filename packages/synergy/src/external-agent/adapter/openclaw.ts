@@ -26,7 +26,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
   started = false
   private cwd = ""
   private adapterConfig: Record<string, unknown> = {}
-  private currentProc: import("bun").Subprocess<"pipe", "pipe", "pipe"> | undefined
+  private currentProc: import("bun").Subprocess | undefined
   private env: Record<string, string | undefined> = {}
 
   async discover(): Promise<{ available: boolean; path?: string; version?: string }> {
@@ -60,19 +60,30 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     const args = this.buildArgs(context)
     log.info("spawning openclaw turn", { sessionID: context.sessionID, args: args.join(" ") })
 
-    const proc = Bun.spawn(["openclaw", ...args], {
+    // Use shell-level file redirection for output capture.
+    // OpenClaw emits JSON on stderr at the very end, after noisy plugin logs.
+    // When spawned from the Synergy server process via Bun.spawn with piped
+    // stderr, the JSON tail is consistently lost (only ~2 KB of plugin startup
+    // logs are captured while the full output should be ~16 KB).  This does not
+    // reproduce in standalone scripts — it appears to be specific to subprocess
+    // pipe handling inside the long-running Bun server.  Shell-level redirection
+    // to temp files bypasses Bun's pipe layer entirely.
+    const tmpDir = (await import("node:os")).tmpdir()
+    const tag = `openclaw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const stderrPath = `${tmpDir}/${tag}.err`
+    const stdoutPath = `${tmpDir}/${tag}.out`
+
+    const shellCmd = ["openclaw", ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")
+    const fullCmd = `${shellCmd} >"${stdoutPath}" 2>"${stderrPath}"`
+
+    const proc = Bun.spawn(["sh", "-c", fullCmd], {
       cwd: this.cwd,
       env: this.env,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
     })
     this.currentProc = proc
-
-    // Close stdin immediately
-    try {
-      proc.stdin.end()
-    } catch {}
 
     const onAbort = () => {
       log.warn("turn aborted via signal")
@@ -81,12 +92,15 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     signal?.addEventListener("abort", onAbort, { once: true })
 
     try {
-      const [stderrText, stdoutText] = await Promise.all([
-        new Response(proc.stderr).text(),
-        new Response(proc.stdout).text(),
-        proc.exited,
-      ])
+      await proc.exited
       this.currentProc = undefined
+
+      const stderrText = await Bun.file(stderrPath)
+        .text()
+        .catch(() => "")
+      const stdoutText = await Bun.file(stdoutPath)
+        .text()
+        .catch(() => "")
 
       const exitCode = proc.exitCode ?? -1
       log.info("openclaw process exited", { exitCode, stderrLen: stderrText.length, stdoutLen: stdoutText.length })
@@ -102,6 +116,10 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
       const result = this.parseResponse(stderrText, stdoutText)
 
       if (!result) {
+        log.warn("openclaw response parse failed", {
+          stderrTail: this.stripAnsi(stderrText).slice(-300),
+          stdoutTail: this.stripAnsi(stdoutText).slice(-300),
+        })
         yield {
           type: "error",
           message: `OpenClaw returned no parseable response (exit ${exitCode})`,
@@ -127,6 +145,11 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     } finally {
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
+      // Cleanup temp files
+      import("node:fs").then((fs) => {
+        fs.unlink(stderrPath, () => {})
+        fs.unlink(stdoutPath, () => {})
+      })
     }
   }
 
