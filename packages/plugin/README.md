@@ -241,7 +241,89 @@ The rule of thumb is simple: treat `input` as context, and treat `output` as the
 | `tool`       | Register custom tools                      | Runtime-side integrations, project utilities |
 | `auth`       | Add provider auth methods and auth loaders | Custom providers, OAuth, API key flows       |
 | `config`     | Observe loaded config                      | Initialize plugin state from current config  |
-| `event`      | Observe bus events                         | Logging, metrics, passive integrations       |
+| `event`      | Observe 72 runtime bus events (see below) | Logging, metrics, passive integrations       |
+
+#### `event` — observable bus events
+
+The `event` hook lets you subscribe to any of the following runtime bus events by matching `event.type` in your handler. Run `synergy plugin hooks --json` for the full machine-readable list.
+
+**Installation & scope**
+
+```
+installation.updated  installation.update_available
+scope.updated  scope.removed
+```
+
+**Config & server**
+
+```
+config.updated  config.set_activated
+server.connected  server.instance.disposed  global.disposed
+```
+
+**File & LSP**
+
+```
+file.edited  file.watcher.updated
+lsp.updated  lsp.client_diagnostics
+```
+
+**MCP & command**
+
+```
+mcp.ready  mcp.tools_changed  mcp.prompts_changed  mcp.resources_changed
+command.executed
+vcs.branch.updated
+```
+
+**Permission & note**
+
+```
+permission.asked  permission.replied  permission.allow_all_changed
+note.created  note.updated  note.deleted
+```
+
+**Session & message**
+
+```
+session.created  session.updated  session.deleted  session.diff
+session.error  session.status  session.idle  session.compacted
+message.updated  message.removed  message.part.updated  message.part.removed
+question.asked  question.replied  question.rejected
+runtime.reloaded
+todo.updated  dag.updated
+```
+
+**Cortex & agenda**
+
+```
+cortex.task.created  cortex.task.completed  cortex.tasks.updated
+agenda.item.created  agenda.item.updated  agenda.item.deleted
+```
+
+**PTY**
+
+```
+pty.created  pty.updated  pty.exited  pty.deleted
+```
+
+**Channel**
+
+```
+channel.command.executed  channel.connected  channel.disconnected
+channel.message.received
+```
+
+**App & Holos**
+
+```
+app.push
+holos.profile.updated
+holos.contact.added  holos.contact.removed  holos.contact.updated  holos.contact.config_updated
+holos.friend_request.created  holos.friend_request.updated  holos.friend_request.removed
+holos.queue.enqueued  holos.queue.delivered  holos.queue.expired
+holos.connected  holos.connection_status.changed  holos.presence
+```
 
 ### Chat and session hooks
 

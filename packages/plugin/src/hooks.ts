@@ -182,6 +182,112 @@ export const HOOKS: HookDescriptor[] = [
   },
 ]
 
+/**
+ * All runtime bus event names observable via the `core.event` hook.
+ * Source of truth: SDK types.gen.ts `Event` discriminated union (types from BusEvent.define() calls).
+ */
+export const BUS_EVENT_NAMES: string[] = [
+  // installation
+  "installation.updated",
+  "installation.update_available",
+  // scope
+  "scope.updated",
+  "scope.removed",
+  // config
+  "config.updated",
+  "config.set_activated",
+  // server
+  "server.instance.disposed",
+  "server.connected",
+  "global.disposed",
+  // file
+  "file.edited",
+  "file.watcher.updated",
+  // lsp
+  "lsp.updated",
+  "lsp.client_diagnostics",
+  // mcp
+  "mcp.ready",
+  "mcp.tools_changed",
+  "mcp.prompts_changed",
+  "mcp.resources_changed",
+  // command
+  "command.executed",
+  // vcs
+  "vcs.branch.updated",
+  // permission
+  "permission.asked",
+  "permission.replied",
+  "permission.allow_all_changed",
+  // note
+  "note.created",
+  "note.updated",
+  "note.deleted",
+  // session
+  "session.created",
+  "session.updated",
+  "session.deleted",
+  "session.diff",
+  "session.error",
+  "session.status",
+  "session.idle",
+  "session.compacted",
+  // question
+  "question.asked",
+  "question.replied",
+  "question.rejected",
+  // runtime
+  "runtime.reloaded",
+  // message
+  "message.updated",
+  "message.removed",
+  "message.part.updated",
+  "message.part.removed",
+  // todo
+  "todo.updated",
+  // dag
+  "dag.updated",
+  // app
+  "app.push",
+  // holos profile
+  "holos.profile.updated",
+  // holos contact
+  "holos.contact.added",
+  "holos.contact.removed",
+  "holos.contact.updated",
+  "holos.contact.config_updated",
+  // holos friend request
+  "holos.friend_request.created",
+  "holos.friend_request.updated",
+  "holos.friend_request.removed",
+  // holos queue
+  "holos.queue.enqueued",
+  "holos.queue.delivered",
+  "holos.queue.expired",
+  // holos connection
+  "holos.connected",
+  "holos.connection_status.changed",
+  "holos.presence",
+  // agenda
+  "agenda.item.created",
+  "agenda.item.updated",
+  "agenda.item.deleted",
+  // cortex
+  "cortex.task.created",
+  "cortex.task.completed",
+  "cortex.tasks.updated",
+  // pty
+  "pty.created",
+  "pty.updated",
+  "pty.exited",
+  "pty.deleted",
+  // channel
+  "channel.command.executed",
+  "channel.connected",
+  "channel.disconnected",
+  "channel.message.received",
+]
+
 export const HOOK_CATEGORIES: HookCategory[] = [
   "core",
   "chat",
