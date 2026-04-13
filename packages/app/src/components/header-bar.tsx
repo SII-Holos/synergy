@@ -16,7 +16,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createStore } from "solid-js/store"
 import { DialogSettings } from "@/components/dialog/dialog-settings"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
-import { isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
@@ -121,9 +121,14 @@ function SessionIdentitySwitcher() {
   )
 
   const recentItems = createMemo(() => recent.list())
-  const projectLabel = createMemo(
-    () => recent.currentDirectory() && recentItems().find((item) => item.isCurrent)?.scope.name,
-  )
+  const currentScope = createMemo(() => {
+    const directory = projectDirectory()
+    if (!directory) return undefined
+    return globalSync.data.scope.find(
+      (scope) => scope.worktree === directory || (scope.sandboxes ?? []).includes(directory),
+    )
+  })
+  const projectLabel = createMemo(() => getScopeLabel(currentScope(), projectDirectory()))
   const sessionTitle = createMemo(() => {
     if (isGlobal()) return "Home"
     if (isHolosConversation()) {
@@ -195,7 +200,7 @@ function SessionIdentitySwitcher() {
             }
           >
             <div class="sid-trigger-meta-row">
-              <span class="sid-trigger-project truncate">{projectLabel() || "Project"}</span>
+              <span class="sid-trigger-project truncate">{projectLabel()}</span>
               <span class="sid-trigger-summary shrink-0">{summary()}</span>
             </div>
             <div class="sid-trigger-title-row">

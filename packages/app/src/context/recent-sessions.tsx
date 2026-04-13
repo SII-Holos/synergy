@@ -3,8 +3,7 @@ import { createStore, reconcile } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { useLayout } from "./layout"
 import { useGlobalSync } from "./global-sync"
 import { useNotification } from "./notification"
@@ -290,8 +289,7 @@ export const { use: useRecentSessions, provider: RecentSessionsProvider } = crea
         return item.session.title || "New session"
       },
       scopeLabel(scope: LocalScope) {
-        if (isGlobalScope(scope.worktree)) return "Home"
-        return scope.name || getFilename(scope.worktree)
+        return getScopeLabel(scope)
       },
       prefetch(item: RecentSessionItem, priority: "high" | "low" = "high") {
         layout.nav.prefetchSession(item.session, priority)

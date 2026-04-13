@@ -10,7 +10,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { usePanel } from "@/context/panel"
 import { useNotification } from "@/context/notification"
 import { Panel } from "@/components/panel"
-import { isGlobalScope } from "@/utils/scope"
+import { getScopeLabel } from "@/utils/scope"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
@@ -50,8 +50,6 @@ export function SessionListView(props: { worktree: string }) {
   const [loadingMore, setLoadingMore] = createSignal(false)
   const [expandedCard, setExpandedCard] = createSignal<string | null>(null)
 
-  const isGlobal = createMemo(() => isGlobalScope(props.worktree))
-
   onMount(() => {
     layout.scopes.open(props.worktree)
   })
@@ -60,12 +58,7 @@ export function SessionListView(props: { worktree: string }) {
     layout.scopes.list().find((p) => p.worktree === props.worktree || p.sandboxes?.includes(props.worktree)),
   )
 
-  const scopeName = createMemo(() => {
-    if (isGlobal()) return "Home"
-    const s = scope()
-    if (s?.name) return s.name
-    return getFilename(props.worktree)
-  })
+  const scopeName = createMemo(() => getScopeLabel(scope(), props.worktree))
 
   const sessions = createMemo(() => layout.nav.projectSessions(scope()))
   const hasMore = createMemo(() => !search() && layout.nav.projectHasMoreSessions(scope()))

@@ -25,6 +25,7 @@ import { Video, Mermaid, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import "katex/dist/katex.min.css"
 
@@ -301,10 +302,10 @@ export function NotePanel() {
 
   const scopeLookup = createMemo(() => {
     const map = new Map<string, { name: string; directory: string }>()
-    map.set("global", { name: "Global", directory: "global" })
+    map.set("global", { name: getScopeLabel(undefined, "global"), directory: "global" })
     for (const scope of globalSync.data.scope) {
       map.set(scope.id, {
-        name: scope.name || getFilename(scope.worktree),
+        name: getScopeLabel(scope),
         directory: scope.worktree,
       })
     }

@@ -4,12 +4,12 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useLayout, getAvatarColors, type LocalScope } from "@/context/layout"
+import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNotification } from "@/context/notification"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
@@ -164,7 +164,7 @@ function ScopeListView(props: {
               onClick={() => props.onSelectScope(scope)}
             >
               <Avatar
-                fallback={scope.name || getFilename(scope.worktree)}
+                fallback={getScopeLabel(scope)}
                 src={scope.icon?.url}
                 size="small"
                 background={colors().background}
@@ -177,7 +177,7 @@ function ScopeListView(props: {
                   "text-text-base": !isActive(),
                 }}
               >
-                {scope.name || getFilename(scope.worktree)}
+                {getScopeLabel(scope)}
               </span>
               <Icon name="chevron-right" size="small" class="ml-auto shrink-0 text-icon-weak" />
             </button>
@@ -203,10 +203,7 @@ function SessionListDrawerView(props: {
   const sessions = createMemo(() => layout.nav.projectSessions(props.scope))
   const hasMore = createMemo(() => layout.nav.projectHasMoreSessions(props.scope))
 
-  const scopeName = createMemo(() => {
-    if (isGlobalScope(props.scope.worktree)) return "Home"
-    return props.scope.name || getFilename(props.scope.worktree)
-  })
+  const scopeName = createMemo(() => getScopeLabel(props.scope))
 
   async function loadMore() {
     setLoadingMore(true)
