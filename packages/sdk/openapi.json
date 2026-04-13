@@ -482,6 +482,16 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "archived": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -514,8 +524,8 @@
             "required": true
           }
         ],
-        "summary": "Remove scope",
-        "description": "Remove a scope from the tracked list. Does not delete scope files or session data.",
+        "summary": "Archive scope",
+        "description": "Archive a scope. Archived scopes are hidden from the list but can be restored.",
         "responses": {
           "200": {
             "description": "Scope removed",
@@ -11034,6 +11044,9 @@
                 "type": "number"
               },
               "initialized": {
+                "type": "number"
+              },
+              "archived": {
                 "type": "number"
               }
             },

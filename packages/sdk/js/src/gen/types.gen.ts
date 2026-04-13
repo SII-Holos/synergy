@@ -310,6 +310,7 @@ export type Scope = {
     created: number
     updated: number
     initialized?: number
+    archived?: number
   }
   sandboxes: Array<string>
 }
@@ -3984,6 +3985,7 @@ export type ScopeUpdateData = {
       url?: string
       color?: string
     }
+    archived?: number | null
   }
   path: {
     scopeID: string

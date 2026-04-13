@@ -16,7 +16,7 @@ export interface Project {
   name?: string
   icon?: { url?: string; color?: string }
   sandboxes: string[]
-  time: { created: number; updated: number; initialized?: number }
+  time: { created: number; updated: number; initialized?: number; archived?: number }
 }
 
 export type Scope = Global | Project
@@ -37,6 +37,7 @@ export const Info = z
       created: z.number(),
       updated: z.number(),
       initialized: z.number().optional(),
+      archived: z.number().optional(),
     }),
     sandboxes: z.array(z.string()),
   })

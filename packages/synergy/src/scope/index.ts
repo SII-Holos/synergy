@@ -182,6 +182,22 @@ export namespace Scope {
     const { id, sandbox, worktree, vcs } = resolved
 
     let existing = await readPersisted(id)
+
+    if (existing?.time?.archived) {
+      const scope: Scope.Project = {
+        type: "project",
+        id: existing.id,
+        directory: sandbox,
+        worktree: existing.worktree,
+        vcs: existing.vcs,
+        name: existing.name,
+        icon: existing.icon,
+        sandboxes: existing.sandboxes ?? [],
+        time: existing.time,
+      }
+      return { scope, sandbox }
+    }
+
     if (!existing) {
       existing = {
         id,
@@ -238,6 +254,7 @@ export namespace Scope {
     const results = await Promise.all(ids.map((id) => readPersisted(id)))
     return results
       .filter((data): data is z.infer<typeof Info> => !!data)
+      .filter((data) => !data.time?.archived)
       .map((data) => ({
         type: "project" as const,
         id: data.id,
@@ -267,6 +284,7 @@ export namespace Scope {
     scopeID: string
     name?: string
     icon?: { url?: string; color?: string }
+    archived?: number | null
   }) {
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
       if (input.name !== undefined) draft.name = input.name
@@ -274,6 +292,9 @@ export namespace Scope {
         draft.icon = { ...draft.icon }
         if (input.icon.url !== undefined) draft.icon!.url = input.icon.url
         if (input.icon.color !== undefined) draft.icon!.color = input.icon.color
+      }
+      if (input.archived !== undefined) {
+        draft.time.archived = input.archived ?? undefined
       }
       draft.time.updated = Date.now()
     })
@@ -287,13 +308,16 @@ export namespace Scope {
   }
 
   export async function remove(scopeID: string) {
-    await Storage.remove(StoragePath.scope(pid(scopeID)))
+    const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
+      draft.time.archived = Date.now()
+    })
     GlobalBus.emit("event", {
       payload: {
         type: Event.Removed.type,
         properties: { id: scopeID },
       },
     })
+    return result
   }
 
   export async function sandboxes(scopeID: string) {

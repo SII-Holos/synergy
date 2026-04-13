@@ -402,6 +402,17 @@ function createGlobalSync() {
     }
     if (event?.type === "scope.updated") {
       const result = Binary.search(globalStore.scope, event.properties.id, (s) => s.id)
+      if (event.properties.time?.archived) {
+        if (result.found) {
+          setGlobalStore(
+            "scope",
+            produce((draft) => {
+              draft.splice(result.index, 1)
+            }),
+          )
+        }
+        return
+      }
       if (result.found) {
         setGlobalStore("scope", result.index, reconcile(event.properties))
         return
@@ -778,6 +789,7 @@ function createGlobalSync() {
           const scopes = (x.data ?? [])
             .filter((p) => !!p?.id)
             .filter((p) => !!p.worktree && !p.worktree.includes("synergy-test"))
+            .filter((p) => !p.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
           setGlobalStore("scope", scopes)

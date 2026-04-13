@@ -1653,9 +1653,9 @@ export class Scope extends HeyApiClient {
   }
 
   /**
-   * Remove scope
+   * Archive scope
    *
-   * Remove a scope from the tracked list. Does not delete scope files or session data.
+   * Archive a scope. Archived scopes are hidden from the list but can be restored.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
@@ -1696,6 +1696,7 @@ export class Scope extends HeyApiClient {
         url?: string
         color?: string
       }
+      archived?: number | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1708,6 +1709,7 @@ export class Scope extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "name" },
             { in: "body", key: "icon" },
+            { in: "body", key: "archived" },
           ],
         },
       ],
