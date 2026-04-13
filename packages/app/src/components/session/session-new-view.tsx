@@ -62,15 +62,16 @@ export function NewSessionGreeting() {
 
   return (
     <>
-      <a
-        href="https://www.sii.edu.cn"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="flex items-center gap-2 text-text-subtle hover:opacity-70 transition-opacity pointer-events-auto mb-2"
-        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both" }}
-      >
-        <img src="/sii-logo.png" style={{ height: "30px" }} alt="Shanghai Innovation Institute" />
-      </a>
+      <span class="flex items-center mb-2" style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
+        <a
+          href="https://www.sii.edu.cn"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hover:opacity-70 transition-opacity"
+        >
+          <img src="/sii-logo.png" style={{ height: "30px" }} alt="Shanghai Innovation Institute" />
+        </a>
+      </span>
       <h1
         class="text-36-medium text-text-strong"
         style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
