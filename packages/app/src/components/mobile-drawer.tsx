@@ -1,7 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -9,6 +8,7 @@ import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useLayout, getAvatarColors, type LocalScope } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNotification } from "@/context/notification"
+import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { isGlobalScope } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
@@ -19,6 +19,7 @@ export function MobileDrawer() {
   const navigate = useNavigate()
   const params = useParams()
   const notification = useNotification()
+  const theme = useTheme()
 
   const [drilldown, setDrilldown] = createSignal<LocalScope | null>(null)
 
@@ -51,7 +52,11 @@ export function MobileDrawer() {
           {/* Header */}
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
-              <Mark class="size-4.5 shrink-0" />
+              <img
+                src={theme.mode() === "dark" ? "/holos-logo-white.svg" : "/holos-logo.svg"}
+                alt="Holos"
+                class="size-6 shrink-0"
+              />
               <span class="text-14-medium text-text-strong">Synergy</span>
             </A>
             <button

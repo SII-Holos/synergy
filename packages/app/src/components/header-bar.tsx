@@ -7,7 +7,7 @@ import { usePanel } from "@/context/panel"
 import { useLayout, getAvatarColors } from "@/context/layout"
 import { useRecentSessions, type RecentSessionItem } from "@/context/recent-sessions"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { Mark } from "@ericsanchezok/synergy-ui/logo"
+
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
@@ -270,6 +270,7 @@ export function HeaderBar() {
   const dialog = useDialog()
   const navigate = useNavigate()
   const layout = useLayout()
+  const theme = useTheme()
   const inDirectory = () => !!params.dir
   const isGlobal = createMemo(() => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false))
   const isHolosConversation = createMemo(() => {
@@ -288,7 +289,11 @@ export function HeaderBar() {
           class="hidden md:flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
           onClick={() => panel.close()}
         >
-          <Mark class="size-4.5 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6" />
+          <img
+            src={theme.mode() === "dark" ? "/holos-logo-white.svg" : "/holos-logo.svg"}
+            alt="Holos"
+            class="size-6 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6"
+          />
         </A>
         <button
           type="button"
