@@ -30,10 +30,13 @@ function write(line: string, overwrite = false) {
 }
 
 let runningMigrations: Promise<void> | undefined
+let migrationsCompleted = false
 
 export async function ensureMigrations(): Promise<void> {
+  if (migrationsCompleted) return
   runningMigrations ??= runMigrations().finally(() => {
     runningMigrations = undefined
+    migrationsCompleted = true
   })
   return runningMigrations
 }
