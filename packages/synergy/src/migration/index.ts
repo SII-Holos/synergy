@@ -41,6 +41,11 @@ export async function ensureMigrations(): Promise<void> {
   return runningMigrations
 }
 
+export function resetMigrations(): void {
+  migrationsCompleted = false
+  runningMigrations = undefined
+}
+
 export async function runMigrations(): Promise<void> {
   const all = collect()
   if (all.length === 0) return

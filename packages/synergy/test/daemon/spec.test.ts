@@ -4,6 +4,7 @@ import os from "os"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { DaemonSpec } from "../../src/daemon/spec"
+import { resetMigrations } from "../../src/migration"
 import { parse as parseJsonc } from "jsonc-parser"
 
 const originalEnv = { ...process.env }
@@ -18,6 +19,7 @@ describe("daemon.spec", () => {
     process.argv = [...originalArgv]
     await fs.mkdir(path.join(home, ".synergy", "config"), { recursive: true })
     Config.global.reset()
+    resetMigrations()
   })
 
   afterEach(async () => {
