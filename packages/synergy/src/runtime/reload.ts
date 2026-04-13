@@ -9,6 +9,7 @@ import { Global } from "../global"
 import { Instance } from "../scope/instance"
 import { RuntimeSchema } from "./schema"
 import { SkillPaths } from "../skill/paths"
+import { Log } from "../util/log"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -423,5 +424,60 @@ export namespace RuntimeReload {
 
   function unique<T>(items: T[]) {
     return [...new Set(items)]
+  }
+
+  const reloadLog = Log.create({ service: "runtime.reload.auto" })
+  const DEFAULT_DEBOUNCE_MS = 500
+
+  let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  function debounceReload(file: string, scope: "global" | "project") {
+    const key = `${scope}:${file}`
+    const existing = debounceTimers.get(key)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(async () => {
+      debounceTimers.delete(key)
+      const targets = detectTargetsForFile(file)
+      if (targets.length === 0) {
+        reloadLog.info("no targets detected for file, skipping", { file, scope })
+        return
+      }
+      reloadLog.info("auto-reloading", { file, scope, targets })
+      try {
+        const result = await reload({ targets, scope, reason: `auto-reload: ${path.basename(file)} changed` })
+        reloadLog.info("auto-reload complete", {
+          file,
+          executed: result.executed,
+          cascaded: result.cascaded,
+          warnings: result.warnings,
+        })
+      } catch (err) {
+        reloadLog.error("auto-reload failed", { file, error: err instanceof Error ? err : new Error(String(err)) })
+      }
+    }, DEFAULT_DEBOUNCE_MS)
+    debounceTimers.set(key, timer)
+  }
+
+  function handleGlobalConfigEvent(event: { file: string; event: string }) {
+    const scope = detectScopeForFile(event.file)
+    if (!scope) {
+      reloadLog.info("could not detect scope for file, skipping", { file: event.file })
+      return
+    }
+    debounceReload(event.file, scope as "global" | "project")
+  }
+
+  let autoReloadStarted = false
+
+  export function startAutoReload() {
+    if (autoReloadStarted) return
+    autoReloadStarted = true
+    GlobalBus.on("event", (event) => {
+      if (event.payload?.type !== "global.config.file.changed") return
+      const properties = event.payload.properties as { file: string; event: string } | undefined
+      if (!properties) return
+      handleGlobalConfigEvent(properties)
+    })
+    reloadLog.info("auto-reload listener started")
   }
 }

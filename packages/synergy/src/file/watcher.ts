@@ -1,10 +1,12 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import z from "zod"
 import { Instance } from "../scope/instance"
 import { Log } from "../util/log"
 import { FileIgnore } from "./ignore"
 import { Config } from "../config/config"
+import { ConfigSet } from "../config/set"
 import path from "path"
 // @ts-ignore
 import { createWrapper } from "@parcel/watcher/wrapper"
@@ -41,9 +43,8 @@ export namespace FileWatcher {
 
   const state = Instance.state(
     async () => {
-      if (Instance.scope.type !== "project" || Instance.scope.vcs !== "git") return {}
-      log.info("init")
-      const cfg = await Config.get()
+      log.info("init", { scopeType: Instance.scope.type })
+      const cfg = await Config.get().catch(() => null)
       const backend = (() => {
         if (process.platform === "win32") return "windows"
         if (process.platform === "darwin") return "fs-events"
@@ -54,6 +55,41 @@ export namespace FileWatcher {
         return {}
       }
       log.info("watcher backend", { platform: process.platform, backend })
+
+      const subs: ParcelWatcher.AsyncSubscription[] = []
+
+      // Global scope: watch the global config directory and emit via GlobalBus
+      if (Instance.scope.type === "global") {
+        const globalConfigDir = path.dirname(ConfigSet.filePath(ConfigSet.activeNameSync()))
+        const globalSubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
+          if (err) return
+          for (const evt of evts) {
+            const eventType =
+              evt.type === "create" ? "add" : evt.type === "update" ? "change" : evt.type === "delete" ? "unlink" : null
+            if (!eventType) continue
+            log.info("global config file event", { file: evt.path, event: eventType })
+            GlobalBus.emit("event", {
+              directory: "global",
+              payload: {
+                type: "global.config.file.changed",
+                properties: { file: evt.path, event: eventType },
+              },
+            })
+          }
+        }
+        const pending = watcher().subscribe(globalConfigDir, globalSubscribe, { backend })
+        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
+          log.error("failed to subscribe to global config directory", { error: err })
+          pending.then((s) => s.unsubscribe()).catch(() => {})
+          return undefined
+        })
+        if (sub) subs.push(sub)
+        return { subs }
+      }
+
+      // Project scope: existing project-scoped watching logic
+      if (Instance.scope.vcs !== "git") return { subs }
+
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
         if (err) return
         for (const evt of evts) {
@@ -63,8 +99,7 @@ export namespace FileWatcher {
         }
       }
 
-      const subs: ParcelWatcher.AsyncSubscription[] = []
-      const cfgIgnores = cfg.watcher?.ignore ?? []
+      const cfgIgnores = cfg?.watcher?.ignore ?? []
 
       if (Flag.SYNERGY_EXPERIMENTAL_FILEWATCHER) {
         const pending = watcher().subscribe(Instance.directory, subscribe, {
