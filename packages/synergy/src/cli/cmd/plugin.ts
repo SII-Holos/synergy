@@ -1,4 +1,4 @@
-import { HOOKS, HOOK_CATEGORIES, type HookCategory, type HookDescriptor } from "@ericsanchezok/synergy-plugin/hooks"
+import { HOOKS, HOOK_CATEGORIES, BUS_EVENT_NAMES, type HookCategory, type HookDescriptor } from "@ericsanchezok/synergy-plugin/hooks"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { EOL } from "os"
@@ -22,6 +22,12 @@ function printHookList(category?: HookCategory) {
     for (const hook of groupHooks) {
       const mutates = hook.mutatesOutput ? "mutates" : "observe"
       process.stdout.write(`  ${hook.name.padEnd(38)} ${mutates.padEnd(8)} ${hook.summary}` + EOL)
+      // Expand the event hook to show all observable bus event names
+      if (hook.name === "event") {
+        for (const eventName of BUS_EVENT_NAMES) {
+          process.stdout.write(`    ${eventName}` + EOL)
+        }
+      }
     }
     process.stdout.write(EOL)
   }
@@ -46,7 +52,10 @@ export const PluginHooksCommand = cmd({
     const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
 
     if (args.json) {
-      process.stdout.write(JSON.stringify(hooks, null, 2) + EOL)
+      const hooksWithEvents = hooks.map((hook) =>
+        hook.name === "event" ? { ...hook, eventNames: BUS_EVENT_NAMES } : hook,
+      )
+      process.stdout.write(JSON.stringify(hooksWithEvents, null, 2) + EOL)
       return
     }
 
