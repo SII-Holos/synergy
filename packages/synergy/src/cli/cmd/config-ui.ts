@@ -249,7 +249,9 @@ export const ConfigUICommand = cmd({
           await Bun.sleep(200)
         }
 
-        open(`http://localhost:${vitePort}`).catch(() => {})
+        try {
+          open(`http://localhost:${vitePort}`).catch(() => {})
+        } catch {}
         await donePromise
         apiServer.stop()
         return
@@ -308,7 +310,9 @@ export const ConfigUICommand = cmd({
       UI.println(UI.Style.TEXT_INFO_BOLD + "  Config UI:         ", UI.Style.TEXT_NORMAL, uiUrl)
       UI.empty()
 
-      open(uiUrl).catch(() => {})
+      try {
+        open(uiUrl).catch(() => {})
+      } catch {}
 
       await donePromise
       UI.empty()

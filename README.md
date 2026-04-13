@@ -22,6 +22,22 @@ Synergy currently spans several product surfaces and workflows:
 
 ## Quick Start
 
+### Install
+
+Install the latest bundled release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 1.2.2
+```
+
+The installer places the runtime binary together with the bundled Web UI, Config UI, and schema assets under `~/.synergy/`, so `synergy web` and `synergy config ui` work without requiring a local source checkout.
+
 ### If you already have the CLI installed
 
 Start the background service first:

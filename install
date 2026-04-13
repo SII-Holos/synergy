@@ -65,8 +65,59 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-INSTALL_DIR=$HOME/.synergy/bin
+ROOT_DIR=$HOME/.synergy
+INSTALL_DIR=$ROOT_DIR/bin
 mkdir -p "$INSTALL_DIR"
+
+has_bundled_assets() {
+    [ -f "$ROOT_DIR/app/index.html" ] && \
+    [ -f "$ROOT_DIR/config-ui/index.html" ] && \
+    [ -f "$ROOT_DIR/schema/config.schema.json" ]
+}
+
+install_bundle_contents() {
+    local bundle_root="$1"
+
+    mkdir -p "$ROOT_DIR" "$INSTALL_DIR" "$ROOT_DIR/schema"
+
+    if [ -d "$bundle_root/bin" ]; then
+        cp -R "$bundle_root/bin/." "$INSTALL_DIR/"
+    fi
+
+    if [ -d "$bundle_root/app" ]; then
+        rm -rf "$ROOT_DIR/app"
+        cp -R "$bundle_root/app" "$ROOT_DIR/app"
+    fi
+
+    if [ -d "$bundle_root/config-ui" ]; then
+        rm -rf "$ROOT_DIR/config-ui"
+        cp -R "$bundle_root/config-ui" "$ROOT_DIR/config-ui"
+    fi
+
+    if [ -d "$bundle_root/schema" ]; then
+        cp -R "$bundle_root/schema/." "$ROOT_DIR/schema/"
+    fi
+
+    rm -f "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll"
+    for vec in "$bundle_root/vec0.so" "$bundle_root/vec0.dylib" "$bundle_root/vec0.dll"; do
+        if [ -f "$vec" ]; then
+            cp "$vec" "$ROOT_DIR/"
+        fi
+    done
+
+    if [ -f "$INSTALL_DIR/synergy" ]; then
+        chmod 755 "$INSTALL_DIR/synergy"
+    fi
+    if [ -f "$INSTALL_DIR/synergy.exe" ]; then
+        chmod 755 "$INSTALL_DIR/synergy.exe"
+    fi
+    if [ -f "$INSTALL_DIR/ast-grep" ]; then
+        chmod 755 "$INSTALL_DIR/ast-grep"
+    fi
+    if [ -f "$INSTALL_DIR/ast-grep.exe" ]; then
+        chmod 755 "$INSTALL_DIR/ast-grep.exe"
+    fi
+}
 
 # If --binary is provided, skip all download/detection logic
 if [ -n "$binary_path" ]; then
@@ -326,15 +377,20 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/bin/synergy" "$INSTALL_DIR/synergy"
-    chmod 755 "${INSTALL_DIR}/synergy"
+    install_bundle_contents "$tmp_dir"
     rm -rf "$tmp_dir"
 }
 
 install_from_binary() {
     print_message info "\n${MUTED}Installing ${NC}synergy ${MUTED}from: ${NC}$binary_path"
+    mkdir -p "$INSTALL_DIR"
     cp "$binary_path" "${INSTALL_DIR}/synergy"
     chmod 755 "${INSTALL_DIR}/synergy"
+
+    if ! has_bundled_assets; then
+        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI and Config UI assets were not provided.${NC}"
+        print_message warning "${MUTED}Use the release archive installer to install bundled app/config-ui/schema assets.${NC}"
+    fi
 }
 
 if [ -n "$binary_path" ]; then

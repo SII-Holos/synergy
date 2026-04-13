@@ -98,11 +98,15 @@ await Promise.all([
 // Checked on every startup to keep the schema in sync with the installed synergy version.
 {
   const bundled = (() => {
-    const fromExec = path.resolve(path.dirname(fsSync.realpathSync(process.execPath)), "../schema/config.schema.json")
-    if (fsSync.existsSync(fromExec)) return fromExec
-    return path.resolve(import.meta.dirname, "../../schema/config.schema.json")
+    const execDir = path.dirname(fsSync.realpathSync(process.execPath))
+    const candidates = [
+      path.resolve(execDir, "../schema/config.schema.json"),
+      path.resolve(execDir, "../../schema/config.schema.json"),
+      path.resolve(import.meta.dirname, "../../schema/config.schema.json"),
+    ]
+    return candidates.find((candidate) => fsSync.existsSync(candidate))
   })()
-  if (fsSync.existsSync(bundled)) {
+  if (bundled) {
     await fs.copyFile(bundled, Global.Path.configSchema)
   }
 }
