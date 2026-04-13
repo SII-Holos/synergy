@@ -241,7 +241,7 @@ The rule of thumb is simple: treat `input` as context, and treat `output` as the
 | `tool`       | Register custom tools                      | Runtime-side integrations, project utilities |
 | `auth`       | Add provider auth methods and auth loaders | Custom providers, OAuth, API key flows       |
 | `config`     | Observe loaded config                      | Initialize plugin state from current config  |
-| `event`      | Observe 72 runtime bus events (see below) | Logging, metrics, passive integrations       |
+| `event`      | Observe 72 runtime bus events (see below)  | Logging, metrics, passive integrations       |
 
 #### `event` — observable bus events
 

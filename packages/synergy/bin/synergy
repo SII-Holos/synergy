@@ -30,7 +30,7 @@ const resolved = findInstalledBinary(scriptDir)
 if (!resolved) {
   const names = candidatePackageNames()
   console.error(
-    'It seems that your package manager failed to install the right version of the Synergy CLI for your platform. You can try manually installing one of: ' +
+    "It seems that your package manager failed to install the right version of the Synergy CLI for your platform. You can try manually installing one of: " +
       names.join(", "),
   )
   process.exit(1)

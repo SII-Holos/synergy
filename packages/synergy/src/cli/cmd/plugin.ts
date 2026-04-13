@@ -1,4 +1,10 @@
-import { HOOKS, HOOK_CATEGORIES, BUS_EVENT_NAMES, type HookCategory, type HookDescriptor } from "@ericsanchezok/synergy-plugin/hooks"
+import {
+  HOOKS,
+  HOOK_CATEGORIES,
+  BUS_EVENT_NAMES,
+  type HookCategory,
+  type HookDescriptor,
+} from "@ericsanchezok/synergy-plugin/hooks"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { EOL } from "os"
