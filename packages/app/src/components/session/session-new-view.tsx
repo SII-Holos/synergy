@@ -62,9 +62,18 @@ export function NewSessionGreeting() {
 
   return (
     <>
+      <a
+        href="https://www.sii.edu.cn"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center gap-2 text-text-subtle hover:opacity-70 transition-opacity pointer-events-auto mb-2"
+        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both" }}
+      >
+        <img src="/sii-logo.png" style={{ height: "30px" }} alt="Shanghai Innovation Institute" />
+      </a>
       <h1
         class="text-36-medium text-text-strong"
-        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" }}
+        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
       >
         {greeting()}
       </h1>
@@ -74,7 +83,7 @@ export function NewSessionGreeting() {
           "opacity-0": transitioning(),
           "opacity-100": !transitioning(),
         }}
-        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both" }}
+        style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both" }}
       >
         {subtitle()}
       </p>
@@ -89,6 +98,16 @@ export function NewSessionView() {
         class="flex flex-col items-center gap-4 text-center pointer-events-none select-none"
         style={{ animation: "greetFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both" }}
       >
+        <a
+          href="https://www.sii.edu.cn"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 text-text-subtle hover:opacity-70 transition-opacity pointer-events-auto"
+          style={{ animation: "greetFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both" }}
+        >
+          <img src="/sii-logo.png" height="20" alt="Shanghai Innovation Institute" />
+          <span class="text-12-regular">Shanghai Innovation Institute</span>
+        </a>
         <NewSessionGreeting />
       </div>
     </div>
