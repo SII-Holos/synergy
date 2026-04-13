@@ -286,7 +286,7 @@ export function HeaderBar() {
       <div class="flex items-center gap-1 min-w-0">
         <A
           href="/"
-          class="hidden md:flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
+          class="hidden md:flex items-center justify-center size-6 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
           onClick={() => panel.close()}
         >
           <img
