@@ -43,8 +43,12 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
     if (shuttingDown) return
     shuttingDown = true
-    try { child.kill() } catch {}
-    try { await child.exited } catch {}
+    try {
+      child.kill()
+    } catch {}
+    try {
+      await child.exited
+    } catch {}
   }
 
   for (;;) {
