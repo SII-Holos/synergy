@@ -1,4 +1,5 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { createEffect, createMemo, createSignal, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { type AppAccess, callbackUrlFor } from "@/utils/runtime"
 import { AppWithAccess } from "@/app-access"
@@ -59,8 +60,43 @@ function attachUrlFor(agentId: string) {
 }
 
 function loginRedirectUrl() {
-  const redirect = encodeURIComponent(consoleOrigin())
+  const redirect = encodeURIComponent(new URL("/", window.location.origin).toString())
   return `https://www.holosai.io/login.html?redirect=${redirect}`
+}
+
+function redirectToHolosLogin() {
+  const target = loginRedirectUrl()
+
+  try {
+    if (window.top && window.top !== window) {
+      window.top.location.replace(target)
+      return
+    }
+  } catch {
+    // Cross-origin frame access can throw; fall back to the current window.
+  }
+
+  try {
+    window.location.replace(target)
+    return
+  } catch {
+    // Fall through to additional navigation attempts.
+  }
+
+  try {
+    window.location.assign(target)
+    return
+  } catch {
+    // Fall back to a synthetic anchor click as a last resort.
+  }
+
+  const link = document.createElement("a")
+  link.href = target
+  link.target = "_self"
+  link.rel = "noreferrer"
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
 }
 
 async function readJson<T>(response: Response): Promise<T | undefined> {
@@ -77,6 +113,15 @@ async function fetchHostedProfile() {
       accept: "application/json",
     },
   })
+
+  if (response.status === 401) {
+    redirectToHolosLogin()
+    return {
+      response,
+      body: undefined,
+    }
+  }
+
   return {
     response,
     body: await readJson<HostedProfileResponse>(response),
@@ -120,11 +165,36 @@ async function checkHealth(attachUrl: string) {
 }
 
 function LoadingCard(props: { title: string; description: string; detail?: string }) {
+  const frames = ["   ", ".  ", ".. ", "..."]
+  const [frame, setFrame] = createSignal(0)
+
+  onMount(() => {
+    const timer = window.setInterval(() => {
+      setFrame((value) => (value + 1) % frames.length)
+    }, 240)
+
+    onCleanup(() => {
+      window.clearInterval(timer)
+    })
+  })
+
   return (
     <div class="flex flex-col items-center gap-3 py-8">
-      <div class="size-5 border-2 border-text-weaker/30 border-t-text-weaker rounded-full animate-spin" />
+      <div class="relative flex items-center justify-center size-12">
+        <div class="absolute size-12 rounded-full bg-surface-raised-base/40 blur-md animate-pulse" />
+        <div class="absolute size-9 rounded-full border border-border-weak-base/60" />
+        <Spinner class="relative size-5 text-text-strong" />
+      </div>
       <p class="text-sm text-text-base text-center">{props.title}</p>
       <p class="text-[13px] text-text-weaker text-center max-w-sm leading-relaxed">{props.description}</p>
+      <div class="flex items-center gap-1.5 text-[12px] text-text-weaker/90">
+        <span>Waiting for Synergy to come online{frames[frame()]}</span>
+        <div class="flex items-center gap-1">
+          <span class="size-1.5 rounded-full bg-text-weaker/70 animate-pulse" />
+          <span class="size-1.5 rounded-full bg-text-weaker/70 animate-pulse [animation-delay:180ms]" />
+          <span class="size-1.5 rounded-full bg-text-weaker/70 animate-pulse [animation-delay:360ms]" />
+        </div>
+      </div>
       <Show when={props.detail}>
         <p class="text-[12px] text-text-weaker/80 text-center">{props.detail}</p>
       </Show>
@@ -202,12 +272,14 @@ function HostedAccessGate() {
     setError("")
 
     const { response, body } = await fetchHostedProfile()
+    if (response.status === 401) return
+
     if (!response.ok) {
       throw new Error(body?.message || `Failed to verify your Holos login (${response.status})`)
     }
 
     if (body?.code !== 0 || body.data?.logged_in !== true) {
-      window.location.href = loginRedirectUrl()
+      redirectToHolosLogin()
       return
     }
 
