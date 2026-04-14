@@ -84,7 +84,7 @@ Load `references/mcp.txt` for conversion rules from Claude Desktop, Cursor, VS C
 2. `runtime_reload(target: "config")`
 
 ### Create a custom agent
-1. Create `.synergy/agent/<name>.md` with YAML frontmatter. Load `references/agents.txt` for format.
+1. Create `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global) with YAML frontmatter + prompt body. Load `references/agents.txt` for full guide, field reference, and examples.
 2. `runtime_reload(target: "agent")`
 
 ### Set permissions
