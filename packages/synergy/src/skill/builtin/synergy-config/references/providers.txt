@@ -61,16 +61,57 @@ If the provider is not in the registry (e.g., a local vLLM server, a private pro
 
 ### Optional: override built-in provider settings
 
-If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL), add ONLY the overrides — not the full provider definition:
+If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL, per-model endpoints), add ONLY the overrides — not the full provider definition. Unspecified fields fall back to the registry defaults.
 
-```
-"provider": {
-  "<provider-id>": {
-    "whitelist": ["Model-A", "Model-B"],
-    "options": { "timeout": 600000 }
+```jsonc
+{
+  "provider": {
+    "<provider-id>": {
+      "whitelist": ["Model-A", "Model-B"],
+      "options": { "timeout": 600000 }
+    }
   }
 }
 ```
+
+**Overriding baseURL for a built-in provider:**
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "options": { "baseURL": "https://my-proxy.example.com/v1" }
+    }
+  }
+}
+```
+
+**Per-model endpoint and API key (same provider, different backends):**
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": { "baseURL": "https://api.openai.com/v1" },
+      "models": {
+        "GPT-4o Proxy": {
+          "id": "gpt-4o",
+          "name": "GPT-4o Proxy",
+          "limit": { "context": 128000, "output": 16384 },
+          "options": {
+            "baseURL": "https://internal-proxy.example.com/v1",
+            "apiKey": "{env:PROXY_API_KEY}"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**IMPORTANT: API key placement.** Never put API keys directly in `synergy.jsonc` — they are stored in plain text. Instead:
+- **Provider-level key** → save to credential store (`~/.synergy/data/auth/api-key.json`). See Step 2a/2b above.
+- **Model-level key** → use `{env:VAR_NAME}` reference in `options.apiKey`, or save to credential store under a separate provider ID for that model's backend.
+
+The credential store is the preferred and most secure location for all API keys. The `{env:VAR_NAME}` syntax is the recommended way to reference keys in config when you need per-model overrides.
 
 ## How providers work
 
@@ -84,7 +125,7 @@ When loading a provider, Synergy resolves credentials in this order (highest pri
 
 1. **Environment variables** — provider-specific env vars (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Each provider in the registry defines which env vars it checks.
 2. **Credential store** — `~/.synergy/data/auth/api-key.json`. This is the preferred method.
-3. **Config inline** — `provider.<id>.options.apiKey` in config. Supports `{env:VAR_NAME}` references.
+3. **Config inline** — `provider.<id>.options.apiKey` or `provider.<id>.models.<name>.options.apiKey` in config. Supports `{env:VAR_NAME}` references. Model-level takes precedence over provider-level.
 4. **Plugin auth loaders** — for providers like GitHub Copilot that use OAuth flows.
 
 For built-in providers, adding the API key to the credential store is ALL you need. No config changes required.
