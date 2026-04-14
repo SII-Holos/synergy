@@ -190,6 +190,57 @@ For unlisted SDKs, Synergy auto-installs via `bun add`.
 - **`@ai-sdk/openai`** — ONLY for official OpenAI. Uses the Responses API by default (not Chat Completions)
 - **Provider-specific SDKs** — use when available for correct auth/model routing
 
+## Local model providers
+
+Local model servers (Ollama, vLLM, LM Studio, etc.) expose OpenAI-compatible APIs. Configure them using `@ai-sdk/openai-compatible` with the server's `baseURL`.
+
+### Ollama
+
+Ollama runs at `http://localhost:11434` and exposes an OpenAI-compatible endpoint at `/v1`:
+
+```jsonc
+{
+  "provider": {
+    "ollama": {
+      "name": "Ollama",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "llama3": {
+          "id": "llama3",
+          "name": "Llama 3",
+          "limit": { "context": 8192 }
+        }
+      }
+    }
+  }
+}
+```
+
+No API key needed — omit the credential store entry entirely. If Ollama is already in the Models.dev registry, you may only need the provider config with `options.baseURL` override and model definitions.
+
+### vLLM / LM Studio / other OpenAI-compatible servers
+
+Same pattern — change `baseURL` to match the server:
+
+```jsonc
+{
+  "provider": {
+    "vllm": {
+      "name": "vLLM",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:8000/v1"
+      }
+    }
+  }
+}
+```
+
+For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and set `options.baseURL` to the server's `/v1` endpoint.
+
 ## Provider-specific behaviors
 
 ### Anthropic
@@ -230,3 +281,11 @@ For unlisted SDKs, Synergy auto-installs via `bun add`.
 
 - `disabled_providers` — subtractive: listed providers are skipped.
 - `enabled_providers` — exclusive: when set, ONLY listed providers load.
+
+## Troubleshooting
+
+- **Provider not loading** — verify the API key is in the credential store with the correct provider ID; check `enabled_providers`/`disabled_providers` are not filtering it out; reload with `runtime_reload(target: "provider")`.
+- **"Model not found" error** — the model ID must match what the provider's API expects; for custom providers, add models manually under `provider.<id>.models`; check `whitelist`/`blacklist` are not filtering the model.
+- **API key not working** — verify the key format matches the provider variant (e.g., Coding Plan keys need the `-coding-plan` provider variant); check for extra whitespace; try the key with `curl` against the provider's API directly.
+- **Local model connection refused** — verify the server is running and the `baseURL` is correct; check the port number; ensure the server exposes an OpenAI-compatible `/v1` endpoint.
+- **Registry fetch failed** — if `https://models.dev/api.json` is unreachable, Synergy falls back to the local cache at `~/.synergy/cache/models.json`; you can also manually add providers via config.

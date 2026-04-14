@@ -8,14 +8,14 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 | User says... | Load reference |
 |---|---|
-| "add provider", "configure API key", "connect OpenAI/Anthropic/..." | `references/providers.txt` |
-| "add MCP", "connect MCP", pasted `mcpServers`/`servers` JSON | `references/mcp.txt` |
-| "set model", "default model", "change model", "vision model" | `references/models.txt` |
-| "create agent", "custom agent", "add a code reviewer" | `references/agents.txt` |
-| "create skill", "add command", "plugin" | `references/skills-commands-plugins.txt` |
-| "embeddings", "reranker", "memory config", "permissions", "allow/deny" | `references/identity-permissions.txt` |
-| "add Feishu/Lark channel", "config set", "switch profile" | `references/channels-config-sets.txt` |
-| "reload config", "hot reload", "restart needed?" | `references/reload.txt` |
+| "add provider", "configure API key", "connect OpenAI/Anthropic/...", "add Ollama", "local model", "vLLM", "LM Studio" | `references/providers.txt` |
+| "add MCP", "connect MCP", pasted `mcpServers`/`servers` JSON, "MCP not working" | `references/mcp.txt` |
+| "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
+| "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
+| "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
+| "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/identity-permissions.txt` |
+| "add Feishu/Lark channel", "飞书", "config set", "switch profile", "work vs personal" | `references/channels-config-sets.txt` |
+| "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
 
 ## File Locations
 
@@ -69,24 +69,28 @@ Every config change follows this pattern:
 
 ## Quick Reference
 
-### Add a provider (any provider)
-ALWAYS load `references/providers.txt` first and follow its step-by-step procedure. It will guide you to check the Models.dev registry to determine if the provider is built-in (only needs API key) or custom (needs config too). Do NOT skip this step — many providers you might assume need config (e.g., MiniMax, Groq, Fireworks) are already in the registry and only need an API key.
+Each reference file contains its own step-by-step guide, field reference, examples, and troubleshooting. Always load the relevant reference before making changes.
+
+### Add a provider
+ALWAYS load `references/providers.txt` first and follow its step-by-step procedure. It will guide you to check the Models.dev registry to determine if the provider is built-in (only needs API key) or custom (needs config too). Do NOT skip this step — many providers you might assume need config (e.g., MiniMax, Groq, Fireworks) are already in the registry and only need an API key. After adding a provider, you may want to configure model roles — see `references/models.txt`.
 
 ### Add MCP server
-1. Add entry under `"mcp"` with `"type": "local"` + `"command"` or `"type": "remote"` + `"url"`
-2. `runtime_reload(target: "mcp")`
+Load `references/mcp.txt` for format, conversion rules from Claude Desktop/Cursor/VS Code, and troubleshooting.
 
-### Convert pasted MCP config
-Load `references/mcp.txt` for conversion rules from Claude Desktop, Cursor, VS Code.
-
-### Set default model
-1. `"model": "provider/model"` in config. Format is always `provider-id/model-name`.
-2. `runtime_reload(target: "config")`
+### Configure models
+Load `references/models.txt` for model role system, common configurations, and choosing the right model for each role.
 
 ### Create a custom agent
-1. Create `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global) with YAML frontmatter + prompt body. Load `references/agents.txt` for full guide, field reference, and examples.
-2. `runtime_reload(target: "agent")`
+Load `references/agents.txt` for the full creation guide, field reference, complete examples, and troubleshooting.
 
-### Set permissions
-1. Add `"permission"` section in config. Load `references/identity-permissions.txt` for all keys.
-2. `runtime_reload(target: "config")`
+### Create skill, command, or plugin
+Load `references/skills-commands-plugins.txt` for format details, choosing between the three, and troubleshooting. For permission control over agents, see `references/identity-permissions.txt`.
+
+### Configure permissions or identity
+Load `references/identity-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
+
+### Add Feishu/Lark channel or manage Config Sets
+Load `references/channels-config-sets.txt` for Feishu setup flow, channel config, Config Sets operations, and troubleshooting.
+
+### Reload or troubleshoot config changes
+Load `references/reload.txt` for reload targets, auto-cascade rules, and restart-required fields.
