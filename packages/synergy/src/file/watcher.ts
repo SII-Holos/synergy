@@ -146,7 +146,7 @@ export namespace FileWatcher {
 
   export async function reload() {
     log.info("reloading file watcher state")
-    await state.reset()
+    await state.resetAll()
     log.info("file watcher state reloaded")
   }
 

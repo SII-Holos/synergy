@@ -90,7 +90,7 @@ export namespace Plugin {
 
   export async function reload() {
     log.info("reloading plugin state")
-    await state.reset()
+    await state.resetAll()
     log.info("plugin state reloaded")
   }
 

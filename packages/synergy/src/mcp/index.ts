@@ -265,7 +265,7 @@ export namespace MCP {
 
   export async function reload() {
     log.info("reloading mcp state")
-    await state.reset()
+    await state.resetAll()
     log.info("mcp state reloaded")
   }
 

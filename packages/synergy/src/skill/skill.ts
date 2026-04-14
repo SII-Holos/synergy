@@ -414,7 +414,7 @@ export namespace Skill {
 
   export async function reload() {
     log.info("reloading skill state")
-    await state.reset()
+    await state.resetAll()
     log.info("skill state reloaded")
   }
 

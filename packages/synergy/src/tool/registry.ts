@@ -97,7 +97,7 @@ export namespace ToolRegistry {
 
   export async function reload() {
     log.info("reloading tool registry state")
-    await state.reset()
+    await state.resetAll()
     log.info("tool registry state reloaded")
   }
 
