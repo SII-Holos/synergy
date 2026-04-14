@@ -20,11 +20,17 @@ export const ServerCommand = cmd({
         default: false,
         hidden: true,
       })
-      .option("banner", {
-        type: "boolean",
-        default: true,
-        hidden: true,
-      }),
+  .option("banner", {
+    type: "boolean",
+    default: true,
+    hidden: true,
+  })
+  .option("restart", {
+    type: "string",
+    choices: ["none", "always"],
+    default: "none",
+    describe: "Server restart policy. 'none': run once and exit; 'always': respawn the server on unexpected exits.",
+  }),
   describe: "start synergy server",
   handler: async (args) => {
     try {
@@ -33,6 +39,7 @@ export const ServerCommand = cmd({
       const managedService = args.managedService
 
       await runServerRuntime({
+        restartPolicy: (args.restart as "none" | "always" | undefined) ?? "none",
         interactive: !(managedService || args.nonInteractive),
         printBanner: args.banner,
         printChannelStatus: !managedService,

@@ -14,6 +14,73 @@ import { EOL } from "os"
 
 const log = Log.create({ service: "server-runtime" })
 
+/**
+ * Minimal watchdog child spawner for --restart=always.
+ * Responsibilities:
+ *  - Construct child argv without restart-related options
+ *  - Spawn child process
+ *  - Forward SIGINT/SIGTERM to child
+ *  - When child exits:
+ *    - If shutdown was requested via signal -> exit wrapper
+ *    - Otherwise -> automatically respawn a new child
+ */
+async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<never> {
+  const originalArgv = process.argv.slice(1)
+
+  // Drop restart argument so child runs with restart=none
+  const childArgv = originalArgv.reduce<string[]>((acc, v, i, arr) => {
+    if (v === "--restart" && arr[i + 1] === "always") return acc
+    if (v === "--restart=always") return acc
+    if (i > 0 && arr[i - 1] === "--restart") return acc
+    return acc.concat(v)
+  }, [])
+
+  // Remove --non-interactive so Ctrl+C in child works
+  const idx = childArgv.indexOf("--non-interactive")
+  if (idx >= 0) childArgv.splice(idx, 1)
+
+  let shuttingDown = false
+  const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    try { child.kill() } catch {}
+    try { await child.exited } catch {}
+  }
+
+  for (;;) {
+    const child = Bun.spawn({
+      cmd: [process.argv0, ...childArgv],
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+      env: {
+        ...process.env,
+        SYNERGY_RESTART_POLICY: "always",
+      },
+    })
+
+    const sigint = () => onWrapperSignal(child)
+    const sigterm = () => onWrapperSignal(child)
+    process.on("SIGINT", sigint)
+    process.on("SIGTERM", sigterm)
+
+    // Wait for child
+    const exitStatus = await child.exited
+
+    // Clean up signal handlers
+    process.off("SIGINT", sigint)
+    process.off("SIGTERM", sigterm)
+
+    // Decide whether to respawn
+    if (shuttingDown) {
+      // A signal handler was invoked, so stop the watchdog
+      process.exit(0)
+    }
+
+    // Otherwise always respawn; no other business logic
+  }
+}
+
 const DIM = UI.Style.TEXT_DIM
 const RESET = UI.Style.TEXT_NORMAL
 const CYAN = UI.Style.TEXT_HIGHLIGHT
@@ -26,6 +93,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL = 80
 
 export interface RuntimeOptions {
+  restartPolicy?: "none" | "always"
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
@@ -38,6 +106,12 @@ export interface RuntimeOptions {
 }
 
 export async function run(options: RuntimeOptions) {
+  // If user asked for always-restart, spawn a child and act as a dumb watcher
+  if (options.restartPolicy === "always") {
+    return runWithRestartPolicyAlways(options)
+  }
+
+  // Normal path (unchanged)
   await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
