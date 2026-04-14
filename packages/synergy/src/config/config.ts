@@ -1704,7 +1704,11 @@ export namespace Config {
       .catch(() => ({}) as Info)
 
     global.reset()
-    await state.reset()
+    if (scope === "global") {
+      await state.resetAll()
+    } else {
+      await state.reset()
+    }
 
     const newConfig = await state().then((x) => x.config)
     const changedFields = diff(oldConfig, newConfig)

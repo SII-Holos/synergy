@@ -1,4 +1,5 @@
 import { onCleanup, createSignal } from "solid-js"
+import { assetPath } from "@/utils/proxy"
 
 const GREETINGS_MORNING = [
   "Rise and ship",
@@ -69,7 +70,7 @@ export function NewSessionGreeting() {
           rel="noopener noreferrer"
           class="hover:opacity-70 transition-opacity"
         >
-          <img src="/sii-logo.png" style={{ height: "30px" }} alt="Shanghai Innovation Institute" />
+          <img src={assetPath("/sii-logo.png")} style={{ height: "30px" }} alt="Shanghai Innovation Institute" />
         </a>
       </span>
       <h1
@@ -106,7 +107,7 @@ export function NewSessionView() {
           class="flex items-center gap-2 text-text-subtle hover:opacity-70 transition-opacity pointer-events-auto"
           style={{ animation: "greetFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          <img src="/sii-logo.png" height="20" alt="Shanghai Innovation Institute" />
+          <img src={assetPath("/sii-logo.png")} height="20" alt="Shanghai Innovation Institute" />
           <span class="text-12-regular">Shanghai Innovation Institute</span>
         </a>
         <NewSessionGreeting />

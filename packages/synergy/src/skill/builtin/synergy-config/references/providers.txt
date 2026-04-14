@@ -61,16 +61,57 @@ If the provider is not in the registry (e.g., a local vLLM server, a private pro
 
 ### Optional: override built-in provider settings
 
-If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL), add ONLY the overrides — not the full provider definition:
+If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL, per-model endpoints), add ONLY the overrides — not the full provider definition. Unspecified fields fall back to the registry defaults.
 
-```
-"provider": {
-  "<provider-id>": {
-    "whitelist": ["Model-A", "Model-B"],
-    "options": { "timeout": 600000 }
+```jsonc
+{
+  "provider": {
+    "<provider-id>": {
+      "whitelist": ["Model-A", "Model-B"],
+      "options": { "timeout": 600000 }
+    }
   }
 }
 ```
+
+**Overriding baseURL for a built-in provider:**
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "options": { "baseURL": "https://my-proxy.example.com/v1" }
+    }
+  }
+}
+```
+
+**Per-model endpoint and API key (same provider, different backends):**
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": { "baseURL": "https://api.openai.com/v1" },
+      "models": {
+        "GPT-4o Proxy": {
+          "id": "gpt-4o",
+          "name": "GPT-4o Proxy",
+          "limit": { "context": 128000, "output": 16384 },
+          "options": {
+            "baseURL": "https://internal-proxy.example.com/v1",
+            "apiKey": "{env:PROXY_API_KEY}"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**IMPORTANT: API key placement.** Never put API keys directly in `synergy.jsonc` — they are stored in plain text. Instead:
+- **Provider-level key** → save to credential store (`~/.synergy/data/auth/api-key.json`). See Step 2a/2b above.
+- **Model-level key** → use `{env:VAR_NAME}` reference in `options.apiKey`, or save to credential store under a separate provider ID for that model's backend.
+
+The credential store is the preferred and most secure location for all API keys. The `{env:VAR_NAME}` syntax is the recommended way to reference keys in config when you need per-model overrides.
 
 ## How providers work
 
@@ -84,7 +125,7 @@ When loading a provider, Synergy resolves credentials in this order (highest pri
 
 1. **Environment variables** — provider-specific env vars (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Each provider in the registry defines which env vars it checks.
 2. **Credential store** — `~/.synergy/data/auth/api-key.json`. This is the preferred method.
-3. **Config inline** — `provider.<id>.options.apiKey` in config. Supports `{env:VAR_NAME}` references.
+3. **Config inline** — `provider.<id>.options.apiKey` or `provider.<id>.models.<name>.options.apiKey` in config. Supports `{env:VAR_NAME}` references. Model-level takes precedence over provider-level.
 4. **Plugin auth loaders** — for providers like GitHub Copilot that use OAuth flows.
 
 For built-in providers, adding the API key to the credential store is ALL you need. No config changes required.
@@ -152,8 +193,49 @@ Fields:
 - `models` — manually specify models. Key is display name, `id` is what's sent to API.
 - `models.<name>.cost` — `input` and `output` per million tokens
 - `models.<name>.limit` — `context` and `output` token limits
+- `models.<name>.options` — model-level SDK options that override provider-level `options` (see below)
 - `whitelist` — only load these models (from registry)
 - `blacklist` — exclude these models
+
+### Model-level options overrides
+
+Each model can specify its own `options` object that overrides the provider-level `options`. This is useful when models within the same provider use different endpoints or API keys:
+
+```jsonc
+{
+  "provider": {
+    "my-gateway": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api-gateway.example.com/v1",
+        "apiKey": "key-for-default"
+      },
+      "models": {
+        "DeepSeek V3": {
+          "id": "deepseek-v3",
+          "name": "DeepSeek V3",
+          "limit": { "context": 64000 },
+          "options": {
+            "baseURL": "https://deepseek-internal.example.com/v1",
+            "apiKey": "key-for-deepseek"
+          }
+        },
+        "Qwen 3": {
+          "id": "qwen3",
+          "name": "Qwen 3",
+          "limit": { "context": 128000 }
+        }
+      }
+    }
+  }
+}
+```
+
+In this example:
+- **Qwen 3** uses the provider-level `baseURL` and `apiKey` (inherited from `my-gateway.options`)
+- **DeepSeek V3** overrides both `baseURL` and `apiKey` with its own values
+
+The merge rule: `model.options` spreads over `provider.options` (`{ ...provider.options, ...model.options }`). Any field set at the model level replaces the provider-level value.
 
 ## Bundled SDK packages
 
@@ -189,6 +271,57 @@ For unlisted SDKs, Synergy auto-installs via `bun add`.
 - **`@ai-sdk/anthropic`** — ONLY for official Anthropic API or providers using Anthropic Messages API with `x-api-key` auth
 - **`@ai-sdk/openai`** — ONLY for official OpenAI. Uses the Responses API by default (not Chat Completions)
 - **Provider-specific SDKs** — use when available for correct auth/model routing
+
+## Local model providers
+
+Local model servers (Ollama, vLLM, LM Studio, etc.) expose OpenAI-compatible APIs. Configure them using `@ai-sdk/openai-compatible` with the server's `baseURL`.
+
+### Ollama
+
+Ollama runs at `http://localhost:11434` and exposes an OpenAI-compatible endpoint at `/v1`:
+
+```jsonc
+{
+  "provider": {
+    "ollama": {
+      "name": "Ollama",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "llama3.1": {
+          "id": "llama3.1",
+          "name": "Llama 3.1 8B",
+          "limit": { "context": 128000, "output": 4096 }
+        }
+      }
+    }
+  }
+}
+```
+
+No API key needed — omit the credential store entry entirely. If Ollama is already in the Models.dev registry, you may only need the provider config with `options.baseURL` override and model definitions.
+
+### vLLM / LM Studio / other OpenAI-compatible servers
+
+Same pattern — change `baseURL` to match the server:
+
+```jsonc
+{
+  "provider": {
+    "vllm": {
+      "name": "vLLM",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:8000/v1"
+      }
+    }
+  }
+}
+```
+
+For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and set `options.baseURL` to the server's `/v1` endpoint.
 
 ## Provider-specific behaviors
 
@@ -230,3 +363,11 @@ For unlisted SDKs, Synergy auto-installs via `bun add`.
 
 - `disabled_providers` — subtractive: listed providers are skipped.
 - `enabled_providers` — exclusive: when set, ONLY listed providers load.
+
+## Troubleshooting
+
+- **Provider not loading** — verify the API key is in the credential store with the correct provider ID; check `enabled_providers`/`disabled_providers` are not filtering it out; reload with `runtime_reload(target: "provider")`.
+- **"Model not found" error** — the model ID must match what the provider's API expects; for custom providers, add models manually under `provider.<id>.models`; check `whitelist`/`blacklist` are not filtering the model.
+- **API key not working** — verify the key format matches the provider variant (e.g., Coding Plan keys need the `-coding-plan` provider variant); check for extra whitespace; try the key with `curl` against the provider's API directly.
+- **Local model connection refused** — verify the server is running and the `baseURL` is correct; check the port number; ensure the server exposes an OpenAI-compatible `/v1` endpoint.
+- **Registry fetch failed** — if `https://models.dev/api.json` is unreachable, Synergy falls back to the local cache at `~/.synergy/cache/models.json`; you can also manually add providers via config.

@@ -156,9 +156,8 @@ export function DialogSettings(props: DialogSettingsProps) {
     },
   )
 
-  const [providerModels] = createResource(async () => {
-    const res = await globalSDK.client.provider.list()
-    const data = res.data!
+  const providerModels = createMemo(() => {
+    const data = globalSync.data.provider
     const list: ProviderModel[] = []
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
@@ -989,10 +988,10 @@ export function DialogSettings(props: DialogSettingsProps) {
                   </div>
                 </div>
                 <Show
-                  when={providerModels()}
+                  when={providerModels().length > 0}
                   fallback={
                     <div class="ds-empty-state">
-                      <span>Loading models...</span>
+                      <span>No connected models found</span>
                     </div>
                   }
                 >
@@ -1002,7 +1001,7 @@ export function DialogSettings(props: DialogSettingsProps) {
                         label={role.label}
                         description={role.description}
                         value={models[role.key]}
-                        providers={groupByProvider(providerModels()!)}
+                        providers={groupByProvider(providerModels())}
                         onChange={(value: string) => setModels(role.key, value)}
                       />
                     )}

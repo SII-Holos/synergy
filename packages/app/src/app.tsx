@@ -40,22 +40,7 @@ const Welcome = lazy(() => import("@/pages/onboarding/welcome"))
 const Setup = lazy(() => import("@/pages/onboarding/setup"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
-declare global {
-  interface Window {
-    __SYNERGY_ROUTE__?: string
-  }
-}
-
-function proxyPrefix() {
-  const route = window.__SYNERGY_ROUTE__
-  if (route != null) {
-    const fullPath = window.location.pathname
-    if (fullPath !== route && fullPath.endsWith(route)) {
-      return fullPath.slice(0, fullPath.length - route.length).replace(/\/+$/, "")
-    }
-  }
-  return ""
-}
+import { proxyPrefix } from "@/utils/proxy"
 
 function browserBaseUrl() {
   // Detect path-prefix proxies (e.g. VS Code remote) by comparing the
