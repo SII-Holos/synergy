@@ -47,7 +47,7 @@ export const Instance = {
   state<S>(
     init: () => S,
     dispose?: (state: Awaited<S>) => Promise<void>,
-  ): (() => S) & { reset: () => Promise<void>; peek: () => S | undefined } {
+  ): (() => S) & { reset: () => Promise<void>; resetAll: () => Promise<void>; peek: () => S | undefined } {
     return State.create(() => instanceKey(Instance.scope), init, dispose)
   },
   async dispose() {
