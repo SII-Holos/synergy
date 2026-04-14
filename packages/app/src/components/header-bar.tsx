@@ -7,6 +7,7 @@ import { usePanel } from "@/context/panel"
 import { useLayout, getAvatarColors } from "@/context/layout"
 import { useRecentSessions, type RecentSessionItem } from "@/context/recent-sessions"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { assetPath } from "@/utils/proxy"
 
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
@@ -295,7 +296,7 @@ export function HeaderBar() {
           onClick={() => panel.close()}
         >
           <img
-            src={theme.mode() === "dark" ? "/holos-logo-white.svg" : "/holos-logo.svg"}
+            src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
             alt="Holos"
             class="size-6 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6"
           />

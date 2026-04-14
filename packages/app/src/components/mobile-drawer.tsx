@@ -8,6 +8,7 @@ import { useLayout, getAvatarColors, type LocalScope } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNotification } from "@/context/notification"
+import { assetPath } from "@/utils/proxy"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
@@ -53,7 +54,7 @@ export function MobileDrawer() {
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
-                src={theme.mode() === "dark" ? "/holos-logo-white.svg" : "/holos-logo.svg"}
+                src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
                 alt="Holos"
                 class="size-6 shrink-0"
               />
