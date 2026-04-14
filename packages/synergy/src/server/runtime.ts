@@ -17,32 +17,29 @@ const log = Log.create({ service: "server-runtime" })
 /**
  * Minimal watchdog child spawner for --restart=always.
  * Responsibilities:
- *  - Construct child argv without restart-related options
+ *  - Add --restart=none to child argv (overrides any previous --restart)
  *  - Spawn child process
  *  - Forward SIGINT/SIGTERM to child
  *  - When child exits:
  *    - If shutdown was requested via signal -> exit wrapper
- *    - Otherwise -> automatically respawn a new child
+ *    - Otherwise -> automatically respawn with crash backoff
  */
 async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<never> {
   const originalArgv = process.argv.slice(1)
 
-  // Drop restart argument so child runs with restart=none
-  const childArgv = originalArgv.reduce<string[]>((acc, v, i, arr) => {
-    if (v === "--restart" && arr[i + 1] === "always") return acc
-    if (v === "--restart=always") return acc
-    if (i > 0 && arr[i - 1] === "--restart") return acc
-    return acc.concat(v)
-  }, [])
-
-  // Remove --non-interactive so Ctrl+C in child works
-  const idx = childArgv.indexOf("--non-interactive")
-  if (idx >= 0) childArgv.splice(idx, 1)
+  // Add --restart=none to override any --restart in original argv (yargs honors last value)
+  const childArgv = [...originalArgv, "--restart=none"]
 
   let shuttingDown = false
+  let crashCount = 0
+  const crashStartTime: number[] = []
+
+  const log = Log.create({ service: "server-watchdog" })
+
   const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
     if (shuttingDown) return
     shuttingDown = true
+    log.info("received shutdown signal, forwarding to child and exiting watchdog")
     try {
       child.kill()
     } catch {}
@@ -63,6 +60,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
       },
     })
 
+    const childStartTime = Date.now()
     const sigint = () => onWrapperSignal(child)
     const sigterm = () => onWrapperSignal(child)
     process.on("SIGINT", sigint)
@@ -75,13 +73,49 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     process.off("SIGINT", sigint)
     process.off("SIGTERM", sigterm)
 
+    // Track crash time for backoff calculation
+    crashStartTime.push(childStartTime)
+
+    // Keep only crashes from last 30 seconds for rapid crash counting
+    const thirtySecondsAgo = Date.now() - 30000
+    while (crashStartTime.length > 0 && crashStartTime[0] < thirtySecondsAgo) {
+      crashStartTime.shift()
+    }
+
+    // Count rapid crashes (those that didn't run for at least 30s)
+    crashCount = 0
+    for (let i = 0; i < crashStartTime.length; i++) {
+      crashCount++
+    }
+
     // Decide whether to respawn
     if (shuttingDown) {
-      // A signal handler was invoked, so stop the watchdog
+      log.info("child exited after shutdown signal, watchdog stopping")
       process.exit(0)
     }
 
-    // Otherwise always respawn; no other business logic
+    // Apply crash backoff logic
+    if (crashCount >= 5) {
+      log.error(`child crashed ${crashCount} times in 30s, stopping watchdog to prevent crash loop`, {
+        exitCode: exitStatus,
+        crashCount,
+      })
+      process.exit(1)
+    }
+
+    // Calculate backoff delay: min(1000 * 2^(n-1), 30000)
+    const backoffDelay = Math.min(1000 * Math.pow(2, crashCount - 1), 30000)
+
+    log.info("child exited unexpectedly, scheduling respawn", {
+      exitCode: exitStatus,
+      crashCount,
+      delayMs: backoffDelay,
+    })
+
+    // Always delay at least 1s, and apply exponential backoff for rapid crashes
+    await Bun.sleep(backoffDelay)
+
+    log.info("respawning child", { crashCount, nextDelayMinMs: Math.min(1000 * Math.pow(2, crashCount), 30000) })
   }
 }
 
