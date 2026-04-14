@@ -152,8 +152,49 @@ Fields:
 - `models` — manually specify models. Key is display name, `id` is what's sent to API.
 - `models.<name>.cost` — `input` and `output` per million tokens
 - `models.<name>.limit` — `context` and `output` token limits
+- `models.<name>.options` — model-level SDK options that override provider-level `options` (see below)
 - `whitelist` — only load these models (from registry)
 - `blacklist` — exclude these models
+
+### Model-level options overrides
+
+Each model can specify its own `options` object that overrides the provider-level `options`. This is useful when models within the same provider use different endpoints or API keys:
+
+```jsonc
+{
+  "provider": {
+    "my-gateway": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api-gateway.example.com/v1",
+        "apiKey": "key-for-default"
+      },
+      "models": {
+        "DeepSeek V3": {
+          "id": "deepseek-v3",
+          "name": "DeepSeek V3",
+          "limit": { "context": 64000 },
+          "options": {
+            "baseURL": "https://deepseek-internal.example.com/v1",
+            "apiKey": "key-for-deepseek"
+          }
+        },
+        "Qwen 3": {
+          "id": "qwen3",
+          "name": "Qwen 3",
+          "limit": { "context": 128000 }
+        }
+      }
+    }
+  }
+}
+```
+
+In this example:
+- **Qwen 3** uses the provider-level `baseURL` and `apiKey` (inherited from `my-gateway.options`)
+- **DeepSeek V3** overrides both `baseURL` and `apiKey` with its own values
+
+The merge rule: `model.options` spreads over `provider.options` (`{ ...provider.options, ...model.options }`). Any field set at the model level replaces the provider-level value.
 
 ## Bundled SDK packages
 
