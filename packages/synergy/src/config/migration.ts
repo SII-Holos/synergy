@@ -120,6 +120,32 @@ async function migrateFile(filepath: string): Promise<boolean> {
   return true
 }
 
+async function migrateSchemaUrl(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const schema = config.$schema
+  if (typeof schema !== "string" || !schema.startsWith("https://")) return false
+
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  const text = applyEdits(raw, modify(raw, ["$schema"], Global.Path.configSchemaUrl, { formattingOptions }))
+
+  await Bun.write(filepath, text)
+  log.info("migrated $schema from remote URL to local file:// path", {
+    path: filepath,
+    from: schema,
+    to: Global.Path.configSchemaUrl,
+  })
+  return true
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
@@ -146,6 +172,21 @@ export const migrations: Migration[] = [
       let done = 0
       for (const filepath of files) {
         await migrateFile(filepath)
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260414-config-schema-local",
+    description: "Migrate $schema from remote URL to local file:// path",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await migrateSchemaUrl(filepath)
         done++
         progress(done, files.length)
       }
