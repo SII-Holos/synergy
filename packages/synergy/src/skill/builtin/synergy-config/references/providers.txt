@@ -208,10 +208,10 @@ Ollama runs at `http://localhost:11434` and exposes an OpenAI-compatible endpoin
         "baseURL": "http://localhost:11434/v1"
       },
       "models": {
-        "llama3": {
-          "id": "llama3",
-          "name": "Llama 3",
-          "limit": { "context": 8192 }
+        "llama3.1": {
+          "id": "llama3.1",
+          "name": "Llama 3.1 8B",
+          "limit": { "context": 128000, "output": 4096 }
         }
       }
     }
