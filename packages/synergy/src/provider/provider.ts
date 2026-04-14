@@ -862,6 +862,7 @@ export namespace Provider {
 
   export async function reload() {
     log.info("reloading provider state")
+    await Config.state.resetAll()
     await state.resetAll()
     log.info("provider state reloaded")
   }

@@ -172,6 +172,7 @@ export namespace Command {
   export async function reload() {
     registerMcpSubscriptions()
     log.info("reloading command state")
+    await Config.state.resetAll()
     await state.resetAll()
     log.info("command state reloaded")
   }
