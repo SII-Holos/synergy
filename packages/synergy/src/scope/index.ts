@@ -66,8 +66,17 @@ export namespace Scope {
     await Storage.write(StoragePath.scope(pid(data.id)), data)
   }
 
-  export async function fromDirectory(directory: string): Promise<{ scope: Scope.Project; sandbox: string }> {
+  export async function fromDirectory(directory: string): Promise<{ scope: Scope; sandbox: string }> {
     log.info("fromDirectory", { directory })
+
+    if (!existsSync(directory)) {
+      const existing = await readPersisted(dirHash(directory))
+      if (existing && !existing.time?.archived) {
+        await remove(existing.id)
+        log.info("archived scope for missing directory", { directory, scopeID: existing.id })
+      }
+      return { scope: global(), sandbox: Global.Path.home }
+    }
 
     const resolved = await iife(async () => {
       const matches = Filesystem.up({ targets: [".git"], start: directory })
@@ -252,29 +261,42 @@ export namespace Scope {
   export async function list(): Promise<Scope.Project[]> {
     const ids = await listScopeIDs()
     const results = await Promise.all(ids.map((id) => readPersisted(id)))
-    return results
-      .filter((data): data is z.infer<typeof Info> => !!data)
-      .filter((data) => !data.time?.archived)
-      .map((data) => ({
-        type: "project" as const,
-        id: data.id,
-        directory: data.worktree,
-        worktree: data.worktree,
-        vcs: data.vcs,
-        name: data.name,
-        icon: data.icon,
-        sandboxes: data.sandboxes,
-        time: data.time,
-      }))
+    const active = results.filter((data): data is z.infer<typeof Info> => !!data && !data.time?.archived)
+
+    const detached: string[] = []
+    const valid = active.filter((data) => {
+      if (existsSync(data.worktree)) return true
+      detached.push(data.id)
+      return false
+    })
+
+    if (detached.length > 0) {
+      await Promise.all(detached.map((id) => remove(id)))
+      log.info("archived scopes with missing worktrees", { ids: detached })
+    }
+
+    return valid.map((data) => ({
+      type: "project" as const,
+      id: data.id,
+      directory: data.worktree,
+      worktree: data.worktree,
+      vcs: data.vcs,
+      name: data.name,
+      icon: data.icon,
+      sandboxes: data.sandboxes,
+      time: data.time,
+    }))
   }
 
   export async function setInitialized(scopeID: string) {
+    if (scopeID === "global") return
     await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.initialized = Date.now()
     })
   }
 
   export async function touch(scopeID: string) {
+    if (scopeID === "global") return
     await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.updated = Date.now()
     })
@@ -286,6 +308,7 @@ export namespace Scope {
     icon?: { url?: string; color?: string }
     archived?: number | null
   }) {
+    if (input.scopeID === "global") return undefined
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
       if (input.name !== undefined) draft.name = input.name
       if (input.icon !== undefined) {
@@ -308,6 +331,7 @@ export namespace Scope {
   }
 
   export async function remove(scopeID: string) {
+    if (scopeID === "global") return undefined
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.archived = Date.now()
     })

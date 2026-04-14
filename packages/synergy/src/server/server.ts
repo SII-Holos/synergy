@@ -113,7 +113,8 @@ export namespace Server {
     } catch {
       // fallback to original value
     }
-    return directory === "global" ? Scope.global() : (await Scope.fromDirectory(directory)).scope
+    if (directory === "global") return Scope.global()
+    return (await Scope.fromDirectory(directory)).scope
   }
 
   async function provideRequestScope(c: Context, next: Next) {
