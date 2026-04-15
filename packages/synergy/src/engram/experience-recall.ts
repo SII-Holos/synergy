@@ -4,6 +4,7 @@ import { Global } from "../global"
 import { Embedding } from "./embedding"
 import { EngramDB } from "./database"
 import { Config } from "../config/config"
+import { Intent } from "./intent"
 
 const log = Log.create({ service: "engram.experience-recall" })
 
@@ -126,9 +127,10 @@ export namespace ExperienceRecall {
     })
 
     const selected = epsilonGreedy(scored, topK, epsilon)
+    const valid = selected.filter((item) => Intent.isValid(item.row.intent))
 
     const results: Result[] = []
-    for (const item of selected) {
+    for (const item of valid) {
       const contentRow = EngramDB.Experience.getContent(item.row.id)
       const qv: Record<string, number> = JSON.parse(item.row.q_values)
       results.push({
@@ -153,7 +155,7 @@ export namespace ExperienceRecall {
       })
     }
 
-    log.info("phase B", { selected: results.length, topK, epsilon })
+    log.info("phase B", { selected: valid.length, topK, epsilon })
     return results
   }
 

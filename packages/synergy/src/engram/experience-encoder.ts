@@ -3,6 +3,7 @@ import { TurnDigest } from "./turn-digest"
 import { Embedding } from "./embedding"
 import { EngramDB } from "./database"
 import { ExperienceRecall } from "./experience-recall"
+import { Intent } from "./intent"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { LLM } from "../session/llm"
@@ -83,7 +84,7 @@ export namespace ExperienceEncoder {
       const userInfo = userMsg.info as MessageV2.User
       const intentCtx = await buildIntentContext(sessionID, userInfo, learning)
       const history = buildHistory(msgs, userMessageID)
-      const intent = await generateIntent(intentCtx, history, userText)
+      const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
       const extracted = await TurnDigest.extractSingle(sessionID, userMessageID, {
