@@ -66,6 +66,14 @@ jobs:
       RELEASE_VERSION: ${{ needs.stable_candidate.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -87,3 +95,9 @@ jobs:
           SYNERGY_VERSION: ${{ env.RELEASE_VERSION }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync main branch with dev
+        run: |
+          git checkout main
+          git merge dev --no-edit
+          git push origin main
