@@ -59,10 +59,39 @@ export const EditTool = Tool.define("edit", {
     let contentOld = ""
     let contentNew = ""
 
-    await FileTime.withLock(filePath, async () => {
-      if (params.oldString === "") {
-        contentNew = params.newString
-        diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+    await FileTime.withLock(
+      filePath,
+      async () => {
+        if (params.oldString === "") {
+          contentNew = params.newString
+          diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+          await ctx.ask({
+            permission: "edit",
+            patterns: [displayPath],
+            metadata: {
+              filepath: filePath,
+              diff,
+            },
+          })
+          await Bun.write(filePath, params.newString)
+          await Bus.publish(File.Event.Edited, {
+            file: filePath,
+          })
+          FileTime.read(ctx.sessionID, filePath)
+          return
+        }
+
+        const file = Bun.file(filePath)
+        const stats = await file.stat().catch(() => {})
+        if (!stats) throw new Error(`File ${filePath} not found`)
+        if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+        await FileTime.assert(ctx.sessionID, filePath)
+        contentOld = await file.text()
+        contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
+
+        diff = trimDiff(
+          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+        )
         await ctx.ask({
           permission: "edit",
           patterns: [displayPath],
@@ -71,44 +100,19 @@ export const EditTool = Tool.define("edit", {
             diff,
           },
         })
-        await Bun.write(filePath, params.newString)
+
+        await file.write(contentNew)
         await Bus.publish(File.Event.Edited, {
           file: filePath,
         })
+        contentNew = await file.text()
+        diff = trimDiff(
+          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+        )
         FileTime.read(ctx.sessionID, filePath)
-        return
-      }
-
-      const file = Bun.file(filePath)
-      const stats = await file.stat().catch(() => {})
-      if (!stats) throw new Error(`File ${filePath} not found`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
-      contentOld = await file.text()
-      contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
-
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      await ctx.ask({
-        permission: "edit",
-        patterns: [displayPath],
-        metadata: {
-          filepath: filePath,
-          diff,
-        },
-      })
-
-      await file.write(contentNew)
-      await Bus.publish(File.Event.Edited, {
-        file: filePath,
-      })
-      contentNew = await file.text()
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      FileTime.read(ctx.sessionID, filePath)
-    })
+      },
+      { signal: ctx.abort },
+    )
 
     const filediff: Snapshot.FileDiff = {
       file: filePath,
