@@ -349,7 +349,8 @@ export const SendCommand = cmd({
       }
 
       await execute(sdk, sessionID)
-      server.stop()
+      server.stop(true)
+      process.exit(0)
     })
   },
 })
