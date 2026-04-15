@@ -24,6 +24,19 @@ export namespace State {
         state,
         dispose,
       })
+      // Auto-evict on rejection so transient failures don't become permanent.
+      // The caller still sees the rejection — this only prevents it from being
+      // cached forever, allowing the next access to retry init().
+      if (state != null && typeof (state as any).catch === "function") {
+        ;(state as any).catch(() => {
+          const current = recordsByKey.get(key)
+          if (current?.get(init)?.state === state) {
+            current.delete(init)
+            if (current.size === 0) recordsByKey.delete(key)
+            log.warn("evicted failed state entry", { key })
+          }
+        })
+      }
       return state
     }) as (() => S) & { reset: () => Promise<void>; resetAll: () => Promise<void>; peek: () => S | undefined }
 
