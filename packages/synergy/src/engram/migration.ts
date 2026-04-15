@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import type { Migration } from "../migration"
 import { EngramDB } from "./database"
+import { Intent } from "./intent"
 import { Log } from "../util/log"
 
 type SqliteConn = Database
@@ -131,6 +132,32 @@ export const migrations: Migration[] = [
       migrateMemoryRows(conn)
 
       progress(3, 3)
+    },
+  },
+  {
+    id: "20260415-engram-purge-invalid-experiences",
+    description: "Remove experiences with empty, junk, or malformed intents",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, intent, reward_status FROM experience").all() as {
+        id: string
+        intent: string
+        reward_status: string
+      }[]
+
+      progress(2, 3)
+      let removed = 0
+      for (const row of rows) {
+        if (!Intent.isValid(row.intent)) {
+          EngramDB.Experience.remove(row.id)
+          removed++
+        }
+      }
+
+      progress(3, 3)
+      if (removed > 0) log.info("purged invalid experiences", { removed })
     },
   },
 ]
