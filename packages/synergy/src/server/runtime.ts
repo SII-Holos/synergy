@@ -30,6 +30,12 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   // Add --restart=none to override any --restart in original argv (yargs honors last value)
   const childArgv = [...originalArgv, "--restart=none"]
 
+  // Preserve the parent process's working directory at startup time.
+  // This ensures that respawned children resolve relative script paths
+  // (such as src/index.ts in source/dev mode) from the same directory
+  // as the parent, regardless of SYNERGY_CWD or later chdir() calls.
+  const parentCwd = process.cwd()
+
   let shuttingDown = false
   let crashCount = 0
   const crashStartTime: number[] = []
@@ -54,6 +60,10 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
+<<<<<<< HEAD
+=======
+      cwd: parentCwd,
+>>>>>>> 0f27bb1 (Fix: preserve parent cwd for watchdog respawn to fix source/dev mode)
       env: {
         ...process.env,
         SYNERGY_RESTART_POLICY: "always",
