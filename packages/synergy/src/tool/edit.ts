@@ -179,7 +179,7 @@ export const EditTool = Tool.define("edit", {
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 
 // Similarity thresholds for block anchor fallback matching
-const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.0
+const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.3
 const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD = 0.3
 
 /**
@@ -290,7 +290,7 @@ export const BlockAnchorReplacer: Replacer = function* (content, find) {
     const actualBlockSize = endLine - startLine + 1
 
     let similarity = 0
-    let linesToCheck = Math.min(searchBlockSize - 2, actualBlockSize - 2) // Middle lines only
+    const linesToCheck = Math.min(searchBlockSize - 2, actualBlockSize - 2) // Middle lines only
 
     if (linesToCheck > 0) {
       for (let j = 1; j < searchBlockSize - 1 && j < actualBlockSize - 1; j++) {
@@ -302,11 +302,6 @@ export const BlockAnchorReplacer: Replacer = function* (content, find) {
         }
         const distance = levenshtein(originalLine, searchLine)
         similarity += (1 - distance / maxLen) / linesToCheck
-
-        // Exit early when threshold is reached
-        if (similarity >= SINGLE_CANDIDATE_SIMILARITY_THRESHOLD) {
-          break
-        }
       }
     } else {
       // No middle lines to compare, just accept based on anchors

@@ -33,6 +33,20 @@ export namespace SessionProcessor {
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
 
+  export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
+    const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
+    return (
+      lastThree.length === DOOM_LOOP_THRESHOLD &&
+      lastThree.every(
+        (part) =>
+          part.type === "tool" &&
+          part.tool === toolName &&
+          part.state.status !== "pending" &&
+          JSON.stringify(part.state.input) === JSON.stringify(input),
+      )
+    )
+  }
+
   export function create(input: {
     assistantMessage: MessageV2.Assistant
     sessionID: string
@@ -156,18 +170,7 @@ export namespace SessionProcessor {
                       sessionID: input.sessionID,
                       messageID: input.assistantMessage.id,
                     })
-                    const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
-
-                    if (
-                      lastThree.length === DOOM_LOOP_THRESHOLD &&
-                      lastThree.every(
-                        (p) =>
-                          p.type === "tool" &&
-                          p.tool === value.toolName &&
-                          p.state.status !== "pending" &&
-                          JSON.stringify(p.state.input) === JSON.stringify(value.input),
-                      )
-                    ) {
+                    if (shouldAskDoomLoop(parts, value.toolName, value.input)) {
                       const agent = await Agent.get(input.assistantMessage.agent)
                       const session = await Session.get(input.assistantMessage.sessionID)
                       await PermissionNext.ask({
