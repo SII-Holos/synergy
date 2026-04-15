@@ -1,0 +1,85 @@
+name: PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    name: AI Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Synergy
+        run: curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --no-modify-path
+        env:
+          VERSION: ${{ vars.SYNERGY_VERSION || '' }}
+
+      - name: Get PR diff
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > /tmp/pr.diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run AI Review
+        run: |
+          synergy send \
+            --format json \
+            --title "PR Review #${{ github.event.pull_request.number }}" \
+            "You are a senior code reviewer. Review the following PR diff and provide actionable feedback.
+
+          Focus on:
+          - Bugs and logic errors
+          - Security vulnerabilities
+          - Performance issues
+          - Missing error handling
+          - Code style inconsistencies with the rest of the codebase
+          - Missing tests for critical paths
+
+          Do NOT comment on:
+          - Trivial style issues (formatting, naming preferences)
+          - Things that are already working correctly
+          - Adding comments or documentation unless clearly needed
+
+          PR Title: ${{ github.event.pull_request.title }}
+          PR Description: ${{ github.event.pull_request.body || 'No description' }}
+
+          If you find no significant issues, start your response with 'LGTM' and briefly explain why.
+          If you find issues, list each one with file path and line reference." \
+            --file /tmp/pr.diff 2>/dev/null \
+            | jq -r 'select(.type=="text") | .part.text' \
+            | sed '/^$/d' > /tmp/review.txt
+
+          # Fallback: if json parsing failed, re-run with default format
+          if [ ! -s /tmp/review.txt ]; then
+            synergy send \
+              "You are a senior code reviewer. Review the PR diff attached and provide actionable feedback. Focus on bugs, security, performance, and missing error handling. PR Title: ${{ github.event.pull_request.title }}. If no significant issues, say LGTM briefly." \
+              --file /tmp/pr.diff > /tmp/review.txt 2>&1
+          fi
+        env:
+          SYNERGY_PROVIDER_BASE_URL: ${{ secrets.SYNERGY_PROVIDER_BASE_URL }}
+          SYNERGY_PROVIDER_API_KEY: ${{ secrets.SYNERGY_PROVIDER_API_KEY }}
+
+      - name: Determine review event
+        id: event
+        run: |
+          if grep -qi "LGTM" /tmp/review.txt; then
+            echo "event=APPROVE" >> "$GITHUB_OUTPUT"
+          else
+            echo "event=COMMENT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Submit Review
+        run: |
+          gh pr review ${{ github.event.pull_request.number }} \
+            --${{ steps.event.outputs.event }} \
+            --body-file /tmp/review.txt \
+            --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
