@@ -27,6 +27,12 @@ jobs:
           cat > ~/.synergy/config/synergy.jsonc << 'CONFIG'
           {
             "model": "sii-openai/GPT-5.4",
+            "nano_model": "sii-openai/GPT-4.1 nano",
+            "mini_model": "sii-openai/GPT-4.1 mini",
+            "mid_model": "sii-openai/GPT-4.1",
+            "thinking_model": "sii-openai/GPT-5.4",
+            "long_context_model": "sii-openai/GPT-5.4",
+            "creative_model": "sii-openai/GPT-5.4",
             "provider": {
               "sii-openai": {
                 "api": "https://apicz.boyuerichdata.com/v1",
@@ -34,6 +40,30 @@ jobs:
                 "env": ["SII_API_KEY"],
                 "npm": "@ai-sdk/openai-compatible",
                 "models": {
+                  "GPT-4.1 nano": {
+                    "id": "gpt-4.1-nano",
+                    "name": "GPT-4.1 nano",
+                    "family": "Openai",
+                    "modalities": { "input": ["text", "image"], "output": ["text"] },
+                    "cost": { "input": 0.08, "output": 0.16 },
+                    "limit": { "context": 1047576, "output": 32768 }
+                  },
+                  "GPT-4.1 mini": {
+                    "id": "gpt-4.1-mini",
+                    "name": "GPT-4.1 mini",
+                    "family": "Openai",
+                    "modalities": { "input": ["text", "image"], "output": ["text"] },
+                    "cost": { "input": 0.32, "output": 0.64 },
+                    "limit": { "context": 1047576, "output": 32768 }
+                  },
+                  "GPT-4.1": {
+                    "id": "gpt-4.1",
+                    "name": "GPT-4.1",
+                    "family": "Openai",
+                    "modalities": { "input": ["text", "image"], "output": ["text"] },
+                    "cost": { "input": 1.6, "output": 3.21 },
+                    "limit": { "context": 1047576, "output": 32768 }
+                  },
                   "GPT-5.4": {
                     "id": "gpt-5.4",
                     "name": "GPT-5.4",
