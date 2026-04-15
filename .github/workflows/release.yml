@@ -62,6 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     env:
       RELEASE_VERSION: ${{ needs.stable_candidate.outputs.version }}
     steps:
@@ -98,6 +99,16 @@ jobs:
 
       - name: Sync main branch with dev
         run: |
-          git checkout main
-          git merge dev --no-edit
-          git push origin main
+          REPO="${{ github.repository }}"
+          gh pr create \
+            --base main \
+            --head dev \
+            --title "chore: sync main with dev (v${{ env.RELEASE_VERSION }})" \
+            --body "Automated sync from dev after release v${{ env.RELEASE_VERSION }}." \
+            --repo "$REPO" || true
+          PR_NUMBER=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number' --repo "$REPO")
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr merge "$PR_NUMBER" --merge --admin --delete-branch=false --repo "$REPO"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
