@@ -239,6 +239,31 @@ describe("runtime.reload", () => {
     const extAgentCascade = RuntimeReload.inferConfigCascades(["external_agent"])
     expect(extAgentCascade).toContain("agent")
 
+    // Verify model role changes cascade to provider + agent
+    const modelCascade = RuntimeReload.inferConfigCascades(["model"])
+    expect(modelCascade).toContain("provider")
+    expect(modelCascade).toContain("agent")
+
+    const visionModelCascade = RuntimeReload.inferConfigCascades(["vision_model"])
+    expect(visionModelCascade).toContain("provider")
+    expect(visionModelCascade).toContain("agent")
+
+    // Verify category changes cascade to provider + agent
+    const categoryCascade = RuntimeReload.inferConfigCascades(["category"])
+    expect(categoryCascade).toContain("provider")
+    expect(categoryCascade).toContain("agent")
+
+    // Verify default_agent and instructions cascade to agent
+    const defaultAgentCascade = RuntimeReload.inferConfigCascades(["default_agent"])
+    expect(defaultAgentCascade).toContain("agent")
+
+    const instructionsCascade = RuntimeReload.inferConfigCascades(["instructions"])
+    expect(instructionsCascade).toContain("agent")
+
+    // Verify tools changes cascade to tool_registry
+    const toolsCascade = RuntimeReload.inferConfigCascades(["tools"])
+    expect(toolsCascade).toContain("tool_registry")
+
     // Verify email is in restart-required (P13 fix)
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

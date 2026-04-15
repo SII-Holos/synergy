@@ -157,11 +157,6 @@ export namespace RuntimeReload {
     if (changedFields.has("experimental") && !executedSet.has("mcp")) {
       warnings.push("experimental.mcp_timeout changes do not currently trigger MCP.reload() automatically")
     }
-    if (changedFields.has("tools") && !changedFields.has("permission") && !executedSet.has("agent")) {
-      warnings.push(
-        "legacy top-level tools config may require agent reload semantics beyond current Config.reload() mapping",
-      )
-    }
 
     const result: Result = {
       success: failed.length === 0,
@@ -348,7 +343,11 @@ export namespace RuntimeReload {
   }
 
   // ─── Config cascade inference ────────────────────────────────────────
-  // P10: Added email, external_agent, and ensured all config fields cascade.
+  // P10: Ensured all config fields cascade correctly.
+  // - model role changes → provider + agent (model may reference unloaded provider)
+  // - category changes → provider + agent (category.model may reference different provider)
+  // - default_agent, instructions → agent
+  // - tools → tool_registry
 
   export function inferConfigCascades(fields: string[]) {
     const cascaded = [] as Target[]
@@ -370,17 +369,25 @@ export namespace RuntimeReload {
       "holos_friend_reply_model",
       "vision_model",
     ].some((field) => changed.has(field))
-    if (
-      changed.has("agent") ||
-      changed.has("permission") ||
-      changed.has("identity") ||
-      changed.has("external_agent") ||
-      roleModelChanged
-    ) {
+    if (roleModelChanged) {
+      // Model role changes may reference providers not yet loaded in cached state
+      cascaded.push("provider", "agent")
+    }
+    if (changed.has("category")) {
+      // Category configs can specify model overrides that reference different providers
+      cascaded.push("provider", "agent")
+    }
+    if (changed.has("agent") || changed.has("permission") || changed.has("identity") || changed.has("external_agent")) {
+      cascaded.push("agent")
+    }
+    if (changed.has("default_agent") || changed.has("instructions")) {
       cascaded.push("agent")
     }
     if (changed.has("plugin")) {
       cascaded.push("plugin", "tool_registry")
+    }
+    if (changed.has("tools")) {
+      cascaded.push("tool_registry")
     }
     if (changed.has("mcp")) {
       cascaded.push("mcp", "command")
