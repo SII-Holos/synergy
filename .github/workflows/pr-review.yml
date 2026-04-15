@@ -29,7 +29,7 @@ jobs:
             "model": "sii-openai/GPT-5.4",
             "nano_model": "sii-openai/GPT-4.1 nano",
             "mini_model": "sii-openai/GPT-4.1 mini",
-            "mid_model": "sii-openai/GPT-4.1",
+            "mid_model": "sii-openai/GPT-5.4",
             "thinking_model": "sii-openai/GPT-5.4",
             "long_context_model": "sii-openai/GPT-5.4",
             "creative_model": "sii-openai/GPT-5.4",
