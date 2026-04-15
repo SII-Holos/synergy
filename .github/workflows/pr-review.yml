@@ -21,6 +21,36 @@ jobs:
         env:
           VERSION: ${{ vars.SYNERGY_VERSION || '' }}
 
+      - name: Configure Synergy
+        run: |
+          mkdir -p ~/.synergy/config
+          cat > ~/.synergy/config/synergy.jsonc << 'CONFIG'
+          {
+            "model": "sii-openai/GPT-5.4",
+            "provider": {
+              "sii-openai": {
+                "api": "https://apicz.boyuerichdata.com/v1",
+                "name": "sii-openai",
+                "env": ["SII_API_KEY"],
+                "npm": "@ai-sdk/openai-compatible",
+                "models": {
+                  "GPT-5.4": {
+                    "id": "gpt-5.4",
+                    "name": "GPT-5.4",
+                    "family": "Openai",
+                    "modalities": { "input": ["text", "image"], "output": ["text"] },
+                    "cost": { "input": 2.0, "output": 12.02 },
+                    "limit": { "context": 272000, "output": 128000 }
+                  }
+                },
+                "options": {
+                  "baseURL": "https://apicz.boyuerichdata.com/v1"
+                }
+              }
+            }
+          }
+          CONFIG
+
       - name: Get PR diff
         run: |
           gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > /tmp/pr.diff
@@ -31,40 +61,43 @@ jobs:
         run: |
           synergy send \
             --format json \
+            --model "sii-openai/GPT-5.4" \
             --title "PR Review #${{ github.event.pull_request.number }}" \
-            "You are a senior code reviewer. Review the following PR diff and provide actionable feedback.
+            "Review this PR diff carefully.
 
-          Focus on:
-          - Bugs and logic errors
-          - Security vulnerabilities
-          - Performance issues
-          - Missing error handling
-          - Code style inconsistencies with the rest of the codebase
-          - Missing tests for critical paths
+          PR: ${{ github.event.pull_request.title }}
+          ${{ github.event.pull_request.body || '' }}
 
-          Do NOT comment on:
-          - Trivial style issues (formatting, naming preferences)
-          - Things that are already working correctly
-          - Adding comments or documentation unless clearly needed
+          Evaluate each changed file. For every real issue found, output a block like:
 
-          PR Title: ${{ github.event.pull_request.title }}
-          PR Description: ${{ github.event.pull_request.body || 'No description' }}
+          **[SEVERITY]** file/path:line — description
 
-          If you find no significant issues, start your response with 'LGTM' and briefly explain why.
-          If you find issues, list each one with file path and line reference." \
+          Where SEVERITY is one of: 🔴 Critical, 🟡 Warning, 🔵 Suggestion.
+
+          Categories to check:
+          - 🔴 Bugs, logic errors, race conditions, incorrect algorithms
+          - 🔴 Security: injection, auth bypass, secret leaks, unsafe deserialization
+          - 🟡 Performance: N+1 queries, unnecessary re-renders, memory leaks, O(n²) where O(n) exists
+          - 🟡 Error handling: swallowed errors, missing validation, unhandled edge cases
+          - 🔵 Readability: confusing logic, misleading names, dead code
+          - 🔵 Test coverage: critical paths without tests, missing edge case tests
+
+          Skip: formatting, naming style preferences, adding comments/docs unless genuinely missing for understanding.
+
+          End with a one-line verdict: either **LGTM** or **Needs Changes** with a brief reason." \
             --file /tmp/pr.diff 2>/dev/null \
             | jq -r 'select(.type=="text") | .part.text' \
             | sed '/^$/d' > /tmp/review.txt
 
-          # Fallback: if json parsing failed, re-run with default format
+          # Fallback: if json parsing produced nothing, re-run with default format
           if [ ! -s /tmp/review.txt ]; then
             synergy send \
-              "You are a senior code reviewer. Review the PR diff attached and provide actionable feedback. Focus on bugs, security, performance, and missing error handling. PR Title: ${{ github.event.pull_request.title }}. If no significant issues, say LGTM briefly." \
+              --model "sii-openai/GPT-5.4" \
+              "Review this PR diff. Report bugs, security issues, performance problems, and missing error handling as 🔴/🟡/🔵 items with file:line. End with LGTM or Needs Changes. PR: ${{ github.event.pull_request.title }}" \
               --file /tmp/pr.diff > /tmp/review.txt 2>&1
           fi
         env:
-          SYNERGY_PROVIDER_BASE_URL: ${{ secrets.SYNERGY_PROVIDER_BASE_URL }}
-          SYNERGY_PROVIDER_API_KEY: ${{ secrets.SYNERGY_PROVIDER_API_KEY }}
+          SII_API_KEY: ${{ secrets.SII_API_KEY }}
 
       - name: Determine review event
         id: event
