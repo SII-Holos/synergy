@@ -1715,88 +1715,6 @@ export namespace Config {
 
     if (changedFields.length > 0) {
       log.info("config reloaded", { scope, changedFields })
-
-      const fields = new Set(changedFields)
-
-      const providerChanged =
-        fields.has("provider") || fields.has("disabled_providers") || fields.has("enabled_providers")
-      if (providerChanged) {
-        const { Provider } = await import("../provider/provider")
-        await Provider.reload()
-      }
-
-      const roleModelChanged = [
-        "model",
-        "nano_model",
-        "mini_model",
-        "mid_model",
-        "thinking_model",
-        "long_context_model",
-        "creative_model",
-        "holos_friend_reply_model",
-        "vision_model",
-      ].some((field) => fields.has(field))
-      const agentChanged =
-        fields.has("agent") || fields.has("permission") || fields.has("identity") || roleModelChanged || providerChanged
-      if (agentChanged) {
-        const { Agent } = await import("../agent/agent")
-        await Agent.reload()
-      }
-
-      if (fields.has("identity")) {
-        const oldAutonomy = oldConfig.identity?.autonomy !== false
-        const newAutonomy = newConfig.identity?.autonomy !== false
-        if (oldAutonomy !== newAutonomy) {
-          const { AgendaBootstrap } = await import("../agenda/bootstrap")
-          await AgendaBootstrap.syncAnima(newAutonomy)
-        }
-      }
-
-      if (fields.has("plugin")) {
-        const { Plugin } = await import("../plugin")
-        await Plugin.reload()
-      }
-
-      if (fields.has("mcp")) {
-        const { MCP } = await import("../mcp")
-        await MCP.reload()
-      }
-
-      if (fields.has("lsp")) {
-        const { LSP } = await import("../lsp")
-        await LSP.reload()
-      }
-
-      if (fields.has("formatter")) {
-        const { Format } = await import("../file/format")
-        await Format.reload()
-      }
-
-      if (fields.has("watcher")) {
-        const { FileWatcher } = await import("../file/watcher")
-        await FileWatcher.reload()
-      }
-
-      if (fields.has("channel")) {
-        const { Channel } = await import("../channel")
-        await Channel.reload()
-      }
-
-      if (fields.has("holos")) {
-        const { HolosRuntime } = await import("../holos/runtime")
-        await HolosRuntime.reload()
-      }
-
-      if (fields.has("command") || fields.has("mcp")) {
-        const { Command } = await import("../skill/command")
-        await Command.reload()
-      }
-
-      if (fields.has("plugin") || fields.has("experimental")) {
-        const { ToolRegistry } = await import("../tool/registry")
-        await ToolRegistry.reload()
-      }
-
       GlobalBus.emit("event", {
         directory: Instance.directory,
         payload: {
@@ -1808,7 +1726,7 @@ export namespace Config {
       log.info("config reloaded, no changes detected")
     }
 
-    return { config: newConfig, changedFields }
+    return { config: newConfig, changedFields, oldConfig }
   }
 
   async function patchFile(filepath: string, config: Info) {

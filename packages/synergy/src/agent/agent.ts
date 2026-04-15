@@ -632,7 +632,6 @@ export namespace Agent {
 
   export async function reload() {
     log.info("reloading agent state")
-    await Config.state.resetAll()
     await state.resetAll()
     log.info("agent state reloaded")
   }

@@ -241,6 +241,72 @@ function createGlobalSync() {
     ])
   }
 
+  async function refreshTargeted(executed: string[]) {
+    const targets = new Set(executed)
+    const directories = Object.keys(children)
+
+    const globalPromises: Promise<unknown>[] = []
+    const perScopePromises: Promise<unknown>[] = []
+
+    // Always refresh global providers and config sets when provider or config changes
+    if (targets.has("config") || targets.has("provider")) {
+      globalPromises.push(loadGlobalProviders())
+      globalPromises.push(loadConfigSets())
+    }
+
+    for (const directory of directories) {
+      const [_, setStore] = child(directory)
+      const sdk = createSynergyClient({
+        baseUrl: globalSDK.url,
+        directory,
+        throwOnError: true,
+      })
+
+      const scopePromises: Promise<unknown>[] = []
+
+      if (targets.has("config")) {
+        scopePromises.push(sdk.config.get().then((x) => setStore("config", x.data!)))
+      }
+      if (targets.has("provider") || targets.has("config")) {
+        scopePromises.push(
+          sdk.provider.list().then((x) => {
+            const data = x.data!
+            setStore("provider", {
+              ...data,
+              all: data.all.map((provider) => ({
+                ...provider,
+                models: Object.fromEntries(
+                  Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
+                ),
+              })),
+            })
+          }),
+        )
+      }
+      if (targets.has("agent") || targets.has("provider") || targets.has("config")) {
+        scopePromises.push(sdk.app.agents().then((x) => setStore("agent", x.data ?? [])))
+      }
+      if (targets.has("command") || targets.has("mcp") || targets.has("config")) {
+        scopePromises.push(sdk.command.list().then((x) => setStore("command", x.data ?? [])))
+      }
+      if (targets.has("mcp")) {
+        scopePromises.push(sdk.mcp.status().then((x) => setStore("mcp", x.data!)))
+      }
+      if (targets.has("lsp")) {
+        scopePromises.push(
+          sdk.lsp
+            .status()
+            .then((x) => setStore("lsp", x.data!))
+            .catch(() => {}),
+        )
+      }
+
+      perScopePromises.push(Promise.all(scopePromises))
+    }
+
+    await Promise.all([...globalPromises, ...perScopePromises])
+  }
+
   async function loadSessions(directory: string) {
     const [store, setStore] = child(directory)
     return globalSDK.client.session
@@ -468,12 +534,18 @@ function createGlobalSync() {
       }
     }
 
-    if (
-      event?.type === "config.updated" ||
-      (event as { type?: string }).type === "config.set.activated" ||
-      event?.type === "runtime.reloaded"
-    ) {
+    if (event?.type === "config.updated" || (event as { type?: string }).type === "config.set.activated") {
       void refreshAllConfigs()
+      return
+    }
+
+    if (event?.type === "runtime.reloaded") {
+      const props = event.properties as { executed?: string[] } | undefined
+      if (props?.executed?.length) {
+        void refreshTargeted(props.executed)
+      } else {
+        void refreshAllConfigs()
+      }
       return
     }
 

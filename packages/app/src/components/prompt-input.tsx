@@ -2104,7 +2104,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         {(close) => (
                           <List
                             class="p-1"
-                            items={local.agent.list().filter((a) => !a.hidden && a.mode !== "primary")}
+                            items={local.agent.list().filter((a) => !a.hidden)}
                             key={(x) => x.name}
                             filterKeys={["name"]}
                             onSelect={(x) => {

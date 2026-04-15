@@ -17,6 +17,8 @@ import { $ } from "bun"
 import { Flag } from "@/flag/flag"
 import { readdir } from "fs/promises"
 
+import { existsSync } from "fs"
+
 const SUBSCRIBE_TIMEOUT_MS = 10_000
 
 declare const SYNERGY_LIBC: string | undefined
@@ -100,6 +102,38 @@ export namespace FileWatcher {
       }
 
       const cfgIgnores = cfg?.watcher?.ignore ?? []
+
+      // P7: Watch .synergy/ directory for config/agent/command/skill/tool/plugin changes.
+      // These events are emitted to GlobalBus so the auto-reload system can process them,
+      // just like global config directory events.
+      const synergyDir = path.join(Instance.directory, ".synergy")
+      if (existsSync(synergyDir)) {
+        const synergySubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
+          if (err) return
+          for (const evt of evts) {
+            const eventType =
+              evt.type === "create" ? "add" : evt.type === "update" ? "change" : evt.type === "delete" ? "unlink" : null
+            if (!eventType) continue
+            // Skip node_modules and other non-config files
+            if (evt.path.includes("node_modules")) continue
+            log.info("project .synergy file event", { file: evt.path, event: eventType })
+            GlobalBus.emit("event", {
+              directory: Instance.directory,
+              payload: {
+                type: "global.config.file.changed",
+                properties: { file: evt.path, event: eventType },
+              },
+            })
+          }
+        }
+        const pending = watcher().subscribe(synergyDir, synergySubscribe, { backend, ignore: ["node_modules"] })
+        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
+          log.error("failed to subscribe to project .synergy directory", { error: err })
+          pending.then((s) => s.unsubscribe()).catch(() => {})
+          return undefined
+        })
+        if (sub) subs.push(sub)
+      }
 
       if (Flag.SYNERGY_EXPERIMENTAL_FILEWATCHER) {
         const pending = watcher().subscribe(Instance.directory, subscribe, {

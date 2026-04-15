@@ -5,6 +5,7 @@ import { Instance } from "../../src/scope/instance"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 import { Config } from "../../src/config/config"
+import { RuntimeReload } from "../../src/runtime/reload"
 
 // Helper to evaluate permission for a tool with wildcard pattern
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {
@@ -393,7 +394,7 @@ test("explore agent model follows mid_model after config reload", async () => {
         }),
       )
 
-      await Config.reload("project")
+      await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "test" })
 
       const after = await Agent.get("explore")
       expect(after?.model).toEqual({ providerID: "openai", modelID: "gpt-5-mini" })
