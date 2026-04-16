@@ -34,20 +34,44 @@
     flex-direction: column;
     gap: 2px;
     margin-bottom: 4px;
+    margin-left: -20px;
+    align-items: flex-start;
   }
 
   [data-slot="session-turn-title"] h1 {
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-lg, 1.125rem);
+    font-weight: var(--font-weight-semibold, 600);
     color: var(--text-base);
-    background: color-mix(in srgb, var(--background-strong), transparent 85%);
-    padding: 4px 10px;
-    border-radius: 4px;
+    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
+    padding: 6px 12px !important;
+    border-radius: 6px !important;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
     display: inline-block;
+  }
+
+  div[data-slot="session-turn-title"] h1 {
+    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
+  }
+
+  /* Light mode (default) */
+  :root {
+    --section-title-background: rgba(99, 102, 241, 0.12);
+  }
+
+  /* Dark mode */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --section-title-background: rgba(139, 92, 246, 0.25);
+    }
+  }
+
+  /* Also support explicit dark mode class if the app uses it */
+  [data-theme="dark"],
+  .dark {
+    --section-title-background: rgba(139, 92, 246, 0.25);
   }
 
   [data-slot="session-turn-title-timestamp"] {

@@ -17,6 +17,7 @@ import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, Pare
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
+import "./session-turn.css"
 import "./tool-renders"
 import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
