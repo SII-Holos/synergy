@@ -215,6 +215,15 @@ function vecTablesReady(): boolean {
   return vecTablesExist
 }
 
+function safeVecOp(fn: () => void) {
+  if (!vecTablesExist) return
+  try {
+    fn()
+  } catch {
+    vecTablesExist = false
+  }
+}
+
 function toFloat32(vector: number[]): Float32Array {
   return new Float32Array(vector)
 }
@@ -394,7 +403,7 @@ export namespace EngramDB {
       const conn = open()
       conn.prepare("DELETE FROM experience WHERE id = ?1").run(id)
       conn.prepare("DELETE FROM experience_content WHERE id = ?1").run(id)
-      if (vecTablesReady()) conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id)
+      safeVecOp(() => conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id))
       log.info("experience.remove", { id })
     }
 
@@ -418,7 +427,7 @@ export namespace EngramDB {
       const conn = open()
       const r1 = conn.prepare("DELETE FROM experience").run()
       conn.prepare("DELETE FROM experience_content").run()
-      if (vecTablesReady()) conn.prepare("DELETE FROM vec_experience").run()
+      safeVecOp(() => conn.prepare("DELETE FROM vec_experience").run())
       log.info("experience.removeAll", { deleted: r1.changes })
       return r1.changes
     }
@@ -427,14 +436,14 @@ export namespace EngramDB {
       const conn = open()
       const r1 = conn.prepare("DELETE FROM experience WHERE scope_id = ?1").run(scopeID)
       conn.prepare("DELETE FROM experience_content WHERE scope_id = ?1").run(scopeID)
-      if (vecTablesReady()) {
+      safeVecOp(() => {
         const ids = conn.prepare("SELECT experience_id FROM vec_experience WHERE scope_id = ?1").all(scopeID) as {
           experience_id: string
         }[]
         for (const { experience_id } of ids) {
           conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(experience_id)
         }
-      }
+      })
       log.info("experience.removeByScope", { scopeID, deleted: r1.changes })
       return r1.changes
     }
@@ -545,8 +554,9 @@ export namespace EngramDB {
         )
         .run(compositeReward, JSON.stringify(rewards), Date.now(), id)
 
-      if (vecTablesReady())
-        conn.prepare("UPDATE vec_experience SET reward_status = 'evaluated' WHERE experience_id = ?1").run(id)
+      safeVecOp(() =>
+        conn.prepare("UPDATE vec_experience SET reward_status = 'evaluated' WHERE experience_id = ?1").run(id),
+      )
 
       const retrievedIDs: string[] = JSON.parse(row.retrieved_experience_ids)
       const confidence = rewards.confidence ?? 1
@@ -707,7 +717,7 @@ export namespace EngramDB {
         )
 
       ensureVecTables(dimensions)
-      if (vecTablesReady()) {
+      safeVecOp(() => {
         conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(input.id)
         conn
           .prepare(
@@ -720,7 +730,7 @@ export namespace EngramDB {
             toFloat32(input.intentEmbedding.vector),
             input.scriptEmbedding ? toFloat32(input.scriptEmbedding.vector) : new Float32Array(dimensions),
           )
-      }
+      })
 
       conn
         .prepare(
@@ -796,11 +806,11 @@ export namespace EngramDB {
         .run(input.id, input.title, input.content, input.category, input.recallMode, embedding.model, now, now)
 
       ensureVecTables(embedding.vector.length)
-      if (vecTablesReady()) {
+      safeVecOp(() => {
         conn
           .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
           .run(input.id, input.category, toFloat32(embedding.vector))
-      }
+      })
 
       log.info("memory.insert", {
         id: input.id,
@@ -835,12 +845,12 @@ export namespace EngramDB {
       if (result.changes === 0) return null
 
       ensureVecTables(embedding.vector.length)
-      if (vecTablesReady()) {
+      safeVecOp(() => {
         conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(input.id)
         conn
           .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
           .run(input.id, input.category, toFloat32(embedding.vector))
-      }
+      })
 
       log.info("memory.update", {
         id: input.id,
@@ -926,14 +936,14 @@ export namespace EngramDB {
     export function remove(id: string) {
       const conn = open()
       conn.prepare("DELETE FROM memory WHERE id = ?1").run(id)
-      if (vecTablesReady()) conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id)
+      safeVecOp(() => conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id))
       log.info("memory.remove", { id })
     }
 
     export function removeAll(): number {
       const conn = open()
       const result = conn.prepare("DELETE FROM memory").run()
-      if (vecTablesReady()) conn.prepare("DELETE FROM vec_memory").run()
+      safeVecOp(() => conn.prepare("DELETE FROM vec_memory").run())
       log.info("memory.removeAll", { deleted: result.changes })
       return result.changes
     }
