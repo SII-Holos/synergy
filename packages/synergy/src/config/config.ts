@@ -1715,13 +1715,6 @@ export namespace Config {
 
     if (changedFields.length > 0) {
       log.info("config reloaded", { scope, changedFields })
-      GlobalBus.emit("event", {
-        directory: Instance.directory,
-        payload: {
-          type: Event.Updated.type,
-          properties: { scope, changedFields },
-        },
-      })
     } else {
       log.info("config reloaded, no changes detected")
     }

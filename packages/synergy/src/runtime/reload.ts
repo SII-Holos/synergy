@@ -55,6 +55,7 @@ export namespace RuntimeReload {
       z.object({
         executed: z.array(Target),
         cascaded: z.array(Target),
+        changedFields: z.array(z.string()),
       }),
     ),
   }
@@ -176,6 +177,7 @@ export namespace RuntimeReload {
         properties: {
           executed: result.executed,
           cascaded: result.cascaded,
+          changedFields: result.changedFields,
         },
       },
     })

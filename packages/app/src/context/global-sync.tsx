@@ -540,7 +540,7 @@ function createGlobalSync() {
     }
 
     if (event?.type === "runtime.reloaded") {
-      const props = event.properties as { executed?: string[] } | undefined
+      const props = event.properties as { executed?: string[]; changedFields?: string[] } | undefined
       if (props?.executed?.length) {
         void refreshTargeted(props.executed)
       } else {
