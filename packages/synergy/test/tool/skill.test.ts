@@ -15,7 +15,7 @@ const ctx = {
   ask: async () => {},
 }
 
-describe("tool.skill", () => {
+describe.serial("tool.skill", () => {
   test("builtin skill output does not expose source-only script paths", async () => {
     await using tmp = await tmpdir({ git: true })
 

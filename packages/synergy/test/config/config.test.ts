@@ -1,4 +1,4 @@
-import { test, expect, mock, afterEach } from "bun:test"
+import { test, expect, mock } from "bun:test"
 import { Config } from "../../src/config/config"
 import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
@@ -475,6 +475,7 @@ test("merges instructions arrays from global and local configs", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const instructions = config.instructions ?? []
 
@@ -514,6 +515,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const instructions = config.instructions ?? []
 
@@ -558,6 +560,7 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const plugins = config.plugin ?? []
 
@@ -1168,6 +1171,7 @@ test("project config overrides remote well-known config", async () => {
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        await Config.state.reset()
         const config = await Config.get()
         // Verify fetch was called for wellknown config
         expect(fetchedUrl).toBe("https://example.com/.well-known/synergy")

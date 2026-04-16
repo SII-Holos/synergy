@@ -23,7 +23,8 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     await $`git init`.cwd(dirpath).quiet()
     await $`git config user.email test@synergy.dev`.cwd(dirpath).quiet()
     await $`git config user.name "Test Agent"`.cwd(dirpath).quiet()
-    await $`git commit --allow-empty -m "root commit"`.cwd(dirpath).quiet()
+    const commitId = Math.random().toString(36).slice(2)
+    await $`git commit --allow-empty -m ${"root commit " + commitId}`.cwd(dirpath).quiet()
   }
   if (options?.config) {
     await Bun.write(
@@ -35,6 +36,8 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     )
   }
   const extra = await options?.init?.(dirpath)
+  // Pre-create node_modules in .synergy so Config.installDependencies skips the await
+  await fs.mkdir(path.join(dirpath, ".synergy", "node_modules"), { recursive: true }).catch(() => {})
   const realpath = sanitizePath(await fs.realpath(dirpath))
   const result = {
     [Symbol.asyncDispose]: async () => {
