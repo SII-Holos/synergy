@@ -90,6 +90,7 @@ export namespace RuntimeReload {
   const TARGET_CASCADES: Partial<Record<Target, Target[]>> = {
     provider: ["agent"],
     mcp: ["command"],
+    skill: ["command"],
     plugin: ["tool_registry"],
   }
 
