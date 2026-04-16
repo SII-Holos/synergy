@@ -69,6 +69,22 @@ export namespace Scope {
   export async function fromDirectory(directory: string): Promise<{ scope: Scope; sandbox: string }> {
     log.info("fromDirectory", { directory })
 
+    // FIXED BUG: Scope ID Generation from Subdirectories
+    // =================================================
+    // Previously, when opening a project from a subdirectory (e.g., /project/src),
+    // the scope ID was generated before resolving the git repository root.
+    // This caused:
+    //   - Opening /project/src → ID based on '/project/src', worktree = '/project'
+    //   - Opening /project/lib → ID based on '/project/lib', worktree = '/project'
+    //   - Result: Different IDs but same worktree, causing confusion
+    //
+    // The fix ensures:
+    //   1. ID is generated AFTER resolving the final worktree (git root)
+    //   2. Opening the same project from any subdirectory yields the SAME scope ID
+    //   3. The original opening directory is tracked in sandboxes array
+    //   4. Git repositories with commits use the first commit hash (stable across machines)
+    //   5. Git repositories without commits use dirHash(git_root) not dirHash(subdirectory)
+
     if (!existsSync(directory)) {
       const existing = await readPersisted(dirHash(directory))
       if (existing && !existing.time?.archived) {
@@ -83,28 +99,33 @@ export namespace Scope {
       const git = await matches.next().then((x) => x.value)
       await matches.return()
       if (git) {
-        let sandbox = path.dirname(git)
+        // Initial sandbox is the directory where .git was found
+        // This could be a subdirectory within the actual git repository
+        const initialSandbox = path.dirname(git)
         const gitBinary = Bun.which("git")
 
+        // Try to read existing scope ID from .git/synergy file
         let id = await Bun.file(path.join(git, "synergy"))
           .text()
           .then((x) => x.trim())
           .catch(() => undefined)
 
         if (!gitBinary) {
+          // No git binary available, use hash of the directory
           return {
-            id: id ?? dirHash(sandbox),
-            worktree: sandbox,
-            sandbox: sandbox,
+            id: id ?? dirHash(initialSandbox),
+            worktree: initialSandbox,
+            sandbox: initialSandbox,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
+        // Try to get the first commit hash to use as a stable ID
         if (!id) {
           const roots = await $`git rev-list --max-parents=0 --all`
             .quiet()
             .nothrow()
-            .cwd(sandbox)
+            .cwd(initialSandbox)
             .text()
             .then((x) =>
               x
@@ -117,6 +138,7 @@ export namespace Scope {
 
           id = roots?.[0]
           if (id) {
+            // Cache the ID in .git/synergy for future use
             void Bun.file(path.join(git, "synergy"))
               .write(id)
               .catch(() => undefined)
@@ -124,41 +146,43 @@ export namespace Scope {
         }
 
         if (!id) {
+          // No commits yet, fall back to directory hash
+          // CRITICAL: We must wait to generate the hash until we resolve the actual worktree
           return {
-            id: dirHash(sandbox),
-            worktree: sandbox,
-            sandbox: sandbox,
+            id: null, // Mark as needing deferred ID generation
+            worktree: null, // Mark as needing worktree resolution
+            sandbox: initialSandbox,
             vcs: "git",
           }
         }
 
+        // Resolve the actual git repository root (top-level directory)
         const top = await $`git rev-parse --show-toplevel`
           .quiet()
           .nothrow()
-          .cwd(sandbox)
+          .cwd(initialSandbox)
           .text()
-          .then((x) => path.resolve(sandbox, x.trim()))
+          .then((x) => path.resolve(initialSandbox, x.trim()))
           .catch(() => undefined)
 
         if (!top) {
           return {
             id,
-            sandbox,
-            worktree: sandbox,
+            sandbox: initialSandbox,
+            worktree: initialSandbox,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
-        sandbox = top
-
+        // Resolve the actual worktree (git common dir for linked worktrees)
         const worktree = await $`git rev-parse --git-common-dir`
           .quiet()
           .nothrow()
-          .cwd(sandbox)
+          .cwd(top)
           .text()
           .then((x) => {
             const dirname = path.dirname(x.trim())
-            if (dirname === ".") return sandbox
+            if (dirname === ".") return top
             return dirname
           })
           .catch(() => undefined)
@@ -166,20 +190,21 @@ export namespace Scope {
         if (!worktree) {
           return {
             id,
-            sandbox,
-            worktree: sandbox,
+            sandbox: top,
+            worktree: top,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
         return {
           id,
-          sandbox,
+          sandbox: top,
           worktree,
           vcs: "git",
         }
       }
 
+      // Not a git repository, use directory hash directly
       return {
         id: dirHash(directory),
         sandbox: directory,
@@ -188,7 +213,32 @@ export namespace Scope {
       }
     })
 
-    const { id, sandbox, worktree, vcs } = resolved
+    let { id, sandbox, worktree, vcs } = resolved
+
+    // CRITICAL FIX: Handle deferred ID generation for git repos with no commits
+    // The ID must be generated based on the FINAL resolved worktree, not the initial subdirectory
+    // This prevents duplicate scope IDs when opening the same project from different subdirectories
+    if (id === null && worktree === null && sandbox) {
+      // This is a git repo with no commits - we need to resolve the actual git root
+      const top = await $`git rev-parse --show-toplevel`
+        .quiet()
+        .nothrow()
+        .cwd(sandbox)
+        .text()
+        .then((x) => path.resolve(sandbox, x.trim()))
+        .catch(() => undefined)
+
+      if (top) {
+        sandbox = top
+        worktree = top
+        // Generate ID based on the git root directory - this ensures the same ID
+        // regardless of which subdirectory the user opened
+        id = dirHash(top)
+      } else {
+        worktree = sandbox
+        id = dirHash(sandbox)
+      }
+    }
 
     let existing = await readPersisted(id)
 
@@ -228,7 +278,11 @@ export namespace Scope {
       vcs: vcs as Scope.Project["vcs"],
       time: { ...existing.time },
     }
-    if (sandbox !== persisted.worktree && !persisted.sandboxes.includes(sandbox)) persisted.sandboxes.push(sandbox)
+    // Track the original opening directory in sandboxes if it's different from worktree
+    // This allows us to show all the subdirectories/checkouts where this project was opened
+    if (directory !== persisted.worktree && !persisted.sandboxes.includes(directory)) {
+      persisted.sandboxes.push(directory)
+    }
     persisted.sandboxes = persisted.sandboxes.filter((x) => existsSync(x))
     await writePersisted(persisted)
 
