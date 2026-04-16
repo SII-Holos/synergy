@@ -10,13 +10,13 @@ Pre-built collections of skills that add domain-specific workflows to Synergy.
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [ARIS for Synergy](https://github.com/EricSanchezok/Auto-claude-code-research-in-sleep) | Adapted from [@wanshuiyin](https://github.com/wanshuiyin) | Autonomous ML research workflows: idea discovery, experiment execution, paper writing, and adversarial review loops. 65 skills covering the full research lifecycle. | `curl -sL https://raw.githubusercontent.com/EricSanchezok/Auto-claude-code-research-in-sleep/main/install.sh \| bash` |
 
-## CLI Tools & Integrations
+## MCP Servers
 
-Standalone tools that Synergy can orchestrate via its agent system.
+External MCP servers integrated into Synergy, extending its tool capabilities.
 
-| Project                                         | Author                                   | Description                                                                                                                                              | Usage                                                                                                                              |
-| ----------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [qzcli](https://github.com/tianyilt/qzcli_tool) | [@tianyilt](https://github.com/tianyilt) | CLI for managing GPU compute jobs on the Qizhi (启智) platform. Submit, monitor, and track training jobs; query GPU availability; manage compute groups. | Bundled as a built-in skill in Synergy (`/qzcli`). Supports auth login, job creation, availability checks, and HPC job management. |
+| Project                                         | Author                                   | Description                                                                                                                                           | Usage                                                                                                           |
+| ----------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [qzcli](https://github.com/tianyilt/qzcli_tool) | [@tianyilt](https://github.com/tianyilt) | MCP server for the Qizhi (启智) GPU compute platform. Submit/monitor/track training jobs, query GPU availability, manage compute groups and HPC jobs. | Add as MCP server in Synergy config. Exposes tools like `qz_create_job`, `qz_list_jobs`, `qz_get_availability`. |
 
 ## Contributing
 
