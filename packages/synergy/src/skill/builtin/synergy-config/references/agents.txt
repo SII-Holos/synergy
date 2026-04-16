@@ -1,0 +1,281 @@
+# Agents
+
+## Quick start — create a custom agent
+
+1. **Decide scope** — project (`.synergy/agent/`) or global (`~/.synergy/config/agent/`). Project overrides global.
+2. **Create the agent file** — for most agents, a markdown file is the cleanest approach.
+3. **Reload** — `runtime_reload(target: "agent")`. Markdown agent files in watched directories are auto-detected, but an explicit reload is more reliable.
+4. **Verify** — check that the agent appears in the `@` menu (primary mode) or is available to the `task` tool (subagent mode).
+
+## Two ways to define agents
+
+### 1. Markdown file (recommended for most agents)
+
+Create at `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global):
+
+```markdown
+---
+description: "Expert code reviewer"
+mode: "primary"
+model: "anthropic/claude-sonnet-4-5"
+temperature: 0.3
+color: "#4CAF50"
+steps: 100
+---
+
+You are an expert code reviewer. Focus on:
+- Security vulnerabilities
+- Performance issues
+- Code clarity
+```
+
+YAML frontmatter between `---` delimiters = agent metadata. Markdown body = `prompt`.
+
+**Directory and naming:**
+- `.synergy/agent/reviewer.md` → agent name `reviewer`
+- `.synergy/agent/team/reviewer.md` → agent name `team/reviewer`
+- `.synergy/agents/reviewer.md` → same as `agent/` (both `agent` and `agents` directories work)
+- For global scope, replace `.synergy/agent/` with `~/.synergy/config/agent/`
+
+**Precedence:** project markdown > global markdown > JSONC config. If the same agent name exists in both project and global, project wins.
+
+### 2. JSONC config (short prompts or partial overrides)
+
+```jsonc
+{
+  "agent": {
+    "<name>": {
+      "description": "When to use this agent",
+      "mode": "primary",
+      "model": "provider/model",
+      "prompt": "You are an expert at...",
+      "temperature": 0.7,
+      "steps": 50
+    }
+  }
+}
+```
+
+JSONC is best for: short prompts, overriding specific fields of a built-in agent, or disabling an agent.
+
+## Understanding the key fields
+
+### `description` — the routing signal
+
+The `description` field is NOT just a label. It is the primary signal Synergy uses to decide when to route tasks to this agent. When the orchestrator agent evaluates which subagent to delegate work to, it matches the task against each agent's `description`.
+
+- Be specific about **what kind of work** the agent handles and **when to use it**.
+- A vague description like "helpful assistant" means the agent will never be selected over built-in agents with clearer descriptions.
+- Good: "Security-focused code reviewer. Use for reviewing PRs, auditing dependencies, and identifying vulnerability patterns."
+- Bad: "A code review agent."
+
+### `mode` — who can invoke the agent
+
+| Mode | Meaning |
+|---|---|
+| `primary` | User-facing. Appears in the `@` menu in TUI/Web. Can also be delegated to. |
+| `subagent` | Only callable by other agents via the `task` tool. Not visible in `@` menu. |
+| `all` | Both primary and subagent. This is the default for new agents. |
+
+### `model` — which model the agent uses
+
+Format: `"provider/model"` (e.g., `"anthropic/claude-sonnet-4-5"`, `"openai/gpt-4o"`). If omitted, the agent falls back to the scope's default model.
+
+You can also reference a model role instead of a specific model. Built-in agents use roles like `mid` (for explore/scout), `thinking` (for advisor), `nano` (for title/summary). Custom agents currently need an explicit `provider/model` string.
+
+### `steps` — controlling agent autonomy
+
+`steps` is the maximum number of agentic iterations (tool-use rounds) before the agent is forced into text-only response mode. Default is unbounded if omitted.
+
+- **Low (10-20):** Quick Q&A, simple lookups, one-shot analysis.
+- **Medium (30-50):** Standard implementation tasks, multi-file edits.
+- **High (100+):** Complex multi-step workflows, large refactors, deep research.
+
+### `permission` — what the agent can do
+
+By default, custom agents inherit the top-level permission rules. Use the `permission` field to restrict or expand access per agent. Agent-level permissions merge with and override top-level permissions.
+
+A common pattern is a read-only agent:
+```jsonc
+{
+  "agent": {
+    "auditor": {
+      "description": "Read-only security auditor. Reviews code but never modifies it.",
+      "mode": "all",
+      "permission": { "edit": "deny", "write": "deny", "bash": "deny" }
+    }
+  }
+}
+```
+
+See `references/identity-permissions.txt` for the full permission schema, including path-scoped rules.
+
+## Complete example — code review agent
+
+**File:** `.synergy/agent/reviewer.md`
+
+```markdown
+---
+description: "Security and quality code reviewer. Use for reviewing changes, auditing code, and identifying issues before merge."
+mode: "all"
+model: "anthropic/claude-sonnet-4-5"
+temperature: 0.2
+color: "#E91E63"
+steps: 40
+permission:
+  edit: "deny"
+  write: "deny"
+  bash: "deny"
+  websearch: "allow"
+---
+
+You are a senior code reviewer with deep expertise in security and software quality.
+
+## Your review process
+
+1. **Read the changed files** — understand what the code does before evaluating it.
+2. **Check for security issues** — injection, auth bypass, data exposure, unsafe deserialization.
+3. **Evaluate code quality** — readability, naming, error handling, unnecessary complexity.
+4. **Assess correctness** — edge cases, off-by-one errors, race conditions, missing validations.
+5. **Summarize findings** — categorize as critical, warning, or suggestion.
+
+## Output format
+
+For each finding, state:
+- **File and line** where the issue occurs
+- **Severity** (critical / warning / suggestion)
+- **Explanation** of the issue
+- **Suggested fix** if applicable
+
+End with an overall assessment: approve, request changes, or need discussion.
+```
+
+## Complete example — project-specific domain agent
+
+**File:** `.synergy/agent/api-designer.md`
+
+```markdown
+---
+description: "REST API designer. Creates OpenAPI specs, endpoint definitions, and request/response schemas following the project's API conventions."
+mode: "subagent"
+model: "anthropic/claude-sonnet-4-5"
+temperature: 0.4
+steps: 30
+---
+
+You are a REST API designer. When given a feature description, produce:
+
+1. **Endpoint definitions** — method, path, description
+2. **Request schemas** — parameters, headers, body with types
+3. **Response schemas** — status codes, response body shapes
+4. **Error responses** — common error patterns for this endpoint type
+
+Follow the project's existing API patterns. Read existing route files first to match conventions.
+Use Zod for schema definitions where the project uses Zod validation.
+```
+
+## Overriding built-in agents
+
+Define an agent with the same name in config. Config takes precedence over built-in definitions.
+
+Override just the model (JSONC):
+```jsonc
+{
+  "agent": {
+    "explore": {
+      "model": "anthropic/claude-haiku-3-5"
+    }
+  }
+}
+```
+
+Override the prompt (markdown): `.synergy/agent/explore.md` with new prompt and frontmatter. Only the fields you specify are overridden; omitted fields retain their built-in values.
+
+Disable a built-in agent entirely:
+```jsonc
+{
+  "agent": {
+    "explore": {
+      "disable": true
+    }
+  }
+}
+```
+
+## Built-in agents
+
+Synergy ships with these agents. You can override any of them via config.
+
+**User-facing (primary):** `synergy` (default orchestrator)
+
+**Subagents:** `master` (implementation), `scholar` (academic research), `scribe` (writing), `explore` (codebase search), `scout` (external docs), `advisor` (architecture review)
+
+**Internal:** `title` (title generation), `summary` (session summaries), `compaction` (context compaction), `general` (general subagent)
+
+## Agent fields reference
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `model` | string | scope default | `provider/model` format |
+| `description` | string | — | When to use this agent. Required for selection UI and routing. |
+| `mode` | enum | `"all"` | `"primary"`, `"subagent"`, or `"all"` |
+| `prompt` | string | — | System prompt. For markdown agents, this is the body. |
+| `temperature` | number | — | Generation temperature (0-2) |
+| `top_p` | number | — | Top-p sampling (0-1) |
+| `color` | string | — | Hex color (e.g., `"#FF5733"`). Must be `#` + 6 hex digits. |
+| `steps` | int | — | Max agentic iterations before forcing text-only response |
+| `hidden` | bool | `false` | Hide from autocomplete (subagent mode only) |
+| `disable` | bool | `false` | Disable the agent entirely |
+| `permission` | object | top-level | Permission overrides. Merges with and overrides top-level permission. |
+| `options` | object | `{}` | Additional key-value options passed through to the agent |
+
+## Options passthrough
+
+Unknown fields in agent config are extracted into `options`:
+```jsonc
+{
+  "agent": {
+    "my-agent": {
+      "model": "anthropic/claude-sonnet-4-5",
+      "custom_field": "value"
+    }
+  }
+}
+```
+`custom_field` is accessible via `agent.options.custom_field`.
+
+## Validation rules
+
+1. `mode` must be `"primary"`, `"subagent"`, or `"all"`
+2. `color` must be `#` + 6 hex digits (e.g., `"#FF5733"`)
+3. `steps` must be a positive integer
+4. For markdown agents, frontmatter must be valid YAML between `---` delimiters
+5. `description` is required for the agent to appear in selection UI
+
+## Troubleshooting
+
+**Agent doesn't appear in the `@` menu:**
+- Check `mode` — must be `"primary"` or `"all"`, not `"subagent"`
+- Check `description` — required for UI visibility
+- Check `hidden` — must not be `true`
+- Check `disable` — must not be `true`
+- Reload: `runtime_reload(target: "agent")`
+
+**Agent never gets delegated tasks:**
+- Check `description` — it must clearly describe what the agent does and when to use it
+- Check `mode` — must include `"subagent"` or `"all"` for delegation
+- The orchestrator selects agents based on description match; a vague description means it loses to built-in agents
+
+**Markdown agent not loading:**
+- Verify the file is in the correct directory: `.synergy/agent/` or `~/.synergy/config/agent/`
+- Verify YAML frontmatter syntax — `---` on its own line before and after, valid YAML inside
+- Check for validation errors in server logs at startup
+- Try `runtime_reload(target: "agent")`
+
+## Reload
+
+```
+runtime_reload(target: "agent")
+```
+
+For markdown agent files in watched directories, the file watcher auto-detects changes. An explicit reload is more reliable and recommended after creating a new agent.

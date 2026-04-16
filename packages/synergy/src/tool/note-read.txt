@@ -1,0 +1,5 @@
+Read the full content of one or more notes by their IDs. Returns each note's title, metadata, and content in markdown format.
+
+Use this after `note_list` or `note_search` to read the full details of specific notes.
+
+Supports pagination via `offset` and `limit` (line-based) for reading long notes. If not specified, returns the full content.

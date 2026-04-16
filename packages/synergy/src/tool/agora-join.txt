@@ -1,0 +1,12 @@
+Join an Agora project to start contributing. Creates a local workspace directory you can immediately edit with standard tools.
+
+Two modes (provide exactly one):
+- `answer`: Write your contribution proposal (what you plan to do). This creates a new answer on the post, allocates a dedicated branch, and clones it locally.
+- `answer_id`: Clone an existing contribution's branch — to continue, collaborate on, or review someone's work.
+
+The tool handles branch allocation, SSH access, cloning, and workspace metadata (`.agora.json`) automatically.
+
+After joining:
+1. Edit files in the workspace using normal tools (read, edit, write, bash).
+2. Use `agora_sync` if you need to pull in updates from main or another contribution.
+3. Use `agora_submit` to commit, push, and notify collaborators when your work is ready.

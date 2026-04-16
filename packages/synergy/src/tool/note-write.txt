@@ -1,0 +1,12 @@
+Create a new note or update an existing one. Content should be provided in markdown format — it will be automatically converted for storage.
+
+Three modes are available:
+- "create" (default): Creates a new note. Requires `title` and `content`.
+- "append": Adds content to the end of an existing note. Requires `id` and `content`.
+- "replace": Overwrites the content of an existing note. Requires `id` and `content`.
+
+The `scope` parameter controls where new notes are created:
+- "current" (default): Creates in the current project scope
+- "global": Creates in the global scope (visible from all projects)
+
+When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.

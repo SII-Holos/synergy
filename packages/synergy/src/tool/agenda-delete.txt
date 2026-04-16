@@ -1,0 +1,3 @@
+Permanently delete an agenda item and all its execution history. This cannot be undone.
+
+To temporarily stop an item without losing its configuration and history, use `agenda_update` to set status to "paused" instead.

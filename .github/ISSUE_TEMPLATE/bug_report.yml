@@ -1,0 +1,57 @@
+name: Bug Report
+description: Report something that isn't working correctly
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the problem.
+      placeholder: |
+        1. Run `synergy start`
+        2. Run `synergy send "..."`
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your system info.
+      placeholder: |
+        - OS: macOS 15.2 / Ubuntu 24.04 / Windows 11
+        - Synergy version: `synergy --version`
+        - Bun version: `bun --version`
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Paste error output, stack traces, or attach screenshots if helpful.
+    validations:
+      required: false

@@ -1,0 +1,10 @@
+- Search the web using real-time web search
+- Provides up-to-date information for current events and recent data
+- Supports configurable result counts and returns the content from the most relevant websites
+- Use this tool for accessing information beyond knowledge cutoff
+
+Usage notes:
+  - Supports multiple search categories: general, images, videos, news, it (tech), science
+  - Language filtering available (e.g., 'en', 'zh', 'de')
+  - Time range filtering: day, month, year
+  - Returns titles, URLs, snippets, and related search suggestions

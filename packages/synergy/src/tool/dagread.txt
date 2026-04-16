@@ -1,0 +1,15 @@
+Read the current task DAG. Returns all nodes with their current status.
+
+Use this tool proactively and frequently to ensure you are aware of the current task graph state. You should make use of this tool as often as possible, especially in the following situations:
+- At the beginning of conversations to see what's pending
+- Before starting new tasks to understand dependencies and what's running
+- When the user asks about previous tasks or plans
+- Whenever you're uncertain about what to do next
+- After completing nodes to check which new nodes became running
+- After every few messages to ensure you're on track
+
+Usage:
+- This tool takes in no parameters. So leave the input blank or empty. DO NOT include a dummy object, placeholder string or a key like "input" or "empty". LEAVE IT BLANK.
+- Returns all DAG nodes with their status, dependencies, and assignments
+- Nodes whose deps are all completed are auto-promoted to `running` — focus on `running` nodes
+- If no DAG exists yet, an empty node list will be returned

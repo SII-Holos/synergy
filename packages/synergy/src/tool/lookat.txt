@@ -1,0 +1,22 @@
+Analyze media files (PDFs, images, diagrams, videos, audio) that require interpretation beyond raw text.
+Supports batch processing — pass an array of file paths to analyze multiple files in one call.
+
+Use this tool when:
+- You need to understand the content of an image (screenshots, diagrams, charts, UI mockups)
+- You need to extract specific information from a PDF document
+- You need to describe visual content that the Read tool cannot interpret
+- You need to classify or process multiple media files at once
+
+When NOT to use this tool:
+- For source code or plain text files (use Read tool instead)
+- For files that need to be edited afterward (use Read for literal content)
+- For simple file reading where no interpretation is needed
+
+Parameters:
+- file_path: Absolute path or array of paths to the file(s) to analyze
+- goal: What specific information to extract (be specific!)
+
+Examples:
+- look_at(file_path="/path/to/architecture.png", goal="List all microservices and their connections")
+- look_at(file_path="/path/to/report.pdf", goal="Extract the sales figures from page 3")
+- look_at(file_path=["/path/to/img1.png", "/path/to/img2.png", "/path/to/img3.png"], goal="Classify each image by content type")

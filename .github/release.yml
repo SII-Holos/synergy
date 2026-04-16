@@ -1,0 +1,99 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - internal
+      - release
+      - duplicate
+      - question
+      - invalid
+      - wontfix
+      - good first issue
+      - help wanted
+      - needs-triage
+      - blocked
+    authors:
+      - github-actions[bot]
+      - dependabot[bot]
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+        - semver-major
+    - title: Sessions & Workflow
+      labels:
+        - area: sessions
+        - area: workflow
+        - area: scope
+    - title: Memory
+      labels:
+        - area: memory
+    - title: UX & Web
+      labels:
+        - area: ux
+        - area: web
+    - title: Automation
+      labels:
+        - area: automation
+    - title: Visualization & Tools
+      labels:
+        - area: visualization
+        - area: tools
+    - title: SDK & Integrations
+      labels:
+        - area: sdk
+        - area: integrations
+    - title: CLI & Server
+      labels:
+        - area: cli
+        - area: server
+    - title: General Enhancements
+      labels:
+        - enhancement
+        - semver-minor
+    - title: Fixes
+      labels:
+        - bug
+        - regression
+        - semver-patch
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Internal / Maintenance
+      labels:
+        - type: refactor
+        - type: performance
+        - type: test
+        - type: security
+        - type: maintenance
+    - title: Other Changes
+      labels:
+        - "*"
+      exclude:
+        labels:
+          - breaking-change
+          - semver-major
+          - semver-minor
+          - semver-patch
+          - enhancement
+          - bug
+          - regression
+          - documentation
+          - type: refactor
+          - type: performance
+          - type: test
+          - type: security
+          - type: maintenance
+          - area: sessions
+          - area: workflow
+          - area: scope
+          - area: memory
+          - area: ux
+          - area: web
+          - area: automation
+          - area: visualization
+          - area: tools
+          - area: sdk
+          - area: integrations
+          - area: cli
+          - area: server

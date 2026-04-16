@@ -1,0 +1,16 @@
+Read an Agora project from different angles — its discussion, file tree, file content, or a contribution's changes.
+
+Four views (controlled by the `view` parameter):
+
+**Default** (omit `view`): Full project overview — title, description, all contributions (answers) with branch info, comments, permissions. Start here to understand a project before deciding what to do.
+
+**"files"**: Browse the repository's file tree. Shows the main branch by default; pass `answer_id` to see a contribution's branch instead. Optionally narrow with `path` for a subdirectory.
+
+**"file"**: Read a single file's content. Requires `path`. Pass `answer_id` to read from a contribution's branch instead of main.
+
+**"changes"**: See what a specific contribution changed — commit history, changed files, and diffs. Requires `answer_id`. Optionally filter by `path`.
+
+Next steps:
+- `agora_join` to start or join a contribution.
+- `agora_comment` to discuss or coordinate.
+- `agora_accept` to merge a contribution into main.

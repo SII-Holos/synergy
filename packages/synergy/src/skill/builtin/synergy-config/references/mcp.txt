@@ -1,0 +1,182 @@
+# MCP Servers
+
+## Local MCP server (stdio process)
+
+```jsonc
+{
+  "mcp": {
+    "<name>": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/path"],
+      "environment": {},
+      "enabled": true,
+      "timeout": 5000
+    }
+  }
+}
+```
+
+**Required:** `type` (`"local"`), `command` (array of strings — NEVER a bare string).
+**Optional:** `environment` (env vars for the process), `enabled` (default true), `timeout` (ms, default 5000).
+
+## Remote MCP server (HTTP/SSE)
+
+```jsonc
+{
+  "mcp": {
+    "<name>": {
+      "type": "remote",
+      "url": "http://127.0.0.1:3845/mcp",
+      "oauth": false,
+      "headers": {},
+      "enabled": true,
+      "timeout": 5000
+    }
+  }
+}
+```
+
+**Required:** `type` (`"remote"`), `url`.
+**Optional:** `oauth`, `headers`, `enabled`, `timeout`.
+
+## OAuth configuration
+
+OAuth auto-detection is ON by default for remote servers. Control it:
+
+- `"oauth": false` — disable OAuth (use for local/trusted services)
+- `"oauth": {}` — enable with auto-detection (default)
+- `"oauth": { "clientId": "...", "clientSecret": "...", "scope": "..." }` — explicit OAuth config. If `clientId` not provided, RFC 7591 dynamic client registration is attempted.
+
+MCP OAuth credentials are stored separately at `~/.synergy/data/auth/mcp.json`.
+
+## Enable/disable
+
+Disable without removing config:
+```jsonc
+{ "mcp": { "<name>": { "enabled": false } } }
+```
+
+## Converting from other formats
+
+Users often paste configs from Claude Desktop, Cursor, or VS Code. Apply these conversions:
+
+### Conversion rules
+
+| Source | Synergy |
+|---|---|
+| `"type": "http"` or has `"url"` | `"type": "remote"` |
+| `"type": "stdio"` or has `"command"` (string) | `"type": "local"` |
+| `"command"` (string) + `"args"` (array) | `"command": ["cmd", ...args]` |
+| `"command": "string"` (no args) | `"command": ["string"]` |
+| `"env": {...}` | `"environment": {...}` |
+| Top-level `"mcpServers"` or `"servers"` | `"mcp"` |
+
+### Key rules
+
+1. Synergy type is ONLY `"local"` or `"remote"` — never `"http"` or `"stdio"`.
+2. If no `type` but has `url` → `"remote"`. If has `command` → `"local"`.
+3. `command` MUST be an array. Merge string `command` + `args` array into one: `["cmd", ...args]`.
+4. `"env"` → `"environment"` (Synergy field name).
+5. Wrapper keys `"mcpServers"`, `"servers"` → entries go under `"mcp"`.
+
+### Example — Claude Desktop stdio
+
+Input:
+```json
+{ "mcpServers": { "fs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"] } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "fs": { "type": "local", "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/home"] } } }
+```
+
+### Example — Claude Desktop with env vars
+
+Input:
+```json
+{ "mcpServers": { "db": { "command": "node", "args": ["server.js"], "env": { "DB_URL": "postgres://..." } } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "db": { "type": "local", "command": ["node", "server.js"], "environment": { "DB_URL": "postgres://..." } } } }
+```
+
+### Example — HTTP server from Cursor/VS Code
+
+Input:
+```json
+{ "servers": { "Figma": { "type": "http", "url": "http://127.0.0.1:3845/mcp" } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "Figma": { "type": "remote", "url": "http://127.0.0.1:3845/mcp", "oauth": false } } }
+```
+
+### Example — Remote with headers
+
+Input:
+```json
+{ "mcpServers": { "api": { "url": "https://mcp.example.com/sse", "headers": { "Authorization": "Bearer xxx" } } } }
+```
+
+Converted:
+```jsonc
+{ "mcp": { "api": { "type": "remote", "url": "https://mcp.example.com/sse", "headers": { "Authorization": "Bearer xxx" }, "oauth": false } } }
+```
+
+## Validation rules
+
+1. `type` must be `"local"` or `"remote"`
+2. `command` must be an array of strings
+3. `environment` (not `env`) for environment variables
+4. Root config key is `"mcp"` (not `"mcpServers"` or `"servers"`)
+5. Schema is strict — unknown fields cause validation errors
+
+## Troubleshooting
+
+### MCP server not connecting
+
+- Check `type` is `"local"` or `"remote"` — `"http"` and `"stdio"` are not valid Synergy types.
+- Check `command` is an array, not a bare string: `["npx", ...]` not `"npx"`.
+- For local servers, run the command manually in a terminal to verify it works.
+- Check `enabled` is not `false`.
+
+### "Command not found" for local MCP
+
+- The MCP process runs in Synergy's shell, not the user's interactive shell. Programs installed via npm/npx, Homebrew, or custom paths may not be on PATH.
+- Use an absolute path in the command array: `["/usr/local/bin/node", "server.js"]` instead of `["node", "server.js"]`.
+- Alternatively, set `PATH` in the `environment` field.
+
+### Remote MCP timeout
+
+- Increase `timeout` (default 5000ms) — slow servers or large tool lists may need 10000 or more.
+- Verify the URL is reachable from the Synergy server: `curl <url>` from the same host.
+- If the server requires authentication, check that OAuth or `headers` is configured.
+
+### OAuth failing
+
+- Do not set `"oauth": false` on servers that require authentication.
+- Verify the redirect URI registered with the OAuth provider matches what Synergy sends.
+- Check stored credentials in `~/.synergy/data/auth/mcp.json` — stale or invalid tokens may need to be deleted so re-authentication is triggered.
+
+### Converted config not working
+
+- Re-check conversion rules: `env` → `environment`, `command` + `args` → single array, `mcpServers`/`servers` → `mcp`.
+- Ensure `type` was explicitly set to `"local"` or `"remote"` — never `"http"` or `"stdio"`.
+- Ensure `command` is a flat array of strings, not a string plus a separate `args` array.
+
+### MCP tools not appearing
+
+- Run `runtime_reload(target: "mcp")` after config changes.
+- Check server logs for errors during the tool list request — a failing MCP server may connect but return an empty or errored tool list.
+
+## Reload
+
+```
+runtime_reload(target: "mcp")
+```
+
+MCP reload cascades to command reload automatically.

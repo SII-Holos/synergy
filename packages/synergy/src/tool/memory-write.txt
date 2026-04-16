@@ -1,0 +1,30 @@
+Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`.
+
+`category` answers **what kind of memory this is**:
+- `user` — Stable facts about the user
+- `self` — Agent self-knowledge
+- `relationship` — Durable collaboration norms and trust boundaries
+- `interaction` — Naming, tone, language, and interaction style
+- `workflow` — General working preferences that apply across domains
+- `coding` — Coding-specific preferences and conventions
+- `writing` — Writing and documentation preferences
+- `asset` — Shared resources, accounts, websites, or services
+- `insight` — Transferable user reasoning patterns across domains
+- `knowledge` — Technical facts, conventions, and lessons learned
+- `personal` — Low-priority personal trivia and lifestyle preferences
+- `general` — Anything valuable that does not fit above
+
+`recallMode` answers **how this memory should be used later**:
+- `always` — Inject every session; reserve for durable identity and interaction rules
+- `contextual` — Auto-retrieve only when semantically relevant
+- `search_only` — Never auto-inject; only surface via explicit `memory_search`
+
+Guidelines:
+- Use `interaction` + `always` for naming, tone, language, or other conversation-wide style rules
+- Use `coding` or `writing` with `contextual` for domain-specific preferences
+- Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes
+- Be highly selective with `always`; these should stay few and consolidated
+- Prefer `memory_edit` over `memory_write` when a similar durable memory already exists
+- When in doubt, choose a narrower category and a less aggressive recall mode
+
+If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.

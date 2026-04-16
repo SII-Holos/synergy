@@ -1,0 +1,171 @@
+# Channels and Config Sets
+
+## Channels
+
+Channels integrate Synergy with external messaging platforms.
+
+### Setting up Feishu/Lark — step by step
+
+1. **Create a Feishu app** — Go to [Feishu Open Platform](https://open.feishu.cn/app) (China) or [Lark Developer](https://open.larksuite.com/app) (international). Create a new app and note the App ID and App Secret.
+2. **Enable bot capability** — In the app settings, enable "Robot" capability under "Application Capabilities".
+3. **Configure event subscription** — Set the request URL to your Synergy server's public endpoint: `https://<your-server>/api/channel/feishu/webhook`. Enable events: `im.message.receive_v1`.
+4. **Add permissions** — Grant these scopes: `im:message`, `im:message:send_as_bot`, `im:chat:readonly`, `im:resource`. For sender name resolution: `contact:user.base:readonly`.
+5. **Publish the app** — Submit for review or use in development mode for testing.
+6. **Configure Synergy** — Add the channel config (see below) with your App ID and App Secret.
+7. **Reload** — `runtime_reload(target: "channel")`.
+
+### Feishu/Lark channel
+
+```jsonc
+{
+  "channel": {
+    "my-feishu": {
+      "type": "feishu",
+      "domain": "feishu",
+      "streaming": true,
+      "accounts": {
+        "main": {
+          "enabled": true,
+          "appId": "cli_xxx",
+          "appSecret": "xxx",
+          "domain": "feishu",
+          "allowDM": true,
+          "allowGroup": true,
+          "requireMention": true,
+          "streaming": true,
+          "streamingThrottleMs": 100,
+          "groupSessionScope": "group",
+          "inboundDebounceMs": 0,
+          "resolveSenderNames": true,
+          "replyInThread": false
+        }
+      }
+    }
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `appId` | (required) | Feishu app ID |
+| `appSecret` | (required) | Feishu app secret |
+| `domain` | auto | `"feishu"` (China) or `"lark"` (international) |
+| `enabled` | true | Enable this account |
+| `allowDM` | true | Allow direct messages |
+| `allowGroup` | true | Allow group messages |
+| `requireMention` | true | Require @mention in group chats |
+| `streaming` | true | Enable streaming card updates |
+| `streamingThrottleMs` | 100 | Min interval between streaming updates (ms) |
+| `groupSessionScope` | `"group"` | Session scoping strategy (see below) |
+| `inboundDebounceMs` | 0 | Debounce rapid-fire messages (0 = disabled) |
+| `resolveSenderNames` | true | Resolve sender names via Feishu contact API |
+| `replyInThread` | false | Reply in thread when message is part of a topic |
+
+**Group session scoping:**
+- `"group"` — one shared session per group chat
+- `"group_sender"` — separate session per sender in group
+- `"group_topic"` — separate session per thread/topic
+- `"group_topic_sender"` — separate session per thread + sender
+
+Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
+
+### Holos channel
+
+```jsonc
+{
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": { "enabled": true }
+      }
+    }
+  }
+}
+```
+
+### Reload
+
+```
+runtime_reload(target: "channel")
+```
+
+---
+
+## Config Sets
+
+Config Sets allow switching between different global configurations (e.g., work vs personal).
+
+### Concept
+
+- **Default set**: `~/.synergy/config/synergy.jsonc`
+- **Named sets**: `~/.synergy/config/config-sets/<name>/synergy.jsonc`
+- Each set has its own config directory and can have its own agents, skills, commands, plugins
+- Only one set is active at a time
+- Active set tracked in `~/.synergy/config/config-set.json` as `{ "active": "<name>" }`
+
+### File structure
+
+```
+~/.synergy/config/
+├── synergy.jsonc              # default Config Set
+├── config-set.json            # { "active": "work" }
+├── config-sets/
+│   ├── work/
+│   │   ├── synergy.jsonc
+│   │   ├── agent/
+│   │   └── skill/
+│   └── personal/
+│       └── synergy.jsonc
+├── agent/                     # agents for default set
+├── skill/                     # skills for default set
+└── command/                   # commands for default set
+```
+
+### Naming rules
+
+Must match: `^[A-Za-z0-9][A-Za-z0-9_-]*$`
+- Start with letter or number
+- Letters, numbers, hyphens, underscores only
+- Max 64 characters
+
+### Managing Config Sets
+
+Use the Synergy CLI or Web UI to manage Config Sets.
+
+**CLI commands:**
+- `synergy config-set list` — list all Config Sets
+- `synergy config-set create <name>` — create a new named Config Set
+- `synergy config-set switch <name>` — switch to a named Config Set
+- `synergy config-set delete <name>` — delete a named Config Set (cannot delete default or active)
+
+After switching, a full config reload picks up the new set's configuration.
+
+**Web UI:** Navigate to Settings → Config Sets in the web interface.
+
+### Key behaviors
+
+- Named sets inherit nothing from default — they are independent configurations
+- The active set name is returned by `ConfigSet.activeName()`
+- `default` is a reserved name for `~/.synergy/config/synergy.jsonc`
+
+---
+
+## Troubleshooting
+
+### Feishu/Lark
+
+- **Bot not responding in group chat** — check `requireMention` (default true); the bot needs to be @mentioned unless `requireMention: false`; verify the bot is added to the group; check `allowGroup` is true
+- **Bot not responding in DM** — check `allowDM` is true; verify the user has permission to message the bot
+- **Streaming not working** — check `streaming` is true; some older Feishu versions may not support streaming cards; try `streaming: false` for compatibility
+- **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
+- **Webhook not receiving events** — verify the Feishu app's event subscription URL is correct and publicly accessible; check the server is running and the `/api/channel/feishu/webhook` endpoint responds
+
+### Config Sets
+
+- **Config Set not switching** — verify the set name matches `^[A-Za-z0-9][A-Za-z0-9_-]*$`; cannot delete the active set — switch to another first; cannot delete "default"
+- **Changes not applying after switch** — reload with `runtime_reload(target: "config")`; named sets are independent from default — they do not inherit
+- **Config Set directory empty** — create `synergy.jsonc` inside the set directory; the set only activates config from its own directory

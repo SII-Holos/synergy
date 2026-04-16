@@ -1,0 +1,96 @@
+# Synergy Self-Configuration
+
+You ARE Synergy. When users ask to add, connect, or configure MCP servers, API providers, models, or custom agents, they mean configuring YOU — not Cursor, VS Code, or Claude Desktop.
+
+## Decision Tree
+
+When you need detailed schema, fields, or examples for a specific config area, load the relevant reference via `skill(name: "synergy-config", reference: "<name>")`.
+
+| User says... | Load reference |
+|---|---|
+| "add provider", "configure API key", "connect OpenAI/Anthropic/...", "add Ollama", "local model", "vLLM", "LM Studio" | `references/providers.txt` |
+| "add MCP", "connect MCP", pasted `mcpServers`/`servers` JSON, "MCP not working" | `references/mcp.txt` |
+| "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
+| "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
+| "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
+| "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/identity-permissions.txt` |
+| "add Feishu/Lark channel", "飞书", "config set", "switch profile", "work vs personal" | `references/channels-config-sets.txt` |
+| "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
+
+## File Locations
+
+| Scope | Path | Notes |
+|---|---|---|
+| Global | `~/.synergy/config/synergy.jsonc` | Default Config Set. All projects. |
+| Global (named set) | `~/.synergy/config/config-sets/<name>/synergy.jsonc` | Switchable sets. |
+| Project | `<project>/.synergy/synergy.jsonc` | One project. Overrides global. |
+
+**Precedence** (low → high): remote/well-known → global → project → `SYNERGY_CONFIG_CONTENT` env var.
+
+### Key data paths
+
+| What | Path |
+|---|---|
+| API key credential store | `~/.synergy/data/auth/api-key.json` |
+| MCP OAuth credentials | `~/.synergy/data/auth/mcp.json` |
+| Provider/model cache | `~/.synergy/cache/models.json` |
+| Agent markdown (global) | `~/.synergy/config/agent/<name>.md` |
+| Agent markdown (project) | `<project>/.synergy/agent/<name>.md` |
+| Skills (global) | `~/.synergy/config/{skill,skills}/**/SKILL.md` |
+| Skills (project) | `<project>/.synergy/{skill,skills}/**/SKILL.md` |
+| Commands (global) | `~/.synergy/config/{command,commands}/**/*.md` |
+| Commands (project) | `<project>/.synergy/{command,commands}/**/*.md` |
+| Plugins (global) | `~/.synergy/config/{plugin,plugins}/*.{ts,js}` |
+| Plugins (project) | `<project>/.synergy/{plugin,plugins}/*.{ts,js}` |
+
+### Default scope recommendations
+
+- **Provider / MCP / Identity** → global
+- **Agent / Permissions** → project
+- **Models** → ask user
+
+## Core Workflow
+
+Every config change follows this pattern:
+
+1. **Ask scope** — global or project? Use defaults above if user doesn't care.
+2. **Read the target file** — if missing, start with `{}`.
+3. **Merge** — use `edit` tool to surgically update only relevant fields. NEVER overwrite unrelated fields.
+4. **Write back** — preserve JSONC comments.
+5. **Reload** — `runtime_reload(target: "<target>")`. Load `references/reload.txt` for which target.
+
+### Critical rules
+
+1. Always read before writing — merge, never overwrite
+2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/api-key.json`) or `{env:VAR_NAME}` references
+3. Preserve existing JSONC comments
+4. Always reload after writing — changes don't apply until reloaded
+5. `$schema` is optional but recommended — Synergy automatically adds a local `file://` schema reference pointing to `~/.synergy/schema/config.schema.json` when creating or loading config files
+
+## Quick Reference
+
+Each reference file contains its own step-by-step guide, field reference, examples, and troubleshooting. Always load the relevant reference before making changes.
+
+### Add a provider
+ALWAYS load `references/providers.txt` first and follow its step-by-step procedure. It will guide you to check the Models.dev registry to determine if the provider is built-in (only needs API key) or custom (needs config too). Do NOT skip this step — many providers you might assume need config (e.g., MiniMax, Groq, Fireworks) are already in the registry and only need an API key. After adding a provider, you may want to configure model roles — see `references/models.txt`.
+
+### Add MCP server
+Load `references/mcp.txt` for format, conversion rules from Claude Desktop/Cursor/VS Code, and troubleshooting.
+
+### Configure models
+Load `references/models.txt` for model role system, common configurations, and choosing the right model for each role.
+
+### Create a custom agent
+Load `references/agents.txt` for the full creation guide, field reference, complete examples, and troubleshooting.
+
+### Create skill, command, or plugin
+Load `references/skills-commands-plugins.txt` for format details, choosing between the three, and troubleshooting. For permission control over agents, see `references/identity-permissions.txt`.
+
+### Configure permissions or identity
+Load `references/identity-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
+
+### Add Feishu/Lark channel or manage Config Sets
+Load `references/channels-config-sets.txt` for Feishu setup flow, channel config, Config Sets operations, and troubleshooting.
+
+### Reload or troubleshoot config changes
+Load `references/reload.txt` for reload targets, auto-cascade rules, and restart-required fields.

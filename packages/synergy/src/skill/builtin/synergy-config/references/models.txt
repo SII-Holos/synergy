@@ -1,0 +1,167 @@
+# Models and Model Roles
+
+## Model format
+
+All model references use: `"provider-id/model-name"`
+
+Examples: `"anthropic/claude-sonnet-4-5"`, `"openai/gpt-4o"`, `"minimax/MiniMax-M1"`
+
+## Model role system
+
+Synergy uses model roles for different internal tasks. Each falls back through a chain:
+
+| Config field | Purpose | Fallback chain |
+|---|---|---|
+| `model` | Default model for conversations | (root — no fallback) |
+| `nano_model` | Cheapest: trivial extraction, title generation | → `mini_model` → `mid_model` → `model` |
+| `mini_model` | Lightweight: intent extraction, simple classification | → `mid_model` → `model` |
+| `mid_model` | Mid-tier: internal agents, code exploration, evaluation | → `model` |
+| `thinking_model` | Deep reasoning: complex architecture, planning | → `model` |
+| `long_context_model` | Extra-large context for very long inputs | → `model` |
+| `creative_model` | Creative/visual: UI design, writing, artistry | → `model` |
+| `holos_friend_reply_model` | Holos automatic friend replies | → `model` |
+| `vision_model` | Vision: image/PDF/video analysis via `look_at` tool | (disabled if not set) |
+
+**Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`.
+
+## Config example
+
+```jsonc
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "nano_model": "anthropic/claude-haiku-3-5",
+  "mini_model": "anthropic/claude-haiku-3-5",
+  "mid_model": "anthropic/claude-sonnet-4-5",
+  "thinking_model": "anthropic/claude-sonnet-4-5",
+  "vision_model": "openai/gpt-4o",
+  "creative_model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+You don't need to set all roles. Unset roles fall back through their chain. At minimum, set `model`.
+
+## Default agent
+
+```jsonc
+{ "default_agent": "synergy" }
+```
+
+Must be a primary-mode agent. Falls back to `"synergy"` if not set or invalid.
+
+## Category model overrides
+
+Categories can override models for specific background task types:
+
+```jsonc
+{
+  "category": {
+    "quick": { "model": "anthropic/claude-haiku-3-5", "description": "Fast, cheap tasks" },
+    "visual-engineering": { "model": "anthropic/claude-sonnet-4-5", "temperature": 0.7 },
+    "most-capable": { "model": "anthropic/claude-sonnet-4-5" }
+  }
+}
+```
+
+Category fields: `model`, `temperature`, `promptAppend`, `description`.
+
+## Model variants
+
+Models can have variants (e.g., different reasoning effort levels). Variants are auto-detected from the provider registry. To disable a variant:
+
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "models": {
+        "claude-sonnet-4-5": {
+          "variants": {
+            "high-reasoning": { "disabled": true }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## How each model role affects your experience
+
+| Role | What changes when you set it |
+|---|---|
+| `model` | The default for all conversations and agents that don't specify their own model. Every session you start uses this unless overridden. |
+| `nano_model` | Used for title generation, session summaries, and trivial extraction tasks. A cheaper model here makes these near-instant and nearly free. Falls back through `mini_model` → `mid_model` → `model`, so leaving it unset means your main model handles these tasks at full cost. |
+| `mini_model` | Used for intent classification, simple routing decisions, and lightweight agent subtasks. Setting this to a fast model speeds up internal orchestration without affecting conversation quality. |
+| `mid_model` | Used by explore and scout agents for code search, file traversal, and evaluation tasks. A mid-tier model here balances cost and quality for background exploration. |
+| `thinking_model` | Used by the advisor agent for deep architectural analysis and complex debugging. If unset, the advisor falls back to `model` — still functional, but may reason less thoroughly on hard problems. |
+| `long_context_model` | Engaged automatically when inputs exceed the default model's context window. Without it, very long inputs may be truncated or fail. |
+| `creative_model` | Used by the scribe agent and frontend-design skill for writing, UI design, and other creative tasks. A stronger model here produces more nuanced prose and better visual design suggestions. |
+| `holos_friend_reply_model` | Controls the model used for automatic replies in Holos friend conversations. Defaults to `model` if unset, which may be overpowered (and expensive) for casual chat replies. |
+| `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, image/PDF/video analysis is unavailable. |
+
+## Common model configurations
+
+### Budget-friendly
+
+One strong model for conversations, cheapest for auxiliary tasks:
+
+```jsonc
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "nano_model": "anthropic/claude-haiku-3-5",
+  "mini_model": "anthropic/claude-haiku-3-5"
+}
+```
+
+### Balanced
+
+Strong default, mid-tier for exploration, cheap for trivial tasks, vision enabled:
+
+```jsonc
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "mid_model": "anthropic/claude-sonnet-4-5",
+  "mini_model": "anthropic/claude-haiku-3-5",
+  "nano_model": "anthropic/claude-haiku-3-5",
+  "vision_model": "openai/gpt-4o"
+}
+```
+
+### Maximum capability
+
+Strongest model for every role (highest cost, highest quality):
+
+```jsonc
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "nano_model": "anthropic/claude-sonnet-4-5",
+  "thinking_model": "anthropic/claude-sonnet-4-5",
+  "vision_model": "openai/gpt-4o",
+  "creative_model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+## Choosing a vision model
+
+- Format is still `provider/model` (e.g. `"openai/gpt-4o"`, `"anthropic/claude-sonnet-4-5"`)
+- Must be explicitly set — `vision_model` does not fall back to `model`
+- Not all models support vision; check the provider's model registry
+- Common choices: `openai/gpt-4o`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.5-pro`
+- If `look_at` calls fail or are unavailable, this field is the first thing to check
+
+## Troubleshooting
+
+| Problem | Check |
+|---|---|
+| "Model not available" | Provider is configured in `provider` section, API key is saved (`~/.synergy/data/auth/api-key.json`), model ID matches the provider registry exactly |
+| `vision_model` not working | Must be explicitly set — does not fall back. Verify the model supports vision input. Check the model ID format is `provider/model` |
+| Wrong model used by an agent | Check the agent's `model` field for per-agent overrides. Check model role assignments — the agent may be using a role you didn't expect |
+| Expensive model used for trivial tasks | Set `nano_model` and `mini_model` to cheaper alternatives. Without them, title generation and classification use `model` at full cost |
+
+## Reload
+
+Model role fields are live-applied:
+```
+runtime_reload(target: "config")
+```
+
+Config reload auto-cascades to agent reload when model role fields change.

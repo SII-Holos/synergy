@@ -1,0 +1,132 @@
+Create and manage a directed acyclic graph (DAG) of tasks for the current session. The DAG tracks task dependencies, enables parallel execution, and supports dynamic plan modification.
+
+## Core Concepts
+
+- **Nodes** are tasks. Each has an id, description, status, dependencies, and an optional executor assignment.
+- **Edges** are defined by `deps` — if node B lists node A in its deps, then A must complete before B can start.
+- **Auto-promotion**: Pending nodes whose deps are ALL completed are automatically promoted to `running`. Focus your work on `running` nodes.
+- **Parallel execution**: Multiple running nodes can be dispatched simultaneously via the `task` tool with `dag_node_id` for auto-completion.
+
+## When to Use
+
+Use this tool when:
+1. A task requires 3+ steps with dependency relationships between them
+2. Steps can be parallelized (independent branches in the graph)
+3. The plan may need dynamic modification based on intermediate results
+4. User provides a complex, multi-part request
+
+Do NOT use this tool when:
+1. The task is a single step or trivially sequential
+2. The request is conversational or informational
+3. The task can be completed in fewer than 3 trivial steps
+
+## Node Statuses
+
+- `pending` — Not started. Dependencies not yet all completed.
+- `running` — Ready or in progress. **The system auto-promotes pending → running when all deps are completed.** You don't need to manually set this status.
+- `completed` — Finished successfully
+- `failed` — Attempted but did not succeed. Decide: retry, modify plan, or cancel downstream
+- `cancelled` — No longer needed
+
+## The `assign` Field
+
+Optional hint for who should execute the node:
+- `self` — You will do it directly (default if omitted)
+- `master` — Delegate to a master agent for implementation work
+- `explore` — Delegate to an explore agent for codebase search
+- `scout` — Delegate to a scout agent for external docs/examples
+- `scholar` — Delegate for academic research
+- `scribe` — Delegate for writing documentation
+- `advisor` — Delegate for architectural review
+
+This is a suggestion, not a binding. You decide the actual execution method when working on each node.
+
+## Workflow Pattern
+
+1. Analyze the request and identify tasks with their dependencies
+2. Call `dagwrite` to create the initial DAG — all nodes with `status: "pending"`. Nodes whose deps are satisfied will be auto-promoted to `running` in the response.
+3. Check `running` nodes in the response — these are ready for execution.
+4. Execute running nodes:
+   - **2+ running nodes**: Delegate via `task(background=true, dag_node_id="<node_id>")`. You may self-execute at most one while others run in parallel. This is the default — do not execute them all sequentially.
+   - **1 running node**: Self-execute or delegate based on `assign` hint. Use `dagpatch` to mark self-executed nodes as completed.
+   - Background tasks with `dag_node_id` auto-complete/auto-fail when the task finishes — no manual DAG update needed.
+5. After nodes complete, downstream nodes are auto-promoted to `running` — repeat from step 3.
+6. Continue until all nodes are `completed` or `cancelled`
+
+## Dynamic Modification
+
+The DAG is living — you can modify it at any time by calling `dagwrite` with an updated node list:
+
+- **Add nodes**: Insert new nodes (graft new tasks discovered mid-execution)
+- **Remove nodes**: Drop pending/cancelled nodes that are no longer relevant (prune)
+- **Change deps**: Rewire dependencies for pending nodes
+- **Retry failed**: Set a failed node back to `pending`, optionally adjust its content
+
+**Rule**: Within an active DAG, never modify completed nodes — they are immutable history. Only modify pending, failed, or cancelled nodes.
+
+**New DAG**: When the previous DAG is fully finished (all nodes completed/cancelled/failed), you can create a brand new DAG with entirely new nodes. The old DAG is automatically replaced — you do NOT need to preserve old completed nodes.
+
+## Topological Validation
+
+The tool performs multi-layer validation before saving. Some issues are auto-fixed, others require you to fix manually.
+
+**Hard errors (rejected — you must fix):**
+- Duplicate node IDs
+- Invalid status values (must be: pending, running, completed, failed, cancelled)
+- Circular dependencies
+
+**Auto-fixed (accepted with warnings):**
+- Unknown dep references are stripped automatically
+- Self-dependencies are removed automatically
+- Invalid assign values are removed (defaults to self)
+
+**Warnings (accepted but flagged):**
+- Dropping completed nodes from an active (not fully finished) DAG
+- Changing status of completed nodes
+- Running/completed nodes with non-completed dependencies
+- Pending nodes depending on failed/cancelled nodes (will never become ready)
+- No root nodes (all nodes have dependencies)
+- Dropping running nodes
+
+**Valid status transitions:**
+- pending → running, cancelled
+- running → completed, failed, cancelled
+- failed → pending (retry)
+- cancelled → pending (re-activate)
+- completed → (immutable, no transitions allowed)
+
+## Examples
+
+### Parallel branches converging
+```
+dagwrite({ nodes: [
+  { id: "research", content: "Research API options",  status: "pending", deps: [], assign: "explore" },
+  { id: "design",   content: "Design component API",  status: "pending", deps: [], assign: "self" },
+  { id: "impl",     content: "Implement component",   status: "pending", deps: ["research", "design"] },
+  { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
+]})
+```
+→ "research" and "design" are auto-promoted to `running` — both can run in parallel.
+
+### Retry after failure
+```
+dagwrite({ nodes: [
+  { id: "research", content: "Research API options",  status: "completed", deps: [] },
+  { id: "design",   content: "Design component API",  status: "completed", deps: [] },
+  { id: "impl",     content: "Implement component (revised approach)", status: "pending", deps: ["research", "design"] },
+  { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
+]})
+```
+
+### Mid-flight graft
+After research reveals a new prerequisite:
+```
+dagwrite({ nodes: [
+  { id: "research", content: "Research API options",  status: "completed", deps: [] },
+  { id: "design",   content: "Design component API",  status: "completed", deps: [] },
+  { id: "migrate",  content: "Migrate legacy code",   status: "pending", deps: ["research"] },
+  { id: "impl",     content: "Implement component",   status: "pending", deps: ["design", "migrate"] },
+  { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
+]})
+```
+→ New "migrate" node inserted, "impl" deps updated.

@@ -1,0 +1,11 @@
+Deliver your work — stages all changes, commits, pushes to the remote branch, and posts a notification comment on the project thread.
+
+Requires `directory` pointing to an existing Agora workspace (created by `agora_join`).
+
+Handles two scenarios:
+- **Normal changes**: Stages everything, commits with `comment` as the message (auto-generated if omitted), and pushes.
+- **Merge in progress**: If you previously ran `agora_sync` and resolved conflicts, this completes the merge commit before pushing.
+
+If the push is rejected (remote has newer commits), run `agora_sync` first to merge, then `agora_submit` again.
+
+The `comment` parameter serves double duty — it is used as both the git commit message and the notification posted on the project thread.

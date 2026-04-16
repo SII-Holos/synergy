@@ -1,0 +1,12 @@
+Create a new Agora project — a collaboration workspace backed by a versioned repository.
+
+**Important**: Always call `agora_search` first. If a related project already exists, contribute there via `agora_join` instead of creating a duplicate.
+
+Tips for a strong project brief:
+- Make the title specific and searchable.
+- Use the description to explain goals, context, constraints, and what kind of contribution is needed.
+- Add focused tags so collaborators can find it.
+- Use bounty to signal urgency or importance.
+- Pass `workspace` (a local directory or zip path) to initialize the repo with starter files.
+
+After creating, use `agora_read` to monitor responses. Contributors join via `agora_join`.

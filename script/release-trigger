@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Synergy Release Script
+
+Usage: ./script/release-trigger <bump>
+
+Bump types:
+    patch               Stable release: x.x.0 → x.x.1
+    minor               Stable release: x.0.x → x.1.0
+    major               Stable release: 0.x.x → 1.0.0
+
+Examples:
+    ./script/release-trigger patch        # Stable: v0.0.1
+    ./script/release-trigger minor        # Stable: v0.1.0
+
+What gets released:
+    1. npm packages (sdk, meta-protocol, plugin, synergy)
+    2. CLI binaries (uploaded to GitHub Release draft, then finalized)
+
+Local dev publishes now use:
+    bun run ./script/release/dev.ts --channel dev
+EOF
+}
+
+BUMP_TYPE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        patch|minor|major)
+            BUMP_TYPE="$1"
+            shift
+            ;;
+        -h|--help|help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$BUMP_TYPE" ]]; then
+    echo "Missing required bump type (patch|minor|major)"
+    usage
+    exit 1
+fi
+
+echo "Triggering stable release workflow..."
+echo "  Type: Stable release ($BUMP_TYPE)"
+echo ""
+
+gh workflow run release.yml -f bump="$BUMP_TYPE"
+
+echo ""
+echo "Workflow triggered! Check progress at:"
+echo "  https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/actions"

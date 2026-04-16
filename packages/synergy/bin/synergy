@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+
+const childProcess = require("child_process")
+const fs = require("fs")
+const path = require("path")
+
+function run(target) {
+  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+    stdio: "inherit",
+  })
+  if (result.error) {
+    console.error(result.error.message)
+    process.exit(1)
+  }
+  const code = typeof result.status === "number" ? result.status : 0
+  process.exit(code)
+}
+
+const envPath = process.env.SYNERGY_BIN_PATH
+if (envPath) {
+  run(envPath)
+}
+
+const scriptPath = fs.realpathSync(__filename)
+const scriptDir = path.dirname(scriptPath)
+
+const { findInstalledBinary, candidatePackageNames } = require(path.join(scriptDir, "platform-package.cjs"))
+
+const resolved = findInstalledBinary(scriptDir)
+if (!resolved) {
+  const names = candidatePackageNames()
+  console.error(
+    "It seems that your package manager failed to install the right version of the Synergy CLI for your platform. You can try manually installing one of: " +
+      names.join(", "),
+  )
+  process.exit(1)
+}
+
+run(resolved)

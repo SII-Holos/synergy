@@ -1,0 +1,208 @@
+[data-component="resonance-trigger"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--surface-base);
+  border: none;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+
+  &[data-empty="true"] {
+    opacity: 0.4;
+  }
+
+  &[data-empty="true"]:hover {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--surface-hover-base, rgba(0, 0, 0, 0.06));
+    color: var(--text-base);
+  }
+
+  [data-slot="resonance-trigger-count"] {
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1;
+    padding-right: 3px;
+  }
+}
+
+[data-component="resonance-popover"] {
+  width: 340px;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-2xl, 12px);
+  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
+  background: var(--surface-raised-stronger-non-alpha);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  outline: none;
+  overflow: hidden;
+  transform-origin: var(--kb-popover-content-transform-origin);
+
+  &[data-expanded] {
+    animation: resonance-open 0.15s ease-out;
+  }
+
+  &[data-closed] {
+    animation: resonance-close 0.15s ease-out;
+  }
+
+  [data-slot="resonance-header"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid color-mix(in oklch, var(--border-base) 30%, transparent);
+  }
+
+  [data-slot="resonance-title"] {
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-strong);
+    letter-spacing: 0.01em;
+  }
+
+  [data-slot="resonance-close"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--icon-base);
+    cursor: pointer;
+    transition: all 120ms ease;
+
+    &:hover {
+      background: var(--surface-hover-base);
+      color: var(--icon-strong);
+    }
+  }
+
+  [data-slot="resonance-header-actions"] {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  [data-slot="resonance-copy"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--icon-base);
+    cursor: pointer;
+    transition: all 120ms ease;
+
+    &:hover {
+      background: var(--surface-hover-base);
+      color: var(--icon-strong);
+    }
+  }
+
+  [data-slot="resonance-body"] {
+    overflow-y: auto;
+    flex: 1;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  [data-slot="resonance-empty"] {
+    padding: 14px 0;
+    text-align: center;
+    font-size: var(--font-size-small);
+    color: var(--text-subtle);
+  }
+
+  [data-slot="resonance-section"] {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  [data-slot="resonance-section-label"] {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-subtle);
+    padding: 2px 6px;
+  }
+
+  [data-slot="resonance-item"] {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: var(--radius-lg, 8px);
+    transition: background 120ms ease;
+
+    &:hover {
+      background: color-mix(in oklch, var(--surface-base) 60%, transparent);
+    }
+  }
+
+  [data-slot="resonance-item-text"] {
+    flex: 1;
+    font-size: var(--font-size-small);
+    color: var(--text-base);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-slot="resonance-item-meta"] {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-subtle);
+    font-variant-numeric: tabular-nums;
+
+    [data-tone="pos"] {
+      color: var(--text-success-base, #4ade80);
+    }
+
+    [data-tone="neg"] {
+      color: var(--text-danger-base, #f87171);
+    }
+  }
+}
+
+@keyframes resonance-open {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes resonance-close {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}

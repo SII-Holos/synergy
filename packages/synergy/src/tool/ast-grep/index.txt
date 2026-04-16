@@ -1,0 +1,42 @@
+Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text.
+
+Supports 25 languages: bash, c, cpp, csharp, css, elixir, go, haskell, html, java, javascript, json, kotlin, lua, nix, php, python, ruby, rust, scala, solidity, swift, typescript, tsx, yaml.
+
+Meta-variables:
+- $VAR - Matches a single AST node (identifier, expression, statement)
+- $$$ - Matches zero or more nodes (function arguments, array elements, etc.)
+
+CRITICAL: Patterns must be complete, valid AST nodes. Incomplete patterns will fail.
+
+Examples by language:
+
+JavaScript/TypeScript:
+- `console.log($MSG)` - Find all console.log calls
+- `function $NAME($$$) { $$$ }` - Find function declarations
+- `async function $NAME($$$) { $$$ }` - Find async functions
+- `export const $NAME = $VALUE` - Find exported constants
+- `import { $$$ } from '$MODULE'` - Find named imports
+
+Python:
+- `def $FUNC($$$)` - Find function definitions (NO trailing colon)
+- `class $NAME` - Find class definitions (NO trailing colon)
+- `for $VAR in $ITER` - Find for loops
+- `import $MODULE` - Find imports
+
+Go:
+- `func $NAME($$$) $RET { $$$ }` - Find function declarations
+- `if err != nil { $$$ }` - Find error handling patterns
+
+Rust:
+- `fn $NAME($$$) -> $RET { $$$ }` - Find function declarations
+- `impl $TRAIT for $TYPE { $$$ }` - Find trait implementations
+
+Common mistakes:
+- Python: Don't include trailing colons (use `def foo($$$)` not `def foo($$$):`)
+- Functions: Include params and body (use `function $N($$$) { $$$ }` not `function $N`)
+- Incomplete patterns: Patterns like `const $X` fail - use `const $X = $Y`
+
+Use this tool when:
+- You need structural code search (finding function definitions, class patterns)
+- Regex would be too fragile or match unintended text
+- You want to find code patterns regardless of whitespace/formatting

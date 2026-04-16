@@ -1,0 +1,63 @@
+Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove.
+
+## Actions
+
+- **list**: List all running and recently finished background processes
+- **poll**: Check if a process is still running and get recent output. Use `block: true` to wait for the process to exit (with optional `timeout` in seconds, default 30s)
+- **log**: Get full output from a process (supports offset/limit for pagination)
+- **write**: Write raw data to a process's stdin
+- **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
+- **kill**: Terminate a running process
+- **clear**: Remove a finished process from the list
+- **remove**: Remove a process (kills if running, then removes)
+
+## Usage
+
+`envID` is optional. Omit it to manage processes in the current local environment; provide it to target a remote execution backend.
+For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
+When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote process management does not implicitly create sessions.
+
+After launching a background bash command:
+```
+bash(command: "npm run dev", background: true) → { processId: "proc_xxx" }
+```
+
+Check status:
+```
+process(action: "poll", processId: "proc_xxx")
+```
+
+Wait for completion (blocks up to 30s by default):
+```
+process(action: "poll", processId: "proc_xxx", block: true)
+process(action: "poll", processId: "proc_xxx", block: true, timeout: 60)
+```
+
+Get full output:
+```
+process(action: "log", processId: "proc_xxx")
+```
+
+Send input:
+```
+process(action: "write", processId: "proc_xxx", data: "y\n")
+```
+
+Send Ctrl+C to interrupt:
+```
+process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"])
+```
+
+Terminate:
+```
+process(action: "kill", processId: "proc_xxx")
+```
+
+## Key Tokens for send-keys
+
+- Single characters: `"a"`, `"1"`, `"/"`
+- Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"`
+- Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"`
+- Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z)
+- Alt combinations: `"M-x"` (Alt+X)
+- Function keys: `"F1"` through `"F12"`

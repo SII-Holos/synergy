@@ -1,0 +1,7 @@
+Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output.
+
+Use this to find notes containing specific information. For browsing all notes, use `note_list` instead. To read a full note after finding it, use `note_read`.
+
+The search pattern is a regular expression applied to each note's markdown content line by line. Title matches cause the entire note to be included. Use `tags` or `pinned` filters to narrow the search scope.
+
+The `since` and `before` parameters filter by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "notes from last week mentioning X".

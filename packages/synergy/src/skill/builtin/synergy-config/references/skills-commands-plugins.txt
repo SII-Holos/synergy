@@ -1,0 +1,252 @@
+# Skills, Commands, and Plugins
+
+## Choosing between Skills, Commands, and Plugins
+
+| Need | Use | Why |
+|---|---|---|
+| Teach Synergy a domain-specific workflow or knowledge | Skill | Injected into agent context; supports progressive disclosure |
+| Quick reusable prompt template (e.g., "/review") | Command | Lightweight; no context cost until invoked |
+| Add new tools or custom provider auth | Plugin | Runs code; can define tools and auth loaders |
+| Inject reference documentation into context | Skill | Use `references/` for large docs |
+| One-off prompt you run frequently | Command | Fastest to create; just a .md file |
+
+**Skill vs Command:** Skills are always available in context (metadata) and loaded on demand (body). Commands are only triggered explicitly by the user. If you want the agent to proactively use domain knowledge, use a Skill. If you just want a shortcut prompt, use a Command.
+
+**Skill vs Plugin:** Skills provide knowledge (text). Plugins provide capabilities (code). If you need new tools or API integrations, use a Plugin. If you need the agent to follow a specific procedure, use a Skill.
+
+**Command vs Plugin:** Commands are prompt templates. Plugins are executable code. If you need to run custom logic, use a Plugin. If you just need a canned prompt, use a Command.
+
+## Skills
+
+Skills extend Synergy with specialized knowledge, workflows, and tool integrations. They are modular markdown files that teach Synergy domain-specific procedures.
+
+### Skill file format
+
+Every skill is a `SKILL.md` file with YAML frontmatter:
+
+```markdown
+---
+name: my-skill
+description: "Description of when to use this skill. Include triggers and use cases."
+---
+
+# My Skill
+
+Instructions and guidance for using the skill.
+```
+
+**Required frontmatter:** `name`, `description`.
+
+The `description` is critical — it's the only text Synergy sees when deciding whether to load the skill. Be comprehensive about what the skill does and when to trigger it.
+
+The body is only loaded AFTER the skill triggers, so "When to Use" sections in the body are wasted.
+
+### Skill directories
+
+Skills are discovered from these directories:
+
+| Scope | Path pattern |
+|---|---|
+| Project | `<project>/.synergy/{skill,skills}/**/SKILL.md` |
+| Global | `~/.synergy/config/{skill,skills}/**/SKILL.md` |
+| Claude compat (project) | `<project>/.claude/skills/**/SKILL.md` |
+| Claude compat (global) | `~/.claude/skills/**/SKILL.md` |
+
+Example layout:
+```
+.synergy/skill/
+├── my-skill/
+│   ├── SKILL.md
+│   ├── references/
+│   │   └── api-docs.md
+│   ├── scripts/
+│   │   └── helper.py
+│   └── assets/
+│       └── template.html
+```
+
+### Progressive disclosure
+
+Skills use three-level loading to manage context:
+
+1. **Metadata** (name + description) — always in context (~100 words)
+2. **SKILL.md body** — loaded when skill triggers (keep under 500 lines)
+3. **Bundled resources** — loaded by agent as needed (unlimited)
+
+When SKILL.md approaches 500 lines, split detailed content into `references/` files and reference them clearly:
+```markdown
+For API details, see references/api-docs.md.
+For conversion rules, see references/format-rules.md.
+```
+
+### Skill resources
+
+- **`references/`** — documentation loaded into context as needed. Keep SKILL.md lean.
+- **`scripts/`** — executable code (Python/Bash) for deterministic tasks. Token-efficient.
+- **`assets/`** — files used in output (templates, images). Not loaded into context.
+
+### Reload
+
+```
+runtime_reload(target: "skill")
+```
+
+File watcher also auto-detects SKILL.md changes.
+
+---
+
+## Commands
+
+Custom commands are reusable prompt templates triggered via `/command-name` in TUI/Web.
+
+### Command file format
+
+Create `.synergy/command/<name>.md` (project) or `~/.synergy/config/command/<name>.md` (global):
+
+```markdown
+---
+description: "Run code review on staged changes"
+agent: "synergy"
+model: "anthropic/claude-sonnet-4-5"
+---
+
+Review the staged git changes. Focus on:
+- Security issues
+- Performance concerns
+- Code style violations
+
+Provide a summary with severity ratings.
+```
+
+**Frontmatter field reference:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `description` | string | — | Shown in command list UI. Required. |
+| `agent` | string | default agent | Which agent handles this command |
+| `model` | string | agent's model | Model override for this command |
+
+**Body** = the prompt template that gets injected.
+
+### Nested command example
+
+`.synergy/command/review/security.md` → `/review/security`
+
+```markdown
+---
+description: "Run security audit on changed files"
+agent: "master"
+model: "anthropic/claude-sonnet-4-5"
+---
+
+Perform a security audit on the staged git changes. Check for:
+- SQL injection and XSS vulnerabilities
+- Hardcoded secrets and credentials
+- Insecure deserialization
+- Missing input validation
+
+Output a severity-ranked finding list.
+```
+
+### Command directories
+
+| Scope | Path pattern |
+|---|---|
+| Project | `<project>/.synergy/{command,commands}/**/*.md` |
+| Global | `~/.synergy/config/{command,commands}/**/*.md` |
+
+Nested commands: `.synergy/command/review/security.md` → `/review/security`
+
+### Reload
+
+```
+runtime_reload(target: "command")
+```
+
+---
+
+## Plugins
+
+Plugins are TypeScript/JavaScript files that extend Synergy's tool and provider capabilities.
+
+### Plugin file locations
+
+| Scope | Path pattern |
+|---|---|
+| Project | `<project>/.synergy/{plugin,plugins}/*.{ts,js}` |
+| Global | `~/.synergy/config/{plugin,plugins}/*.{ts,js}` |
+
+### Plugin API
+
+Plugins use the `@ericsanchezok/synergy-plugin` SDK. A plugin file exports a default function:
+
+```ts
+import { definePlugin } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  name: "my-metrics",
+  tools: [
+    {
+      name: "query_metrics",
+      description: "Query metrics from the internal monitoring system",
+      parameters: {
+        type: "object",
+        properties: {
+          service: { type: "string", description: "Service name" },
+          period: { type: "string", description: "Time period (e.g., '1h', '24h')" }
+        },
+        required: ["service"]
+      },
+      execute: async (params) => {
+        const resp = await fetch(`https://metrics.internal/api/${params.service}?period=${params.period}`)
+        return resp.json()
+      }
+    }
+  ],
+})
+```
+
+Synergy auto-installs the plugin SDK (`@ericsanchezok/synergy-plugin`) in each config directory that has plugins.
+
+### Plugin dependencies
+
+Plugins can use external npm packages. Add them to the config directory's `package.json`:
+```bash
+cd .synergy && bun add some-package
+```
+
+### Debugging plugins
+
+- Plugin `console.log` output appears in the Synergy server process logs (stdout/stderr).
+- If a plugin fails to load, check server startup logs for the error — load failures do not crash the server.
+- After modifying a plugin file, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`.
+- Plugin file must export a default function (using `definePlugin` or directly). Named exports are ignored.
+- Plugin files must be `.ts` or `.js` — other extensions are skipped.
+
+### Reload
+
+```
+runtime_reload(target: "plugin")
+```
+
+Plugin reload cascades to tool_registry reload.
+
+---
+
+## Troubleshooting
+
+### Skills
+
+- **Skill not triggering** — check `description` in frontmatter is comprehensive; description is the ONLY text Synergy uses to decide whether to load the skill; vague descriptions = never loaded
+- **Skill content not loading** — verify the file is named exactly `SKILL.md` (case-sensitive); check it's in a `skill/` or `skills/` directory; try `runtime_reload(target: "skill")`
+- **References not found** — reference paths in the skill body are relative to the SKILL.md file's directory; use `references/filename.md` not absolute paths
+
+### Commands
+
+- **Command not appearing** — verify file is `.md` in a `command/` or `commands/` directory; check frontmatter has `description`; try `runtime_reload(target: "command")`
+- **Command using wrong agent** — check `agent` field in frontmatter; if omitted, uses the default agent
+
+### Plugins
+
+- **Plugin tools not appearing** — reload with `runtime_reload(target: "plugin")`; check server logs for load errors; verify the tool schema is valid JSON Schema
+- **Plugin auth not working** — auth loaders must return a valid credential format; check credential store for the resulting entry

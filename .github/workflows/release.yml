@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Stable version bump"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+jobs:
+  stable_candidate:
+    name: Publish Stable Candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+      state_path: ${{ steps.publish.outputs.state_path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Publish npm candidate and draft assets
+        id: publish
+        run: bun run ./script/release/stable-start.ts
+        env:
+          SYNERGY_BUMP: ${{ inputs.bump }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release state
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-state-${{ steps.publish.outputs.version }}
+          path: ${{ steps.publish.outputs.state_path }}
+
+  stable_finalize:
+    name: Finalize Stable Release
+    needs: [stable_candidate]
+    if: ${{ always() && needs.stable_candidate.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RELEASE_VERSION: ${{ needs.stable_candidate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download release state
+        uses: actions/download-artifact@v4
+        with:
+          name: release-state-${{ env.RELEASE_VERSION }}
+          path: .release
+
+      - name: Promote latest and finalize GitHub release
+        run: bun run ./script/release/stable-complete.ts
+        env:
+          SYNERGY_VERSION: ${{ env.RELEASE_VERSION }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync main branch with dev
+        run: |
+          REPO="${{ github.repository }}"
+          gh pr create \
+            --base main \
+            --head dev \
+            --title "chore: sync main with dev (v${{ env.RELEASE_VERSION }})" \
+            --body "Automated sync from dev after release v${{ env.RELEASE_VERSION }}." \
+            --repo "$REPO" || true
+          PR_NUMBER=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number' --repo "$REPO")
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr merge "$PR_NUMBER" --merge --admin --delete-branch=false --repo "$REPO"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

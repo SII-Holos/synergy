@@ -1,0 +1,7 @@
+Search stored memories by semantic similarity. Returns the top-k most relevant memory IDs, titles, categories, recall modes, and timestamps.
+
+Use this before writing new memories, when you need to inspect existing long-term knowledge, or when you want targeted recall beyond what was auto-injected. To read the full content of returned memories, use `memory_get` with the returned IDs.
+
+You can search broadly or filter by `category` and `recallMode`. This is especially useful when deciding whether new information belongs in `interaction`, `relationship`, `coding`, `writing`, `workflow`, `personal`, or a searchable knowledge category.
+
+Use natural language to describe what you're looking for rather than keyword lists — the search is embedding-based, so descriptive queries work better.

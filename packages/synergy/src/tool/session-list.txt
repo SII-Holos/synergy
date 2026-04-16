@@ -1,0 +1,11 @@
+List sessions by scope. Returns session metadata, scope info, and the latest message exchange for each session.
+
+The `scope` parameter selects which sessions to list:
+- "project": Sessions across all projects. Each entry includes which scope (project) it belongs to.
+- "home": The app home session
+- "contacts": Holos friend/contact sessions, includes contact metadata and online status
+- "feishu": Feishu/Lark channel sessions
+
+Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates). For example, to get today's sessions use `since: "2026-03-15"`, or last week's sessions with `since: "2026-03-08"`.
+
+Use `offset` and `limit` for pagination.

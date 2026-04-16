@@ -1,0 +1,7 @@
+Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding.
+
+Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`.
+
+Prefer editing over creating when the memory is durable and high-priority — especially for `user`, `self`, `relationship`, and `interaction` memories, or anything using `always` recall.
+
+You may also change both classification fields, for example moving a broad old preference into `interaction`, `coding`, `writing`, `workflow`, or `personal`, and adjusting recall from `always` to `contextual` or `search_only` when appropriate.

@@ -1,0 +1,3 @@
+Manually trigger an agenda item to execute immediately, regardless of its configured triggers. If the item is pending or paused, it will be activated first.
+
+After triggering, use `agenda_logs` to check execution results. Each log entry includes a session ID — use `session_read` with that ID to see the full execution output.

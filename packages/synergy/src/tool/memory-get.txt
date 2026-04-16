@@ -1,0 +1,3 @@
+Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory.
+
+Use this after `memory_search` to read the full details of relevant memories.

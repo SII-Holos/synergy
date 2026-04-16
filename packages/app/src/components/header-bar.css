@@ -1,0 +1,258 @@
+/* Header bar — grouping via spacing, separators, and color weight */
+
+.hb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--icon-weak-base);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.hb-btn:hover {
+  color: var(--icon-weak-hover);
+  background: var(--surface-raised-base-hover);
+}
+
+.hb-btn-active {
+  color: var(--text-interactive-base);
+  background: color-mix(in srgb, var(--text-interactive-base) 10%, transparent);
+}
+
+.hb-btn-active:hover {
+  background: color-mix(in srgb, var(--text-interactive-base) 15%, transparent);
+}
+
+/* Vertical separator between groups */
+.hb-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--icon-weak-base);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+/* Utility buttons — smaller, quieter */
+.hb-utils .hb-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--icon-weak-disabled);
+}
+
+.hb-utils .hb-btn:hover {
+  color: var(--icon-weak-hover);
+}
+
+.sid-switcher {
+  position: relative;
+  min-width: 0;
+  max-width: min(34rem, calc(100vw - 18rem));
+}
+
+.sid-trigger {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.5rem 0.2rem 0.55rem;
+  border-radius: 0.85rem;
+  transition: background-color 0.15s ease;
+}
+
+.sid-trigger:hover,
+.sid-trigger.is-open {
+  background: var(--surface-raised-base-hover);
+}
+
+.sid-trigger-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.04rem;
+}
+
+.sid-trigger-home-row,
+.sid-trigger-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sid-trigger-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.sid-trigger-home-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  opacity: 0.94;
+}
+
+.sid-trigger-home-summary {
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+  text-align: right;
+}
+
+.sid-trigger-project {
+  max-width: 10rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-subtle);
+  letter-spacing: 0.01em;
+  flex-shrink: 1;
+}
+
+.sid-trigger-summary {
+  font-size: 0.66rem;
+  color: var(--text-subtle);
+  text-align: right;
+}
+
+.sid-trigger-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-strong);
+  opacity: 0.92;
+}
+
+.sid-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 40;
+  width: min(24rem, calc(100vw - 4rem));
+  max-height: min(28rem, calc(100vh - 7rem));
+  padding: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-y: auto;
+  border-radius: 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--border-base) 68%, transparent);
+  background: color-mix(in srgb, var(--surface-raised-stronger-non-alpha) 95%, transparent);
+  box-shadow: 0 18px 50px -28px rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(18px);
+}
+
+.sid-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0.4rem 0.4rem;
+}
+
+.sid-menu-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+.sid-menu-summary {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+.sid-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.65rem;
+  border-radius: 0.8rem;
+  transition: background-color 0.15s ease;
+}
+
+.sid-row:hover,
+.sid-row:focus-visible,
+.sid-row.is-current {
+  background: var(--surface-raised-base-hover);
+}
+
+.sid-row-topline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.sid-row-title {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sid-row-subtitle {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+.sid-state-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem 0.42rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.sid-state-badge.is-current {
+  color: var(--text-strong);
+  background: var(--surface-inset-base);
+  border-color: color-mix(in srgb, var(--border-base) 55%, transparent);
+}
+
+.sid-state-badge.is-working,
+.sid-state-badge.is-retrying {
+  color: var(--text-interactive-base);
+  background: color-mix(in srgb, var(--text-interactive-base) 11%, transparent);
+  border-color: color-mix(in srgb, var(--text-interactive-base) 18%, transparent);
+}
+
+.sid-state-badge.is-needs-input {
+  color: var(--text-warning-base);
+  background: color-mix(in srgb, var(--icon-warning-base) 12%, transparent);
+  border-color: color-mix(in srgb, var(--icon-warning-base) 20%, transparent);
+}
+
+.sid-state-badge.is-error {
+  color: var(--text-diff-delete-base);
+  background: color-mix(in srgb, var(--icon-critical-base) 11%, transparent);
+  border-color: color-mix(in srgb, var(--icon-critical-base) 18%, transparent);
+}
+
+.sid-state-badge.is-unread {
+  color: var(--icon-success-base);
+  background: color-mix(in srgb, var(--icon-success-base) 11%, transparent);
+  border-color: color-mix(in srgb, var(--icon-success-base) 18%, transparent);
+}
+
+/* Touch devices — ensure minimum 44px tap targets */
+@media (hover: none) and (pointer: coarse) {
+  .hb-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
