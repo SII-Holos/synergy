@@ -240,6 +240,12 @@ export namespace Scope {
       }
     }
 
+    // At this point, id, worktree, and sandbox must be non-null
+    if (!id || !sandbox || !worktree) {
+      log.error("Failed to resolve scope ID or worktree", { id, sandbox, worktree })
+      throw new Error("Failed to resolve project scope")
+    }
+
     let existing = await readPersisted(id)
 
     if (existing?.time?.archived) {
@@ -270,13 +276,13 @@ export namespace Scope {
       }
     }
 
-    if (!existing.sandboxes) existing.sandboxes = []
+    if (existing && !existing.sandboxes) existing.sandboxes = []
 
     const persisted: z.infer<typeof Info> = {
-      ...existing,
+      ...existing!,
       worktree,
       vcs: vcs as Scope.Project["vcs"],
-      time: { ...existing.time },
+      time: { ...existing!.time },
     }
     // Track the original opening directory in sandboxes if it's different from worktree
     // This allows us to show all the subdirectories/checkouts where this project was opened
