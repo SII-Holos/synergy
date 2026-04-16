@@ -30,23 +30,31 @@
   }
 
   [data-slot="session-turn-title"] {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+
+  [data-slot="session-turn-title"] h1 {
     font-size: var(--font-size-base);
     font-weight: var(--font-weight-medium);
     color: var(--text-base);
+    background: color-mix(in srgb, var(--background-strong), transparent 85%);
+    padding: 4px 10px;
+    border-radius: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-    width: 100%;
+    display: inline-block;
+  }
 
-    h1 {
-      font-size: inherit;
-      font-weight: inherit;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
-    }
+  [data-slot="session-turn-title-timestamp"] {
+    font-size: 0.75rem;
+    color: var(--text-weak);
+    padding-left: 10px;
+    font-weight: var(--font-weight-regular);
   }
 
   [data-slot="session-turn-typewriter"] {

@@ -45,6 +45,14 @@ function getInjectedContext(message: UserMessage | undefined): InjectedContext |
   return ctx
 }
 
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  const seconds = date.getSeconds().toString().padStart(2, "0")
+  return `${hours}:${minutes}:${seconds}`
+}
+
 function same<T>(a: readonly T[], b: readonly T[]) {
   if (a === b) return true
   if (a.length !== b.length) return false
@@ -485,6 +493,9 @@ export function SessionTurn(
                             <h1>{msg().summary?.title}</h1>
                           </Match>
                         </Switch>
+                        <Show when={msg().time?.created}>
+                          <span data-slot="session-turn-title-timestamp">{formatTimestamp(msg().time.created)}</span>
+                        </Show>
                       </div>
                     </Show>
                     {/* Mailbox source annotation */}
