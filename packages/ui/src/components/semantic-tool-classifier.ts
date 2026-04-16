@@ -290,6 +290,23 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
 
   // lsp
   lsp: "analyze",
+
+  // qzcli — 启智平台
+  qzcli_qz_auth_login: "config",
+  qzcli_qz_set_cookie: "config",
+  qzcli_qz_list_workspaces: "config",
+  qzcli_qz_refresh_resources: "config",
+  qzcli_qz_get_availability: "analyze",
+  qzcli_qz_list_jobs: "shell",
+  qzcli_qz_get_job_detail: "analyze",
+  qzcli_qz_stop_job: "shell",
+  qzcli_qz_get_usage: "analyze",
+  qzcli_qz_inspect_status_catalog: "analyze",
+  qzcli_qz_track_job: "task",
+  qzcli_qz_list_tracked_jobs: "task",
+  qzcli_qz_create_job: "shell",
+  qzcli_qz_create_hpc_job: "shell",
+  qzcli_qz_get_hpc_usage: "analyze",
 }
 
 // ── Layer 2: Regex pattern → category ───────────────────────────────
