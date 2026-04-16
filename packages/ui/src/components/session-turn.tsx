@@ -667,8 +667,8 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    {/* Error (when steps collapsed) */}
-                    <Show when={error() && !props.stepsExpanded}>
+                    {/* Error (when expanded steps section is not showing it) */}
+                    <Show when={error() && !(working() || (props.stepsExpanded && hasSteps()))}>
                       <Card variant="error" class="error-card">
                         {error()?.data?.message as string}
                       </Card>

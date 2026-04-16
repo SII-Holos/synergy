@@ -89,14 +89,21 @@ export namespace Attachment {
     }
   }
 
+  export function isText(mime: string): boolean {
+    return mime.startsWith("text/")
+  }
+
   export function decodeDataUrl(url: string) {
-    const match = url.match(/^data:([^;]+);base64,(.*)$/)
-    if (!match) {
+    const marker = ";base64,"
+    const markerIndex = url.indexOf(marker)
+    if (markerIndex === -1 || !url.startsWith("data:")) {
       throw new Error("Invalid data URL")
     }
+    const mime = url.slice(5, markerIndex).split(";")[0]
+    const data = url.slice(markerIndex + marker.length)
     return {
-      mime: match[1],
-      buffer: Buffer.from(match[2], "base64"),
+      mime,
+      buffer: Buffer.from(data, "base64"),
     }
   }
 

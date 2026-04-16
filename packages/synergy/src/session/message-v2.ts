@@ -441,8 +441,8 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          // text/plain and directory files are converted into text parts, ignore them
-          if (part.type === "file" && part.mime !== "text/plain" && part.mime !== "application/x-directory") {
+          // text files and directories are converted into text parts, ignore them
+          if (part.type === "file" && !part.mime.startsWith("text/") && part.mime !== "application/x-directory") {
             if (part.localPath) {
               userMessage.parts.push({
                 type: "text",
