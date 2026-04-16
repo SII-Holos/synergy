@@ -21,7 +21,9 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) {
     await $`git init`.cwd(dirpath).quiet()
-    await $`git commit --allow-empty -m "root commit ${dirpath}"`.cwd(dirpath).quiet()
+    await $`git config user.email test@synergy.dev`.cwd(dirpath).quiet()
+    await $`git config user.name "Test Agent"`.cwd(dirpath).quiet()
+    await $`git commit --allow-empty -m "root commit"`.cwd(dirpath).quiet()
   }
   if (options?.config) {
     await Bun.write(
