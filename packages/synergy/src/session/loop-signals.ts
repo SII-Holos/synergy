@@ -26,13 +26,18 @@ LoopJob.defineSignal({
     const output = Math.min(limits.output, LLM.OUTPUT_TOKEN_MAX) || LLM.OUTPUT_TOKEN_MAX
     const usable = limits.context - output
 
-    // Check 1: previous turn's actual token usage exceeded the limit.
+    // Check 1: previous turn's actual token usage is near or exceeds the limit.
     // Skipped when the last assistant is a compaction summary (just compacted).
+    // Uses a 95% threshold to trigger preemptively — a single tool output can
+    // push input tokens a few thousand higher between signal detection and the
+    // next LLM call, so waiting until we're actually over is too late.
     const source = ctx.lastAssistant ?? ctx.lastFinished
+    let lastActualInput = 0
     if (source && source.summary !== true) {
       const tokens = source.tokens
-      const count = tokens.input + tokens.cache.read + tokens.output
-      if (count > usable) return injectCompaction(ctx)
+      lastActualInput = tokens.input + tokens.cache.read
+      const count = lastActualInput + tokens.output
+      if (count > usable * 0.95) return injectCompaction(ctx)
     }
 
     // Check 2: estimate current conversation size to catch growth that
@@ -40,8 +45,28 @@ LoopJob.defineSignal({
     // tool outputs, system prompt expansion, etc.).
     // This runs independently of whether the last turn was a compaction
     // summary, because new content may have accumulated since.
+    //
+    // The raw estimate only counts message content visible in the
+    // conversation history. It does NOT include the system prompt, tool
+    // schema definitions, memory/engram injections, or model-specific
+    // formatting overhead — which can add 30-60K+ tokens. To compensate,
+    // we calibrate against the last assistant's actual provider-reported
+    // input token count: the gap between actual and estimated is the
+    // invisible overhead, and we carry it forward.
     const estimated = estimateConversationTokens(ctx.messages, ctx.modelID)
-    if (estimated > usable * 0.85) return injectCompaction(ctx)
+    const overhead = lastActualInput > estimated ? lastActualInput - estimated : 0
+    const calibrated = estimated + overhead
+    if (calibrated > usable * 0.85) {
+      log.info("overflow check 2 triggered", {
+        sessionID: ctx.sessionID,
+        estimated,
+        overhead,
+        calibrated,
+        threshold: Math.round(usable * 0.85),
+        usable,
+      })
+      return injectCompaction(ctx)
+    }
 
     return false
   },
