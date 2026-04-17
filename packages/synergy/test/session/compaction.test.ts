@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
+import { SessionCompaction } from "../../src/session/compaction"
 import type { Provider } from "../../src/provider/provider"
 
 Log.init({ print: false })
@@ -29,9 +30,8 @@ function createModel(opts: { context: number; output: number; cost?: Provider.Mo
   } as Provider.Model
 }
 
-// TODO: update after session refactor — SessionCompaction.isOverflow was removed;
-// overflow detection now lives in loop-signals.ts as a LoopJob signal.
-// describe("session.compaction.isOverflow", () => { ... })
+// Overflow detection now lives in loop-signals.ts as a LoopJob signal;
+// isContextExceeded and Token.estimateJSON are tested below.
 
 describe("util.token.estimate", () => {
   test("estimates tokens from text (4 chars per token)", () => {
@@ -176,5 +176,116 @@ describe("session.getUsage", () => {
     })
 
     expect(result.cost).toBe(3 + 1.5)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateJSON
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateJSON", () => {
+  test("estimates a plain string like Token.estimate", () => {
+    const text = "hello world"
+    expect(Token.estimateJSON(text)).toBe(Token.estimate(text))
+  })
+
+  test("estimates an object via JSON serialization", () => {
+    const obj = { role: "user", content: "hi" }
+    expect(Token.estimateJSON(obj)).toBe(Token.estimate(JSON.stringify(obj)))
+  })
+
+  test("returns 0 for circular references", () => {
+    const a: any = {}
+    a.self = a
+    expect(Token.estimateJSON(a)).toBe(0)
+  })
+
+  test("returns 0 for undefined", () => {
+    expect(Token.estimateJSON(undefined)).toBe(0)
+  })
+
+  test("estimates arrays", () => {
+    const arr = [1, 2, 3]
+    expect(Token.estimateJSON(arr)).toBe(Token.estimate(JSON.stringify(arr)))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.isContextExceeded
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.isContextExceeded", () => {
+  function apiError(message: string, opts?: { statusCode?: number; responseBody?: string }) {
+    return {
+      name: "APIError",
+      data: {
+        message,
+        statusCode: opts?.statusCode ?? 400,
+        isRetryable: false,
+        responseBody: opts?.responseBody,
+      },
+    }
+  }
+
+  test("detects OpenAI context_length_exceeded", () => {
+    expect(
+      SessionCompaction.isContextExceeded(
+        apiError(
+          "This model's maximum context length is 128000 tokens. However, your messages resulted in 150000 tokens.",
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  test("detects error code in message", () => {
+    expect(SessionCompaction.isContextExceeded(apiError("context_length_exceeded"))).toBe(true)
+  })
+
+  test("detects Anthropic-style message", () => {
+    expect(
+      SessionCompaction.isContextExceeded(apiError("Your request exceeds the maximum number of tokens allowed.")),
+    ).toBe(true)
+  })
+
+  test("detects max_tokens keyword", () => {
+    expect(SessionCompaction.isContextExceeded(apiError("max_tokens: limit reached for this request"))).toBe(true)
+  })
+
+  test("detects context exceeded in responseBody when message is generic", () => {
+    expect(
+      SessionCompaction.isContextExceeded(
+        apiError("Bad Request", {
+          responseBody: '{"error":{"type":"context_length_exceeded","message":"too many tokens"}}',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  test("rejects unrelated 400 errors", () => {
+    expect(SessionCompaction.isContextExceeded(apiError("Invalid model specified"))).toBe(false)
+  })
+
+  test("rejects rate limit errors", () => {
+    expect(SessionCompaction.isContextExceeded(apiError("Rate limit exceeded. Please retry later."))).toBe(false)
+  })
+
+  test("rejects non-APIError objects", () => {
+    expect(SessionCompaction.isContextExceeded({ name: "AuthError", data: { message: "bad key" } })).toBe(false)
+  })
+
+  test("rejects null / undefined", () => {
+    expect(SessionCompaction.isContextExceeded(null)).toBe(false)
+    expect(SessionCompaction.isContextExceeded(undefined)).toBe(false)
+  })
+
+  test("rejects primitive values", () => {
+    expect(SessionCompaction.isContextExceeded("context_length_exceeded")).toBe(false)
+    expect(SessionCompaction.isContextExceeded(42)).toBe(false)
+  })
+
+  test("detects 'request too large' with token mention", () => {
+    expect(SessionCompaction.isContextExceeded(apiError("request too large: total token count exceeds limit"))).toBe(
+      true,
+    )
   })
 })

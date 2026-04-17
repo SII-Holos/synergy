@@ -4,6 +4,7 @@ import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
+import { Token } from "@/util/token"
 
 const log = Log.create({ service: "session.loop-signals" })
 
@@ -18,30 +19,80 @@ LoopJob.defineSignal({
   type: "overflow",
   detect(ctx) {
     if (ctx.lastUserParts.some((p) => p.type === "compaction")) return false
-    const source = ctx.lastAssistant ?? ctx.lastFinished
-    if (!source) return false
-    if (source.summary === true) return false
     if (ctx.compactionAutoDisabled) return false
     const limits = ctx.modelLimits
     if (!limits || limits.context === 0) return false
-    const tokens = source.tokens
-    const count = tokens.input + tokens.cache.read + tokens.output
+
     const output = Math.min(limits.output, LLM.OUTPUT_TOKEN_MAX) || LLM.OUTPUT_TOKEN_MAX
     const usable = limits.context - output
-    if (count <= usable) return false
 
-    const part = {
-      id: Identifier.ascending("part"),
-      messageID: ctx.lastUser.id,
-      sessionID: ctx.sessionID,
-      type: "compaction" as const,
-      auto: true,
+    // Check 1: previous turn's actual token usage exceeded the limit.
+    // Skipped when the last assistant is a compaction summary (just compacted).
+    const source = ctx.lastAssistant ?? ctx.lastFinished
+    if (source && source.summary !== true) {
+      const tokens = source.tokens
+      const count = tokens.input + tokens.cache.read + tokens.output
+      if (count > usable) return injectCompaction(ctx)
     }
-    Session.updatePart(part).catch(() => {})
-    ctx.lastUserParts.push(part)
-    return true
+
+    // Check 2: estimate current conversation size to catch growth that
+    // the previous turn's usage doesn't reflect (new user messages,
+    // tool outputs, system prompt expansion, etc.).
+    // This runs independently of whether the last turn was a compaction
+    // summary, because new content may have accumulated since.
+    const estimated = estimateConversationTokens(ctx.messages)
+    if (estimated > usable * 0.85) return injectCompaction(ctx)
+
+    return false
   },
 })
+
+function injectCompaction(ctx: LoopJob.Context): true {
+  const part = {
+    id: Identifier.ascending("part"),
+    messageID: ctx.lastUser.id,
+    sessionID: ctx.sessionID,
+    type: "compaction" as const,
+    auto: true,
+  }
+  Session.updatePart(part).catch(() => {})
+  ctx.lastUserParts.push(part)
+  return true
+}
+
+function estimateConversationTokens(messages: MessageV2.WithParts[]): number {
+  let total = 0
+  for (const msg of messages) {
+    total += 4
+    for (const part of msg.parts) {
+      switch (part.type) {
+        case "text":
+          total += Token.estimate(part.text)
+          break
+        case "tool":
+          if (part.state.status === "completed") {
+            total += Token.estimateJSON(part.state.input)
+            total += part.state.time.compacted ? 10 : Token.estimate(part.state.output)
+          } else if (part.state.status === "error") {
+            total += Token.estimateJSON(part.state.input)
+            total += Token.estimate(part.state.error)
+          }
+          break
+        case "reasoning":
+          total += Token.estimate(part.text)
+          break
+        case "file":
+          // Image/file attachments are sent as URLs to the model, but the
+          // provider typically counts them as a fixed token cost (e.g.
+          // ~85 tokens for low-res, ~765 for high-res images).  Use a
+          // conservative flat estimate per attachment.
+          total += 300
+          break
+      }
+    }
+  }
+  return total
+}
 
 const ERROR_LOOP_THRESHOLD = 3
 

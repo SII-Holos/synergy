@@ -6,7 +6,7 @@ import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
-import "./compaction"
+import { SessionCompaction } from "./compaction"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
@@ -134,6 +134,7 @@ export namespace SessionInvoke {
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
+    let emergencyCompactionTriggered = false
     const session = await Session.get(sessionID)
     const scopeID = (session.scope as Scope).id
 
@@ -443,6 +444,35 @@ export namespace SessionInvoke {
         }
 
         if (result === "stop") {
+          // If the failure was caused by exceeding context limits, inject a
+          // compaction signal and re-enter the loop. The next iteration will
+          // detect the signal, run compaction (which now has its own input
+          // trimming and mechanical fallback), and then retry the user's request.
+          if (
+            !emergencyCompactionTriggered &&
+            processor.message.error &&
+            SessionCompaction.isContextExceeded(processor.message.error)
+          ) {
+            log.warn("context exceeded, injecting emergency compaction", { sessionID })
+            emergencyCompactionTriggered = true
+            const emergencyUser = await Session.updateMessage({
+              id: Identifier.ascending("message"),
+              role: "user",
+              sessionID,
+              time: { created: Date.now() },
+              agent: lastUser.agent,
+              model: lastUser.model,
+              summary: { title: "Emergency compaction", diffs: [] },
+            })
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: emergencyUser.id,
+              sessionID,
+              type: "compaction" as const,
+              auto: true,
+            })
+            continue
+          }
           break
         }
         continue
