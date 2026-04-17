@@ -289,3 +289,110 @@ describe("session.compaction.isContextExceeded", () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// Token.encodingForModelID
+// ---------------------------------------------------------------------------
+
+describe("util.token.encodingForModelID", () => {
+  test("maps o200k models", () => {
+    for (const id of [
+      "gpt-4o",
+      "gpt-4o-mini",
+      "gpt-4.1",
+      "gpt-4.5-preview",
+      "gpt-5",
+      "o1",
+      "o3-mini",
+      "o4-mini",
+      "chatgpt-4o-latest",
+    ]) {
+      expect(Token.encodingForModelID(id)).toBe("o200k_base")
+    }
+  })
+
+  test("maps cl100k models", () => {
+    for (const id of ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]) {
+      expect(Token.encodingForModelID(id)).toBe("cl100k_base")
+    }
+  })
+
+  test("returns undefined for non-OpenAI models", () => {
+    for (const id of [
+      "claude-3-opus-20240229",
+      "gemini-1.5-pro",
+      "qwen-72b",
+      "deepseek-v3",
+      "glm-4",
+      "mistral-large",
+    ]) {
+      expect(Token.encodingForModelID(id)).toBeUndefined()
+    }
+  })
+
+  test("defaults unknown OpenAI-ish models to o200k", () => {
+    expect(Token.encodingForModelID("gpt-99-turbo")).toBe("o200k_base")
+    expect(Token.encodingForModelID("o99")).toBe("o200k_base")
+  })
+
+  test("returns undefined for completely unknown models", () => {
+    expect(Token.encodingForModelID("some-random-model")).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateModel (async)
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateModel", () => {
+  const cjk = "这是一个中文测试"
+  const heuristic = Token.estimate(cjk)
+
+  test("returns accurate count for known OpenAI model", async () => {
+    const count = await Token.estimateModel("gpt-4o", cjk)
+    expect(count).toBeGreaterThan(heuristic)
+  })
+
+  test("falls back to chars/4 for non-OpenAI model", async () => {
+    const count = await Token.estimateModel("claude-3-opus-20240229", cjk)
+    expect(count).toBe(heuristic)
+  })
+
+  test("returns 0 for empty string", async () => {
+    expect(await Token.estimateModel("gpt-4o", "")).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateModelSync
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateModelSync", () => {
+  const cjk = "这是一个中文测试"
+  const heuristic = Token.estimate(cjk)
+
+  test("returns heuristic before warmup for a cold encoding", () => {
+    const count = Token.estimateModelSync("gpt-4-turbo", cjk)
+    expect(count).toBe(heuristic)
+  })
+
+  test("returns accurate count after warmup", async () => {
+    await Token.warmup("gpt-4o")
+    const count = Token.estimateModelSync("gpt-4o", cjk)
+    expect(count).toBeGreaterThan(heuristic)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Token.warmup
+// ---------------------------------------------------------------------------
+
+describe("util.token.warmup", () => {
+  test("completes without error for known model", async () => {
+    await Token.warmup("gpt-4o")
+  })
+
+  test("completes without error for unknown model", async () => {
+    await Token.warmup("some-random-model")
+  })
+})

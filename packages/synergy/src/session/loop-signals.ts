@@ -40,7 +40,7 @@ LoopJob.defineSignal({
     // tool outputs, system prompt expansion, etc.).
     // This runs independently of whether the last turn was a compaction
     // summary, because new content may have accumulated since.
-    const estimated = estimateConversationTokens(ctx.messages)
+    const estimated = estimateConversationTokens(ctx.messages, ctx.modelID)
     if (estimated > usable * 0.85) return injectCompaction(ctx)
 
     return false
@@ -60,32 +60,29 @@ function injectCompaction(ctx: LoopJob.Context): true {
   return true
 }
 
-function estimateConversationTokens(messages: MessageV2.WithParts[]): number {
+function estimateConversationTokens(messages: MessageV2.WithParts[], modelID?: string): number {
+  const est = (text: string) => (modelID ? Token.estimateModelSync(modelID, text) : Token.estimate(text))
   let total = 0
   for (const msg of messages) {
     total += 4
     for (const part of msg.parts) {
       switch (part.type) {
         case "text":
-          total += Token.estimate(part.text)
+          total += est(part.text)
           break
         case "tool":
           if (part.state.status === "completed") {
             total += Token.estimateJSON(part.state.input)
-            total += part.state.time.compacted ? 10 : Token.estimate(part.state.output)
+            total += part.state.time.compacted ? 10 : est(part.state.output)
           } else if (part.state.status === "error") {
             total += Token.estimateJSON(part.state.input)
-            total += Token.estimate(part.state.error)
+            total += est(part.state.error)
           }
           break
         case "reasoning":
-          total += Token.estimate(part.text)
+          total += est(part.text)
           break
         case "file":
-          // Image/file attachments are sent as URLs to the model, but the
-          // provider typically counts them as a fixed token cost (e.g.
-          // ~85 tokens for low-res, ~765 for high-res images).  Use a
-          // conservative flat estimate per attachment.
           total += 300
           break
       }

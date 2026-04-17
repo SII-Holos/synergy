@@ -7,6 +7,7 @@ import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
+import { Token } from "@/util/token"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
@@ -192,9 +193,13 @@ export namespace SessionInvoke {
           lastAssistant,
           abort,
           compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
-          modelLimits: await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
-            .then((m) => m.limit)
-            .catch(() => undefined),
+          modelID: lastUser.model.modelID,
+          modelLimits: await Promise.all([
+            Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+              .then((m) => m.limit)
+              .catch(() => undefined),
+            Token.warmup(lastUser.model.modelID),
+          ]).then(([limits]) => limits),
         }
         const firedSignals = await LoopJob.detectSignals(jobCtx)
 

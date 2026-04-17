@@ -290,7 +290,7 @@ export namespace SessionCompaction {
     // context window, reserving space for the prompt and output.
     const contextLimit = model.limit?.context ?? 0
     const outputReserve = Math.min(model.limit?.output ?? LLM.OUTPUT_TOKEN_MAX, LLM.OUTPUT_TOKEN_MAX)
-    const promptCost = Token.estimate(promptText) + 200 // overhead for role framing
+    const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
     const messageBudget = contextLimit > 0 ? contextLimit - outputReserve - promptCost : Infinity
     const safeMessages = isFinite(messageBudget) ? trimMessagesForContext(modelMessages, messageBudget) : modelMessages
 
