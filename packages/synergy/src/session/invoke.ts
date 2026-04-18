@@ -38,6 +38,7 @@ import {
   getCachedResult,
   evictRecallCache,
   RECALL_TIMEOUT_MS,
+  type InjectionInfo,
 } from "./recall"
 import "./title"
 
@@ -127,6 +128,40 @@ export namespace SessionInvoke {
     if (needsReply) {
       await loop(sessionID)
     }
+  }
+
+  async function recallMemory(
+    step: number,
+    sessionID: string,
+    scopeID: string,
+    sessionMessages: MessageV2.WithParts[],
+    isTopSession: boolean,
+    isGenesis: boolean,
+    lastUserParts: MessageV2.Part[] | undefined,
+  ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
+    if (step === 1 && isTopSession && !isGenesis) {
+      SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
+      const cfg = await Config.get()
+      return withTimeout(
+        buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
+        RECALL_TIMEOUT_MS,
+      ).catch((err: any) => {
+        log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
+        return undefined
+      })
+    }
+    if (step > 1 && isTopSession && lastUserParts?.some((p) => p.type === "compaction")) {
+      return getCachedResult(sessionID)
+    }
+    if (step === 1 && !isTopSession) {
+      const cfg = await Config.get()
+      const evo = Config.resolveEvolution(cfg.identity?.evolution)
+      if (evo.active) {
+        const alwaysContext = buildAlwaysOnlyMemoryContext()
+        return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
+      }
+    }
+    return undefined
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
@@ -343,16 +378,6 @@ export namespace SessionInvoke {
           abort,
         })
 
-        const tools = await ToolResolver.resolve({
-          agent,
-          model,
-          sessionID,
-          processor,
-          session,
-          userTools: lastUser.tools,
-          includeMCP: true,
-        })
-
         // Shallow structural copy: duplicates message/part references but shares
         // the heavy string payloads (tool outputs, text content) to avoid the
         // memory cost of a full deep clone while still isolating msgs from
@@ -383,15 +408,34 @@ export namespace SessionInvoke {
 
         await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
-        const systemParts = [
-          ...(await SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session })),
-          ...(await SystemPrompt.custom()),
-        ]
+        // Launch independent async work in parallel: tool resolution, system
+        // prompt assembly, cortex context, and memory recall (flashback) all
+        // run concurrently to minimise time-to-first-token.
+        const isTopSession = !session.parentID
+        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
-        const cortexExecutionContext = await buildCortexExecutionContext(sessionID)
+        const [tools, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
+          await Promise.all([
+            ToolResolver.resolve({
+              agent,
+              model,
+              sessionID,
+              processor,
+              session,
+              userTools: lastUser.tools,
+              includeMCP: true,
+            }),
+            Promise.all([
+              SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+              SystemPrompt.custom(),
+            ]).then(([env, custom]) => [env, custom] as const),
+            buildCortexExecutionContext(sessionID),
+            buildCortexReminder(sessionID),
+            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis, lastUserParts),
+          ])
+
+        const systemParts = [...envParts, ...customParts]
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
-
-        const cortexReminder = await buildCortexReminder(sessionID)
         if (cortexReminder) systemParts.push(cortexReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
@@ -403,39 +447,16 @@ export namespace SessionInvoke {
           }
         }
 
-        const isTopSession = !session.parentID
-        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
-
-        if (step === 1 && isTopSession && !isGenesis) {
-          SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
-          const evo = Config.resolveEvolution((await Config.get()).identity?.evolution)
-          const memoryResult = await withTimeout(
-            buildMemoryContext(sessionID, scopeID, sessionMessages, evo),
-            RECALL_TIMEOUT_MS,
-          ).catch((err: any) => {
-            log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
-            return undefined
-          })
-          if (memoryResult) {
-            systemParts.push(memoryResult.context)
-            cacheResult(sessionID, memoryResult)
-            const { injection } = memoryResult
-            if (injection.memory || injection.experience) {
-              const updated: MessageV2.User = {
-                ...lastUser,
-                metadata: { ...lastUser.metadata, injectedContext: injection },
-              }
-              await Session.updateMessage(updated)
+        if (memoryResult) {
+          systemParts.push(memoryResult.context)
+          cacheResult(sessionID, memoryResult)
+          const { injection } = memoryResult
+          if (injection.memory || injection.experience) {
+            const updated: MessageV2.User = {
+              ...lastUser,
+              metadata: { ...lastUser.metadata, injectedContext: injection },
             }
-          }
-        } else if (step > 1 && isTopSession && lastUserParts?.some((p) => p.type === "compaction")) {
-          const cached = getCachedResult(sessionID)
-          if (cached) systemParts.push(cached.context)
-        } else if (step === 1 && !isTopSession) {
-          const evo = Config.resolveEvolution((await Config.get()).identity?.evolution)
-          if (evo.active) {
-            const alwaysContext = buildAlwaysOnlyMemoryContext()
-            if (alwaysContext) systemParts.push(alwaysContext)
+            await Session.updateMessage(updated)
           }
         }
 

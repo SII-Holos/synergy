@@ -119,6 +119,7 @@ export namespace MCP {
   function registerNotificationHandlers(client: MCPClient, serverName: string) {
     client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
       log.info("tools list changed notification received", { server: serverName })
+      await refreshToolDefCache(serverName, client)
       Bus.publish(ToolsChanged, { server: serverName })
     })
 
@@ -134,7 +135,11 @@ export namespace MCP {
   }
 
   // Convert MCP tool definition to AI SDK Tool type
-  async function convertMcpTool(mcpTool: MCPToolDef, client: MCPClient): Promise<Tool> {
+  async function convertMcpTool(
+    mcpTool: MCPToolDef,
+    client: MCPClient,
+    callTimeout: number | undefined,
+  ): Promise<Tool> {
     const inputSchema = mcpTool.inputSchema
 
     // Spread first, then override type to ensure it's always "object"
@@ -144,7 +149,6 @@ export namespace MCP {
       properties: (inputSchema.properties ?? {}) as JSONSchema7["properties"],
       additionalProperties: false,
     }
-    const config = await Config.get()
 
     return dynamicTool({
       description: mcpTool.description ?? "",
@@ -158,7 +162,7 @@ export namespace MCP {
           CallToolResultSchema,
           {
             resetTimeoutOnProgress: true,
-            timeout: config.experimental?.mcp_timeout,
+            timeout: callTimeout,
           },
         )
       },
@@ -175,6 +179,7 @@ export namespace MCP {
   type ResourceInfo = Awaited<ReturnType<MCPClient["listResources"]>>["resources"][number]
   type PromptCache = Record<string, PromptInfo & { client: string }>
   type ResourceCache = Record<string, ResourceInfo & { client: string }>
+  type ToolDefCache = Record<string, MCPToolDef[]>
   type McpEntry = NonNullable<Config.Info["mcp"]>[string]
   function isMcpConfigured(entry: McpEntry): entry is Config.Mcp {
     return typeof entry === "object" && entry !== null && "type" in entry
@@ -207,6 +212,7 @@ export namespace MCP {
       const status: Record<string, Status> = {}
       const prompts: Record<string, PromptCache> = {}
       const resources: Record<string, ResourceCache> = {}
+      const toolDefs: ToolDefCache = {}
 
       await Promise.all(
         Object.entries(config).map(async ([key, mcp]) => {
@@ -227,6 +233,7 @@ export namespace MCP {
 
           if (result.mcpClient) {
             clients[key] = result.mcpClient
+            if (result.toolDefs) toolDefs[key] = result.toolDefs
             const timeout = mcp.timeout ?? DEFAULT_TIMEOUT
             prompts[key] = {}
             resources[key] = {}
@@ -247,6 +254,7 @@ export namespace MCP {
         clients,
         prompts,
         resources,
+        toolDefs,
       }
     },
     async (state) => {
@@ -339,6 +347,24 @@ export namespace MCP {
     Bus.publish(ResourcesChanged, { server: clientName })
   }
 
+  async function refreshToolDefCache(clientName: string, client: MCPClient) {
+    const s = await state()
+    if (s.status[clientName]?.status !== "connected") {
+      delete s.toolDefs[clientName]
+      return
+    }
+
+    const config = await Config.get()
+    const timeout = config.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
+    const toolsResult = await withTimeout(client.listTools(), timeout).catch((e) => {
+      log.error("failed to refresh tool defs", { clientName, error: e instanceof Error ? e.message : String(e) })
+      return undefined
+    })
+    if (toolsResult) {
+      s.toolDefs[clientName] = toolsResult.tools
+    }
+  }
+
   export async function add(name: string, mcp: Config.Mcp) {
     const s = await state()
     const result = await create(name, mcp)
@@ -352,6 +378,7 @@ export namespace MCP {
     s.status[name] = result.status
     if (result.mcpClient) {
       s.clients[name] = result.mcpClient
+      if (result.toolDefs) s.toolDefs[name] = result.toolDefs
       s.prompts[name] = {}
       s.resources[name] = {}
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
@@ -369,6 +396,7 @@ export namespace MCP {
       log.info("mcp server disabled", { key })
       return {
         mcpClient: undefined,
+        toolDefs: undefined,
         status: { status: "disabled" as const },
       }
     }
@@ -527,6 +555,7 @@ export namespace MCP {
     if (!mcpClient) {
       return {
         mcpClient: undefined,
+        toolDefs: undefined,
         status,
       }
     }
@@ -547,6 +576,7 @@ export namespace MCP {
       }
       return {
         mcpClient: undefined,
+        toolDefs: undefined,
         status: {
           status: "failed" as const,
           error: "Failed to get tools",
@@ -557,6 +587,7 @@ export namespace MCP {
     log.info("create() successfully created client", { key, toolCount: result.tools.length })
     return {
       mcpClient,
+      toolDefs: result.tools,
       status,
     }
   }
@@ -608,6 +639,7 @@ export namespace MCP {
     s.status[name] = result.status
     if (result.mcpClient) {
       s.clients[name] = result.mcpClient
+      if (result.toolDefs) s.toolDefs[name] = result.toolDefs
       s.prompts[name] = {}
       s.resources[name] = {}
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
@@ -633,40 +665,60 @@ export namespace MCP {
     }
     delete s.prompts[name]
     delete s.resources[name]
+    delete s.toolDefs[name]
     s.status[name] = { status: "disabled" }
   }
 
   export async function tools() {
     const result: Record<string, Tool> = {}
     const s = await state()
-    const clientsSnapshot = await clients()
+    const config = await Config.get()
+    const callTimeout = config.experimental?.mcp_timeout
+    const listTimeout = callTimeout ?? DEFAULT_TIMEOUT
 
-    for (const [clientName, client] of Object.entries(clientsSnapshot)) {
-      // Only include tools from connected MCPs (skip disabled ones)
-      if (s.status[clientName]?.status !== "connected") {
-        continue
-      }
+    // Fetch tool lists for any connected client missing a cache entry.
+    const missing = Object.entries(s.clients).filter(
+      ([name]) => s.status[name]?.status === "connected" && !s.toolDefs[name],
+    )
 
-      const toolsResult = await client.listTools().catch((e) => {
-        log.error("failed to get tools", { clientName, error: e.message })
-        s.status[clientName] = {
-          status: "failed" as const,
-          error: e instanceof Error ? e.message : String(e),
-        }
-        delete s.clients[clientName]
-        delete s.prompts[clientName]
-        delete s.resources[clientName]
-        return undefined
-      })
-      if (!toolsResult) {
-        continue
-      }
-      for (const mcpTool of toolsResult.tools) {
-        const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
-        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
-        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client)
+    if (missing.length > 0) {
+      const fetched = await Promise.all(
+        missing.map(async ([clientName, client]) => {
+          const toolsResult = await withTimeout(client.listTools(), listTimeout).catch((e) => {
+            log.error("failed to get tools", { clientName, error: e instanceof Error ? e.message : String(e) })
+            s.status[clientName] = {
+              status: "failed" as const,
+              error: e instanceof Error ? e.message : String(e),
+            }
+            delete s.clients[clientName]
+            delete s.prompts[clientName]
+            delete s.resources[clientName]
+            delete s.toolDefs[clientName]
+            return undefined
+          })
+          if (!toolsResult) return undefined
+          return { clientName, tools: toolsResult.tools } as const
+        }),
+      )
+
+      for (const entry of fetched) {
+        if (!entry) continue
+        s.toolDefs[entry.clientName] = entry.tools
       }
     }
+
+    // Build result from cached defs across all connected clients
+    for (const [clientName, defs] of Object.entries(s.toolDefs)) {
+      if (s.status[clientName]?.status !== "connected") continue
+      const client = s.clients[clientName]
+      if (!client) continue
+      for (const mcpTool of defs) {
+        const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
+        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, callTimeout)
+      }
+    }
+
     return result
   }
 
