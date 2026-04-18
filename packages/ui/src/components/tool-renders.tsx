@@ -17,7 +17,14 @@ import { DiagramRenderer } from "./diagram"
 import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { ToolTextOutput } from "./tool-output-text"
-import { ToolRegistry, getToolInfo, getDirectory, getDiagnostics, DiagnosticsDisplay } from "./message-part"
+import {
+  ToolRegistry,
+  getToolInfo,
+  getQzToolInfo,
+  getDirectory,
+  getDiagnostics,
+  DiagnosticsDisplay,
+} from "./message-part"
 
 ToolRegistry.register({
   name: "read",
@@ -1937,3 +1944,50 @@ ToolRegistry.register({
     )
   },
 })
+
+const qzToolNames = [
+  "qzcli_qz_auth_login",
+  "qzcli_qz_set_cookie",
+  "qzcli_qz_list_workspaces",
+  "qzcli_qz_refresh_resources",
+  "qzcli_qz_get_availability",
+  "qzcli_qz_list_jobs",
+  "qzcli_qz_get_job_detail",
+  "qzcli_qz_stop_job",
+  "qzcli_qz_get_usage",
+  "qzcli_qz_inspect_status_catalog",
+  "qzcli_qz_track_job",
+  "qzcli_qz_list_tracked_jobs",
+  "qzcli_qz_create_job",
+  "qzcli_qz_create_hpc_job",
+  "qzcli_qz_get_hpc_usage",
+] as const
+
+for (const name of qzToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getQzToolInfo(name, props.input, props.metadata)
+      if (!info) return undefined as any
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={{
+            title: info.title,
+            subtitle: info.subtitle || "",
+            args: info.args || [],
+          }}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}

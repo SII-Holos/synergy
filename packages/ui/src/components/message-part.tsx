@@ -173,7 +173,181 @@ export type ToolInfo = {
   subtitle?: string
 }
 
-export function getToolInfo(tool: string, input: any = {}): ToolInfo {
+export type ToolTriggerInfo = ToolInfo & {
+  args?: string[]
+}
+
+function shortToken(value: unknown, max = 16) {
+  if (typeof value !== "string" || !value) return undefined
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
+}
+
+function pushArg(args: string[], value: unknown) {
+  if (!value) return
+  args.push(String(value))
+}
+
+function qzScopeLabel(input: any = {}) {
+  return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
+}
+
+export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}): ToolTriggerInfo | undefined {
+  switch (tool) {
+    case "qzcli_qz_auth_login": {
+      const args: string[] = []
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "key-round",
+        title: "QZ Login",
+        subtitle: input.username,
+        args,
+      }
+    }
+    case "qzcli_qz_set_cookie": {
+      const args: string[] = []
+      pushArg(args, input.test === false ? "save only" : "validate")
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "fingerprint",
+        title: "Set Cookie",
+        subtitle: input.workspace_id || "Local auth",
+        args,
+      }
+    }
+    case "qzcli_qz_list_workspaces":
+      return {
+        icon: "building-2",
+        title: "Workspaces",
+        subtitle: input.refresh === false ? "Cached" : "Refresh",
+      }
+    case "qzcli_qz_refresh_resources": {
+      const args: string[] = []
+      pushArg(args, input.all_workspaces ? "all" : undefined)
+      return {
+        icon: "layers",
+        title: "Refresh Resources",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_get_availability": {
+      const args: string[] = []
+      pushArg(args, input.required_nodes ? `${input.required_nodes}+ nodes` : undefined)
+      pushArg(args, input.include_low_priority ? "low priority" : undefined)
+      return {
+        icon: "signal",
+        title: "Availability",
+        subtitle: input.group || qzScopeLabel(input) || "Default target",
+        args,
+      }
+    }
+    case "qzcli_qz_list_jobs": {
+      const args: string[] = []
+      pushArg(args, input.running_only ? "running" : undefined)
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      return {
+        icon: "boxes",
+        title: "Jobs",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_get_job_detail":
+      return {
+        icon: "glasses",
+        title: "Job Detail",
+        subtitle: shortToken(input.job_id, 20),
+      }
+    case "qzcli_qz_stop_job":
+      return {
+        icon: "circle-stop",
+        title: "Stop Job",
+        subtitle: shortToken(input.job_id, 20),
+      }
+    case "qzcli_qz_get_usage":
+      return {
+        icon: "gauge",
+        title: "GPU Usage",
+        subtitle: qzScopeLabel(input) || "All workspaces",
+      }
+    case "qzcli_qz_inspect_status_catalog": {
+      const args: string[] = []
+      pushArg(args, input.limit_per_workspace ? `limit ${input.limit_per_workspace}` : undefined)
+      pushArg(args, input.sample_limit ? `sample ${input.sample_limit}` : undefined)
+      return {
+        icon: "table",
+        title: "Status Catalog",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_track_job": {
+      const args: string[] = []
+      pushArg(args, input.source)
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "pin",
+        title: "Track Job",
+        subtitle: input.name || shortToken(input.job_id, 20),
+        args,
+      }
+    }
+    case "qzcli_qz_list_tracked_jobs": {
+      const args: string[] = []
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      pushArg(args, input.refresh === false ? "cached" : "refresh")
+      return {
+        icon: "list-checks",
+        title: "Tracked Jobs",
+        subtitle: input.running_only ? "Running only" : "All tracked",
+        args,
+      }
+    }
+    case "qzcli_qz_create_job": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.instances ? `${input.instances}x` : undefined)
+      return {
+        icon: "rocket",
+        title: "Submit Job",
+        subtitle: input.name,
+        args,
+      }
+    }
+    case "qzcli_qz_create_hpc_job": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.instances ? `${input.instances} node${input.instances === 1 ? "" : "s"}` : undefined)
+      pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
+      return {
+        icon: "cpu",
+        title: "Submit HPC Job",
+        subtitle: input.name,
+        args,
+      }
+    }
+    case "qzcli_qz_get_hpc_usage": {
+      const args: string[] = []
+      pushArg(args, input.compute_group)
+      pushArg(args, input.verbose ? `top ${input.top || 30}` : undefined)
+      return {
+        icon: "server",
+        title: "HPC Usage",
+        subtitle: qzScopeLabel(input) || "All workspaces",
+        args,
+      }
+    }
+    default:
+      return undefined
+  }
+}
+
+export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolInfo {
+  const qz = getQzToolInfo(tool, input, metadata)
+  if (qz) return qz
+
   switch (tool) {
     case "read":
       return {
