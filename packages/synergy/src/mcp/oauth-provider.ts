@@ -10,8 +10,20 @@ import { Log } from "../util/log"
 
 const log = Log.create({ service: "mcp.oauth" })
 
-const OAUTH_CALLBACK_PORT = 19876
+const DEFAULT_OAUTH_CALLBACK_PORT = 19876
 const OAUTH_CALLBACK_PATH = "/mcp/oauth/callback"
+
+function getOAuthCallbackPort(): number {
+  const value = process.env.SYNERGY_OAUTH_CALLBACK_PORT
+  if (!value) return DEFAULT_OAUTH_CALLBACK_PORT
+
+  const port = Number(value)
+  if (!Number.isInteger(port) || port <= 0) {
+    return DEFAULT_OAUTH_CALLBACK_PORT
+  }
+
+  return port
+}
 
 export interface McpOAuthConfig {
   clientId?: string
@@ -32,7 +44,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   ) {}
 
   get redirectUrl(): string {
-    return `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}`
+    return `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}`
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -155,4 +167,4 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 }
 
-export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH }
+export { DEFAULT_OAUTH_CALLBACK_PORT as OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH, getOAuthCallbackPort }

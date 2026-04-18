@@ -1,12 +1,43 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test"
+import { describe, expect, test, beforeAll, beforeEach, afterAll, afterEach } from "bun:test"
 import fs from "fs/promises"
-import { McpOAuthProvider, OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH } from "../../src/mcp/oauth-provider"
+import { McpOAuthProvider, OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "../../src/mcp/oauth-provider"
 import { McpAuth } from "../../src/mcp/auth"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { Global } from "../../src/global"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
+
+let originalOAuthCallbackPort: string | undefined
+
+async function reserveCallbackPort(): Promise<number> {
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      return new Response("ok")
+    },
+  })
+  const port = server.port
+  if (port === undefined) {
+    server.stop(true)
+    throw new Error("Failed to reserve OAuth callback port")
+  }
+  server.stop(true)
+  return port
+}
+
+beforeAll(async () => {
+  originalOAuthCallbackPort = process.env.SYNERGY_OAUTH_CALLBACK_PORT
+  process.env.SYNERGY_OAUTH_CALLBACK_PORT = String(await reserveCallbackPort())
+})
+
+afterAll(() => {
+  if (originalOAuthCallbackPort === undefined) {
+    delete process.env.SYNERGY_OAUTH_CALLBACK_PORT
+    return
+  }
+  process.env.SYNERGY_OAUTH_CALLBACK_PORT = originalOAuthCallbackPort
+})
 
 describe("McpOAuthProvider", () => {
   let backup: string | undefined
@@ -43,7 +74,7 @@ describe("McpOAuthProvider", () => {
 
   test("redirectUrl uses correct port and path", () => {
     const { provider } = createProvider()
-    expect(provider.redirectUrl).toBe(`http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}`)
+    expect(provider.redirectUrl).toBe(`http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}`)
   })
 
   test("clientMetadata returns correct structure without clientSecret", () => {
@@ -369,7 +400,7 @@ describe("McpOAuthCallback", () => {
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
 
     const response = await fetch(
-      `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?code=auth-code-456&state=${oauthState}`,
+      `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?code=auth-code-456&state=${oauthState}`,
     )
 
     expect(response.status).toBe(200)
@@ -387,7 +418,7 @@ describe("McpOAuthCallback", () => {
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
 
     const fetchPromise = fetch(
-      `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?error=access_denied&error_description=User+denied+access&state=${oauthState}`,
+      `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?error=access_denied&error_description=User+denied+access&state=${oauthState}`,
     )
 
     await Promise.allSettled([
@@ -406,7 +437,7 @@ describe("McpOAuthCallback", () => {
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
 
     const fetchPromise = fetch(
-      `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?error=server_error&state=${oauthState}`,
+      `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?error=server_error&state=${oauthState}`,
     )
 
     await Promise.allSettled([fetchPromise, expect(callbackPromise).rejects.toThrow("server_error")])
@@ -415,7 +446,7 @@ describe("McpOAuthCallback", () => {
   test("callback returns 400 when state parameter is missing", async () => {
     await McpOAuthCallback.ensureRunning()
 
-    const response = await fetch(`http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?code=some-code`)
+    const response = await fetch(`http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?code=some-code`)
 
     expect(response.status).toBe(400)
     const body = await response.text()
@@ -428,7 +459,7 @@ describe("McpOAuthCallback", () => {
     const oauthState = "no-code-state"
     McpOAuthCallback.waitForCallback(oauthState).catch(() => {})
 
-    const response = await fetch(`http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?state=${oauthState}`)
+    const response = await fetch(`http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?state=${oauthState}`)
 
     expect(response.status).toBe(400)
     const body = await response.text()
@@ -439,7 +470,7 @@ describe("McpOAuthCallback", () => {
     await McpOAuthCallback.ensureRunning()
 
     const response = await fetch(
-      `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}?code=abc&state=unknown-state`,
+      `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?code=abc&state=unknown-state`,
     )
 
     expect(response.status).toBe(400)
@@ -450,7 +481,7 @@ describe("McpOAuthCallback", () => {
   test("callback returns 404 for wrong path", async () => {
     await McpOAuthCallback.ensureRunning()
 
-    const response = await fetch(`http://127.0.0.1:${OAUTH_CALLBACK_PORT}/wrong/path`)
+    const response = await fetch(`http://127.0.0.1:${getOAuthCallbackPort()}/wrong/path`)
 
     expect(response.status).toBe(404)
   })

@@ -11,7 +11,7 @@ const log = Log.create({ service: "engram.db" })
 let db: Database | undefined
 
 let embeddingDimensions: number | undefined
-let vecTablesExist: boolean = false
+let vecTablesExist = false
 
 const MEMORY_CATEGORIES = [
   "user",
@@ -91,6 +91,15 @@ function open(): Database {
   return conn
 }
 
+function hasVecTables(conn: Database): boolean {
+  const rows = conn
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('vec_experience', 'vec_memory') ORDER BY name",
+    )
+    .all() as { name: string }[]
+  return rows.length === 2
+}
+
 function initialize(conn: Database) {
   conn.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -109,6 +118,8 @@ function initialize(conn: Database) {
   } else if (row.embedding_dimensions) {
     embeddingDimensions = row.embedding_dimensions
   }
+
+  vecTablesExist = hasVecTables(conn)
 
   conn.exec(`
     CREATE TABLE IF NOT EXISTS experience (
@@ -172,13 +183,14 @@ function ensureVecTables(dimensions: number) {
   const conn = open()
   if (embeddingDimensions === dimensions && vecTablesExist) return
 
-  if (embeddingDimensions !== undefined && vecTablesExist) {
+  if (embeddingDimensions !== undefined && vecTablesExist && embeddingDimensions !== dimensions) {
     log.info("embedding dimensions changed, rebuilding vec tables", {
       old: embeddingDimensions,
       new: dimensions,
     })
     conn.exec("DROP TABLE IF EXISTS vec_experience")
     conn.exec("DROP TABLE IF EXISTS vec_memory")
+    vecTablesExist = false
   }
 
   try {
@@ -205,6 +217,7 @@ function ensureVecTables(dimensions: number) {
     conn.prepare("UPDATE schema_version SET embedding_dimensions = ?1").run(dimensions)
     log.info("vec tables ready", { dimensions })
   } catch (e) {
+    vecTablesExist = hasVecTables(conn)
     log.warn("vec tables creation failed, vector search will be unavailable", {
       error: e instanceof Error ? e.message : String(e),
     })
@@ -215,12 +228,16 @@ function vecTablesReady(): boolean {
   return vecTablesExist
 }
 
-function safeVecOp(fn: () => void) {
-  if (!vecTablesExist) return
+function safeVecOp<T>(fn: () => T, fallback: T): T {
+  if (!vecTablesExist) return fallback
   try {
-    fn()
-  } catch {
+    return fn()
+  } catch (e) {
     vecTablesExist = false
+    log.warn("vec table operation failed, disabling vector search for this process", {
+      error: e instanceof Error ? e.message : String(e),
+    })
+    return fallback
   }
 }
 
@@ -232,8 +249,10 @@ export function closeDB() {
   if (db) {
     db.close()
     db = undefined
-    log.info("closed")
   }
+  embeddingDimensions = undefined
+  vecTablesExist = false
+  log.info("closed")
 }
 
 export namespace EngramDB {
@@ -403,7 +422,7 @@ export namespace EngramDB {
       const conn = open()
       conn.prepare("DELETE FROM experience WHERE id = ?1").run(id)
       conn.prepare("DELETE FROM experience_content WHERE id = ?1").run(id)
-      safeVecOp(() => conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id))
+      safeVecOp(() => conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id), undefined)
       log.info("experience.remove", { id })
     }
 
@@ -427,7 +446,7 @@ export namespace EngramDB {
       const conn = open()
       const r1 = conn.prepare("DELETE FROM experience").run()
       conn.prepare("DELETE FROM experience_content").run()
-      safeVecOp(() => conn.prepare("DELETE FROM vec_experience").run())
+      safeVecOp(() => conn.prepare("DELETE FROM vec_experience").run(), undefined)
       log.info("experience.removeAll", { deleted: r1.changes })
       return r1.changes
     }
@@ -443,7 +462,7 @@ export namespace EngramDB {
         for (const { experience_id } of ids) {
           conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(experience_id)
         }
-      })
+      }, undefined)
       log.info("experience.removeByScope", { scopeID, deleted: r1.changes })
       return r1.changes
     }
@@ -455,15 +474,19 @@ export namespace EngramDB {
       scriptVector?: number[],
       scriptThreshold?: number,
     ): { id: string; intentSimilarity: number; scriptSimilarity?: number } | null {
-      if (!vecTablesReady()) return null
       const conn = open()
-      const row = conn
-        .prepare(
-          `SELECT experience_id, distance
-           FROM vec_experience
-           WHERE intent_embedding MATCH ?1 AND k = 1 AND scope_id = ?2`,
-        )
-        .get(toFloat32(intentVector), scopeID) as { experience_id: string; distance: number } | null
+      if (!vecTablesReady()) return null
+      const row = safeVecOp(
+        () =>
+          conn
+            .prepare(
+              `SELECT experience_id, distance
+               FROM vec_experience
+               WHERE intent_embedding MATCH ?1 AND k = 1 AND scope_id = ?2`,
+            )
+            .get(toFloat32(intentVector), scopeID) as { experience_id: string; distance: number } | null,
+        null,
+      )
 
       if (!row) return null
       const intentSimilarity = 1 - row.distance
@@ -473,13 +496,17 @@ export namespace EngramDB {
         return { id: row.experience_id, intentSimilarity }
       }
 
-      const scriptResults = conn
-        .prepare(
-          `SELECT experience_id, distance
-           FROM vec_experience
-           WHERE script_embedding MATCH ?1 AND k = 50 AND scope_id = ?2`,
-        )
-        .all(toFloat32(scriptVector), scopeID) as { experience_id: string; distance: number }[]
+      const scriptResults = safeVecOp(
+        () =>
+          conn
+            .prepare(
+              `SELECT experience_id, distance
+               FROM vec_experience
+               WHERE script_embedding MATCH ?1 AND k = 50 AND scope_id = ?2`,
+            )
+            .all(toFloat32(scriptVector), scopeID) as { experience_id: string; distance: number }[],
+        [] as { experience_id: string; distance: number }[],
+      )
 
       const scriptMatch = scriptResults.find((r) => r.experience_id === row.experience_id)
       if (!scriptMatch) return null
@@ -496,27 +523,35 @@ export namespace EngramDB {
     }
 
     export function searchByIntent(scopeID: string, queryVector: number[], topK: number): KNNResult[] {
-      if (!vecTablesReady()) return []
       const conn = open()
-      return conn
-        .prepare(
-          `SELECT experience_id AS id, distance
-           FROM vec_experience
-           WHERE intent_embedding MATCH ?1 AND k = ?2 AND scope_id = ?3 AND reward_status = 'evaluated'`,
-        )
-        .all(toFloat32(queryVector), topK, scopeID) as KNNResult[]
+      if (!vecTablesReady()) return []
+      return safeVecOp(
+        () =>
+          conn
+            .prepare(
+              `SELECT experience_id AS id, distance
+               FROM vec_experience
+               WHERE intent_embedding MATCH ?1 AND k = ?2 AND scope_id = ?3 AND reward_status = 'evaluated'`,
+            )
+            .all(toFloat32(queryVector), topK, scopeID) as KNNResult[],
+        [] as KNNResult[],
+      )
     }
 
     export function searchByIntentAll(queryVector: number[], topK: number): KNNResult[] {
-      if (!vecTablesReady()) return []
       const conn = open()
-      return conn
-        .prepare(
-          `SELECT experience_id AS id, distance
-           FROM vec_experience
-           WHERE intent_embedding MATCH ?1 AND k = ?2 AND reward_status = 'evaluated'`,
-        )
-        .all(toFloat32(queryVector), topK) as KNNResult[]
+      if (!vecTablesReady()) return []
+      return safeVecOp(
+        () =>
+          conn
+            .prepare(
+              `SELECT experience_id AS id, distance
+               FROM vec_experience
+               WHERE intent_embedding MATCH ?1 AND k = ?2 AND reward_status = 'evaluated'`,
+            )
+            .all(toFloat32(queryVector), topK) as KNNResult[],
+        [] as KNNResult[],
+      )
     }
 
     export interface ApplyRewardInput {
@@ -554,8 +589,9 @@ export namespace EngramDB {
         )
         .run(compositeReward, JSON.stringify(rewards), Date.now(), id)
 
-      safeVecOp(() =>
-        conn.prepare("UPDATE vec_experience SET reward_status = 'evaluated' WHERE experience_id = ?1").run(id),
+      safeVecOp(
+        () => conn.prepare("UPDATE vec_experience SET reward_status = 'evaluated' WHERE experience_id = ?1").run(id),
+        undefined,
       )
 
       const retrievedIDs: string[] = JSON.parse(row.retrieved_experience_ids)
@@ -730,7 +766,7 @@ export namespace EngramDB {
             toFloat32(input.intentEmbedding.vector),
             input.scriptEmbedding ? toFloat32(input.scriptEmbedding.vector) : new Float32Array(dimensions),
           )
-      })
+      }, undefined)
 
       conn
         .prepare(
@@ -806,11 +842,13 @@ export namespace EngramDB {
         .run(input.id, input.title, input.content, input.category, input.recallMode, embedding.model, now, now)
 
       ensureVecTables(embedding.vector.length)
-      safeVecOp(() => {
-        conn
-          .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
-          .run(input.id, input.category, toFloat32(embedding.vector))
-      })
+      safeVecOp(
+        () =>
+          conn
+            .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
+            .run(input.id, input.category, toFloat32(embedding.vector)),
+        undefined,
+      )
 
       log.info("memory.insert", {
         id: input.id,
@@ -850,7 +888,7 @@ export namespace EngramDB {
         conn
           .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
           .run(input.id, input.category, toFloat32(embedding.vector))
-      })
+      }, undefined)
 
       log.info("memory.update", {
         id: input.id,
@@ -913,37 +951,45 @@ export namespace EngramDB {
     }
 
     export function searchByVector(queryVector: number[], topK: number, category?: Category): KNNResult[] {
-      if (!vecTablesReady()) return []
       const conn = open()
+      if (!vecTablesReady()) return []
       if (category) {
-        return conn
-          .prepare(
-            `SELECT memory_id AS id, distance
-             FROM vec_memory
-             WHERE embedding MATCH ?1 AND k = ?2 AND category = ?3`,
-          )
-          .all(toFloat32(queryVector), topK, category) as KNNResult[]
-      }
-      return conn
-        .prepare(
-          `SELECT memory_id AS id, distance
-           FROM vec_memory
-           WHERE embedding MATCH ?1 AND k = ?2`,
+        return safeVecOp(
+          () =>
+            conn
+              .prepare(
+                `SELECT memory_id AS id, distance
+                 FROM vec_memory
+                 WHERE embedding MATCH ?1 AND k = ?2 AND category = ?3`,
+              )
+              .all(toFloat32(queryVector), topK, category) as KNNResult[],
+          [] as KNNResult[],
         )
-        .all(toFloat32(queryVector), topK) as KNNResult[]
+      }
+      return safeVecOp(
+        () =>
+          conn
+            .prepare(
+              `SELECT memory_id AS id, distance
+               FROM vec_memory
+               WHERE embedding MATCH ?1 AND k = ?2`,
+            )
+            .all(toFloat32(queryVector), topK) as KNNResult[],
+        [] as KNNResult[],
+      )
     }
 
     export function remove(id: string) {
       const conn = open()
       conn.prepare("DELETE FROM memory WHERE id = ?1").run(id)
-      safeVecOp(() => conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id))
+      safeVecOp(() => conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id), undefined)
       log.info("memory.remove", { id })
     }
 
     export function removeAll(): number {
       const conn = open()
       const result = conn.prepare("DELETE FROM memory").run()
-      safeVecOp(() => conn.prepare("DELETE FROM vec_memory").run())
+      safeVecOp(() => conn.prepare("DELETE FROM vec_memory").run(), undefined)
       log.info("memory.removeAll", { deleted: result.changes })
       return result.changes
     }

@@ -1,5 +1,5 @@
 import { Log } from "../util/log"
-import { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH } from "./oauth-provider"
+import { OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "./oauth-provider"
 
 const log = Log.create({ service: "mcp.oauth-callback" })
 
@@ -55,18 +55,35 @@ export namespace McpOAuthCallback {
   const pendingAuths = new Map<string, PendingAuth>()
 
   const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+  const PORT_WAIT_TIMEOUT_MS = 1_000
+  const PORT_WAIT_INTERVAL_MS = 25
+
+  async function waitForPortInUse(expected: boolean, timeoutMs = PORT_WAIT_TIMEOUT_MS): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if ((await isPortInUse()) === expected) {
+        return true
+      }
+      await Bun.sleep(PORT_WAIT_INTERVAL_MS)
+    }
+    return (await isPortInUse()) === expected
+  }
+
+  function callbackPort(): number {
+    return getOAuthCallbackPort()
+  }
 
   export async function ensureRunning(): Promise<void> {
     if (server) return
 
-    const running = await isPortInUse()
-    if (running) {
-      log.info("oauth callback server already running on another instance", { port: OAUTH_CALLBACK_PORT })
-      return
+    const port = getOAuthCallbackPort()
+    const portFreed = await waitForPortInUse(false)
+    if (!portFreed) {
+      throw new Error(`OAuth callback port ${port} is already in use`)
     }
 
     server = Bun.serve({
-      port: OAUTH_CALLBACK_PORT,
+      port,
       fetch(req) {
         const url = new URL(req.url)
 
@@ -133,7 +150,7 @@ export namespace McpOAuthCallback {
       },
     })
 
-    log.info("oauth callback server started", { port: OAUTH_CALLBACK_PORT })
+    log.info("oauth callback server started", { port: callbackPort() })
   }
 
   export function waitForCallback(oauthState: string): Promise<string> {
@@ -162,7 +179,7 @@ export namespace McpOAuthCallback {
     return new Promise((resolve) => {
       Bun.connect({
         hostname: "127.0.0.1",
-        port: OAUTH_CALLBACK_PORT,
+        port: callbackPort(),
         socket: {
           open(socket) {
             socket.end()
@@ -184,6 +201,7 @@ export namespace McpOAuthCallback {
     if (server) {
       server.stop()
       server = undefined
+      await waitForPortInUse(false)
       log.info("oauth callback server stopped")
     }
 

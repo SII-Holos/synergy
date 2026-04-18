@@ -184,6 +184,30 @@ describe("EngramDB", () => {
       expect(EngramDB.Experience.list("scope-b")).toHaveLength(1)
     })
 
+    test("searchByIntent still works after close and reopen", () => {
+      const vector = fakeVector([1, 0, 0, 0, 0, 0, 0, 0])
+      makeExperience("exp-search", {
+        intentEmbedding: { id: "emb-search", vector, model: "test-model" },
+      })
+      EngramDB.Experience.applyReward("exp-search", {
+        rewards: { outcome: 1 },
+        rewardWeights: {
+          outcome: 0.35,
+          intent: 0.25,
+          execution: 0.2,
+          orchestration: 0.1,
+          expression: 0.1,
+        },
+        alpha: 0.3,
+      })
+
+      closeDB()
+
+      const results = EngramDB.Experience.searchByIntent("scope-1", vector, 3)
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0]?.id).toBe("exp-search")
+    })
+
     test("listPendingRewards returns pending experiences for a session", () => {
       makeExperience("exp-pend", { sessionID: "sess-pend" })
       EngramDB.Experience.insertFailed({
@@ -593,6 +617,26 @@ describe("EngramDB", () => {
     test("count returns total number", () => {
       makeMemory("mem-1")
       expect(EngramDB.Memory.count()).toBe(1)
+    })
+
+    test("searchByVector still works after close and reopen", () => {
+      const vector = fakeVector([0, 1, 0, 0, 0, 0, 0, 0])
+      EngramDB.Memory.insert(
+        {
+          id: "mem-search",
+          title: "Search memory",
+          content: "Search content",
+          category: "general",
+          recallMode: "search_only",
+        },
+        { id: "emb-memory", vector, model: "test-model" },
+      )
+
+      closeDB()
+
+      const results = EngramDB.Memory.searchByVector(vector, 3)
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0]?.id).toBe("mem-search")
     })
 
     test("CATEGORIES includes all expected categories", () => {
