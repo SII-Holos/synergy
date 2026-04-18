@@ -20,6 +20,7 @@ export namespace LoopJob {
     abort: AbortSignal
     compactionAutoDisabled?: boolean
     modelLimits?: { context: number; output: number }
+    modelID?: string
   }
 
   export interface JobInstance {

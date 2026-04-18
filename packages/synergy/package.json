@@ -88,6 +88,7 @@
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "ignore": "7.0.5",
+    "js-tiktoken": "1.0.21",
     "jsonc-parser": "3.3.1",
     "mammoth": "1.11.0",
     "nodemailer": "8.0.3",

@@ -557,6 +557,94 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: "Connect",
         subtitle: input.envID,
       }
+    // qzcli — 启智平台
+    case "qzcli_qz_auth_login":
+      return {
+        icon: "key-round",
+        title: "QZ Login",
+        subtitle: input.username,
+      }
+    case "qzcli_qz_set_cookie":
+      return {
+        icon: "fingerprint",
+        title: "Set Cookie",
+      }
+    case "qzcli_qz_list_workspaces":
+      return {
+        icon: "building-2",
+        title: "Workspaces",
+      }
+    case "qzcli_qz_refresh_resources":
+      return {
+        icon: "layers",
+        title: "Refresh Resources",
+        subtitle: input.workspace || (input.all_workspaces ? "All" : undefined),
+      }
+    case "qzcli_qz_get_availability":
+      return {
+        icon: "signal",
+        title: "Availability",
+        subtitle: input.group || input.workspace,
+      }
+    case "qzcli_qz_list_jobs":
+      return {
+        icon: "boxes",
+        title: "Jobs",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_get_job_detail":
+      return {
+        icon: "scan",
+        title: "Job Detail",
+        subtitle: input.job_id,
+      }
+    case "qzcli_qz_stop_job":
+      return {
+        icon: "circle-stop",
+        title: "Stop Job",
+        subtitle: input.job_id,
+      }
+    case "qzcli_qz_get_usage":
+      return {
+        icon: "gauge",
+        title: "GPU Usage",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_inspect_status_catalog":
+      return {
+        icon: "stethoscope",
+        title: "Status Catalog",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_track_job":
+      return {
+        icon: "crosshair",
+        title: "Track Job",
+        subtitle: input.name || input.job_id,
+      }
+    case "qzcli_qz_list_tracked_jobs":
+      return {
+        icon: "radar",
+        title: "Tracked Jobs",
+      }
+    case "qzcli_qz_create_job":
+      return {
+        icon: "rocket",
+        title: "Submit Job",
+        subtitle: input.name,
+      }
+    case "qzcli_qz_create_hpc_job":
+      return {
+        icon: "cpu",
+        title: "Submit HPC Job",
+        subtitle: input.name,
+      }
+    case "qzcli_qz_get_hpc_usage":
+      return {
+        icon: "hard-drive",
+        title: "HPC Usage",
+        subtitle: input.workspace,
+      }
     default:
       return {
         icon: "settings",

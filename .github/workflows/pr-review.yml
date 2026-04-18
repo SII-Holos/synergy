@@ -1,8 +1,7 @@
 name: PR Review
 
-on:
-  pull_request:
-    types: [opened, synchronize]
+# TODO: Re-enable AI review once the workflow is fixed
+on: {}
 
 permissions:
   pull-requests: write
@@ -12,7 +11,7 @@ jobs:
   review:
     name: AI Review
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: false
     steps:
       - uses: actions/checkout@v4
         with:
