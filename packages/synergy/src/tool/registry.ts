@@ -23,6 +23,7 @@ import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
+import { SessionControlTool } from "./session-control"
 import { AgendaCreateTool } from "./agenda-create"
 import { AgendaListTool } from "./agenda-list"
 import { AgendaUpdateTool } from "./agenda-update"
@@ -175,6 +176,7 @@ export namespace ToolRegistry {
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
+      SessionControlTool,
       AgendaCreateTool,
       AgendaListTool,
       AgendaUpdateTool,

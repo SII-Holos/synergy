@@ -28,6 +28,7 @@ export type SemanticCategory =
   | "dag"
   | "schedule"
   | "session"
+  | "session-control"
   | "community"
   | "network"
   | "analyze"
@@ -106,6 +107,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     label: "Session",
     subtitleKeys: ["target", "pattern"],
     argsKeys: ["scope"],
+  },
+  "session-control": {
+    icon: "radar",
+    label: "Control",
+    subtitleKeys: ["target"],
+    argsKeys: ["action"],
   },
   community: {
     icon: "compass",
@@ -243,6 +250,7 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
   session_read: "session",
   session_search: "session",
   session_send: "session",
+  session_control: "session-control",
 
   // community
   agora_search: "community",

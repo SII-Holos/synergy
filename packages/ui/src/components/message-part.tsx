@@ -588,6 +588,59 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Send Message",
         subtitle: input.target,
       }
+    case "session_control": {
+      const action = input.action as string | undefined
+      switch (action) {
+        case "status":
+          return {
+            icon: "radar",
+            title: "Session Status",
+            subtitle: input.target,
+          }
+        case "compact":
+          return {
+            icon: "layers",
+            title: "Compact Session",
+            subtitle: input.target,
+          }
+        case "abort":
+          return {
+            icon: "circle-stop",
+            title: "Abort Session",
+            subtitle: input.target,
+          }
+        case "question_reply":
+          return {
+            icon: "message-circle",
+            title: "Answer Question",
+            subtitle: input.target,
+          }
+        case "question_reject":
+          return {
+            icon: "circle-x",
+            title: "Dismiss Question",
+            subtitle: input.target,
+          }
+        case "permission_reply":
+          return {
+            icon: input.reply === "reject" ? "shield-alert" : "shield-check",
+            title: input.reply === "reject" ? "Deny Permission" : "Approve Permission",
+            subtitle: input.target,
+          }
+        case "set_allow_all":
+          return {
+            icon: input.enabled ? "shield-check" : "shield-alert",
+            title: input.enabled ? "Enable Allow All" : "Disable Allow All",
+            subtitle: input.target,
+          }
+        default:
+          return {
+            icon: "radar",
+            title: "Control Session",
+            subtitle: input.target,
+          }
+      }
+    }
     case "profile_get":
       return {
         icon: "user",
