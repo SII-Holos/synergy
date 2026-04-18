@@ -26,7 +26,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
   const ctx = createMemo(() => {
     const last = props.messages().findLast((x) => {
       if (x.role !== "assistant") return false
-      const total = x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
+      const total = x.tokens.input + x.tokens.cache.read + x.tokens.output + x.tokens.reasoning
       return total > 0
     }) as AssistantMessage
     if (!last) return
@@ -40,7 +40,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
     const reasoning = last.tokens.reasoning
     const cacheRead = last.tokens.cache.read
     const cacheWrite = last.tokens.cache.write
-    const total = input + output + reasoning + cacheRead + cacheWrite
+    const total = input + cacheRead + output + reasoning
     const usage = limit ? Math.round((total / limit) * 100) : null
 
     return {

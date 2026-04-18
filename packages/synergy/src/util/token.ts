@@ -6,8 +6,8 @@ export namespace Token {
   const CHARS_PER_TOKEN = 4
 
   /**
-   * Fast heuristic token estimate. Used as the universal fallback when an
-   * accurate tokenizer is unavailable (non-OpenAI models, init failure, etc.).
+   * Fast heuristic token estimate. Used as the fallback when the tiktoken
+   * BPE data fails to load at runtime (init failure, import error, etc.).
    */
   export function estimate(input: string) {
     return Math.max(0, Math.round((input || "").length / CHARS_PER_TOKEN))
@@ -51,32 +51,20 @@ export namespace Token {
   }
 
   /**
-   * Map a model ID (as seen in Provider.Model.id) to a tiktoken encoding.
-   * Returns `undefined` for non-OpenAI models where no public BPE vocabulary
-   * exists, signaling the caller to fall back to the heuristic estimator.
+   * Map a model ID to a tiktoken encoding.
    *
    * Encoding assignments:
    *   o200k_base  – GPT-4o, GPT-4.1, GPT-4.5, GPT-5, o1, o3, o4, chatgpt-4o-latest
    *   cl100k_base – GPT-4, GPT-4-turbo, GPT-3.5-turbo, text-embedding-3-*
+   *
+   * All other models (Claude, Gemini, DeepSeek, Qwen, etc.) default to
+   * o200k_base. While not an exact match for their tokenizers, BPE-based
+   * o200k_base approximates multilingual token counts far more accurately
+   * than character-based heuristics (chars/4), which can underestimate
+   * CJK text by 4-8x.
    */
-  export function encodingForModelID(modelID: string): EncodingName | undefined {
+  export function encodingForModelID(modelID: string): EncodingName {
     const id = modelID.toLowerCase()
-
-    // Non-OpenAI providers — no public tokenizer
-    if (
-      id.includes("claude") ||
-      id.includes("gemini") ||
-      id.includes("qwen") ||
-      id.includes("deepseek") ||
-      id.includes("glm") ||
-      id.includes("minimax") ||
-      id.includes("kimi") ||
-      id.includes("mistral") ||
-      id.includes("llama") ||
-      id.includes("yi-") ||
-      id.includes("command")
-    )
-      return undefined
 
     // o200k_base family (newest OpenAI models)
     if (
@@ -100,16 +88,16 @@ export namespace Token {
     )
       return "cl100k_base"
 
-    // Unknown OpenAI-ish model — use o200k_base as the most likely encoding
-    // for any future OpenAI model not yet in our list.
-    if (id.includes("gpt") || id.startsWith("o")) return "o200k_base"
-
-    return undefined
+    // All other models — o200k_base is the best available approximation.
+    // Every major LLM uses BPE tokenization with similar subword granularity;
+    // o200k_base covers multilingual text well and approximates non-OpenAI
+    // tokenizers far more accurately than character-based heuristics.
+    return "o200k_base"
   }
 
   /**
-   * Count tokens using a model-specific tokenizer when available,
-   * falling back to the `chars / 4` heuristic for unsupported models.
+   * Count tokens using a tiktoken encoding matched to the model.
+   * Falls back to the `chars / 4` heuristic only when BPE data fails to load.
    *
    * This is async because the first call for a given encoding lazily imports
    * the BPE rank data (~2MB per encoding). Subsequent calls for the same
@@ -118,7 +106,6 @@ export namespace Token {
   export async function estimateModel(modelID: string, input: string): Promise<number> {
     if (!input) return 0
     const encoding = encodingForModelID(modelID)
-    if (!encoding) return estimate(input)
     const tokenizer = await getTokenizer(encoding)
     if (!tokenizer) return estimate(input)
     try {
@@ -137,7 +124,6 @@ export namespace Token {
   export function estimateModelSync(modelID: string, input: string): number {
     if (!input) return 0
     const encoding = encodingForModelID(modelID)
-    if (!encoding) return estimate(input)
     const tokenizer = encoderCache.get(encoding)
     if (!tokenizer) return estimate(input)
     try {
@@ -154,6 +140,6 @@ export namespace Token {
    */
   export async function warmup(modelID: string): Promise<void> {
     const encoding = encodingForModelID(modelID)
-    if (encoding) await getTokenizer(encoding)
+    await getTokenizer(encoding)
   }
 }

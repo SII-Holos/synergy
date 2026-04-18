@@ -1,5 +1,4 @@
 import { LoopJob } from "./loop-job"
-import { LLM } from "./llm"
 import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
@@ -23,8 +22,7 @@ LoopJob.defineSignal({
     const limits = ctx.modelLimits
     if (!limits || limits.context === 0) return false
 
-    const output = Math.min(limits.output, LLM.OUTPUT_TOKEN_MAX) || LLM.OUTPUT_TOKEN_MAX
-    const usable = limits.context - output
+    const usable = limits.context
 
     // Check 1: previous turn's actual token usage is near or exceeds the limit.
     // Skipped when the last assistant is a compaction summary (just compacted).
@@ -36,7 +34,7 @@ LoopJob.defineSignal({
     if (source && source.summary !== true) {
       const tokens = source.tokens
       lastActualInput = tokens.input + tokens.cache.read
-      const count = lastActualInput + tokens.output
+      const count = lastActualInput + tokens.output + tokens.reasoning
       if (count > usable * 0.95) return injectCompaction(ctx)
     }
 
@@ -87,6 +85,14 @@ function injectCompaction(ctx: LoopJob.Context): true {
 
 function estimateConversationTokens(messages: MessageV2.WithParts[], modelID?: string): number {
   const est = (text: string) => (modelID ? Token.estimateModelSync(modelID, text) : Token.estimate(text))
+  const estJSON = (value: unknown) => {
+    if (typeof value === "string") return est(value)
+    try {
+      return est(JSON.stringify(value))
+    } catch {
+      return 0
+    }
+  }
   let total = 0
   for (const msg of messages) {
     total += 4
@@ -97,10 +103,10 @@ function estimateConversationTokens(messages: MessageV2.WithParts[], modelID?: s
           break
         case "tool":
           if (part.state.status === "completed") {
-            total += Token.estimateJSON(part.state.input)
+            total += estJSON(part.state.input)
             total += part.state.time.compacted ? 10 : est(part.state.output)
           } else if (part.state.status === "error") {
-            total += Token.estimateJSON(part.state.input)
+            total += estJSON(part.state.input)
             total += est(part.state.error)
           }
           break
