@@ -630,6 +630,8 @@ export default function Page() {
     scheduleTurnBackfill()
   }
 
+  const hydratedSessions = new Set<string>()
+
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
@@ -637,6 +639,9 @@ export default function Page() {
         cancelTurnBackfill()
         setStore("turnStart", 0)
         if (!id || !ready) return
+
+        if (hydratedSessions.has(id)) return
+        hydratedSessions.add(id)
 
         const len = visibleUserMessages().length
         const start = len > turnInit ? len - turnInit : 0
@@ -728,17 +733,21 @@ export default function Page() {
     })
   }
 
+  const initializedSessions = new Set<string>()
+
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
-      ([sessionID, ready], prev) => {
+      ([sessionID, ready]) => {
         if (initScrollFrame !== undefined) {
           cancelAnimationFrame(initScrollFrame)
           initScrollFrame = undefined
         }
 
         if (!sessionID || !ready) return
-        if (prev && prev[0] === sessionID && prev[1]) return
+
+        if (initializedSessions.has(sessionID)) return
+        initializedSessions.add(sessionID)
 
         initScrollFrame = requestAnimationFrame(() => {
           initScrollFrame = undefined

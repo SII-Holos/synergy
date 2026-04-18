@@ -47,6 +47,7 @@ awcp-paper/
 research/
 data/
 *.tgz
+Auto-claude-code-research-in-sleep/
 
 # Runtime caches
 local_cache/

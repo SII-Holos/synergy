@@ -70,6 +70,7 @@ interface QuickActionsProps {
   onSend: (prompt: string) => void
   onCommand: (commandId: string) => void
   disabled?: boolean
+  class?: string
 }
 
 export function QuickActions(props: QuickActionsProps) {
@@ -80,7 +81,7 @@ export function QuickActions(props: QuickActionsProps) {
   })
 
   return (
-    <div class="absolute -top-3 right-5 z-20">
+    <div class={props.class ?? "absolute -top-3 right-5 z-20"}>
       <Show when={open()}>
         <div class="qa-cloud absolute bottom-full right-0 mb-1.5">
           <div class="flex flex-wrap items-center justify-end gap-1.5 max-w-80">
