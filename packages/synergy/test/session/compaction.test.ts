@@ -317,7 +317,7 @@ describe("util.token.encodingForModelID", () => {
     }
   })
 
-  test("returns undefined for non-OpenAI models", () => {
+  test("defaults non-OpenAI models to o200k_base", () => {
     for (const id of [
       "claude-3-opus-20240229",
       "gemini-1.5-pro",
@@ -326,7 +326,7 @@ describe("util.token.encodingForModelID", () => {
       "glm-4",
       "mistral-large",
     ]) {
-      expect(Token.encodingForModelID(id)).toBeUndefined()
+      expect(Token.encodingForModelID(id)).toBe("o200k_base")
     }
   })
 
@@ -335,8 +335,8 @@ describe("util.token.encodingForModelID", () => {
     expect(Token.encodingForModelID("o99")).toBe("o200k_base")
   })
 
-  test("returns undefined for completely unknown models", () => {
-    expect(Token.encodingForModelID("some-random-model")).toBeUndefined()
+  test("defaults completely unknown models to o200k_base", () => {
+    expect(Token.encodingForModelID("some-random-model")).toBe("o200k_base")
   })
 })
 
@@ -353,9 +353,9 @@ describe("util.token.estimateModel", () => {
     expect(count).toBeGreaterThan(heuristic)
   })
 
-  test("falls back to chars/4 for non-OpenAI model", async () => {
+  test("returns o200k-based count for non-OpenAI model", async () => {
     const count = await Token.estimateModel("claude-3-opus-20240229", cjk)
-    expect(count).toBe(heuristic)
+    expect(count).toBeGreaterThan(heuristic)
   })
 
   test("returns 0 for empty string", async () => {
