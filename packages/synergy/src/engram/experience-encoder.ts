@@ -58,7 +58,6 @@ export namespace ExperienceEncoder {
     if (session.parentID) return { encoded: false, skipped: true }
     if (SessionEndpoint.type(session.endpoint) === "genesis") return { encoded: false, skipped: true }
     if (SessionEndpoint.isHolos(session.endpoint)) return { encoded: false, skipped: true }
-    if (session.agenda) return { encoded: false, skipped: true }
 
     const scope = session.scope as Scope
 
@@ -192,7 +191,6 @@ export namespace ExperienceEncoder {
     if (session?.parentID) return
     if (SessionEndpoint.type(session?.endpoint) === "genesis") return
     if (SessionEndpoint.isHolos(session?.endpoint)) return
-    if (session?.agenda) return
 
     const config = await Config.get()
     const evo = Config.resolveEvolution(config.identity?.evolution)

@@ -31,7 +31,14 @@ import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
-import { buildMemoryContext, RECALL_TIMEOUT_MS } from "./recall"
+import {
+  buildMemoryContext,
+  buildAlwaysOnlyMemoryContext,
+  cacheResult,
+  getCachedResult,
+  evictRecallCache,
+  RECALL_TIMEOUT_MS,
+} from "./recall"
 import "./title"
 
 import { LLM } from "./llm"
@@ -59,6 +66,7 @@ export namespace SessionInvoke {
   export const assertIdle = SessionManager.assertIdle
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
+    evictRecallCache(sessionID)
     SessionManager.release(sessionID).catch((err) => {
       log.error("release failed", { sessionID, error: err })
     })
@@ -395,10 +403,12 @@ export namespace SessionInvoke {
           }
         }
 
-        if (step === 1 && !session.parentID && SessionEndpoint.type(session.endpoint) !== "genesis") {
+        const isTopSession = !session.parentID
+        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
+
+        if (step === 1 && isTopSession && !isGenesis) {
           SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
-          const config = await Config.get()
-          const evo = Config.resolveEvolution(config.identity?.evolution)
+          const evo = Config.resolveEvolution((await Config.get()).identity?.evolution)
           const memoryResult = await withTimeout(
             buildMemoryContext(sessionID, scopeID, sessionMessages, evo),
             RECALL_TIMEOUT_MS,
@@ -408,6 +418,7 @@ export namespace SessionInvoke {
           })
           if (memoryResult) {
             systemParts.push(memoryResult.context)
+            cacheResult(sessionID, memoryResult)
             const { injection } = memoryResult
             if (injection.memory || injection.experience) {
               const updated: MessageV2.User = {
@@ -416,6 +427,15 @@ export namespace SessionInvoke {
               }
               await Session.updateMessage(updated)
             }
+          }
+        } else if (step > 1 && isTopSession && lastUserParts?.some((p) => p.type === "compaction")) {
+          const cached = getCachedResult(sessionID)
+          if (cached) systemParts.push(cached.context)
+        } else if (step === 1 && !isTopSession) {
+          const evo = Config.resolveEvolution((await Config.get()).identity?.evolution)
+          if (evo.active) {
+            const alwaysContext = buildAlwaysOnlyMemoryContext()
+            if (alwaysContext) systemParts.push(alwaysContext)
           }
         }
 
@@ -510,6 +530,8 @@ export namespace SessionInvoke {
     for (const mail of assistantMails) {
       await writeAssistantMail(sessionID, mail)
     }
+
+    evictRecallCache(sessionID)
 
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
     if (!resultMessage) {
