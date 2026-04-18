@@ -1799,7 +1799,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
-        <QuickActions onSend={sendQuickAction} onCommand={(id) => command.trigger(id)} disabled={working()} />
+        <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+          <Tooltip placement="top" value={layout.terminal.opened() ? "Hide terminal" : "Open terminal"}>
+            <button
+              type="button"
+              classList={{
+                "flex items-center justify-center size-6 rounded-full border active:scale-90 transition-all shadow-xs": true,
+                "bg-surface-raised-stronger-non-alpha border-border-base text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover":
+                  !layout.terminal.opened(),
+                "bg-surface-raised-base-hover border-border-weak-base text-icon-base": layout.terminal.opened(),
+              }}
+              onClick={() => layout.terminal.toggle()}
+            >
+              <Icon name={layout.terminal.opened() ? "chevron-down" : "chevron-up"} size="small" />
+            </button>
+          </Tooltip>
+          <QuickActions
+            class="relative"
+            onSend={sendQuickAction}
+            onCommand={(id) => command.trigger(id)}
+            disabled={working()}
+          />
+        </div>
       </Show>
       <Show when={store.popover}>
         <div
