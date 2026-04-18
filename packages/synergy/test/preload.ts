@@ -22,6 +22,9 @@ process.env["SYNERGY_TEST_HOME"] = testHome
 const cacheDir = path.join(testHome, ".synergy", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "15")
+// Pre-create node_modules in global config dir so Config.installDependencies skips the await
+const globalConfigDir = path.join(testHome, ".synergy", "config")
+await fs.mkdir(path.join(globalConfigDir, "node_modules"), { recursive: true })
 const modelsCachePath = path.join(cacheDir, "models.json")
 try {
   const response = await fetch("https://models.dev/api.json", {

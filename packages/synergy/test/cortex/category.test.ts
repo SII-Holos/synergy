@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Category } from "../../src/cortex/category"
+import { Config } from "../../src/config/config"
 import { Instance } from "../../src/scope/instance"
 import { tmpdir } from "../fixture/fixture"
 
@@ -68,6 +69,7 @@ describe("Category", () => {
       await Instance.provide({
         scope: await tmp.scope(),
         fn: async () => {
+          await Config.state.reset()
           const result = await Category.resolve("visual-engineering")
           expect(result).toBeDefined()
           expect(result?.model).toBe("creative/visual-model")
@@ -102,6 +104,7 @@ describe("Category", () => {
       await Instance.provide({
         scope: await tmp.scope(),
         fn: async () => {
+          await Config.state.reset()
           const result = await Category.resolve("visual-engineering")
           expect(result).toBeDefined()
           expect(result?.model).toBe("custom/model")
@@ -128,6 +131,7 @@ describe("Category", () => {
       await Instance.provide({
         scope: await tmp.scope(),
         fn: async () => {
+          await Config.state.reset()
           const result = await Category.resolve("custom")
           expect(result).toBeDefined()
           expect(result?.model).toBe("custom/custom-model")
@@ -170,6 +174,7 @@ describe("Category", () => {
       await Instance.provide({
         scope: await tmp.scope(),
         fn: async () => {
+          await Config.state.reset()
           const categories = await Category.list()
           expect(categories).toContain("custom")
           expect(categories).toContain("visual-engineering")
