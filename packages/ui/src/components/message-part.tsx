@@ -224,7 +224,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       const args: string[] = []
       pushArg(args, input.all_workspaces ? "all" : undefined)
       return {
-        icon: "layers",
+        icon: "refresh-ccw",
         title: "Refresh Resources",
         subtitle: qzScopeLabel(input) || "Default workspace",
         args,
@@ -254,7 +254,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
     }
     case "qzcli_qz_get_job_detail":
       return {
-        icon: "glasses",
+        icon: "scan",
         title: "Job Detail",
         subtitle: shortToken(input.job_id, 20),
       }
@@ -297,7 +297,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       pushArg(args, input.refresh === false ? "cached" : "refresh")
       return {
-        icon: "list-checks",
+        icon: "binoculars",
         title: "Tracked Jobs",
         subtitle: input.running_only ? "Running only" : "All tracked",
         args,
@@ -560,7 +560,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "context7_query-docs":
       return {
-        icon: "glasses",
+        icon: "file-text",
         title: "Query Docs",
         subtitle: input.query,
       }
@@ -697,7 +697,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "agora_read":
       return {
-        icon: "glasses",
+        icon: "compass",
         title: "Agora Read",
         subtitle: input.post_id,
       }
@@ -733,7 +733,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "agora_comment":
       return {
-        icon: "message-circle",
+        icon: "compass",
         title: "Agora Comment",
         subtitle: input.post_id,
       }
@@ -803,7 +803,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "qzcli_qz_refresh_resources":
       return {
-        icon: "layers",
+        icon: "refresh-ccw",
         title: "Refresh Resources",
         subtitle: input.workspace || (input.all_workspaces ? "All" : undefined),
       }
@@ -851,7 +851,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "qzcli_qz_list_tracked_jobs":
       return {
-        icon: "radar",
+        icon: "binoculars",
         title: "Tracked Jobs",
       }
     case "qzcli_qz_create_job":

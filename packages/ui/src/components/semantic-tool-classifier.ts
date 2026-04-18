@@ -294,7 +294,7 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
 
   // context7 / MCP common
   "context7_resolve-library-id": "search",
-  "context7_query-docs": "search",
+  "context7_query-docs": "web",
 
   // lsp
   lsp: "analyze",
