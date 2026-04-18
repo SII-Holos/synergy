@@ -30,23 +30,55 @@
   }
 
   [data-slot="session-turn-title"] {
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-medium);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 4px;
+    margin-left: -20px;
+    align-items: flex-start;
+  }
+
+  [data-slot="session-turn-title"] h1 {
+    font-size: var(--font-size-lg, 1.125rem);
+    font-weight: var(--font-weight-semibold, 600);
     color: var(--text-base);
+    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
+    padding: 6px 12px !important;
+    border-radius: 6px !important;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-    width: 100%;
+    display: inline-block;
+  }
 
-    h1 {
-      font-size: inherit;
-      font-weight: inherit;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
+  div[data-slot="session-turn-title"] h1 {
+    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
+  }
+
+  /* Light mode (default) */
+  :root {
+    --section-title-background: rgba(99, 102, 241, 0.12);
+  }
+
+  /* Dark mode */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --section-title-background: rgba(139, 92, 246, 0.25);
     }
+  }
+
+  /* Also support explicit dark mode class if the app uses it */
+  [data-theme="dark"],
+  .dark {
+    --section-title-background: rgba(139, 92, 246, 0.25);
+  }
+
+  [data-slot="session-turn-title-timestamp"] {
+    font-size: 0.75rem;
+    color: var(--text-weak);
+    padding-left: 10px;
+    font-weight: var(--font-weight-regular);
   }
 
   [data-slot="session-turn-typewriter"] {
