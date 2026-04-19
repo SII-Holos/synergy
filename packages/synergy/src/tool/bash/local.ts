@@ -182,8 +182,8 @@ export const LocalBashBackend: BashBackend = {
           `Process ID: ${regProc.id}\n` +
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
+          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
           `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get full output.\n` +
           `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
       }
     }
@@ -260,8 +260,8 @@ export const LocalBashBackend: BashBackend = {
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
           `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
           `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get full output.\n` +
           `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
       }
     }

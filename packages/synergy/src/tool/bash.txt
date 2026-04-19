@@ -34,6 +34,7 @@ Usage notes:
     - Set `background: true` to run the command in background and return immediately with a processId.
     - Set `yieldSeconds` to auto-background if the command takes longer than the specified seconds.
     - Use the `process` tool to monitor/interact with background sessions (list, poll, log, write, send-keys, kill).
+    - After launching a background process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)
