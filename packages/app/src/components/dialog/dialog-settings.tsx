@@ -225,6 +225,11 @@ export function DialogSettings(props: DialogSettingsProps) {
   const [identity, setIdentity] = createStore({
     evolution: "" as string,
     autonomy: "" as string,
+    memorySimThreshold: "" as string,
+    memoryTopK: "" as string,
+    experienceSimThreshold: "" as string,
+    experienceTopK: "" as string,
+    experienceEpsilon: "" as string,
   })
 
   const [advanced, setAdvanced] = createStore({
@@ -347,9 +352,9 @@ export function DialogSettings(props: DialogSettingsProps) {
     })
 
     const ident = cfg.identity
+    const evolution = ident?.evolution
     setIdentity({
       evolution: (() => {
-        const evolution = ident?.evolution
         if (evolution === undefined) return ""
         if (typeof evolution === "boolean") return evolution ? "true" : "false"
         const passive = evolution.passive
@@ -358,6 +363,44 @@ export function DialogSettings(props: DialogSettingsProps) {
         return "true"
       })(),
       autonomy: ident?.autonomy === undefined ? "" : ident.autonomy ? "true" : "false",
+      memorySimThreshold: (() => {
+        const retrieve =
+          typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
+            ? evolution.active.retrieve
+            : undefined
+        return typeof retrieve === "object" && retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+      })(),
+      memoryTopK: (() => {
+        const retrieve =
+          typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
+            ? evolution.active.retrieve
+            : undefined
+        return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+      })(),
+      experienceSimThreshold: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+      })(),
+      experienceTopK: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+      })(),
+      experienceEpsilon: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : ""
+      })(),
     })
 
     initializedForSet = setName
@@ -574,14 +617,119 @@ export function DialogSettings(props: DialogSettingsProps) {
       return "true"
     })()
     const origAutonomyStr = origIdent?.autonomy === undefined ? "" : origIdent.autonomy ? "true" : "false"
-    if (identity.evolution !== origEvoStr || identity.autonomy !== origAutonomyStr) {
+
+    const origMemorySimThreshold = (() => {
+      const retrieve =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.active &&
+        typeof origIdent.evolution.active === "object"
+          ? origIdent.evolution.active.retrieve
+          : undefined
+      return typeof retrieve === "object" && retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+    })()
+    const origMemoryTopK = (() => {
+      const retrieve =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.active &&
+        typeof origIdent.evolution.active === "object"
+          ? origIdent.evolution.active.retrieve
+          : undefined
+      return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+    })()
+    const origExperienceSimThreshold = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+    })()
+    const origExperienceTopK = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+    })()
+    const origExperienceEpsilon = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : ""
+    })()
+
+    const identityChanged =
+      identity.evolution !== origEvoStr ||
+      identity.autonomy !== origAutonomyStr ||
+      identity.memorySimThreshold !== origMemorySimThreshold ||
+      identity.memoryTopK !== origMemoryTopK ||
+      identity.experienceSimThreshold !== origExperienceSimThreshold ||
+      identity.experienceTopK !== origExperienceTopK ||
+      identity.experienceEpsilon !== origExperienceEpsilon
+
+    if (identityChanged) {
       const newIdent: Record<string, unknown> = {}
       if (origIdent?.embedding) newIdent.embedding = origIdent.embedding
       if (origIdent?.rerank) newIdent.rerank = origIdent.rerank
 
       const evoVal = identity.evolution !== origEvoStr ? identity.evolution : origEvoStr
-      if (evoVal === "true") newIdent.evolution = true
-      else if (evoVal === "false") newIdent.evolution = false
+      if (evoVal === "true" || evoVal === "false") {
+        const evoBool = evoVal === "true"
+
+        const memoryRetrieve: Record<string, unknown> = {}
+        const memSim =
+          identity.memorySimThreshold !== origMemorySimThreshold ? identity.memorySimThreshold : origMemorySimThreshold
+        if (memSim !== "") {
+          const n = Number(memSim)
+          if (!isNaN(n)) memoryRetrieve.simThreshold = n
+        }
+        const memTopK = identity.memoryTopK !== origMemoryTopK ? identity.memoryTopK : origMemoryTopK
+        if (memTopK !== "") {
+          const n = Number(memTopK)
+          if (!isNaN(n) && n >= 1) memoryRetrieve.topK = n
+        }
+
+        const experienceRetrieve: Record<string, unknown> = {}
+        const expSim =
+          identity.experienceSimThreshold !== origExperienceSimThreshold
+            ? identity.experienceSimThreshold
+            : origExperienceSimThreshold
+        if (expSim !== "") {
+          const n = Number(expSim)
+          if (!isNaN(n)) experienceRetrieve.simThreshold = n
+        }
+        const expTopK = identity.experienceTopK !== origExperienceTopK ? identity.experienceTopK : origExperienceTopK
+        if (expTopK !== "") {
+          const n = Number(expTopK)
+          if (!isNaN(n) && n >= 1) experienceRetrieve.topK = n
+        }
+        const expEps =
+          identity.experienceEpsilon !== origExperienceEpsilon ? identity.experienceEpsilon : origExperienceEpsilon
+        if (expEps !== "") {
+          const n = Number(expEps)
+          if (!isNaN(n)) experienceRetrieve.epsilon = n
+        }
+
+        if (Object.keys(memoryRetrieve).length > 0 || Object.keys(experienceRetrieve).length > 0) {
+          const evoObj: Record<string, unknown> = {}
+          if (Object.keys(memoryRetrieve).length > 0) evoObj.active = { retrieve: memoryRetrieve }
+          if (Object.keys(experienceRetrieve).length > 0) evoObj.passive = { retrieve: experienceRetrieve }
+          newIdent.evolution = evoObj
+        } else {
+          newIdent.evolution = evoBool
+        }
+      } else {
+        newIdent.evolution = undefined
+      }
 
       const autoVal = identity.autonomy !== origAutonomyStr ? identity.autonomy : origAutonomyStr
       if (autoVal === "true") newIdent.autonomy = true
@@ -1285,6 +1433,108 @@ export function DialogSettings(props: DialogSettingsProps) {
                     />
                   }
                 />
+                <Show when={identity.evolution === "true"}>
+                  <div class="ds-panel-card">
+                    <div class="ds-panel-card-header">
+                      <div>
+                        <span class="text-13-medium text-text-base">Recall Tuning</span>
+                        <p class="text-12-regular text-text-weak mt-0.5">
+                          Control how memories and experiences are injected into conversations
+                        </p>
+                      </div>
+                    </div>
+                    <SettingRow
+                      title="Memory Similarity"
+                      description="Minimum cosine similarity for contextual memory (default 0.7)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.memorySimThreshold}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0.5", label: "0.5" },
+                            { value: "0.6", label: "0.6" },
+                            { value: "0.7", label: "0.7" },
+                            { value: "0.8", label: "0.8" },
+                            { value: "0.9", label: "0.9" },
+                          ]}
+                          onChange={(value) => setIdentity("memorySimThreshold", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Memory per Category"
+                      description="Max contextual memories per category (default 3)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.memoryTopK}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "1", label: "1" },
+                            { value: "2", label: "2" },
+                            { value: "3", label: "3" },
+                            { value: "5", label: "5" },
+                            { value: "8", label: "8" },
+                          ]}
+                          onChange={(value) => setIdentity("memoryTopK", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Experience Similarity"
+                      description="Minimum cosine similarity for experience retrieval (default 0.7)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceSimThreshold}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0.5", label: "0.5" },
+                            { value: "0.6", label: "0.6" },
+                            { value: "0.7", label: "0.7" },
+                            { value: "0.8", label: "0.8" },
+                            { value: "0.9", label: "0.9" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceSimThreshold", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Experience Count"
+                      description="Number of past experiences to retrieve (default 8)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceTopK}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "3", label: "3" },
+                            { value: "5", label: "5" },
+                            { value: "8", label: "8" },
+                            { value: "10", label: "10" },
+                            { value: "15", label: "15" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceTopK", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Exploration Rate"
+                      description="ε-greedy probability for experience exploration (default 0.1)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceEpsilon}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0", label: "0" },
+                            { value: "0.05", label: "0.05" },
+                            { value: "0.1", label: "0.1" },
+                            { value: "0.2", label: "0.2" },
+                            { value: "0.3", label: "0.3" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceEpsilon", value)}
+                        />
+                      }
+                    />
+                  </div>
+                </Show>
                 <SettingRow
                   title="Autonomy"
                   description="Autonomous background routines like daily self-reflection and agenda planning"
