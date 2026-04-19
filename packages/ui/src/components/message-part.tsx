@@ -21,6 +21,7 @@ import {
   TextPart,
   ToolPart,
   ToolStateCompleted,
+  ToolStateError,
   UserMessage,
   Todo,
 } from "@ericsanchezok/synergy-sdk"
@@ -1176,20 +1177,17 @@ function ToolAttachments(props: { attachments: FilePart[] }) {
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
-  const part = props.part as ToolPart
+  const part = () => props.part as ToolPart
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]
     if (!next || !next.tool) return undefined
-    if (next.tool!.callID !== part.callID) return undefined
+    if (next.tool!.callID !== part().callID) return undefined
     return next
   })
 
-  const emptyInput: Record<string, any> = {}
-  const emptyMetadata: Record<string, any> = {}
-
   const throttledRaw = createThrottledValue(() =>
-    part.state.status === "pending" ? ((part.state as any).raw ?? "") : "",
+    part().state.status === "pending" ? ((part().state as any).raw ?? "") : "",
   )
   const [streamInput, setStreamInput] = createStore<Record<string, any>>({})
   createEffect(() => {
@@ -1202,33 +1200,32 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const input = () => {
     const raw = throttledRaw()
     if (raw) return streamInput
-    return part.state?.input ?? emptyInput
+    return part().state?.input ?? {}
   }
-  // @ts-expect-error
-  const metadata = () => part.state?.metadata ?? emptyMetadata
+  // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
+  const metadata = () => part().state?.metadata ?? {}
 
-  const render = ToolRegistry.render(part.tool)
+  const render = createMemo(() => ToolRegistry.render(part().tool))
 
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
   // which classifies by semantic category for appropriate icon/title/subtitle
-  const fallbackRender = !render
-    ? (p: any) => (
-        <SmartTool
-          tool={p.tool}
-          input={p.input}
-          output={p.output}
-          status={p.status}
-          metadata={p.metadata}
-          hideDetails={p.hideDetails}
-        />
-      )
-    : undefined
-  const component = render ?? fallbackRender ?? GenericTool
+  const fallbackRender = (p: any) => (
+    <SmartTool
+      tool={p.tool}
+      input={p.input}
+      output={p.output}
+      status={p.status}
+      metadata={p.metadata}
+      hideDetails={p.hideDetails}
+    />
+  )
+
+  const component = createMemo(() => render() ?? fallbackRender ?? GenericTool)
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
       <Switch>
-        <Match when={part.state.status === "error" && part.state.error}>
+        <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
           {(error) => {
             const cleaned = error().replace("Error: ", "")
             const [title, ...rest] = cleaned.split(": ")
@@ -1254,13 +1251,13 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
         </Match>
         <Match when={true}>
           <Dynamic
-            component={component}
+            component={component()}
             input={input()}
-            tool={part.tool}
+            tool={part().tool}
             metadata={metadata()}
-            // @ts-expect-error
-            output={part.state.output}
-            status={part.state.status}
+            // @ts-expect-error — output exists on completed state
+            output={part().state.output}
+            status={part().state.status}
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}
           />
@@ -1268,12 +1265,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       </Switch>
       <Show
         when={
-          part.tool !== "attach" &&
-          part.state.status === "completed" &&
-          (part.state as ToolStateCompleted).attachments?.length
+          part().tool !== "attach" &&
+          part().state.status === "completed" &&
+          (part().state as ToolStateCompleted).attachments?.length
         }
       >
-        <ToolAttachments attachments={(part.state as ToolStateCompleted).attachments!} />
+        <ToolAttachments attachments={(part().state as ToolStateCompleted).attachments!} />
       </Show>
     </div>
   )
