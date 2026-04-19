@@ -39,13 +39,10 @@ export namespace ModelLimit {
    * If the model config specifies an explicit `input` limit, use it directly.
    * Otherwise, the entire `context` window is usable for input.
    */
-  export function usableInput(limit?: Info, options?: { inputBuffer?: number }) {
+  export function usableInput(limit?: Info) {
     if (!limit || limit.context === 0) return 0
 
     if (typeof limit.input === "number" && limit.input > 0) {
-      if (options?.inputBuffer) {
-        return Math.max(0, limit.input - options.inputBuffer)
-      }
       return limit.input
     }
 

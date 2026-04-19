@@ -7,7 +7,6 @@ import { Token } from "@/util/token"
 import { ToolResolver } from "./tool-resolver"
 
 export namespace PromptBudgeter {
-  const DEFAULT_BUFFER = 20_000
   const DEFAULT_OVERFLOW_THRESHOLD = 0.85
   const TOOL_OVERHEAD_PER_TOOL = 48
   const MESSAGE_OVERHEAD_PER_ITEM = 12
@@ -61,14 +60,11 @@ export namespace PromptBudgeter {
   export function budget(
     limits: ModelLimit.Info | undefined,
     options?: {
-      inputBuffer?: number
       overflowThreshold?: number
     },
   ): Budget {
     const context = limits?.context ?? 0
-    const usable = ModelLimit.usableInput(limits, {
-      inputBuffer: options?.inputBuffer ?? DEFAULT_BUFFER,
-    })
+    const usable = ModelLimit.usableInput(limits)
     const threshold = options?.overflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
     return {
       context,
@@ -99,7 +95,6 @@ export namespace PromptBudgeter {
     limits: ModelLimit.Info | undefined,
     modelID: string,
     options?: {
-      inputBuffer?: number
       overflowThreshold?: number
     },
   ): Promise<Decision> {

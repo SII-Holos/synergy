@@ -29,9 +29,9 @@ describe("prompt-budgeter budget", () => {
     expect(result.soft).toBe(Math.floor(202_752 * 0.85))
   })
 
-  test("uses input cap with compaction buffer", () => {
+  test("uses input cap directly for models with explicit input limit", () => {
     const result = PromptBudgeter.budget({ context: 400_000, input: 272_000, output: 128_000 })
-    expect(result.usable).toBe(252_000)
+    expect(result.usable).toBe(272_000)
   })
 
   test("respects overflow threshold override", () => {
