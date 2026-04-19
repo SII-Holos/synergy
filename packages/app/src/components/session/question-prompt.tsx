@@ -21,13 +21,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
   const tabs = createMemo(() => (single() ? 1 : questions().length + 1))
 
-  const countdownSeconds = createMemo(() => {
-    const timeout = props.request.timeout
-    const createdAt = props.request.createdAt
-    if (!timeout || !createdAt) return undefined
-    const elapsed = Math.floor((Date.now() - createdAt) / 1000)
-    return Math.max(0, timeout - elapsed)
-  })
+  const countdownSeconds = () => props.request.timeout as number | undefined
 
   const [store, setStore] = createStore({
     tab: 0,

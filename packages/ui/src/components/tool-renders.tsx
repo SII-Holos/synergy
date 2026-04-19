@@ -968,11 +968,8 @@ ToolRegistry.register({
     const answers = () => props.metadata?.answers as string[][] | undefined
     const timedOut = () => props.metadata?.timedOut as boolean | undefined
     const countdown = () => {
-      const timeout = props.metadata?.timeout as number | undefined
-      const createdAt = props.metadata?.createdAt as number | undefined
-      if (!timeout || !createdAt) return undefined
-      const elapsed = Math.floor((Date.now() - createdAt) / 1000)
-      return Math.max(0, timeout - elapsed)
+      if (timedOut()) return undefined
+      return (props.metadata?.timeout ?? 1800) as number
     }
     return (
       <BasicTool

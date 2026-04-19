@@ -124,6 +124,7 @@ export namespace Question {
         sessionID: input.sessionID,
         questions: input.questions,
         tool: input.tool,
+        timeout: DEFAULT_TIMEOUT,
         createdAt,
       }
 
@@ -136,19 +137,25 @@ export namespace Question {
       Bus.publish(Event.Asked, info)
     })
 
-    // Read config and set timeout timer asynchronously — pending entry is already visible
+    // Read config and adjust timeout asynchronously — pending entry is already visible with default timeout
     void (async () => {
       try {
         const cfg = await Config.get()
         const configuredTimeout = cfg.question?.timeout
         const timeout = configuredTimeout === 0 ? undefined : (configuredTimeout ?? DEFAULT_TIMEOUT)
 
-        if (!timeout) return
-
         const existing = s.pending[id]
         if (!existing) return
 
-        existing.info = { ...existing.info, timeout }
+        if (!timeout) {
+          // User explicitly disabled timeout — clear it
+          existing.info = { ...existing.info, timeout: undefined }
+          return
+        }
+
+        if (timeout !== DEFAULT_TIMEOUT) {
+          existing.info = { ...existing.info, timeout }
+        }
 
         const timer = setTimeout(() => {
           const entry = s.pending[id]
@@ -173,7 +180,7 @@ export namespace Question {
           origReject(e)
         }
       } catch {
-        // Config.get() failed — no timeout, question works without it
+        // Config.get() failed — keep default timeout, question works without config
       }
     })()
 
