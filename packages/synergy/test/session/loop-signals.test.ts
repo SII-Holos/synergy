@@ -11,8 +11,8 @@ Log.init({ print: false })
 
 // ─── helpers ───────────────────────────────────────────────────────
 
-function makeTokens(input: number, output: number, cacheRead = 0) {
-  return { input, output, reasoning: 0, cache: { read: cacheRead, write: 0 } }
+function makeTokens(input: number, output: number, cacheRead = 0, cacheWrite = 0) {
+  return { input, output, reasoning: 0, cache: { read: cacheRead, write: cacheWrite } }
 }
 
 function makeUserMsg(overrides?: Partial<MessageV2.User>): MessageV2.User {
@@ -164,6 +164,15 @@ describe("loop-signals: overflow signal", () => {
     })
     const fired = await LoopJob.detectSignals(ctx)
     expect(fired).toContain("overflow")
+  })
+
+  test("does not treat cache.write alone as overflow for compaction", async () => {
+    const ctx = makeContext({
+      lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(10, 500, 72_108, 91_907) }),
+      lastUserParts: [],
+    })
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).not.toContain("overflow")
   })
 
   test("skips when compaction part already exists", async () => {

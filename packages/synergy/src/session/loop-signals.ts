@@ -13,6 +13,10 @@ const log = Log.create({ service: "session.loop-signals" })
 const COMPACTION_BUFFER = 20_000
 const DEFAULT_OVERFLOW_THRESHOLD = 0.85
 
+function overflowSignalInput(tokens: ModelLimit.TokenUsage): number {
+  return tokens.input + tokens.cache.read
+}
+
 LoopJob.defineSignal({
   type: "compact",
   detect(ctx) {
@@ -41,7 +45,7 @@ LoopJob.defineSignal({
     const source = ctx.lastAssistant ?? ctx.lastFinished
     let lastActualInput = 0
     if (source && source.summary !== true) {
-      lastActualInput = ModelLimit.actualInput(source.tokens)
+      lastActualInput = overflowSignalInput(source.tokens)
       if (lastActualInput >= usable) return injectCompaction(ctx)
     }
 
