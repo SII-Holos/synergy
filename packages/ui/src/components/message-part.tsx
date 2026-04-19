@@ -144,6 +144,21 @@ function relativizeProjectPaths(text: string, directory?: string) {
   return text.split(directory).join("")
 }
 
+function isRenderableTextPartCompleted(
+  messageParts: PartType[] | undefined,
+  message: AssistantMessage,
+  part: TextPart | ReasoningPart,
+  sessionStatus: { type: string } | undefined,
+) {
+  if (part.time?.end) return true
+  if (message.time.completed) return true
+  if (sessionStatus?.type !== "busy") return true
+  if (!messageParts?.length) return false
+
+  const index = messageParts.findIndex((item) => item?.id === part.id)
+  return index >= 0 && index < messageParts.length - 1
+}
+
 export function getDirectory(path: string | undefined) {
   const data = useData()
   return relativizeProjectPaths(_getDirectory(path), data.directory)
@@ -1268,13 +1283,22 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const part = props.part as TextPart
   const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
+  const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
   const isStreaming = () => sessionStatus()?.type === "busy"
+  const isCompleted = () =>
+    isRenderableTextPartCompleted(
+      messageParts(),
+      props.message as AssistantMessage,
+      part,
+      sessionStatus() as { type: string } | undefined,
+    )
 
   const typedText = createTypewriter({
     source: displayText,
     streaming: isStreaming,
+    completed: isCompleted,
   })
 
   return (
@@ -1290,13 +1314,22 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
   const part = props.part as ReasoningPart
   const text = () => part.text.trim()
+  const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
   const isStreaming = () => sessionStatus()?.type === "busy"
+  const isCompleted = () =>
+    isRenderableTextPartCompleted(
+      messageParts(),
+      props.message as AssistantMessage,
+      part,
+      sessionStatus() as { type: string } | undefined,
+    )
 
   const typedText = createTypewriter({
     source: text,
     streaming: isStreaming,
+    completed: isCompleted,
   })
 
   return (
