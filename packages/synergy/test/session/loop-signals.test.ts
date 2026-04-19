@@ -108,6 +108,16 @@ describe("loop-signals: compact signal", () => {
 })
 
 describe("loop-signals: overflow signal", () => {
+  test("uses limit.input with compaction buffer when present", async () => {
+    const ctx = makeContext({
+      modelLimits: { context: 400_000, input: 272_000, output: 128_000 },
+      lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(253_000, 10_000) }),
+      lastUserParts: [],
+    })
+    const fired = await LoopJob.detectSignals(ctx)
+    expect(fired).toContain("overflow")
+  })
+
   test("does not fire when no assistant message exists", async () => {
     const ctx = makeContext({
       lastFinished: undefined,

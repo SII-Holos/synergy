@@ -4,8 +4,13 @@ import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
 import { Token } from "@/util/token"
+import { LLM } from "./llm"
+import { ProviderTransform } from "@/provider/transform"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 const log = Log.create({ service: "session.loop-signals" })
+
+const COMPACTION_BUFFER = 20_000
 
 LoopJob.defineSignal({
   type: "compact",
@@ -22,20 +27,22 @@ LoopJob.defineSignal({
     const limits = ctx.modelLimits
     if (!limits || limits.context === 0) return false
 
-    const usable = limits.context
+    // Compute usable input space depending on whether the model has
+    // a separate input limit (input/output independently capped) or
+    // shares a single context window (input + output ≤ context).
+    const usable = ModelLimit.usableInput(limits, {
+      outputTokenMax: LLM.OUTPUT_TOKEN_MAX,
+      inputBuffer: COMPACTION_BUFFER,
+    })
 
-    // Check 1: previous turn's actual token usage is near or exceeds the limit.
+    // Check 1: previous turn's actual token usage is near or exceeds usable.
     // Skipped when the last assistant is a compaction summary (just compacted).
-    // Uses a 95% threshold to trigger preemptively — a single tool output can
-    // push input tokens a few thousand higher between signal detection and the
-    // next LLM call, so waiting until we're actually over is too late.
     const source = ctx.lastAssistant ?? ctx.lastFinished
     let lastActualInput = 0
     if (source && source.summary !== true) {
       const tokens = source.tokens
       lastActualInput = tokens.input + tokens.cache.read
-      const count = lastActualInput + tokens.output + tokens.reasoning
-      if (count > usable * 0.95) return injectCompaction(ctx)
+      if (lastActualInput >= usable) return injectCompaction(ctx)
     }
 
     // Check 2: estimate current conversation size to catch growth that

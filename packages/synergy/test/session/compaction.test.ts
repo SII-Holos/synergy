@@ -5,6 +5,7 @@ import { Session } from "../../src/session"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import type { Provider } from "../../src/provider/provider"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 Log.init({ print: false })
 
@@ -51,6 +52,14 @@ describe("util.token.estimate", () => {
 })
 
 describe("session.getUsage", () => {
+  test("ModelLimit.usableInput uses shared context minus output reserve", () => {
+    expect(ModelLimit.usableInput({ context: 202_752, output: 32_768 })).toBe(170_752)
+  })
+
+  test("ModelLimit.usableInput uses input cap directly without buffer by default", () => {
+    expect(ModelLimit.usableInput({ context: 400_000, input: 272_000, output: 128_000 })).toBe(272_000)
+  })
+
   test("normalizes standard usage to token format", () => {
     const model = createModel({ context: 100_000, output: 32_000 })
     const result = Session.getUsage({

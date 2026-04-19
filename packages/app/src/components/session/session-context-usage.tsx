@@ -4,6 +4,7 @@ import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useParams } from "@solidjs/router"
 import { AssistantMessage } from "@ericsanchezok/synergy-sdk/client"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
@@ -39,9 +40,12 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
     if (!last) return
     const total = last.tokens.input + last.tokens.cache.read + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
+    const limit = model?.limit
+    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    const usable = ModelLimit.usableInput(limit)
     return {
       tokens: total.toLocaleString(),
-      percentage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
+      percentage: Math.round((total / usable) * 100),
     }
   })
 

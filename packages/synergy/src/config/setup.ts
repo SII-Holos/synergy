@@ -101,6 +101,7 @@ export namespace ConfigSetup {
     }
     limit?: {
       context?: number
+      input?: number
       output?: number
     }
     cost?: {
@@ -574,6 +575,7 @@ export namespace ConfigSetup {
             model.limit?.context !== undefined && model.limit?.output !== undefined
               ? {
                   context: model.limit.context,
+                  input: model.limit?.input,
                   output: model.limit.output,
                 }
               : undefined,
@@ -803,6 +805,7 @@ export namespace ConfigSetup {
       },
       limit: {
         context: configModel?.limit?.context ?? existingModel?.limit.context ?? 0,
+        input: configModel?.limit?.input ?? existingModel?.limit.input,
         output: configModel?.limit?.output ?? existingModel?.limit.output ?? 0,
       },
       capabilities: {

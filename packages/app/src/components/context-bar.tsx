@@ -3,6 +3,7 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import type { AssistantMessage } from "@ericsanchezok/synergy-sdk/client"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import "./context-bar.css"
 
 export function ContextBar() {
@@ -20,9 +21,12 @@ export function ContextBar() {
     if (!last) return
     const total = last.tokens.input + last.tokens.cache.read + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
+    const limit = model?.limit
+    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    const usable = ModelLimit.usableInput(limit)
     return {
       tokens: total.toLocaleString(),
-      percentage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
+      percentage: Math.round((total / usable) * 100),
     }
   })
 

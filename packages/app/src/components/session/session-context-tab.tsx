@@ -11,6 +11,7 @@ import { StickyAccordionHeader } from "@ericsanchezok/synergy-ui/sticky-accordio
 import { Code } from "@ericsanchezok/synergy-ui/code"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import type { AssistantMessage, Message, Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 interface SessionContextTabProps {
   messages: () => Message[]
@@ -33,7 +34,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
     const provider = sync.data.provider.all.find((x) => x.id === last.providerID)
     const model = provider?.models[last.modelID]
-    const limit = model?.limit.context
+    const modelLimit = model?.limit
 
     const input = last.tokens.input
     const output = last.tokens.output
@@ -41,13 +42,14 @@ export function SessionContextTab(props: SessionContextTabProps) {
     const cacheRead = last.tokens.cache.read
     const cacheWrite = last.tokens.cache.write
     const total = input + cacheRead + output + reasoning
-    const usage = limit ? Math.round((total / limit) * 100) : null
+    const usable = ModelLimit.usableInput(modelLimit)
+    const usage = usable > 0 ? Math.round((total / usable) * 100) : null
 
     return {
       message: last,
       provider,
       model,
-      limit,
+      limit: modelLimit?.context,
       input,
       output,
       reasoning,

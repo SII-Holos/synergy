@@ -8,6 +8,7 @@ import z from "zod"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionManager } from "./manager"
 import { Scope } from "@/scope"
 import { Agent } from "@/agent/agent"
@@ -297,7 +298,7 @@ export namespace SessionCompaction {
     // Trim the conversation history so it fits within the compaction model's
     // context window, reserving space for the prompt and output.
     const contextLimit = model.limit?.context ?? 0
-    const outputReserve = Math.min(model.limit?.output ?? LLM.OUTPUT_TOKEN_MAX, LLM.OUTPUT_TOKEN_MAX)
+    const outputReserve = ModelLimit.outputReserve(model.limit, LLM.OUTPUT_TOKEN_MAX)
     const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
     const messageBudget = contextLimit > 0 ? contextLimit - outputReserve - promptCost : Infinity
     const safeMessages = isFinite(messageBudget) ? trimMessagesForContext(modelMessages, messageBudget) : modelMessages
