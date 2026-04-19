@@ -71,6 +71,17 @@ export namespace AgendaTypes {
             .optional()
             .describe("Debounce window before firing, e.g. '500ms', '2s'. Default: '500ms'"),
         }),
+        z.object({
+          kind: z.literal("tool"),
+          tool: z.string().describe("Synergy tool name to call, e.g. 'inspire_jobs'"),
+          args: z.record(z.string(), z.unknown()).optional().describe("Arguments to pass to the tool"),
+          interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '5m'"),
+          trigger: z
+            .enum(["change", "match"])
+            .default("change")
+            .describe("'change': fire when tool output differs; 'match': fire when output matches pattern"),
+          match: z.string().optional().describe("Regex pattern, required when trigger is 'match'"),
+        }),
       ]),
     })
     .meta({ ref: "AgendaTriggerWatch" })
@@ -86,6 +97,24 @@ export namespace AgendaTypes {
     .discriminatedUnion("type", [TriggerAt, TriggerCron, TriggerEvery, TriggerDelay, TriggerWatch, TriggerWebhook])
     .meta({ ref: "AgendaTrigger" })
   export type Trigger = z.infer<typeof Trigger>
+
+  // ---------------------------------------------------------------------------
+  // Session mode — inferred internally, not user-facing
+  // ---------------------------------------------------------------------------
+
+  export const SessionMode = z.enum(["ephemeral", "persistent"])
+  export type SessionMode = z.infer<typeof SessionMode>
+
+  export function inferSessionMode(triggers: Trigger[]): SessionMode {
+    const hasRecurring = triggers.some((t) => t.type === "cron" || t.type === "every" || t.type === "watch")
+    return hasRecurring ? "persistent" : "ephemeral"
+  }
+
+  export type ContextMode = "full" | "signal"
+
+  export function inferContextMode(sessionMode: SessionMode): ContextMode {
+    return sessionMode === "persistent" ? "signal" : "full"
+  }
 
   // ---------------------------------------------------------------------------
   // Origin — creation context
@@ -111,7 +140,7 @@ export namespace AgendaTypes {
   export type Origin = z.infer<typeof Origin>
 
   // ---------------------------------------------------------------------------
-  // Task — what the agent does when triggered
+  // Session reference
   // ---------------------------------------------------------------------------
 
   export const SessionRef = z
@@ -121,65 +150,6 @@ export namespace AgendaTypes {
     })
     .meta({ ref: "AgendaSessionRef" })
   export type SessionRef = z.infer<typeof SessionRef>
-
-  export const SessionMode = z.enum(["ephemeral", "persistent"])
-  export type SessionMode = z.infer<typeof SessionMode>
-
-  export const ContextMode = z.enum(["full", "signal", "none"])
-  export type ContextMode = z.infer<typeof ContextMode>
-
-  export const Task = z
-    .object({
-      prompt: z.string().describe("Instruction for the agent"),
-      agent: z.string().optional().describe("Agent to use, defaults to the configured default"),
-      model: z
-        .object({
-          providerID: z.string(),
-          modelID: z.string(),
-        })
-        .optional()
-        .describe("Model override"),
-      workScope: ScopeField.optional().describe("Execution scope. Defaults to global (home) if omitted"),
-      sessionRefs: z
-        .array(SessionRef)
-        .optional()
-        .describe("Sessions whose content may be relevant — injected as context references"),
-      timeout: z.number().optional().describe("Execution timeout in milliseconds"),
-      sessionMode: SessionMode.optional().describe(
-        "'ephemeral' (default): create a new session per trigger. 'persistent': reuse the same session across triggers.",
-      ),
-      contextMode: ContextMode.optional().describe(
-        "'full' (default): inject complete agenda context XML. 'signal': inject only the signal payload. 'none': send only the task prompt.",
-      ),
-    })
-    .meta({ ref: "AgendaTask" })
-  export type Task = z.infer<typeof Task>
-
-  // ---------------------------------------------------------------------------
-  // Delivery — where results are sent after execution
-  // ---------------------------------------------------------------------------
-
-  export const DeliveryAuto = z.object({
-    target: z.literal("auto"),
-  })
-
-  export const DeliverySilent = z.object({
-    target: z.literal("silent"),
-  })
-
-  export const DeliveryHome = z.object({
-    target: z.literal("home"),
-  })
-
-  export const DeliverySession = z.object({
-    target: z.literal("session"),
-    sessionID: z.string(),
-  })
-
-  export const Delivery = z
-    .discriminatedUnion("target", [DeliveryAuto, DeliverySilent, DeliveryHome, DeliverySession])
-    .meta({ ref: "AgendaDelivery" })
-  export type Delivery = z.infer<typeof Delivery>
 
   // ---------------------------------------------------------------------------
   // Item state — mutable runtime state tracked across runs
@@ -214,16 +184,24 @@ export namespace AgendaTypes {
       title: z.string(),
       description: z.string().optional(),
       tags: z.array(z.string()).optional(),
+      global: z.boolean().default(false).describe("If true, item is visible from all scopes"),
 
-      triggers: z
-        .array(Trigger)
-        .default([])
-        .describe(
-          "Activation conditions. Schedule items have time triggers; todo items may have none (manual activation) or non-time triggers.",
-        ),
+      triggers: z.array(Trigger).default([]).describe("Activation conditions"),
 
-      task: Task.optional().describe("Execution configuration"),
-      delivery: Delivery.optional().describe("Delivery configuration, defaults to { target: 'auto' }"),
+      prompt: z.string().describe("Instruction for the agent when triggered"),
+
+      // Advanced execution options
+      agent: z.string().optional().describe("Agent to use, defaults to configured default"),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+      sessionRefs: z
+        .array(SessionRef)
+        .optional()
+        .describe("Sessions whose content may be relevant — injected as context references"),
+      timeout: z.number().optional().describe("Execution timeout in milliseconds"),
+
+      // Notification behavior
+      wake: z.boolean().default(true).describe("Whether to wake the origin session's agent on completion"),
+      silent: z.boolean().default(false).describe("Whether to suppress result delivery entirely"),
 
       origin: Origin.describe("Context captured at creation time"),
       createdBy: z.enum(["user", "agent"]),
@@ -288,11 +266,17 @@ export namespace AgendaTypes {
   export const CreateInput = z
     .object({
       title: z.string(),
+      prompt: z.string(),
       description: z.string().optional(),
       tags: z.array(z.string()).optional(),
       triggers: z.array(Trigger).optional(),
-      task: Task.optional(),
-      delivery: Delivery.optional(),
+      global: z.boolean().optional(),
+      wake: z.boolean().optional(),
+      silent: z.boolean().optional(),
+      agent: z.string().optional(),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      sessionRefs: z.array(SessionRef).optional(),
+      timeout: z.number().optional(),
       createdBy: z.enum(["user", "agent"]).default("user"),
       sessionID: z.string().optional().describe("Session where the item was created"),
       endpoint: SessionEndpoint.Info.optional().describe("Endpoint context if created from a session endpoint"),
@@ -307,8 +291,12 @@ export namespace AgendaTypes {
       status: ItemStatus.optional(),
       tags: z.array(z.string()).optional(),
       triggers: z.array(Trigger).optional(),
-      task: Task.optional(),
-      delivery: Delivery.optional(),
+      prompt: z.string().optional(),
+      global: z.boolean().optional(),
+      wake: z.boolean().optional(),
+      silent: z.boolean().optional(),
+      agent: z.string().optional(),
+      sessionRefs: z.array(SessionRef).optional(),
     })
     .meta({ ref: "AgendaPatchInput" })
   export type PatchInput = z.infer<typeof PatchInput>

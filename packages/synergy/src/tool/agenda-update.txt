@@ -8,6 +8,4 @@ Status changes control execution behavior:
 - "done": Marks as completed
 - "cancelled": Marks as cancelled
 
-To deactivate an item without deleting it, set status to "paused" or "done" rather than using `agenda_delete`.
-
-Updating `triggers` recalculates the next scheduled run time. Updating `prompt` modifies the execution instruction while preserving other task configuration (workScope, sessionRefs).
+Updating `triggers` recalculates the next scheduled run time. Updating `prompt` modifies the execution instruction.

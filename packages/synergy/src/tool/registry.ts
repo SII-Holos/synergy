@@ -205,6 +205,14 @@ export namespace ToolRegistry {
     return all().then((x) => x.map((t) => t.id))
   }
 
+  export async function find(id: string) {
+    const tools = await all()
+    const tool = tools.find((t) => t.id === id)
+    if (!tool) return undefined
+    const def = await tool.init()
+    return { id: tool.id, ...def }
+  }
+
   export async function tools(providerID: string, agent?: Agent.Info) {
     const tools = await all()
     // Use allSettled to avoid one tool's init failure blocking all tools

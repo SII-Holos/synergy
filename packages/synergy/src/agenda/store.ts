@@ -69,12 +69,19 @@ export namespace AgendaStore {
     return Math.min(...candidates)
   }
 
+  function storageScopeID(
+    item: { global?: boolean; origin?: { scope: { id: string } } },
+    fallbackScopeID?: string,
+  ): string {
+    if (item.global) return "global"
+    return item.origin?.scope.id ?? fallbackScopeID ?? Instance.scope.id
+  }
+
   export async function create(
     input: AgendaTypes.CreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
     const scope = Instance.scope
-    const scopeID = Identifier.asScopeID(scope.id)
     const now = Date.now()
     const triggers = input.triggers ?? []
 
@@ -90,9 +97,15 @@ export namespace AgendaStore {
       title: input.title,
       description: input.description,
       tags: input.tags,
+      global: input.global ?? false,
       triggers,
-      task: input.task,
-      delivery: input.delivery ?? { target: "auto" },
+      prompt: input.prompt,
+      agent: input.agent,
+      model: input.model,
+      sessionRefs: input.sessionRefs,
+      timeout: input.timeout,
+      wake: input.wake ?? true,
+      silent: input.silent ?? false,
       origin: { scope, sessionID: input.sessionID, endpoint: input.endpoint },
       createdBy: input.createdBy ?? "user",
       state: {
@@ -100,14 +113,12 @@ export namespace AgendaStore {
         runCount: 0,
         nextRunAt: computeNextRunAt(triggers, now),
       },
-      time: {
-        created: now,
-        updated: now,
-      },
+      time: { created: now, updated: now },
     }
 
+    const scopeID = Identifier.asScopeID(item.global ? "global" : scope.id)
     await Storage.write(StoragePath.agendaItem(scopeID, id), item)
-    log.info("created", { id, title: input.title })
+    log.info("created", { id, title: input.title, global: item.global })
     await Bus.publish(AgendaEvent.ItemCreated, { item })
     return item
   }
@@ -125,6 +136,12 @@ export namespace AgendaStore {
     const items = results.filter((item): item is AgendaTypes.Item => item !== undefined)
     items.sort((a, b) => b.time.created - a.time.created)
     return items
+  }
+
+  export async function listForScope(scopeID: string): Promise<AgendaTypes.Item[]> {
+    if (scopeID === "global") return list("global")
+    const [scoped, global] = await Promise.all([list(scopeID), list("global")])
+    return [...scoped, ...global].sort((a, b) => b.time.created - a.time.created)
   }
 
   export async function update(
@@ -148,8 +165,12 @@ export namespace AgendaStore {
         draft.triggers = patch.triggers
         draft.state.nextRunAt = computeNextRunAt(patch.triggers)
       }
-      if (patch.task !== undefined) draft.task = patch.task
-      if (patch.delivery !== undefined) draft.delivery = patch.delivery
+      if (patch.prompt !== undefined) draft.prompt = patch.prompt
+      if (patch.global !== undefined) draft.global = patch.global
+      if (patch.wake !== undefined) draft.wake = patch.wake
+      if (patch.silent !== undefined) draft.silent = patch.silent
+      if (patch.agent !== undefined) draft.agent = patch.agent
+      if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
       if (options?.recomputeNextRunAt) {
         draft.state.nextRunAt = computeNextRunAt(draft.triggers)
       }
@@ -238,16 +259,29 @@ export namespace AgendaStore {
     return batches.flat().sort((a, b) => b.time.created - a.time.created)
   }
 
-  /**
-   * Find an item by ID across all scopes.
-   * Returns the item and its storage scopeID.
-   */
   export async function find(itemID: string): Promise<{ item: AgendaTypes.Item; scopeID: string }> {
     const scopeIDs = await Storage.scan(["agenda", "items"])
     for (const scopeID of scopeIDs) {
       const sid = Identifier.asScopeID(scopeID)
       const item = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID)).catch(() => undefined)
       if (item) return { item, scopeID }
+    }
+    throw new Error(`Agenda item not found: ${itemID}`)
+  }
+
+  export async function findInScope(
+    scopeID: string,
+    itemID: string,
+  ): Promise<{ item: AgendaTypes.Item; scopeID: string }> {
+    const sid = Identifier.asScopeID(scopeID)
+    const item = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID)).catch(() => undefined)
+    if (item) return { item, scopeID }
+    if (scopeID !== "global") {
+      const globalSid = Identifier.asScopeID("global")
+      const globalItem = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(globalSid, itemID)).catch(
+        () => undefined,
+      )
+      if (globalItem) return { item: globalItem, scopeID: "global" }
     }
     throw new Error(`Agenda item not found: ${itemID}`)
   }

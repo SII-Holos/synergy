@@ -7,10 +7,17 @@ import DESCRIPTION from "./agenda-list.txt"
 const parameters = z.object({
   status: AgendaTypes.ItemStatus.optional().describe("Filter by status"),
   tag: z.string().optional().describe("Filter by tag"),
+  scope: z
+    .enum(["current", "global", "all"])
+    .optional()
+    .describe(
+      "Which items to show: 'current' (project only), 'global' (global only), 'all' (current + global, default)",
+    ),
 })
 
 function formatItem(item: AgendaTypes.Item): string {
   const parts = [`- [${item.id}] "${item.title}" — ${item.status}`]
+  if (item.global) parts.push(`  Scope: global`)
   if (item.tags?.length) parts.push(`  Tags: ${item.tags.join(", ")}`)
   if (item.triggers.length) {
     const types = item.triggers.map((t) => t.type).join(", ")
@@ -30,7 +37,22 @@ export const AgendaListTool = Tool.define("agenda_list", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    let items = await AgendaStore.listAll()
+    const scopeFilter = params.scope ?? "all"
+    const currentScopeID = Instance.scope.id
+
+    let items: AgendaTypes.Item[]
+    switch (scopeFilter) {
+      case "current":
+        items = await AgendaStore.list(currentScopeID)
+        break
+      case "global":
+        items = await AgendaStore.list("global")
+        break
+      case "all":
+      default:
+        items = await AgendaStore.listForScope(currentScopeID)
+        break
+    }
 
     if (params.status) {
       items = items.filter((item) => item.status === params.status)
@@ -43,6 +65,7 @@ export const AgendaListTool = Tool.define("agenda_list", {
       const filters: string[] = []
       if (params.status) filters.push(`status=${params.status}`)
       if (params.tag) filters.push(`tag=${params.tag}`)
+      if (scopeFilter !== "all") filters.push(`scope=${scopeFilter}`)
       const suffix = filters.length ? ` matching ${filters.join(", ")}` : ""
       return {
         title: "No items",

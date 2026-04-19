@@ -15,12 +15,11 @@ export namespace AgendaDelivery {
   }
 
   export async function deliver(input: DeliverInput): Promise<void> {
-    const delivery: AgendaTypes.Delivery = input.item.delivery ?? { target: "auto" }
-
-    if (delivery.target === "silent") return
+    if (input.item.silent) return
 
     const text = input.lastMessage ?? `Agenda task "${input.item.title}" completed.`
-    const target = resolveTarget(delivery, input.item.origin)
+    const target: string | SessionEndpoint.Info = input.item.origin.endpoint ?? AppChannel.endpoint()
+    const type = input.item.wake !== false ? "user" : "assistant"
 
     try {
       const session = await SessionManager.getSession(target)
@@ -29,7 +28,7 @@ export namespace AgendaDelivery {
       await SessionManager.deliver({
         target: session.id,
         mail: {
-          type: "assistant",
+          type,
           parts: [
             {
               id: Identifier.ascending("part"),
@@ -51,19 +50,6 @@ export namespace AgendaDelivery {
         itemID: input.item.id,
         error: err instanceof Error ? err : new Error(String(err)),
       })
-    }
-  }
-
-  function resolveTarget(delivery: AgendaTypes.Delivery, origin: AgendaTypes.Origin): string | SessionEndpoint.Info {
-    switch (delivery.target) {
-      case "session":
-        return delivery.sessionID
-      case "home":
-        return AppChannel.endpoint()
-      case "auto":
-        return origin.endpoint ?? AppChannel.endpoint()
-      default:
-        return AppChannel.endpoint()
     }
   }
 }

@@ -269,7 +269,7 @@ export const AgendaRoute = new Hono()
     "/",
     describeRoute({
       summary: "Create agenda item",
-      description: "Create a new agenda item with optional triggers, task, and delivery configuration.",
+      description: "Create a new agenda item with optional triggers and execution configuration.",
       operationId: "agenda.create",
       responses: {
         200: {
@@ -325,7 +325,7 @@ export const AgendaRoute = new Hono()
     "/",
     describeRoute({
       summary: "List agenda items",
-      description: "List all agenda items.",
+      description: "List all agenda items, optionally filtered by scope.",
       operationId: "agenda.list",
       responses: {
         200: {
@@ -335,9 +335,11 @@ export const AgendaRoute = new Hono()
         ...errors(400),
       },
     }),
+    validator("query", z.object({ scopeID: z.string().optional() })),
     async (c) => {
       try {
-        const items = await AgendaStore.listAll()
+        const { scopeID } = c.req.valid("query")
+        const items = scopeID ? await AgendaStore.listForScope(scopeID) : await AgendaStore.listAll()
         return c.json(items)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)

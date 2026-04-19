@@ -67,8 +67,10 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined, deactivated: true }
     }
 
-    const scope = item.task?.workScope ?? Scope.global()
-    const persistent = item.task?.sessionMode === "persistent"
+    const scope = item.origin.scope ?? Scope.global()
+    const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
+    const contextMode = AgendaTypes.inferContextMode(sessionMode)
+    const persistent = sessionMode === "persistent"
     const startTime = Date.now()
     let sessionID: string | undefined
     let error: Error | undefined
@@ -80,17 +82,17 @@ export namespace AgendaReactor {
           ? await resolveOrCreateSession(item, scope, scopeID)
           : await createEphemeralSession(item, scope)
 
-        const promptText = AgendaPrompt.build(item, signal)
+        const promptText = AgendaPrompt.build(item, signal, contextMode)
 
         try {
           await withTimeout(
             SessionInvoke.invoke({
               sessionID: sessionID!,
-              agent: item.task?.agent,
-              model: item.task?.model,
+              agent: item.agent,
+              model: item.model,
               parts: [{ type: "text", text: promptText }],
             }),
-            item.task?.timeout ?? DEFAULT_TIMEOUT,
+            item.timeout ?? DEFAULT_TIMEOUT,
           )
         } catch (err) {
           error = err instanceof Error ? err : new Error(String(err))
@@ -192,9 +194,7 @@ export namespace AgendaReactor {
     }
 
     const sessionID = await createEphemeralSession(item, scope)
-
     await AgendaStore.setPersistentSession(scopeID, item.id, sessionID)
-
     return sessionID
   }
 

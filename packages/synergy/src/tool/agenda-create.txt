@@ -1,11 +1,11 @@
-Create an agenda item — a scheduled task, recurring job, reminder, or todo that will be executed by an agent.
+Create an agenda item — a scheduled task, recurring job, or reminder executed by an agent.
 
-The `prompt` is the instruction the agent follows when the item fires. Write it as if you're briefing another agent on what to do. If the task needs context from prior conversations, use `sessionRefs` to attach relevant sessions with a `hint` explaining what to focus on in each.
+The `prompt` is the instruction the agent follows when the item fires. Write it as if you're briefing another agent on what to do.
 
-By default, items execute in the global (home) scope. To target a specific project, provide `workScopeID` or `workDirectory`. Use `session_list` with scope "project" to discover available scope IDs and directories.
+Items with triggers (cron, every, at, delay, watch) are automatically activated. Items without triggers start as "pending" — use `agenda_trigger` to run them manually.
 
-Items with time-based triggers (cron, every, at, delay) are automatically activated. Items without triggers start as "pending" — use `agenda_trigger` to run them manually, or `agenda_update` to add triggers later.
+By default, when execution completes, the result is delivered back to this session and wakes the agent (wake=true). Set `silent: true` to suppress delivery, or `wake: false` to deliver without waking the agent.
 
-The default `delivery` is "auto" — results are delivered back to the current session (the one where the user made the request). In most cases, omit `delivery` entirely. "auto" adapts to the originating context: in a Feishu group chat it sends results back to that group, in a DM back to that DM, in the web app back to that session. Only override when needed: "home" forces delivery to the app home session, "silent" suppresses delivery entirely, and "session" targets a specific session (requires `deliverySessionID`). Do not set `delivery` to "home" unless the user explicitly asks or the task has no meaningful originating context.
+Items are scoped to the current project by default. Set `global: true` to make an item visible from all projects.
 
-When `delivery` is "session", you must also provide `deliverySessionID`. Use `session_list` to find the target session.
+For watch triggers, use `kind: "tool"` to poll a Synergy tool (e.g. inspire_jobs) instead of a shell command — this is more reliable and doesn't require external CLI tools.
