@@ -32,7 +32,7 @@ function createModel(opts: { context: number; output: number; cost?: Provider.Mo
   } as Provider.Model
 }
 
-// Overflow detection now lives in loop-signals.ts as a LoopJob signal;
+// Preflight compaction triggering now lives in session/invoke.ts via PromptBudgeter;
 // isContextExceeded and Token.estimateJSON are tested below.
 
 describe("util.token.estimate", () => {

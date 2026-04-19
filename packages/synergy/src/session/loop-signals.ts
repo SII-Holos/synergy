@@ -3,19 +3,8 @@ import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-import { Token } from "@/util/token"
-import { LLM } from "./llm"
-import { ProviderTransform } from "@/provider/transform"
-import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 const log = Log.create({ service: "session.loop-signals" })
-
-const COMPACTION_BUFFER = 20_000
-const DEFAULT_OVERFLOW_THRESHOLD = 0.85
-
-function overflowSignalInput(tokens: ModelLimit.TokenUsage): number {
-  return tokens.input + tokens.cache.read
-}
 
 LoopJob.defineSignal({
   type: "compact",
@@ -23,117 +12,6 @@ LoopJob.defineSignal({
     return ctx.lastUserParts.some((p) => p.type === "compaction")
   },
 })
-
-LoopJob.defineSignal({
-  type: "overflow",
-  detect(ctx) {
-    if (ctx.lastUserParts.some((p) => p.type === "compaction")) return false
-    if (ctx.compactionAutoDisabled) return false
-    const limits = ctx.modelLimits
-    if (!limits || limits.context === 0) return false
-
-    // Compute usable input space depending on whether the model has
-    // a separate input limit (input/output independently capped) or
-    // shares a single context window (input + output ≤ context).
-    const usable = ModelLimit.usableInput(limits, {
-      outputTokenMax: LLM.OUTPUT_TOKEN_MAX,
-      inputBuffer: COMPACTION_BUFFER,
-    })
-
-    // Check 1: previous turn's actual token usage is near or exceeds usable.
-    // Skipped when the last assistant is a compaction summary (just compacted).
-    const source = ctx.lastAssistant ?? ctx.lastFinished
-    let lastActualInput = 0
-    if (source && source.summary !== true) {
-      lastActualInput = overflowSignalInput(source.tokens)
-      if (lastActualInput >= usable) return injectCompaction(ctx)
-    }
-
-    // Check 2: estimate current conversation size to catch growth that
-    // the previous turn's usage doesn't reflect (new user messages,
-    // tool outputs, system prompt expansion, etc.).
-    // This runs independently of whether the last turn was a compaction
-    // summary, because new content may have accumulated since.
-    //
-    // The raw estimate only counts message content visible in the
-    // conversation history. It does NOT include the system prompt, tool
-    // schema definitions, memory/engram injections, or model-specific
-    // formatting overhead — which can add 30-60K+ tokens. To compensate,
-    // we calibrate against the last assistant's actual provider-reported
-    // input token count: the gap between actual and estimated is the
-    // invisible overhead, and we carry it forward.
-    const estimated = estimateConversationTokens(ctx.messages, ctx.modelID)
-    const overhead = lastActualInput > estimated ? lastActualInput - estimated : 0
-    const calibrated = estimated + overhead
-    const threshold = ctx.compactionOverflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
-    if (calibrated > usable * threshold) {
-      log.info("overflow check 2 triggered", {
-        sessionID: ctx.sessionID,
-        estimated,
-        overhead,
-        calibrated,
-        threshold: Math.round(usable * threshold),
-        usable,
-        overflowThreshold: threshold,
-      })
-      return injectCompaction(ctx)
-    }
-
-    return false
-  },
-})
-
-function injectCompaction(ctx: LoopJob.Context): true {
-  const part = {
-    id: Identifier.ascending("part"),
-    messageID: ctx.lastUser.id,
-    sessionID: ctx.sessionID,
-    type: "compaction" as const,
-    auto: true,
-  }
-  Session.updatePart(part).catch(() => {})
-  ctx.lastUserParts.push(part)
-  return true
-}
-
-function estimateConversationTokens(messages: MessageV2.WithParts[], modelID?: string): number {
-  const est = (text: string) => (modelID ? Token.estimateModelSync(modelID, text) : Token.estimate(text))
-  const estJSON = (value: unknown) => {
-    if (typeof value === "string") return est(value)
-    try {
-      return est(JSON.stringify(value))
-    } catch {
-      return 0
-    }
-  }
-  let total = 0
-  for (const msg of messages) {
-    total += 4
-    for (const part of msg.parts) {
-      switch (part.type) {
-        case "text":
-          total += est(part.text)
-          break
-        case "tool":
-          if (part.state.status === "completed") {
-            total += estJSON(part.state.input)
-            total += part.state.time.compacted ? 10 : est(part.state.output)
-          } else if (part.state.status === "error") {
-            total += estJSON(part.state.input)
-            total += est(part.state.error)
-          }
-          break
-        case "reasoning":
-          total += est(part.text)
-          break
-        case "file":
-          total += 300
-          break
-      }
-    }
-  }
-  return total
-}
 
 const ERROR_LOOP_THRESHOLD = 3
 

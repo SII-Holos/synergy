@@ -26,6 +26,7 @@ import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
 import { ToolResolver } from "./tool-resolver"
+import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
@@ -415,13 +416,12 @@ export namespace SessionInvoke {
         const isTopSession = !session.parentID
         const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
-        const [tools, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
+        const [toolDefinitions, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
           await Promise.all([
-            ToolResolver.resolve({
+            ToolResolver.definitions({
               agent,
               model,
               sessionID,
-              processor,
               session,
               userTools: lastUser.tools,
               includeMCP: true,
@@ -461,24 +461,68 @@ export namespace SessionInvoke {
           }
         }
 
+        const preparedMessages = [
+          ...MessageV2.toModelMessage(sessionMessages),
+          ...(isLastStep
+            ? [
+                {
+                  role: "assistant" as const,
+                  content: MAX_STEPS,
+                },
+              ]
+            : []),
+        ]
+
+        const promptPlan = await PromptBudgeter.buildPlan({
+          model,
+          system: systemParts,
+          messages: preparedMessages,
+          toolDefinitions,
+        })
+        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+          outputTokenMax: LLM.OUTPUT_TOKEN_MAX,
+          overflowThreshold: jobCtx.compactionOverflowThreshold,
+        })
+
+        if (
+          !jobCtx.compactionAutoDisabled &&
+          !jobCtx.lastUserParts.some((part) => part.type === "compaction") &&
+          promptDecision.shouldCompact
+        ) {
+          log.info("prompt budget exceeded, injecting compaction", {
+            sessionID,
+            total: promptDecision.measure.total,
+            soft: promptDecision.budget.soft,
+            usable: promptDecision.budget.usable,
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: lastUser.id,
+            sessionID,
+            type: "compaction",
+            auto: true,
+          })
+          continue
+        }
+
+        const tools = await ToolResolver.resolve({
+          agent,
+          model,
+          sessionID,
+          processor,
+          session,
+          userTools: lastUser.tools,
+          includeMCP: true,
+        })
+
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
         const result = await processor.process({
           user: lastUser,
           agent,
           abort,
           sessionID,
-          system: systemParts,
-          messages: [
-            ...MessageV2.toModelMessage(sessionMessages),
-            ...(isLastStep
-              ? [
-                  {
-                    role: "assistant" as const,
-                    content: MAX_STEPS,
-                  },
-                ]
-              : []),
-          ],
+          system: promptPlan.system,
+          messages: promptPlan.messages,
           tools,
           model,
         })

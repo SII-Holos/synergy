@@ -133,6 +133,24 @@ export namespace Token {
     }
   }
 
+  export async function estimateModelJSON(modelID: string, value: unknown): Promise<number> {
+    if (typeof value === "string") return estimateModel(modelID, value)
+    try {
+      return await estimateModel(modelID, JSON.stringify(value))
+    } catch {
+      return 0
+    }
+  }
+
+  export function estimateModelJSONSync(modelID: string, value: unknown): number {
+    if (typeof value === "string") return estimateModelSync(modelID, value)
+    try {
+      return estimateModelSync(modelID, JSON.stringify(value))
+    } catch {
+      return 0
+    }
+  }
+
   /**
    * Eagerly warm the tokenizer cache for a model's encoding. Call this early
    * in a session lifecycle so that subsequent `estimateModelSync` calls can

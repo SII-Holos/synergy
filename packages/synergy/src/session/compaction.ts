@@ -375,7 +375,7 @@ export namespace SessionCompaction {
     type: "compaction",
     phase: "pre",
     blocking: true,
-    signals: ["overflow", "compact"],
+    signals: ["compact"],
     collect() {
       return []
     },
