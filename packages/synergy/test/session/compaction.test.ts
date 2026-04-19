@@ -3,6 +3,7 @@ import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
 import { SessionCompaction } from "../../src/session/compaction"
+import { MessageV2 } from "../../src/session/message-v2"
 import type { Provider } from "../../src/provider/provider"
 
 Log.init({ print: false })
@@ -394,5 +395,152 @@ describe("util.token.warmup", () => {
 
   test("completes without error for unknown model", async () => {
     await Token.warmup("some-random-model")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.selectPartsToPrune — regression tests
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.selectPartsToPrune", () => {
+  const now = Date.now()
+
+  function toolPart(opts: { id?: string; tool?: string; output?: string; compacted?: number }): MessageV2.ToolPart {
+    return {
+      id: opts.id ?? `part-${Math.random().toString(36).slice(2, 8)}`,
+      sessionID: "test-session",
+      messageID: "msg-assistant",
+      type: "tool",
+      callID: `call-${Math.random().toString(36).slice(2, 8)}`,
+      tool: opts.tool ?? "bash",
+      state: {
+        status: "completed",
+        input: {},
+        output: opts.output ?? "",
+        title: "test",
+        metadata: {},
+        time: {
+          start: now - 1000,
+          end: now,
+          ...(opts.compacted ? { compacted: opts.compacted } : {}),
+        },
+      },
+    }
+  }
+
+  function userMsg(id: string): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        time: { created: now },
+        agent: "synergy",
+        model: { providerID: "test", modelID: "test-model" },
+      },
+      parts: [{ id: `text-${id}`, sessionID: "test-session", messageID: id, type: "text", text: "hello" }],
+    }
+  }
+
+  function assistantMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "assistant",
+        sessionID: "test-session",
+        time: { created: now },
+        parentID: "msg-user",
+        modelID: "test-model",
+        providerID: "test",
+        mode: "default",
+        agent: "synergy",
+        path: { cwd: "/", root: "/" },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+      parts,
+    }
+  }
+
+  test("skips already-compacted parts and continues scanning earlier messages", () => {
+    // Regression: old code did `break loop` on compacted parts, stopping the
+    // entire backward scan. This meant that once any tool part was compacted,
+    // all earlier parts became invisible to pruning — even if they had huge
+    // output that should be pruned.
+    //
+    // Layout (oldest → newest):
+    //   [user0, asst0(tool: 50K tokens, not compacted), user1, asst1(tool: already compacted), user2, asst2(tool: recent)]
+    //
+    // After the fix (continue instead of break), the scanner should skip the
+    // compacted part in asst1 and still find the large part in asst0.
+
+    const bigOutput = "x".repeat(50_000 * 4) // ~50K tokens (4 chars/token)
+
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "old-big-tool", output: bigOutput })]),
+      userMsg("u1"),
+      assistantMsg("a1", [toolPart({ id: "mid-compacted-tool", output: "small", compacted: now - 500 })]),
+      userMsg("u2"),
+      assistantMsg("a2", [toolPart({ id: "recent-tool", output: "small" })]),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+
+    // The old-big-tool in a0 should be found and eligible for pruning
+    // (it exceeds PRUNE_PROTECT=40K and the pruned total exceeds PRUNE_MINIMUM=20K)
+    expect(result.some((p) => p.id === "old-big-tool")).toBe(true)
+  })
+
+  test("returns empty when total output is below PRUNE_MINIMUM", () => {
+    const smallOutput = "x".repeat(100)
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ output: smallOutput })]),
+      userMsg("u1"),
+      assistantMsg("a1", [toolPart({ output: smallOutput })]),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+    expect(result).toHaveLength(0)
+  })
+
+  test("protects recent turns from pruning", () => {
+    // The most recent 2 user turns are protected — only older parts are
+    // candidates for pruning.
+    const bigOutput = "x".repeat(50_000 * 4) // ~50K tokens
+
+    // Layout: [u0, a0(big old tool), u1, a1(big recent tool), u2, a2(small)]
+    // countRecentTurns(msgs, 2) returns index 2 (u1) as the boundary.
+    // Scan range: msgIndex 1 down to 0 → only a0 is scanned.
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "old-tool", output: bigOutput })]),
+      userMsg("u1"),
+      assistantMsg("a1", [toolPart({ id: "recent-tool", output: bigOutput })]),
+      userMsg("u2"),
+      assistantMsg("a2", [toolPart({ id: "newest-tool", output: "small" })]),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+
+    // "old-tool" (before the protect boundary) should be prunable,
+    // "recent-tool" (within the protected zone) should not appear.
+    expect(result.some((p) => p.id === "old-tool")).toBe(true)
+    expect(result.some((p) => p.id === "recent-tool")).toBe(false)
+  })
+
+  test("skips protected tools like skill", () => {
+    const bigOutput = "x".repeat(50_000 * 4)
+
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "skill-tool", tool: "skill", output: bigOutput })]),
+      userMsg("u1"),
+      assistantMsg("a1", []),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+    expect(result).toHaveLength(0)
   })
 })

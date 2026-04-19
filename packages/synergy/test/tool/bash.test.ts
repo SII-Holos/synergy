@@ -6,6 +6,7 @@ import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
+import { ProcessRegistry } from "../../src/process/registry"
 
 const ctx = {
   sessionID: "test",
@@ -354,5 +355,62 @@ describe("tool.bash truncation", () => {
         expect(lines[lineCount - 1]).toBe(String(lineCount))
       },
     })
+  })
+})
+
+describe("tool.bash output cap", () => {
+  test("metadata output is capped at 30K via truncateMetadataOutput", async () => {
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
+            description: "Generate 300KB output",
+          },
+          ctx,
+        )
+        // truncateMetadataOutput caps at 30K; metadata.output should not exceed that
+        expect((result.metadata.output ?? "").length).toBeLessThanOrEqual(30_000 + 100) // small margin for truncation marker
+      },
+    })
+  })
+
+  test("ProcessRegistry output is capped at 200K chars", async () => {
+    ProcessRegistry.reset()
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
+            background: true,
+            description: "Generate 300KB output in background",
+          },
+          ctx,
+        )
+        expect(result.metadata.background).toBe(true)
+        const processId = result.metadata.processId as string
+        expect(processId).toBeTruthy()
+
+        // Wait for process to finish
+        const proc = ProcessRegistry.get(processId)
+        if (proc) {
+          // Wait up to 10s for exit
+          for (let i = 0; i < 50; i++) {
+            if (proc.exited) break
+            await Bun.sleep(200)
+          }
+          expect(proc.output.length).toBeLessThanOrEqual(200_000)
+          expect(proc.tail.length).toBeLessThanOrEqual(2_000)
+        }
+
+        // Clean up
+        ProcessRegistry.remove(processId)
+      },
+    })
+    ProcessRegistry.reset()
   })
 })

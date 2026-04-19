@@ -186,14 +186,12 @@ export namespace SessionCompaction {
   // goes backwards through parts until there are 40_000 tokens worth of tool
   // calls. then erases output of previous tool calls. idea is to throw away old
   // tool calls that are no longer relevant.
-  export async function prune(input: { sessionID: string }) {
-    const config = await Config.get()
-    if (config.compaction?.prune === false) return
-    log.info("pruning")
-    const msgs = await Session.messages({ sessionID: input.sessionID })
+
+  /** Pure scan that returns the completed tool parts eligible for pruning. */
+  export function selectPartsToPrune(msgs: MessageV2.WithParts[]): MessageV2.ToolPart[] {
     let total = 0
     let pruned = 0
-    const toPrune = []
+    const toPrune: MessageV2.ToolPart[] = []
 
     const protectBoundary = Turn.countRecentTurns(msgs, 2)
 
@@ -216,8 +214,18 @@ export namespace SessionCompaction {
           }
       }
     }
-    log.info("found", { pruned, total })
-    if (pruned > PRUNE_MINIMUM) {
+    return pruned > PRUNE_MINIMUM ? toPrune : []
+  }
+
+  export async function prune(input: { sessionID: string }) {
+    const config = await Config.get()
+    if (config.compaction?.prune === false) return
+    log.info("pruning")
+    const msgs = await Session.messages({ sessionID: input.sessionID })
+
+    const toPrune = selectPartsToPrune(msgs)
+
+    if (toPrune.length > 0) {
       for (const part of toPrune) {
         if (part.state.status === "completed") {
           part.state.time.compacted = Date.now()
