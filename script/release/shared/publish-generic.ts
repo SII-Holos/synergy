@@ -1,7 +1,7 @@
 import { $ } from "bun"
 import path from "path"
 import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
-import { NPM_REGISTRY } from "./packages"
+import { FIXED_REGISTRY_PACKAGES, NPM_REGISTRY, REPO_ROOT } from "./packages"
 
 function distExports(exportsField: Record<string, unknown>) {
   const output: Record<string, unknown> = {}
@@ -25,6 +25,49 @@ function distExports(exportsField: Record<string, unknown>) {
   return output
 }
 
+async function readCatalog(): Promise<Record<string, string>> {
+  const rootPkg = JSON.parse(await Bun.file(path.join(REPO_ROOT, "package.json")).text())
+  return (rootPkg.workspaces?.catalog ?? {}) as Record<string, string>
+}
+
+/**
+ * Resolve Bun workspace/catalog protocol specifiers in a dependency map
+ * so the published package.json contains valid semver ranges.
+ *
+ * - `workspace:*` for known registry packages → current release version
+ * - `workspace:*` for unknown packages → throws (no silent fallback)
+ * - `catalog:` → resolved from root workspaces.catalog by dependency name
+ */
+function resolveDeps(
+  deps: Record<string, string> | undefined,
+  version: string,
+  catalog: Record<string, string>,
+): Record<string, string> | undefined {
+  if (!deps) return deps
+  const resolved: Record<string, string> = {}
+  for (const [name, spec] of Object.entries(deps)) {
+    if (spec.startsWith("workspace:")) {
+      if ((FIXED_REGISTRY_PACKAGES as readonly string[]).includes(name)) {
+        resolved[name] = version
+      } else {
+        throw new Error(
+          `Cannot resolve workspace: dependency "${name}: ${spec}" — ` +
+            `add it to FIXED_REGISTRY_PACKAGES in packages.ts or remove the workspace reference`,
+        )
+      }
+    } else if (spec === "catalog:") {
+      const catalogVersion = catalog[name]
+      if (!catalogVersion) {
+        throw new Error(`Cannot resolve catalog: dependency "${name}" — ` + `no entry found in root workspaces.catalog`)
+      }
+      resolved[name] = catalogVersion
+    } else {
+      resolved[name] = spec
+    }
+  }
+  return resolved
+}
+
 export async function publishGenericWorkspacePackage(options: {
   dir: string
   name: string
@@ -33,12 +76,20 @@ export async function publishGenericWorkspacePackage(options: {
 }) {
   const packageJsonPath = path.join(options.dir, "package.json")
   const originalText = await Bun.file(packageJsonPath).text()
+  const catalog = await readCatalog()
+
   const packageJson = JSON.parse(originalText) as {
     exports?: Record<string, unknown>
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+    peerDependencies?: Record<string, string>
   }
   if (packageJson.exports) {
     packageJson.exports = distExports(packageJson.exports)
   }
+  packageJson.dependencies = resolveDeps(packageJson.dependencies, options.version, catalog)
+  packageJson.devDependencies = resolveDeps(packageJson.devDependencies, options.version, catalog)
+  packageJson.peerDependencies = resolveDeps(packageJson.peerDependencies, options.version, catalog)
   await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2))
 
   try {
