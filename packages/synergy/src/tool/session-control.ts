@@ -12,6 +12,8 @@ import { SessionInteraction } from "../session/interaction"
 import { AppChannel } from "../channel/app"
 import { Contact } from "../holos/contact"
 import { HolosRuntime } from "../holos/runtime"
+import { Instance } from "../scope/instance"
+import { Scope } from "../scope"
 import DESCRIPTION from "./session-control.txt"
 
 const Action = z.enum([
@@ -73,15 +75,18 @@ export const SessionControlTool = Tool.define("session_control", {
     const session = await resolveSession(params.target)
     const sessionID = session.id
 
+    if (params.action === "status") {
+      return handleStatus(sessionID)
+    }
+
+    const withScope = <T>(fn: () => Promise<T>) => Instance.provide({ scope: session.scope as Scope, fn })
+
     switch (params.action) {
-      case "status": {
-        return handleStatus(sessionID)
-      }
       case "compact": {
-        return handleCompact(sessionID)
+        return withScope(() => handleCompact(sessionID))
       }
       case "abort": {
-        return handleAbort(sessionID)
+        return withScope(() => handleAbort(sessionID))
       }
       case "question_reply": {
         if (!params.requestID) {
@@ -90,13 +95,13 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.answers) {
           throw new Error("answers is required for question_reply")
         }
-        return handleQuestionReply(params.requestID, params.answers)
+        return withScope(() => handleQuestionReply(params.requestID!, params.answers!))
       }
       case "question_reject": {
         if (!params.requestID) {
           throw new Error("requestID is required for question_reject")
         }
-        return handleQuestionReject(params.requestID)
+        return withScope(() => handleQuestionReject(params.requestID!))
       }
       case "permission_reply": {
         if (!params.requestID) {
@@ -105,13 +110,13 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.reply) {
           throw new Error("reply is required for permission_reply")
         }
-        return handlePermissionReply(params.requestID, params.reply, params.message)
+        return withScope(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
       }
       case "set_allow_all": {
         if (params.enabled === undefined) {
           throw new Error("enabled is required for set_allow_all")
         }
-        return handleSetAllowAll(sessionID, params.enabled)
+        return withScope(() => handleSetAllowAll(sessionID, params.enabled!))
       }
     }
   },
