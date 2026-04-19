@@ -911,8 +911,8 @@ export namespace Config {
         .min(0)
         .max(1)
         .optional()
-        .describe("Minimum cosine similarity for retrieval candidates (default: 0.5)"),
-      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 5)"),
+        .describe("Minimum cosine similarity for retrieval candidates (default: 0.7)"),
+      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 3)"),
       epsilon: z.number().min(0).max(1).optional().describe("ε-greedy exploration probability (default: 0.1)"),
       wSim: z.number().min(0).max(1).optional().describe("Weight for similarity in hybrid score (default: 0.5)"),
       wQ: z.number().min(0).max(1).optional().describe("Weight for Q-value in hybrid score (default: 0.5)"),
@@ -951,8 +951,8 @@ export namespace Config {
   } as const satisfies Required<Learning>
 
   export const PASSIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.5,
-    topK: 5,
+    simThreshold: 0.7,
+    topK: 3,
     epsilon: 0.1,
     wSim: 0.5,
     wQ: 0.5,
@@ -1007,11 +1007,11 @@ export namespace Config {
               simThreshold: z
                 .number()
                 .optional()
-                .describe("Default minimum similarity for auto-injection (default: 0.5)"),
+                .describe("Default minimum similarity for auto-injection (default: 0.7)"),
               topK: z
                 .number()
                 .optional()
-                .describe("Default maximum entries per category to contextually retrieve (default: 5)"),
+                .describe("Default maximum entries per category to contextually retrieve (default: 3)"),
               categories: z
                 .record(z.enum(MEMORY_CATEGORIES), CategoryRetrieveConfig)
                 .optional()
@@ -1051,8 +1051,8 @@ export namespace Config {
     .describe("Dual-mode evolution system: passive experience learning + active memory curation (default: true)")
 
   export const ACTIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.5,
-    topK: 5,
+    simThreshold: 0.7,
+    topK: 3,
   } as const
 
   export interface CategoryRetrieval {

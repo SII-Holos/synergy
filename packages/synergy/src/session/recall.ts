@@ -180,7 +180,12 @@ async function buildActiveMemoryContext(
             categories: [category],
             recallModes: ["contextual"],
           })
-          return results.filter((result) => result.similarity >= config.simThreshold)
+          const filtered = results.filter((result) => result.similarity >= config.simThreshold)
+          if (filtered.length > 0) {
+            const maxSim = Math.max(...filtered.map((r) => r.similarity))
+            if (maxSim < 0.5) return []
+          }
+          return filtered
         }),
       )
 
