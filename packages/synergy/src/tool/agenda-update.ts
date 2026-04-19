@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { Agenda, AgendaStore, AgendaTypes } from "../agenda"
+import { Agenda, AgendaTypes } from "../agenda"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-update.txt"
 
 const parameters = z.object({
@@ -33,7 +34,7 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     if (params.wake !== undefined) patch.wake = params.wake
     if (params.silent !== undefined) patch.silent = params.silent
 
-    const item = await Agenda.update(params.id, patch)
+    const item = await Agenda.update(params.id, patch, Instance.scope.id)
 
     const lines = ["Agenda item updated.", `ID: ${item.id}`, `Title: ${item.title}`, `Status: ${item.status}`]
     if (item.state.nextRunAt) lines.push(`Next run: ${new Date(item.state.nextRunAt).toISOString()}`)

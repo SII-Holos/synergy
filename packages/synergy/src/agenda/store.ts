@@ -69,14 +69,6 @@ export namespace AgendaStore {
     return Math.min(...candidates)
   }
 
-  function storageScopeID(
-    item: { global?: boolean; origin?: { scope: { id: string } } },
-    fallbackScopeID?: string,
-  ): string {
-    if (item.global) return "global"
-    return item.origin?.scope.id ?? fallbackScopeID ?? Instance.scope.id
-  }
-
   export async function create(
     input: AgendaTypes.CreateInput,
     id: string = Identifier.ascending("agenda"),

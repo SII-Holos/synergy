@@ -188,7 +188,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   const [error, setError] = createSignal("")
 
   const [title, setTitle] = createSignal(props.item?.title ?? "")
-  const [prompt, setPrompt] = createSignal(props.item?.task?.prompt ?? "")
+  const [prompt, setPrompt] = createSignal(props.item?.prompt ?? "")
   const [description, setDescription] = createSignal(props.item?.description ?? "")
   const [tagsText, setTagsText] = createSignal((props.item?.tags ?? []).join(", "))
   const [selectedScopeID, setSelectedScopeID] = createSignal("")
@@ -205,7 +205,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
 
   const [showDesc, setShowDesc] = createSignal(!!props.item?.description)
   const [showTags, setShowTags] = createSignal(!!(props.item?.tags && props.item.tags.length > 0))
-  const [showAdvanced, setShowAdvanced] = createSignal(isEdit() && !!props.item?.task?.prompt)
+  const [showAdvanced, setShowAdvanced] = createSignal(isEdit() && !!props.item?.prompt)
 
   createEffect(() => {
     if (title().trim() && error() === "Title is required") setError("")
@@ -255,8 +255,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
-    const taskPrompt = prompt().trim()
-    const task = taskPrompt ? { prompt: taskPrompt } : undefined
+    const promptValue = prompt().trim()
 
     try {
       if (isEdit()) {
@@ -265,7 +264,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
           description: description().trim() || undefined,
           tags: tags.length > 0 ? tags : undefined,
           triggers,
-          task,
+          prompt: promptValue || undefined,
         }
         await sdk.client.agenda.update({ id: props.item!.id, directory: props.directory, agendaPatchInput: patch })
       } else {
@@ -274,7 +273,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
           description: description().trim() || undefined,
           tags: tags.length > 0 ? tags : undefined,
           triggers: triggers.length > 0 ? triggers : undefined,
-          task,
+          prompt: promptValue,
           createdBy: "user",
         }
         await sdk.client.agenda.create({ directory: props.directory, agendaCreateInput: input })

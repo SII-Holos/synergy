@@ -3,7 +3,6 @@ import { Identifier } from "../id/id"
 import { AppChannel } from "../channel/app"
 import { Log } from "../util/log"
 import { AgendaTypes } from "./types"
-import type { SessionEndpoint } from "../session/endpoint"
 
 export namespace AgendaDelivery {
   const log = Log.create({ service: "agenda.delivery" })
@@ -18,7 +17,7 @@ export namespace AgendaDelivery {
     if (input.item.silent) return
 
     const text = input.lastMessage ?? `Agenda task "${input.item.title}" completed.`
-    const target: string | SessionEndpoint.Info = input.item.origin.endpoint ?? AppChannel.endpoint()
+    const target = input.item.origin.endpoint ?? AppChannel.endpoint()
     const type = input.item.wake !== false ? "user" : "assistant"
 
     try {

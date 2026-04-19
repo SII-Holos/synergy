@@ -709,7 +709,7 @@ export class Agenda extends HeyApiClient {
   /**
    * Create agenda item
    *
-   * Create a new agenda item with optional triggers, task, and delivery configuration.
+   * Create a new agenda item with optional triggers and execution configuration.
    */
   public create<ThrowOnError extends boolean = false>(
     parameters?: {

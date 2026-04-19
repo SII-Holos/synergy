@@ -105,6 +105,31 @@ export type AgendaTriggerWatch = {
          */
         debounce?: string
       }
+    | {
+        kind: "tool"
+        /**
+         * Synergy tool name to call, e.g. 'inspire_jobs'
+         */
+        tool: string
+        /**
+         * Arguments to pass to the tool
+         */
+        args?: {
+          [key: string]: unknown
+        }
+        /**
+         * Poll interval, e.g. '5m'. Default: '5m'
+         */
+        interval?: string
+        /**
+         * 'change': fire when tool output differs; 'match': fire when output matches pattern
+         */
+        trigger?: "change" | "match"
+        /**
+         * Regex pattern, required when trigger is 'match'
+         */
+        match?: string
+      }
 }
 
 export type AgendaTriggerWebhook = {
@@ -123,16 +148,6 @@ export type AgendaTrigger =
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
 
-/**
- * Scope where the item was created
- */
-export type AgendaScope = {
-  id: string
-  type?: string
-  directory?: string
-  worktree?: string
-}
-
 export type AgendaSessionRef = {
   sessionID: string
   /**
@@ -142,60 +157,14 @@ export type AgendaSessionRef = {
 }
 
 /**
- * Execution configuration
+ * Scope where the item was created
  */
-export type AgendaTask = {
-  /**
-   * Instruction for the agent
-   */
-  prompt: string
-  /**
-   * Agent to use, defaults to the configured default
-   */
-  agent?: string
-  /**
-   * Model override
-   */
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  workScope?: AgendaScope
-  /**
-   * Sessions whose content may be relevant — injected as context references
-   */
-  sessionRefs?: Array<AgendaSessionRef>
-  /**
-   * Execution timeout in milliseconds
-   */
-  timeout?: number
-  /**
-   * 'ephemeral' (default): create a new session per trigger. 'persistent': reuse the same session across triggers.
-   */
-  sessionMode?: "ephemeral" | "persistent"
-  /**
-   * 'full' (default): inject complete agenda context XML. 'signal': inject only the signal payload. 'none': send only the task prompt.
-   */
-  contextMode?: "full" | "signal" | "none"
+export type AgendaScope = {
+  id: string
+  type?: string
+  directory?: string
+  worktree?: string
 }
-
-/**
- * Delivery configuration, defaults to { target: 'auto' }
- */
-export type AgendaDelivery =
-  | {
-      target: "auto"
-    }
-  | {
-      target: "silent"
-    }
-  | {
-      target: "home"
-    }
-  | {
-      target: "session"
-      sessionID: string
-    }
 
 export type ChannelInfo = {
   type: string
@@ -279,11 +248,44 @@ export type AgendaItem = {
   description?: string
   tags?: Array<string>
   /**
-   * Activation conditions. Schedule items have time triggers; todo items may have none (manual activation) or non-time triggers.
+   * If true, item is visible from all scopes
+   */
+  global?: boolean
+  /**
+   * Activation conditions
    */
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  /**
+   * Instruction for the agent when triggered
+   */
+  prompt: string
+  /**
+   * Agent to use, defaults to configured default
+   */
+  agent?: string
+  /**
+   * Model override
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  /**
+   * Sessions whose content may be relevant — injected as context references
+   */
+  sessionRefs?: Array<AgendaSessionRef>
+  /**
+   * Execution timeout in milliseconds
+   */
+  timeout?: number
+  /**
+   * Whether to wake the origin session's agent on completion
+   */
+  wake?: boolean
+  /**
+   * Whether to suppress result delivery entirely
+   */
+  silent?: boolean
   origin: AgendaOrigin
   createdBy: "user" | "agent"
   state?: AgendaItemState
@@ -904,11 +906,11 @@ export type ProviderConfig = {
 
 export type PassiveRetrievalConfig = {
   /**
-   * Minimum cosine similarity for retrieval candidates (default: 0.5)
+   * Minimum cosine similarity for retrieval candidates (default: 0.7)
    */
   simThreshold?: number
   /**
-   * Number of experiences to retrieve (default: 5)
+   * Number of experiences to retrieve (default: 8)
    */
   topK?: number
   /**
@@ -1028,11 +1030,11 @@ export type EvolutionActive = {
     | boolean
     | {
         /**
-         * Default minimum similarity for auto-injection (default: 0.5)
+         * Default minimum similarity for auto-injection (default: 0.7)
          */
         simThreshold?: number
         /**
-         * Default maximum entries per category to contextually retrieve (default: 5)
+         * Default maximum entries per category to contextually retrieve (default: 3)
          */
         topK?: number
         /**
@@ -2704,11 +2706,20 @@ export type AgendaTriggerResult = {
 
 export type AgendaCreateInput = {
   title: string
+  prompt: string
   description?: string
   tags?: Array<string>
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  global?: boolean
+  wake?: boolean
+  silent?: boolean
+  agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  sessionRefs?: Array<AgendaSessionRef>
+  timeout?: number
   createdBy?: "user" | "agent"
   /**
    * Session where the item was created
@@ -2723,8 +2734,12 @@ export type AgendaPatchInput = {
   status?: "pending" | "active" | "paused" | "done" | "cancelled"
   tags?: Array<string>
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  prompt?: string
+  global?: boolean
+  wake?: boolean
+  silent?: boolean
+  agent?: string
+  sessionRefs?: Array<AgendaSessionRef>
 }
 
 export type NoteInfo = {
@@ -7383,6 +7398,7 @@ export type AgendaListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda"
 }

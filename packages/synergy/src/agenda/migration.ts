@@ -71,7 +71,6 @@ export const migrations: Migration[] = [
       let total = 0
       let done = 0
 
-      // Count items first
       for (const scopeID of scopeIDs) {
         const itemIDs = await Storage.scan(StoragePath.agendaItemsRoot(Identifier.asScopeID(scopeID)))
         total += itemIDs.length
@@ -87,10 +86,8 @@ export const migrations: Migration[] = [
           const path = StoragePath.agendaItem(sid, itemID)
           try {
             await Storage.update<any>(path, (draft) => {
-              // Skip if already migrated
               if (draft.prompt !== undefined && draft.wake !== undefined) return
 
-              // Flatten task → top-level
               const task = draft.task as any
               if (task) {
                 if (task.prompt && !draft.prompt) draft.prompt = task.prompt
@@ -101,10 +98,8 @@ export const migrations: Migration[] = [
                 delete draft.task
               }
 
-              // Ensure prompt exists
               if (!draft.prompt) draft.prompt = draft.title ?? ""
 
-              // Flatten delivery → wake/silent
               const delivery = draft.delivery as any
               if (delivery) {
                 if (delivery.target === "silent") {
@@ -117,11 +112,8 @@ export const migrations: Migration[] = [
                 delete draft.delivery
               }
 
-              // Ensure wake/silent exist with defaults
               if (draft.wake === undefined) draft.wake = true
               if (draft.silent === undefined) draft.silent = false
-
-              // Ensure global field
               if (draft.global === undefined) draft.global = false
             })
           } catch (err) {

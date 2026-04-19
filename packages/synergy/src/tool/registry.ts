@@ -205,12 +205,19 @@ export namespace ToolRegistry {
     return all().then((x) => x.map((t) => t.id))
   }
 
+  const findCache = new Map<string, { id: string; description: string; parameters: any; execute: Function }>()
+
   export async function find(id: string) {
+    const cached = findCache.get(id)
+    if (cached) return cached
+
     const tools = await all()
     const tool = tools.find((t) => t.id === id)
     if (!tool) return undefined
     const def = await tool.init()
-    return { id: tool.id, ...def }
+    const result = { id: tool.id, ...def }
+    findCache.set(id, result)
+    return result
   }
 
   export async function tools(providerID: string, agent?: Agent.Info) {

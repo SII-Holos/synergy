@@ -10,13 +10,16 @@ export namespace AgendaWatcher {
 
   type Handler = (signal: AgendaTypes.FiredSignal, scopeID: string) => Promise<void>
 
-  interface PollEntry {
+  interface ChangeDetector {
+    trigger: "change" | "match"
+    matchRegex?: RegExp
+    lastOutput?: string
+  }
+
+  interface PollEntry extends ChangeDetector {
     scopeID: string
     itemID: string
     command: string
-    trigger: "change" | "match"
-    match?: string
-    lastOutput?: string
     timer: Timer
   }
 
@@ -28,14 +31,11 @@ export namespace AgendaWatcher {
     debounceMs: number
   }
 
-  interface ToolEntry {
+  interface ToolEntry extends ChangeDetector {
     scopeID: string
     itemID: string
     tool: string
     args?: Record<string, unknown>
-    trigger: "change" | "match"
-    match?: string
-    lastOutput?: string
     timer: Timer
   }
 
@@ -111,7 +111,7 @@ export namespace AgendaWatcher {
           itemID,
           command: watch.command,
           trigger: watch.trigger,
-          match: watch.match,
+          matchRegex: watch.match ? new RegExp(watch.match) : undefined,
           lastOutput: undefined,
           timer: setInterval(() => executePoll(entry), intervalMs),
         }
@@ -133,7 +133,7 @@ export namespace AgendaWatcher {
           tool: watch.tool,
           args: watch.args,
           trigger: watch.trigger,
-          match: watch.match,
+          matchRegex: watch.match ? new RegExp(watch.match) : undefined,
           lastOutput: undefined,
           timer: setInterval(() => executeToolPoll(entry), intervalMs),
         }
@@ -223,6 +223,19 @@ export namespace AgendaWatcher {
     debounceTimers.set(entry.itemID, timer)
   }
 
+  function shouldFire(entry: ChangeDetector, output: string): boolean {
+    if (entry.trigger === "change") {
+      const changed = entry.lastOutput !== undefined && entry.lastOutput !== output
+      entry.lastOutput = output
+      return changed
+    }
+    if (entry.trigger === "match") {
+      if (!entry.matchRegex) return false
+      return entry.matchRegex.test(output)
+    }
+    return false
+  }
+
   async function executePoll(entry: PollEntry): Promise<void> {
     if (!started || !handler) return
 
@@ -233,15 +246,7 @@ export namespace AgendaWatcher {
       clearTimeout(timeout)
       const trimmed = output.trim()
 
-      if (entry.trigger === "change") {
-        const changed = entry.lastOutput !== undefined && entry.lastOutput !== trimmed
-        entry.lastOutput = trimmed
-        if (!changed) return
-      } else if (entry.trigger === "match") {
-        if (!entry.match) return
-        const regex = new RegExp(entry.match)
-        if (!regex.test(trimmed)) return
-      }
+      if (!shouldFire(entry, trimmed)) return
 
       const signal: AgendaTypes.FiredSignal = {
         type: "watch",
@@ -268,19 +273,18 @@ export namespace AgendaWatcher {
         log.error("tool not found for watch", { itemID: entry.itemID, tool: entry.tool })
         return
       }
-      const result = await tool.execute(entry.args ?? {}, { sessionID: "" } as any)
+      const result = await tool.execute(entry.args ?? {}, {
+        sessionID: "",
+        messageID: "",
+        agent: "system",
+        abort: AbortSignal.timeout(30_000),
+        metadata: () => {},
+        ask: () => Promise.resolve(),
+      })
       const output = typeof result === "string" ? result : JSON.stringify(result)
       const trimmed = output.trim()
 
-      if (entry.trigger === "change") {
-        const changed = entry.lastOutput !== undefined && entry.lastOutput !== trimmed
-        entry.lastOutput = trimmed
-        if (!changed) return
-      } else if (entry.trigger === "match") {
-        if (!entry.match) return
-        const regex = new RegExp(entry.match)
-        if (!regex.test(trimmed)) return
-      }
+      if (!shouldFire(entry, trimmed)) return
 
       const signal: AgendaTypes.FiredSignal = {
         type: "watch",

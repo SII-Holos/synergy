@@ -67,21 +67,21 @@ export namespace Agenda {
     return item
   }
 
-  export async function update(itemID: string, patch: Parameters<typeof AgendaStore.update>[2]) {
-    const { scopeID } = await AgendaStore.find(itemID)
-    const item = await AgendaStore.update(scopeID, itemID, patch)
+  export async function update(itemID: string, patch: Parameters<typeof AgendaStore.update>[2], scopeID?: string) {
+    const resolved = scopeID ? await AgendaStore.findInScope(scopeID, itemID) : await AgendaStore.find(itemID)
+    const item = await AgendaStore.update(resolved.scopeID, itemID, patch)
     if (item.status === "active") {
-      syncItem(scopeID, item)
+      syncItem(resolved.scopeID, item)
     } else {
       teardownItem(item.id)
     }
     return item
   }
 
-  export async function remove(itemID: string) {
-    const { scopeID } = await AgendaStore.find(itemID)
+  export async function remove(itemID: string, scopeID?: string) {
+    const resolved = scopeID ? await AgendaStore.findInScope(scopeID, itemID) : await AgendaStore.find(itemID)
     teardownItem(itemID)
-    await AgendaStore.remove(scopeID, itemID)
+    await AgendaStore.remove(resolved.scopeID, itemID)
   }
 
   export async function trigger(itemID: string) {

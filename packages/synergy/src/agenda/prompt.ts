@@ -6,7 +6,7 @@ export namespace AgendaPrompt {
     signal: AgendaTypes.FiredSignal,
     contextMode: "full" | "signal",
   ): string {
-    const prompt = item.prompt ?? ""
+    const prompt = item.prompt
 
     if (contextMode === "signal") {
       const payload = formatSignalPayload(signal)

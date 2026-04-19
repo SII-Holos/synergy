@@ -102,8 +102,7 @@ export namespace AgendaTypes {
   // Session mode — inferred internally, not user-facing
   // ---------------------------------------------------------------------------
 
-  export const SessionMode = z.enum(["ephemeral", "persistent"])
-  export type SessionMode = z.infer<typeof SessionMode>
+  export type SessionMode = "ephemeral" | "persistent"
 
   export function inferSessionMode(triggers: Trigger[]): SessionMode {
     const hasRecurring = triggers.some((t) => t.type === "cron" || t.type === "every" || t.type === "watch")

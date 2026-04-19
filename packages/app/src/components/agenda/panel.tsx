@@ -53,8 +53,12 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
           return `at ${new Date(t.at).toLocaleString()}`
         case "delay":
           return `delay ${t.delay}`
-        case "watch":
-          return t.watch.kind === "poll" ? `poll: ${t.watch.command}` : `watch: ${t.watch.glob}`
+        case "watch": {
+          const w = t.watch
+          if (w.kind === "poll") return `poll: ${w.command}`
+          if (w.kind === "tool") return `tool: ${w.tool}`
+          return `watch: ${w.glob}`
+        }
         default:
           return "unknown"
       }
@@ -659,15 +663,15 @@ function DetailPopover(props: {
               </div>
             </Show>
 
-            <Show when={props.item.task?.prompt}>
+            <Show when={props.item.prompt}>
               <div class="rounded-lg border border-border-weaker-base/50 overflow-hidden">
                 <div class="px-3 py-1.5 text-11-medium text-text-weak border-b border-border-weaker-base/50">Task</div>
                 <div class="px-3 py-2">
                   <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
-                    {props.item.task!.prompt}
+                    {props.item.prompt}
                   </p>
-                  <Show when={props.item.task!.agent}>
-                    <span class="text-10-medium text-text-weaker mt-1 block">Agent: {props.item.task!.agent}</span>
+                  <Show when={props.item.agent}>
+                    <span class="text-10-medium text-text-weaker mt-1 block">Agent: {props.item.agent}</span>
                   </Show>
                 </div>
               </div>

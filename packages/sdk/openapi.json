@@ -7288,7 +7288,7 @@
           }
         ],
         "summary": "Create agenda item",
-        "description": "Create a new agenda item with optional triggers, task, and delivery configuration.",
+        "description": "Create a new agenda item with optional triggers and execution configuration.",
         "responses": {
           "200": {
             "description": "Created item",
@@ -7336,10 +7336,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "List agenda items",
-        "description": "List all agenda items.",
+        "description": "List all agenda items, optionally filtered by scope.",
         "responses": {
           "200": {
             "description": "List of agenda items",
@@ -10630,6 +10637,42 @@
                   }
                 },
                 "required": ["kind", "glob"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "tool"
+                  },
+                  "tool": {
+                    "description": "Synergy tool name to call, e.g. 'inspire_jobs'",
+                    "type": "string"
+                  },
+                  "args": {
+                    "description": "Arguments to pass to the tool",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "interval": {
+                    "description": "Poll interval, e.g. '5m'. Default: '5m'",
+                    "type": "string"
+                  },
+                  "trigger": {
+                    "description": "'change': fire when tool output differs; 'match': fire when output matches pattern",
+                    "default": "change",
+                    "type": "string",
+                    "enum": ["change", "match"]
+                  },
+                  "match": {
+                    "description": "Regex pattern, required when trigger is 'match'",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "tool"]
               }
             ]
           }
@@ -10672,6 +10715,19 @@
           }
         ]
       },
+      "AgendaSessionRef": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "hint": {
+            "description": "Brief description of what this session contains",
+            "type": "string"
+          }
+        },
+        "required": ["sessionID"]
+      },
       "AgendaScope": {
         "description": "Scope where the item was created",
         "type": "object",
@@ -10691,119 +10747,6 @@
         },
         "required": ["id"],
         "additionalProperties": false
-      },
-      "AgendaSessionRef": {
-        "type": "object",
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          },
-          "hint": {
-            "description": "Brief description of what this session contains",
-            "type": "string"
-          }
-        },
-        "required": ["sessionID"]
-      },
-      "AgendaTask": {
-        "description": "Execution configuration",
-        "type": "object",
-        "properties": {
-          "prompt": {
-            "description": "Instruction for the agent",
-            "type": "string"
-          },
-          "agent": {
-            "description": "Agent to use, defaults to the configured default",
-            "type": "string"
-          },
-          "model": {
-            "description": "Model override",
-            "type": "object",
-            "properties": {
-              "providerID": {
-                "type": "string"
-              },
-              "modelID": {
-                "type": "string"
-              }
-            },
-            "required": ["providerID", "modelID"]
-          },
-          "workScope": {
-            "$ref": "#/components/schemas/AgendaScope"
-          },
-          "sessionRefs": {
-            "description": "Sessions whose content may be relevant — injected as context references",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgendaSessionRef"
-            }
-          },
-          "timeout": {
-            "description": "Execution timeout in milliseconds",
-            "type": "number"
-          },
-          "sessionMode": {
-            "description": "'ephemeral' (default): create a new session per trigger. 'persistent': reuse the same session across triggers.",
-            "type": "string",
-            "enum": ["ephemeral", "persistent"]
-          },
-          "contextMode": {
-            "description": "'full' (default): inject complete agenda context XML. 'signal': inject only the signal payload. 'none': send only the task prompt.",
-            "type": "string",
-            "enum": ["full", "signal", "none"]
-          }
-        },
-        "required": ["prompt"]
-      },
-      "AgendaDelivery": {
-        "description": "Delivery configuration, defaults to { target: 'auto' }",
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "auto"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "silent"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "home"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "session"
-              },
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["target", "sessionID"]
-          }
-        ]
       },
       "ChannelInfo": {
         "type": "object",
@@ -10962,19 +10905,60 @@
               "type": "string"
             }
           },
+          "global": {
+            "description": "If true, item is visible from all scopes",
+            "default": false,
+            "type": "boolean"
+          },
           "triggers": {
-            "description": "Activation conditions. Schedule items have time triggers; todo items may have none (manual activation) or non-time triggers.",
+            "description": "Activation conditions",
             "default": [],
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "prompt": {
+            "description": "Instruction for the agent when triggered",
+            "type": "string"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "agent": {
+            "description": "Agent to use, defaults to configured default",
+            "type": "string"
+          },
+          "model": {
+            "description": "Model override",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "sessionRefs": {
+            "description": "Sessions whose content may be relevant — injected as context references",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
+          },
+          "timeout": {
+            "description": "Execution timeout in milliseconds",
+            "type": "number"
+          },
+          "wake": {
+            "description": "Whether to wake the origin session's agent on completion",
+            "default": true,
+            "type": "boolean"
+          },
+          "silent": {
+            "description": "Whether to suppress result delivery entirely",
+            "default": false,
+            "type": "boolean"
           },
           "origin": {
             "$ref": "#/components/schemas/AgendaOrigin"
@@ -10999,7 +10983,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "status", "title", "origin", "createdBy", "time"]
+        "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
       "AgendaWebhookResult": {
         "type": "object",
@@ -12017,13 +12001,13 @@
         "type": "object",
         "properties": {
           "simThreshold": {
-            "description": "Minimum cosine similarity for retrieval candidates (default: 0.5)",
+            "description": "Minimum cosine similarity for retrieval candidates (default: 0.7)",
             "type": "number",
             "minimum": 0,
             "maximum": 1
           },
           "topK": {
-            "description": "Number of experiences to retrieve (default: 5)",
+            "description": "Number of experiences to retrieve (default: 8)",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
@@ -12195,11 +12179,11 @@
                 "type": "object",
                 "properties": {
                   "simThreshold": {
-                    "description": "Default minimum similarity for auto-injection (default: 0.5)",
+                    "description": "Default minimum similarity for auto-injection (default: 0.7)",
                     "type": "number"
                   },
                   "topK": {
-                    "description": "Default maximum entries per category to contextually retrieve (default: 5)",
+                    "description": "Default maximum entries per category to contextually retrieve (default: 3)",
                     "type": "number"
                   },
                   "categories": {
@@ -16279,6 +16263,9 @@
           "title": {
             "type": "string"
           },
+          "prompt": {
+            "type": "string"
+          },
           "description": {
             "type": "string"
           },
@@ -16294,11 +16281,38 @@
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "global": {
+            "type": "boolean"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "wake": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "sessionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
+          },
+          "timeout": {
+            "type": "number"
           },
           "createdBy": {
             "default": "user",
@@ -16313,7 +16327,7 @@
             "$ref": "#/components/schemas/SessionEndpoint"
           }
         },
-        "required": ["title"]
+        "required": ["title", "prompt"]
       },
       "AgendaPatchInput": {
         "type": "object",
@@ -16340,11 +16354,26 @@
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "prompt": {
+            "type": "string"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "global": {
+            "type": "boolean"
+          },
+          "wake": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "sessionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
           }
         }
       },
