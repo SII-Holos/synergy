@@ -206,7 +206,7 @@ export namespace SessionCompaction {
           if (part.state.status === "completed") {
             if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
 
-            if (part.state.time.compacted) break loop
+            if (part.state.time.compacted) continue
             const estimate = Token.estimate(part.state.output)
             total += estimate
             if (total > PRUNE_PROTECT) {

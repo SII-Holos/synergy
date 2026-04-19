@@ -137,8 +137,6 @@ export const LocalBashBackend: BashBackend = {
       stdin: child.stdin ?? undefined,
     })
 
-    let output = ""
-
     ctx.metadata({
       metadata: {
         output: "",
@@ -148,11 +146,10 @@ export const LocalBashBackend: BashBackend = {
 
     const append = (chunk: Buffer) => {
       const text = chunk.toString()
-      output += text
       ProcessRegistry.appendOutput(regProc, text)
       ctx.metadata({
         metadata: {
-          output: truncateMetadataOutput(output),
+          output: truncateMetadataOutput(regProc.output),
           description: params.description,
         },
       })
@@ -251,7 +248,7 @@ export const LocalBashBackend: BashBackend = {
       return {
         title: `[Auto-Background] ${params.description}`,
         metadata: {
-          output: truncateMetadataOutput(output),
+          output: truncateMetadataOutput(regProc.output),
           description: params.description,
           processId: regProc.id,
           background: true,
@@ -262,7 +259,7 @@ export const LocalBashBackend: BashBackend = {
           `Process ID: ${regProc.id}\n` +
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
-          `Recent output:\n${output.slice(-1000) || "(no output yet)"}\n\n` +
+          `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
           `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
           `Use \`process(action: "log", processId: "${regProc.id}")\` to get full output.\n` +
           `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
@@ -279,8 +276,21 @@ export const LocalBashBackend: BashBackend = {
       resultMetadata.push("User aborted the command")
     }
 
+    const output = regProc.output
+
     if (resultMetadata.length > 0) {
-      output += "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>"
+      return {
+        title: params.description,
+        metadata: {
+          output: truncateMetadataOutput(
+            output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
+          ),
+          exit: child.exitCode,
+          description: params.description,
+          backend: "local",
+        },
+        output: output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
+      }
     }
 
     return {
