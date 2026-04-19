@@ -11,6 +11,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 const log = Log.create({ service: "session.loop-signals" })
 
 const COMPACTION_BUFFER = 20_000
+const DEFAULT_OVERFLOW_THRESHOLD = 0.85
 
 LoopJob.defineSignal({
   type: "compact",
@@ -61,14 +62,16 @@ LoopJob.defineSignal({
     const estimated = estimateConversationTokens(ctx.messages, ctx.modelID)
     const overhead = lastActualInput > estimated ? lastActualInput - estimated : 0
     const calibrated = estimated + overhead
-    if (calibrated > usable * 0.85) {
+    const threshold = ctx.compactionOverflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
+    if (calibrated > usable * threshold) {
       log.info("overflow check 2 triggered", {
         sessionID: ctx.sessionID,
         estimated,
         overhead,
         calibrated,
-        threshold: Math.round(usable * 0.85),
+        threshold: Math.round(usable * threshold),
         usable,
+        overflowThreshold: threshold,
       })
       return injectCompaction(ctx)
     }

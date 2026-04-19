@@ -13078,6 +13078,12 @@
               "prune": {
                 "description": "Enable pruning of old tool outputs (default: true)",
                 "type": "boolean"
+              },
+              "overflowThreshold": {
+                "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 1
               }
             }
           },

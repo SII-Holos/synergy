@@ -19,6 +19,7 @@ export namespace LoopJob {
     lastAssistant?: MessageV2.Assistant
     abort: AbortSignal
     compactionAutoDisabled?: boolean
+    compactionOverflowThreshold?: number
     modelLimits?: { context: number; input?: number; output: number }
     modelID?: string
   }

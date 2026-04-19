@@ -60,3 +60,6 @@ results/
 .synergy/bun.lock
 
 tmp_*
+
+# External cloned repos for analysis
+qzcli_tool/

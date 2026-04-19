@@ -1560,6 +1560,10 @@ export type Config = {
      * Enable pruning of old tool outputs (default: true)
      */
     prune?: boolean
+    /**
+     * Fraction of usable context that triggers auto-compaction (default: 0.85)
+     */
+    overflowThreshold?: number
   }
   experimental?: {
     /**

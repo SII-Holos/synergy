@@ -236,6 +236,7 @@ export namespace SessionInvoke {
           lastAssistant,
           abort,
           compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
+          compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
           modelID: lastUser.model.modelID,
           modelLimits: await Promise.all([
             Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)

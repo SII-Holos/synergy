@@ -208,6 +208,24 @@ describe("loop-signals: overflow signal", () => {
     const fired = await LoopJob.detectSignals(ctx)
     expect(fired).not.toContain("overflow")
   })
+
+  test("respects compactionOverflowThreshold override", async () => {
+    // Use a smaller context window so both checks are exercisable.
+    // usable = 100_000 - 8_192 = 91_808
+    // 85% threshold = 78_037  |  95% threshold = 87_218
+    // 80K actual input < 91_808 (no Check 1) but > 78_037 (Check 2 fires at 0.85)
+    const smallLimits = { context: 100_000, output: 8_192 }
+    const base = {
+      modelLimits: smallLimits,
+      lastAssistant: makeAssistantMsg({ finish: "stop", tokens: makeTokens(80_000, 5_000) }),
+      lastUserParts: [],
+    }
+    const firedDefault = await LoopJob.detectSignals(makeContext(base))
+    expect(firedDefault).toContain("overflow")
+
+    const firedHigh = await LoopJob.detectSignals(makeContext({ ...base, compactionOverflowThreshold: 0.95 }))
+    expect(firedHigh).not.toContain("overflow")
+  })
 })
 
 describe("loop-signals: overflow via lastAssistant (regression)", () => {

@@ -229,6 +229,7 @@ export function DialogSettings(props: DialogSettingsProps) {
 
   const [advanced, setAdvanced] = createStore({
     compaction_auto: "" as string,
+    compaction_overflow_threshold: "" as string,
     permission: "" as string,
     question_timeout: "" as string,
   })
@@ -313,6 +314,8 @@ export function DialogSettings(props: DialogSettingsProps) {
 
     setAdvanced({
       compaction_auto: cfg.compaction?.auto === undefined ? "" : cfg.compaction.auto ? "true" : "false",
+      compaction_overflow_threshold:
+        cfg.compaction?.overflowThreshold === undefined ? "" : String(cfg.compaction.overflowThreshold),
       permission: (() => {
         const permission = cfg.permission
         if (!permission) return ""
@@ -480,10 +483,18 @@ export function DialogSettings(props: DialogSettingsProps) {
 
     const origCompaction = cfg.compaction
     const origAutoStr = origCompaction?.auto === undefined ? "" : origCompaction.auto ? "true" : "false"
-    if (advanced.compaction_auto !== origAutoStr) {
+    const origThresholdStr =
+      origCompaction?.overflowThreshold === undefined ? "" : String(origCompaction.overflowThreshold)
+    const compactionChanged =
+      advanced.compaction_auto !== origAutoStr || advanced.compaction_overflow_threshold !== origThresholdStr
+    if (compactionChanged) {
       const newCompaction: Record<string, unknown> = {}
       if (advanced.compaction_auto === "true") newCompaction.auto = true
       else if (advanced.compaction_auto === "false") newCompaction.auto = false
+      if (advanced.compaction_overflow_threshold !== "") {
+        const val = Number(advanced.compaction_overflow_threshold)
+        if (!isNaN(val) && val >= 0.5 && val <= 1) newCompaction.overflowThreshold = val
+      }
       patch.compaction = Object.keys(newCompaction).length > 0 ? newCompaction : undefined
     }
 
@@ -1166,6 +1177,24 @@ export function DialogSettings(props: DialogSettingsProps) {
                         { value: "false", label: "Off" },
                       ]}
                       onChange={(value) => setAdvanced("compaction_auto", value)}
+                    />
+                  }
+                />
+                <SettingRow
+                  title="Overflow Threshold"
+                  description="Context usage fraction that triggers auto-compaction (0.5–1.0, default 0.85)"
+                  trailing={
+                    <SegmentPill
+                      value={advanced.compaction_overflow_threshold}
+                      options={[
+                        { value: "", label: "Default" },
+                        { value: "0.70", label: "70%" },
+                        { value: "0.80", label: "80%" },
+                        { value: "0.85", label: "85%" },
+                        { value: "0.90", label: "90%" },
+                        { value: "0.95", label: "95%" },
+                      ]}
+                      onChange={(value) => setAdvanced("compaction_overflow_threshold", value)}
                     />
                   }
                 />
