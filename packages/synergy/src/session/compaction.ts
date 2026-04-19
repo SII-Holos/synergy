@@ -61,8 +61,15 @@ export namespace SessionCompaction {
    * context window. Keeps the most recent messages (highest signal for
    * summarization) and inserts a marker for omitted history.
    */
-  function trimMessagesForContext(messages: ModelMessage[], budget: number): ModelMessage[] {
-    const estimated = Token.estimateJSON(messages)
+  async function trimMessagesForContext(
+    messages: ModelMessage[],
+    budget: number,
+    modelID?: string,
+  ): Promise<ModelMessage[]> {
+    const estimateJSON = modelID
+      ? (value: unknown) => Token.estimateModelJSONSync(modelID, value)
+      : (value: unknown) => Token.estimateJSON(value)
+    const estimated = estimateJSON(messages)
     if (estimated <= budget) return messages
 
     // If budget is zero or negative (output + prompt alone exceeds context),
@@ -74,7 +81,7 @@ export namespace SessionCompaction {
     let used = 0
     let startIndex = messages.length
     for (let i = messages.length - 1; i >= 0; i--) {
-      const cost = Token.estimateJSON(messages[i])
+      const cost = estimateJSON(messages[i])
       if (used + cost > effectiveBudget) break
       used += cost
       startIndex = i
@@ -189,10 +196,13 @@ export namespace SessionCompaction {
   // tool calls that are no longer relevant.
 
   /** Pure scan that returns the completed tool parts eligible for pruning. */
-  export function selectPartsToPrune(msgs: MessageV2.WithParts[]): MessageV2.ToolPart[] {
+  export function selectPartsToPrune(msgs: MessageV2.WithParts[], modelID?: string): MessageV2.ToolPart[] {
     let total = 0
     let pruned = 0
     const toPrune: MessageV2.ToolPart[] = []
+    const estimateTokens = modelID
+      ? (text: string) => Token.estimateModelSync(modelID, text)
+      : (text: string) => Token.estimate(text)
 
     const protectBoundary = Turn.countRecentTurns(msgs, 2)
 
@@ -206,7 +216,7 @@ export namespace SessionCompaction {
             if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
 
             if (part.state.time.compacted) continue
-            const estimate = Token.estimate(part.state.output)
+            const estimate = estimateTokens(part.state.output)
             total += estimate
             if (total > PRUNE_PROTECT) {
               pruned += estimate
@@ -218,13 +228,13 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
-  export async function prune(input: { sessionID: string }) {
+  export async function prune(input: { sessionID: string; modelID?: string }) {
     const config = await Config.get()
     if (config.compaction?.prune === false) return
     log.info("pruning")
     const msgs = await Session.messages({ sessionID: input.sessionID })
 
-    const toPrune = selectPartsToPrune(msgs)
+    const toPrune = selectPartsToPrune(msgs, input.modelID)
 
     if (toPrune.length > 0) {
       for (const part of toPrune) {
@@ -298,10 +308,11 @@ export namespace SessionCompaction {
     // Trim the conversation history so it fits within the compaction model's
     // context window, reserving space for the prompt and output.
     const contextLimit = model.limit?.context ?? 0
-    const outputReserve = ModelLimit.outputReserve(model.limit, LLM.OUTPUT_TOKEN_MAX)
     const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
-    const messageBudget = contextLimit > 0 ? contextLimit - outputReserve - promptCost : Infinity
-    const safeMessages = isFinite(messageBudget) ? trimMessagesForContext(modelMessages, messageBudget) : modelMessages
+    const messageBudget = contextLimit > 0 ? contextLimit - promptCost : Infinity
+    const safeMessages = isFinite(messageBudget)
+      ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
+      : modelMessages
 
     const result = await processor.process({
       user: userMessage,
@@ -401,7 +412,7 @@ export namespace SessionCompaction {
       return [{ type: "prune" }]
     },
     async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID })
+      await prune({ sessionID: ctx.sessionID, modelID: ctx.modelID })
       return "pass"
     },
   })

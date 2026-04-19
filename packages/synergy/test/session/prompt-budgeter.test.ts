@@ -23,26 +23,20 @@ function createModel(limit: Provider.Model["limit"]): Provider.Model {
 }
 
 describe("prompt-budgeter budget", () => {
-  test("uses shared context minus output reserve", () => {
-    const result = PromptBudgeter.budget({ context: 202_752, output: 32_768 }, { outputTokenMax: 32_000 })
-    expect(result.usable).toBe(170_752)
-    expect(result.soft).toBe(Math.floor(170_752 * 0.85))
+  test("uses full context for shared-context models", () => {
+    const result = PromptBudgeter.budget({ context: 202_752, output: 32_768 })
+    expect(result.usable).toBe(202_752)
+    expect(result.soft).toBe(Math.floor(202_752 * 0.85))
   })
 
   test("uses input cap with compaction buffer", () => {
-    const result = PromptBudgeter.budget(
-      { context: 400_000, input: 272_000, output: 128_000 },
-      { outputTokenMax: 32_000 },
-    )
+    const result = PromptBudgeter.budget({ context: 400_000, input: 272_000, output: 128_000 })
     expect(result.usable).toBe(252_000)
   })
 
   test("respects overflow threshold override", () => {
-    const result = PromptBudgeter.budget(
-      { context: 100_000, output: 8_192 },
-      { outputTokenMax: 32_000, overflowThreshold: 0.95 },
-    )
-    expect(result.soft).toBe(Math.floor(91_808 * 0.95))
+    const result = PromptBudgeter.budget({ context: 100_000, output: 8_192 }, { overflowThreshold: 0.95 })
+    expect(result.soft).toBe(Math.floor(100_000 * 0.95))
   })
 })
 
@@ -54,7 +48,7 @@ describe("prompt-budgeter decision", () => {
       messages: [{ role: "user", content: "short request" }],
       toolDefinitions: [],
     }
-    const result = await PromptBudgeter.decide(plan, model.limit, model.id, { outputTokenMax: 32_000 })
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id)
     expect(result.shouldCompact).toBe(false)
   })
 
@@ -85,11 +79,9 @@ describe("prompt-budgeter decision", () => {
       ],
     }
     const small = await PromptBudgeter.decide(smallPlan, model.limit, model.id, {
-      outputTokenMax: 32_000,
       overflowThreshold: 0.5,
     })
     const large = await PromptBudgeter.decide(largePlan, model.limit, model.id, {
-      outputTokenMax: 32_000,
       overflowThreshold: 0.5,
     })
     expect(large.measure.total).toBeGreaterThan(small.measure.total)

@@ -70,7 +70,7 @@ describe("SessionInvoke preflight compaction", () => {
         toolDefinitions: [],
       }))
       ;(PromptBudgeter.decide as any) = mock(async () => ({
-        budget: { context: 100_000, reserve: 8_192, usable: 91_808, threshold: 0.85, soft: 78_037 },
+        budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
         measure: { system: 10, messages: 10, tools: 0, total: 90_000 },
         shouldCompact: true,
       }))

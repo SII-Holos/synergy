@@ -27,7 +27,6 @@ export namespace PromptBudgeter {
 
   export interface Budget {
     context: number
-    reserve: number
     usable: number
     threshold: number
     soft: number
@@ -62,21 +61,17 @@ export namespace PromptBudgeter {
   export function budget(
     limits: ModelLimit.Info | undefined,
     options?: {
-      outputTokenMax?: number
       inputBuffer?: number
       overflowThreshold?: number
     },
   ): Budget {
     const context = limits?.context ?? 0
-    const reserve = ModelLimit.outputReserve(limits, options?.outputTokenMax)
     const usable = ModelLimit.usableInput(limits, {
-      outputTokenMax: options?.outputTokenMax,
       inputBuffer: options?.inputBuffer ?? DEFAULT_BUFFER,
     })
     const threshold = options?.overflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
     return {
       context,
-      reserve,
       usable,
       threshold,
       soft: Math.floor(usable * threshold),
@@ -104,7 +99,6 @@ export namespace PromptBudgeter {
     limits: ModelLimit.Info | undefined,
     modelID: string,
     options?: {
-      outputTokenMax?: number
       inputBuffer?: number
       overflowThreshold?: number
     },

@@ -59,7 +59,6 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
-  export const OUTPUT_TOKEN_MAX = LLM.OUTPUT_TOKEN_MAX
 
   SessionManager.onMailboxReady(async (sessionID) => {
     await processMailbox(sessionID)
@@ -480,7 +479,6 @@ export namespace SessionInvoke {
           toolDefinitions,
         })
         const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
-          outputTokenMax: LLM.OUTPUT_TOKEN_MAX,
           overflowThreshold: jobCtx.compactionOverflowThreshold,
         })
 

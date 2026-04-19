@@ -29,28 +29,26 @@ export namespace ModelLimit {
     return tokens.input + tokens.cache.read + tokens.cache.write
   }
 
-  export function outputReserve(limit?: Pick<Info, "output">, outputTokenMax = OUTPUT_TOKEN_MAX) {
-    return Math.min(limit?.output ?? outputTokenMax, outputTokenMax)
-  }
-
-  export function usableInput(
-    limit?: Info,
-    options?: {
-      outputTokenMax?: number
-      inputBuffer?: number
-    },
-  ) {
+  /**
+   * Compute how many tokens are available for input within a model's context.
+   *
+   * Shared-context models (most LLMs) allow input to fill the entire context
+   * window — the API enforces the limit at request time based on actual
+   * input + output, not at input time. So we don't reserve output space.
+   *
+   * If the model config specifies an explicit `input` limit, use it directly.
+   * Otherwise, the entire `context` window is usable for input.
+   */
+  export function usableInput(limit?: Info, options?: { inputBuffer?: number }) {
     if (!limit || limit.context === 0) return 0
-
-    const reserve = outputReserve(limit, options?.outputTokenMax)
 
     if (typeof limit.input === "number" && limit.input > 0) {
       if (options?.inputBuffer) {
-        return Math.max(0, limit.input - Math.min(options.inputBuffer, reserve))
+        return Math.max(0, limit.input - options.inputBuffer)
       }
       return limit.input
     }
 
-    return Math.max(0, limit.context - reserve)
+    return limit.context
   }
 }

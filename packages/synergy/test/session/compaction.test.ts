@@ -52,8 +52,8 @@ describe("util.token.estimate", () => {
 })
 
 describe("session.getUsage", () => {
-  test("ModelLimit.usableInput uses shared context minus output reserve", () => {
-    expect(ModelLimit.usableInput({ context: 202_752, output: 32_768 })).toBe(170_752)
+  test("ModelLimit.usableInput uses full context for shared-context models", () => {
+    expect(ModelLimit.usableInput({ context: 202_752, output: 32_768 })).toBe(202_752)
   })
 
   test("ModelLimit.usableInput uses input cap directly without buffer by default", () => {
@@ -551,5 +551,28 @@ describe("session.compaction.selectPartsToPrune", () => {
 
     const result = SessionCompaction.selectPartsToPrune(msgs)
     expect(result).toHaveLength(0)
+  })
+
+  test("accepts optional modelID parameter", async () => {
+    await Token.warmup("gpt-4o")
+
+    // Use the same large ASCII output from the existing tests (~50K tokens).
+    // Both code paths (with and without modelID) should produce the same
+    // pruning decision for ASCII text, confirming the parameter threads through.
+    const bigOutput = "x".repeat(50_000 * 4)
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "old-tool", output: bigOutput })]),
+      userMsg("u1"),
+      assistantMsg("a1", [toolPart({ id: "mid-tool", output: "small" })]),
+      userMsg("u2"),
+      assistantMsg("a2", [toolPart({ id: "recent-tool", output: "small" })]),
+    ]
+
+    const withoutModel = SessionCompaction.selectPartsToPrune(msgs)
+    const withModel = SessionCompaction.selectPartsToPrune(msgs, "gpt-4o")
+
+    expect(withoutModel.some((p) => p.id === "old-tool")).toBe(true)
+    expect(withModel.some((p) => p.id === "old-tool")).toBe(true)
   })
 })
