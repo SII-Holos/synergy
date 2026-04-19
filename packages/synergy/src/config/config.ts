@@ -912,7 +912,7 @@ export namespace Config {
         .max(1)
         .optional()
         .describe("Minimum cosine similarity for retrieval candidates (default: 0.7)"),
-      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 3)"),
+      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 8)"),
       epsilon: z.number().min(0).max(1).optional().describe("ε-greedy exploration probability (default: 0.1)"),
       wSim: z.number().min(0).max(1).optional().describe("Weight for similarity in hybrid score (default: 0.5)"),
       wQ: z.number().min(0).max(1).optional().describe("Weight for Q-value in hybrid score (default: 0.5)"),
@@ -952,7 +952,7 @@ export namespace Config {
 
   export const PASSIVE_RETRIEVAL_DEFAULTS = {
     simThreshold: 0.7,
-    topK: 3,
+    topK: 8,
     epsilon: 0.1,
     wSim: 0.5,
     wQ: 0.5,
