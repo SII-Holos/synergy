@@ -180,6 +180,32 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "session_control",
+  render(props) {
+    const info = getToolInfo("session_control", props.input, props.metadata)
+    return (
+      <BasicTool
+        {...props}
+        icon={info.icon}
+        trigger={{
+          title: info.title,
+          subtitle: info.subtitle || "",
+          args: props.input.action ? [props.input.action] : [],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "profile_get",
   render(props) {
     return (
