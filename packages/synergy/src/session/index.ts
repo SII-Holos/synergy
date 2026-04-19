@@ -3,6 +3,7 @@ import z from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { Bus } from "../bus"
 import { Storage } from "../storage/storage"
@@ -395,7 +396,7 @@ export namespace Session {
       }
 
       const costInfo =
-        input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
+        input.model.cost?.experimentalOver200K && ModelLimit.actualInput(tokens) > 200_000
           ? input.model.cost.experimentalOver200K
           : input.model.cost
       return {

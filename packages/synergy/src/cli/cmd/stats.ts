@@ -241,7 +241,12 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
         messageCount: messages.length,
         sessionCost,
         sessionTokens,
-        sessionTotalTokens: sessionTokens.input + sessionTokens.output + sessionTokens.reasoning,
+        sessionTotalTokens:
+          sessionTokens.input +
+          sessionTokens.output +
+          sessionTokens.reasoning +
+          sessionTokens.cache.read +
+          sessionTokens.cache.write,
         sessionToolUsage,
         sessionModelUsage,
         earliestTime: cutoffTime > 0 ? session.time.updated : session.time.created,
@@ -292,7 +297,12 @@ export async function aggregateSessionStats(days?: number, projectFilter?: strin
   }
   stats.days = effectiveDays
   stats.costPerDay = stats.totalCost / effectiveDays
-  const totalTokens = stats.totalTokens.input + stats.totalTokens.output + stats.totalTokens.reasoning
+  const totalTokens =
+    stats.totalTokens.input +
+    stats.totalTokens.output +
+    stats.totalTokens.reasoning +
+    stats.totalTokens.cache.read +
+    stats.totalTokens.cache.write
   stats.tokensPerSession = filteredSessions.length > 0 ? totalTokens / filteredSessions.length : 0
   sessionTotalTokens.sort((a, b) => a - b)
   const mid = Math.floor(sessionTotalTokens.length / 2)

@@ -5,7 +5,29 @@ export namespace ModelLimit {
     output?: number
   }
 
+  export interface TokenUsage {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
+
   export const OUTPUT_TOKEN_MAX = 32_000
+
+  /**
+   * Compute actual input tokens from a usage breakdown.
+   *
+   * For Anthropic-style providers, `input` excludes cached tokens — they are
+   * reported separately as `cache.read` (cache hit) and `cache.write` (first
+   * write). All three consume context window input space, so the true input
+   * footprint is their sum.
+   */
+  export function actualInput(tokens: TokenUsage): number {
+    return tokens.input + tokens.cache.read + tokens.cache.write
+  }
 
   export function outputReserve(limit?: Pick<Info, "output">, outputTokenMax = OUTPUT_TOKEN_MAX) {
     return Math.min(limit?.output ?? outputTokenMax, outputTokenMax)

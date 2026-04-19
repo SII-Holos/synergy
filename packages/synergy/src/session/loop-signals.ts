@@ -41,8 +41,7 @@ LoopJob.defineSignal({
     const source = ctx.lastAssistant ?? ctx.lastFinished
     let lastActualInput = 0
     if (source && source.summary !== true) {
-      const tokens = source.tokens
-      lastActualInput = tokens.input + tokens.cache.read
+      lastActualInput = ModelLimit.actualInput(source.tokens)
       if (lastActualInput >= usable) return injectCompaction(ctx)
     }
 

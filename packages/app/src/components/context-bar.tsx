@@ -15,11 +15,11 @@ export function ContextBar() {
   const context = createMemo(() => {
     const last = messages().findLast((x) => {
       if (x.role !== "assistant") return false
-      const total = x.tokens.input + x.tokens.cache.read + x.tokens.output + x.tokens.reasoning
-      return total > 0
+      const input = ModelLimit.actualInput(x.tokens)
+      return input + x.tokens.output + x.tokens.reasoning > 0
     }) as AssistantMessage
     if (!last) return
-    const total = last.tokens.input + last.tokens.cache.read + last.tokens.output + last.tokens.reasoning
+    const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
     const limit = model?.limit
     if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
