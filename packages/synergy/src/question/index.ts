@@ -1,4 +1,5 @@
 import { Bus } from "@/bus"
+import { Config } from "@/config/config"
 import { BusEvent } from "@/bus/bus-event"
 import { Identifier } from "@/id/id"
 import { SessionManager } from "@/session/manager"
@@ -6,6 +7,8 @@ import { SessionInteraction } from "@/session/interaction"
 import { Instance } from "@/scope/instance"
 import { Log } from "@/util/log"
 import z from "zod"
+
+export const DEFAULT_TIMEOUT = 1800
 
 export namespace Question {
   const log = Log.create({ service: "question" })
@@ -43,6 +46,8 @@ export namespace Question {
           callID: z.string(),
         })
         .optional(),
+      timeout: z.number().optional().describe("Seconds before this question auto-expires"),
+      createdAt: z.number().optional().describe("Unix timestamp (ms) when this question was asked"),
     })
     .meta({
       ref: "QuestionRequest",
@@ -78,6 +83,13 @@ export namespace Question {
         requestID: z.string(),
       }),
     ),
+    TimedOut: BusEvent.define(
+      "question.timed_out",
+      z.object({
+        sessionID: z.string(),
+        requestID: z.string(),
+      }),
+    ),
   }
 
   const state = Instance.state(async () => {
@@ -102,6 +114,7 @@ export namespace Question {
   }): Promise<Answer[]> {
     const s = await state()
     const id = Identifier.ascending("question")
+    const createdAt = Date.now()
 
     log.info("asking", { id, questions: input.questions.length })
 
@@ -111,14 +124,58 @@ export namespace Question {
         sessionID: input.sessionID,
         questions: input.questions,
         tool: input.tool,
+        createdAt,
       }
+
       s.pending[id] = {
         info,
         resolve,
         reject,
       }
+
       Bus.publish(Event.Asked, info)
     })
+
+    // Read config and set timeout timer asynchronously — pending entry is already visible
+    void (async () => {
+      try {
+        const cfg = await Config.get()
+        const configuredTimeout = cfg.question?.timeout
+        const timeout = configuredTimeout === 0 ? undefined : (configuredTimeout ?? DEFAULT_TIMEOUT)
+
+        if (!timeout) return
+
+        const existing = s.pending[id]
+        if (!existing) return
+
+        existing.info = { ...existing.info, timeout }
+
+        const timer = setTimeout(() => {
+          const entry = s.pending[id]
+          if (!entry) return
+          delete s.pending[id]
+          log.info("timed out", { id })
+          Bus.publish(Event.TimedOut, {
+            sessionID: input.sessionID,
+            requestID: id,
+          })
+          entry.reject(new TimeoutError())
+        }, timeout * 1000)
+
+        const origResolve = existing.resolve
+        const origReject = existing.reject
+        existing.resolve = (answers) => {
+          clearTimeout(timer)
+          origResolve(answers)
+        }
+        existing.reject = (e) => {
+          clearTimeout(timer)
+          origReject(e)
+        }
+      } catch {
+        // Config.get() failed — no timeout, question works without it
+      }
+    })()
 
     void SessionManager.getSession(input.sessionID).then((session) => {
       const interaction = session?.interaction
@@ -184,6 +241,12 @@ export namespace Question {
           ? `This session is unattended (${source}) and cannot ask interactive questions.`
           : "This session is unattended and cannot ask interactive questions.",
       )
+    }
+  }
+
+  export class TimeoutError extends Error {
+    constructor() {
+      super("Question timed out waiting for user response")
     }
   }
 

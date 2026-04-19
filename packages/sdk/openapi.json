@@ -13052,6 +13052,16 @@
               }
             }
           },
+          "question": {
+            "type": "object",
+            "properties": {
+              "timeout": {
+                "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
           "compaction": {
             "type": "object",
             "properties": {
@@ -13245,8 +13255,7 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean",
-            "const": true
+            "type": "boolean"
           },
           "requested": {
             "type": "array",
@@ -15215,6 +15224,14 @@
               }
             },
             "required": ["messageID", "callID"]
+          },
+          "timeout": {
+            "description": "Seconds before this question auto-expires",
+            "type": "number"
+          },
+          "createdAt": {
+            "description": "Unix timestamp (ms) when this question was asked",
+            "type": "number"
           }
         },
         "required": ["id", "sessionID", "questions"]
@@ -15348,6 +15365,10 @@
           },
           "mcp": {
             "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["command", "mcp", "skill"]
           },
           "template": {
             "anyOf": [
@@ -17988,6 +18009,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.question.timed_out": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.timed_out"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.runtime.reloaded": {
         "type": "object",
         "properties": {
@@ -18009,9 +18052,15 @@
                 "items": {
                   "$ref": "#/components/schemas/RuntimeReloadTarget"
                 }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
-            "required": ["executed", "cascaded"]
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -18953,6 +19002,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.question.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.timed_out"
           },
           {
             "$ref": "#/components/schemas/Event.runtime.reloaded"

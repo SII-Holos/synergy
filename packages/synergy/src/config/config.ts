@@ -1472,6 +1472,15 @@ export namespace Config {
 
         .optional()
         .describe("Agora Q&A platform configuration"),
+      question: z
+        .object({
+          timeout: z
+            .number()
+            .min(0)
+            .optional()
+            .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)"),
+        })
+        .optional(),
       compaction: z
         .object({
           auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),

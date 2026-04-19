@@ -966,13 +966,22 @@ ToolRegistry.register({
   render(props) {
     const count = () => props.input.questions?.length ?? 0
     const answers = () => props.metadata?.answers as string[][] | undefined
+    const timedOut = () => props.metadata?.timedOut as boolean | undefined
+    const countdown = () => {
+      const timeout = props.metadata?.timeout as number | undefined
+      const createdAt = props.metadata?.createdAt as number | undefined
+      if (!timeout || !createdAt) return undefined
+      const elapsed = Math.floor((Date.now() - createdAt) / 1000)
+      return Math.max(0, timeout - elapsed)
+    }
     return (
       <BasicTool
         {...props}
         icon="message-circle"
+        countdown={countdown()}
         trigger={{
-          title: "Questions",
-          subtitle: `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
+          title: timedOut() ? "Question Timed Out" : "Questions",
+          subtitle: timedOut() ? "No response received" : `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
         }}
       >
         <Show when={props.input.questions?.length}>

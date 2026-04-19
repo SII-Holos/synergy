@@ -230,6 +230,7 @@ export function DialogSettings(props: DialogSettingsProps) {
   const [advanced, setAdvanced] = createStore({
     compaction_auto: "" as string,
     permission: "" as string,
+    question_timeout: "" as string,
   })
 
   const [email, setEmail] = createStore<EmailSettings>({
@@ -318,6 +319,7 @@ export function DialogSettings(props: DialogSettingsProps) {
         if (typeof permission === "string") return permission
         return ""
       })(),
+      question_timeout: cfg.question?.timeout === undefined ? "" : String(cfg.question.timeout),
     })
 
     setEmail({
@@ -493,6 +495,15 @@ export function DialogSettings(props: DialogSettingsProps) {
     })()
     if (advanced.permission !== origPermission) {
       patch.permission = advanced.permission || undefined
+    }
+
+    const origQuestionTimeout = cfg.question?.timeout === undefined ? "" : String(cfg.question.timeout)
+    if (advanced.question_timeout !== origQuestionTimeout) {
+      if (advanced.question_timeout === "") {
+        patch.question = undefined
+      } else {
+        patch.question = { timeout: Number(advanced.question_timeout) }
+      }
     }
 
     const origEmail = JSON.stringify(cfg.email ?? {})
@@ -1118,6 +1129,26 @@ export function DialogSettings(props: DialogSettingsProps) {
                         { value: "deny", label: "Deny" },
                       ]}
                       onChange={(value) => setAdvanced("permission", value)}
+                    />
+                  }
+                />
+
+                <SectionLabel title="Question" />
+                <SettingRow
+                  title="Response Timeout"
+                  description="Auto-expire unanswered questions (0 = no timeout, default 30min)"
+                  trailing={
+                    <SegmentPill
+                      value={advanced.question_timeout}
+                      options={[
+                        { value: "", label: "Default" },
+                        { value: "0", label: "Never" },
+                        { value: "300", label: "5min" },
+                        { value: "600", label: "10min" },
+                        { value: "1800", label: "30min" },
+                        { value: "3600", label: "60min" },
+                      ]}
+                      onChange={(value) => setAdvanced("question_timeout", value)}
                     />
                   }
                 />

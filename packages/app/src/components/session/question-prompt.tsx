@@ -6,6 +6,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Card } from "@ericsanchezok/synergy-ui/card"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
+import { Countdown } from "@ericsanchezok/synergy-ui/countdown"
 import { useSDK } from "@/context/sdk"
 
 export interface QuestionPromptProps {
@@ -19,6 +20,14 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
   const tabs = createMemo(() => (single() ? 1 : questions().length + 1))
+
+  const countdownSeconds = createMemo(() => {
+    const timeout = props.request.timeout
+    const createdAt = props.request.createdAt
+    if (!timeout || !createdAt) return undefined
+    const elapsed = Math.floor((Date.now() - createdAt) / 1000)
+    return Math.max(0, timeout - elapsed)
+  })
 
   const [store, setStore] = createStore({
     tab: 0,
@@ -121,6 +130,9 @@ export function QuestionPrompt(props: QuestionPromptProps) {
           <span class="text-text-strong text-14-medium truncate flex-1">
             {question()?.header || question()?.question || "Question"}
           </span>
+          <Show when={countdownSeconds() != null}>
+            <Countdown seconds={countdownSeconds()!} active={true} />
+          </Show>
           <span class="text-text-weak text-12-regular shrink-0">Click to expand</span>
         </button>
       </Show>
@@ -137,6 +149,9 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             >
               <Icon name="chevron-down" size="small" class="text-icon-base" />
             </button>
+            <Show when={countdownSeconds() != null}>
+              <Countdown seconds={countdownSeconds()!} active={true} />
+            </Show>
             <Show when={!single()}>
               <div class="flex flex-row gap-2 flex-wrap">
                 <For each={questions()}>

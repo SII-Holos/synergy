@@ -1544,6 +1544,12 @@ export type Config = {
      */
     giteaSSHHost?: string
   }
+  question?: {
+    /**
+     * Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)
+     */
+    timeout?: number
+  }
   compaction?: {
     /**
      * Enable automatic compaction when context is full (default: true)
@@ -1643,7 +1649,7 @@ export type RuntimeReloadTarget =
   | "all"
 
 export type RuntimeReloadResult = {
-  success: true
+  success: boolean
   requested: Array<RuntimeReloadTarget>
   executed: Array<RuntimeReloadTarget>
   cascaded: Array<RuntimeReloadTarget>
@@ -2356,6 +2362,14 @@ export type QuestionRequest = {
     messageID: string
     callID: string
   }
+  /**
+   * Seconds before this question auto-expires
+   */
+  timeout?: number
+  /**
+   * Unix timestamp (ms) when this question was asked
+   */
+  createdAt?: number
 }
 
 export type QuestionAnswer = Array<string>
@@ -2401,6 +2415,7 @@ export type Command = {
   agent?: string
   model?: string
   mcp?: boolean
+  source?: "command" | "mcp" | "skill"
   template: string
   hints: Array<string>
 }
@@ -3337,11 +3352,20 @@ export type EventQuestionRejected = {
   }
 }
 
+export type EventQuestionTimedOut = {
+  type: "question.timed_out"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
 export type EventRuntimeReloaded = {
   type: "runtime.reloaded"
   properties: {
     executed: Array<RuntimeReloadTarget>
     cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -3681,6 +3705,7 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventQuestionTimedOut
   | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
