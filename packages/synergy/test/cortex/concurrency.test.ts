@@ -21,20 +21,20 @@ describe("CortexConcurrency", () => {
       await acquire
     })
 
-    test("allows up to 5 concurrent acquisitions by default", async () => {
+    test("allows up to 8 concurrent acquisitions by default", async () => {
       const promises: Promise<void>[] = []
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         promises.push(CortexConcurrency.acquire("test-agent"))
       }
       await Promise.all(promises)
 
       const status = CortexConcurrency.status()
-      expect(status["test-agent"].running).toBe(5)
+      expect(status["test-agent"].running).toBe(8)
       expect(status["test-agent"].queued).toBe(0)
     })
 
     test("queues when at limit", async () => {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         await CortexConcurrency.acquire("test-agent")
       }
 
@@ -47,7 +47,7 @@ describe("CortexConcurrency", () => {
       expect(resolved).toBe(false)
 
       const status = CortexConcurrency.status()
-      expect(status["test-agent"].running).toBe(5)
+      expect(status["test-agent"].running).toBe(8)
       expect(status["test-agent"].queued).toBe(1)
 
       CortexConcurrency.release("test-agent")
@@ -56,16 +56,16 @@ describe("CortexConcurrency", () => {
     })
 
     test("different agents have separate limits", async () => {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         await CortexConcurrency.acquire("agent-a")
       }
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         await CortexConcurrency.acquire("agent-b")
       }
 
       const status = CortexConcurrency.status()
-      expect(status["agent-a"].running).toBe(5)
-      expect(status["agent-b"].running).toBe(5)
+      expect(status["agent-a"].running).toBe(8)
+      expect(status["agent-b"].running).toBe(8)
     })
   })
 
@@ -83,7 +83,7 @@ describe("CortexConcurrency", () => {
     })
 
     test("releases to waiting task in queue", async () => {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) {
         await CortexConcurrency.acquire("test-agent")
       }
 
@@ -96,7 +96,7 @@ describe("CortexConcurrency", () => {
       expect(queuedResolved).toBe(false)
 
       let status = CortexConcurrency.status()
-      expect(status["test-agent"].running).toBe(5)
+      expect(status["test-agent"].running).toBe(8)
       expect(status["test-agent"].queued).toBe(1)
 
       CortexConcurrency.release("test-agent")
@@ -104,7 +104,7 @@ describe("CortexConcurrency", () => {
       expect(queuedResolved).toBe(true)
 
       status = CortexConcurrency.status()
-      expect(status["test-agent"].running).toBe(5)
+      expect(status["test-agent"].running).toBe(8)
       expect(status["test-agent"].queued).toBe(0)
     })
 
@@ -147,9 +147,9 @@ describe("CortexConcurrency", () => {
   })
 
   describe("getLimit", () => {
-    test("returns default limit of 5", () => {
+    test("returns default limit of 8", () => {
       const limit = CortexConcurrency.getLimit("any-agent")
-      expect(limit).toBe(5)
+      expect(limit).toBe(8)
     })
   })
 })
