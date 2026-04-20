@@ -1,0 +1,72 @@
+# Troubleshooting — SII 启智平台
+
+## Task Stuck in "Creating" (创建中)
+
+If task stays in "creating" for >30 minutes:
+- **Image pull slow**: image >20GB and target node has no cache. First pull can take 20+ min.
+- **Image pull failed**: wrong image name/tag, or registry unreachable from the space.
+- **Node fault**: target node has disk failure or is NotReady. Contact ops with task ID.
+
+## Task Stuck in Queue (排队中)
+
+- **Resources full**: all GPUs in the compute group are occupied. Wait or switch group.
+- **Node taints**: nodes have ECC errors, RDMA faults, or GPU failures. Contact ops with task ID + node name.
+- **Multi-node task**: needs N nodes simultaneously free. Smaller tasks get scheduled first.
+- **Priority too low**: priority 1-3 tasks wait behind priority ≥4 tasks.
+
+Diagnosis steps:
+1. `inspire_status(workspace="...", project="...")` → check free GPUs in target compute group
+2. If free GPUs exist but task still queues → likely node taints. Contact ops.
+3. If queued >24h → switch to another compute group or contact ops.
+
+## Task Killed Unexpectedly
+
+| Cause | How to identify | Fix |
+|-------|----------------|-----|
+| Priority preemption | priority 1-3, killed when resources tight | Use priority ≥4 |
+| GPU utilization low | auto-reclaimed by platform policy | Ensure GPU is actively used |
+| OOM (CPU memory) | Check `dmesg` or job logs for "Killed" | Reduce batch size or request more memory |
+| OOM (GPU memory) | CUDA OOM in logs | Reduce model/batch size, enable gradient checkpointing |
+| Budget exhausted | `inspire_status` shows budget ≤0 | Wait for refresh or use low-priority |
+| Terminal disconnected | Interactive task without tmux/nohup | Always use: `nohup python train.py > log.txt 2>&1 &` |
+
+## Common Command Errors
+
+### `conda activate` fails
+Non-interactive shell doesn't load `.bashrc`. Fix:
+```bash
+source /opt/conda/etc/profile.d/conda.sh && conda activate myenv
+```
+Find conda path: `which conda` → e.g., `/root/miniconda3/bin/conda` → init script at `/root/miniconda3/etc/profile.d/conda.sh`
+
+### `uv: not found` / `poetry: not found` / `pip: not found`
+PATH not set in non-interactive shell. Fix:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+Or use full path: `/home/username/.local/bin/uv run python train.py`
+
+### `pip install` fails in offline space
+Offline spaces have NO internet. Solutions:
+1. Pre-install everything in the Docker image (build in online space, save image, use in offline space)
+2. Use Nexus mirrors for packages available on the internal mirror:
+   `pip install -i http://nexus.sii.shaipower.online/repository/pypi_proxy/simple/ --trusted-host nexus.sii.shaipower.online torch`
+
+### Image pull fails
+- Wrong registry: 七宝 spaces need `docker-qb.sii.edu.cn`, 松江 spaces need `docker.sii.shaipower.online`
+- Image not claimed: after first push, claim it in platform's Image Management page
+- Image too large: >100GB images may timeout during pull
+
+### Disk quota exceeded
+- Check: `df -h /inspire/hdd/project/{name}/`
+- Project quota: contact advisor to request expansion
+- Personal quota: apply via Feishu → Approval → 算力平台存储申请
+- Workaround: clean unused data, move to `global_user` directory
+
+## nvidia-smi Issues
+
+### GPU list empty (only header, no devices)
+Node GPU hardware fault. Contact ops with instance ID and node name.
+
+### Memory occupied but utilization 0%
+Likely zombie process or deadlock. Try `kill -9 <PID>`. If it won't die, contact ops to restart node.

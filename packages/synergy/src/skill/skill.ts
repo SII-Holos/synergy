@@ -248,6 +248,10 @@ export namespace Skill {
     }
 
     for (const builtin of BUILTIN_SKILLS) {
+      if (builtin.condition) {
+        const ok = await builtin.condition()
+        if (!ok) continue
+      }
       skills[builtin.name] = {
         name: builtin.name,
         description: builtin.description,

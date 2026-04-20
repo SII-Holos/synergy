@@ -6,7 +6,7 @@ import { tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
 
-const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.length
+const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.filter((s) => !s.condition).length
 
 async function createGlobalSkill(homeDir: string) {
   const skillDir = path.join(homeDir, ".claude", "skills", "global-test-skill")
