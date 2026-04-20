@@ -207,6 +207,7 @@ function qzScopeLabel(input: any = {}) {
   return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
 }
 
+// TODO: legacy qzcli tool info — remove when qzcli MCP integration is fully replaced by native inspire tools
 export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}): ToolTriggerInfo | undefined {
   switch (tool) {
     case "qzcli_qz_auth_login": {
@@ -800,7 +801,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Connect",
         subtitle: input.envID,
       }
-    // qzcli — 启智平台
+    // TODO: legacy qzcli — remove when replaced by native inspire tools
     case "qzcli_qz_auth_login":
       return {
         icon: "key-round",
@@ -888,6 +889,29 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "HPC Usage",
         subtitle: input.workspace,
       }
+    // inspire — SII 启智平台 (native tools)
+    case "inspire_status":
+      return { icon: "layers", title: "Platform Status", subtitle: metadata?.project_names?.[0] ?? input.project }
+    case "inspire_config":
+      return { icon: "diamond", title: input.action === "set" ? "Set Default" : "SII Defaults", subtitle: input.key }
+    case "inspire_images":
+      return { icon: "disc", title: input.repo ? "Image Detail" : "Images", subtitle: input.repo || input.search }
+    case "inspire_image_push":
+      return { icon: "archive", title: "Push Image", subtitle: metadata?.full_image || input.image }
+    case "inspire_submit":
+      return { icon: "rocket", title: "Submit GPU Job", subtitle: input.name }
+    case "inspire_submit_hpc":
+      return { icon: "sigma", title: "Submit HPC Job", subtitle: input.name }
+    case "inspire_stop":
+      return { icon: "ban", title: input.job_id ? "Stop Job" : "Batch Stop", subtitle: input.job_id || input.workspace }
+    case "inspire_jobs":
+      return {
+        icon: "boxes",
+        title: "Jobs",
+        subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace,
+      }
+    case "inspire_job_detail":
+      return { icon: "scan", title: "Job Detail", subtitle: input.job_id }
     default:
       return {
         icon: "settings",

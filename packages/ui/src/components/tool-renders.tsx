@@ -1977,6 +1977,7 @@ ToolRegistry.register({
   },
 })
 
+// TODO: legacy qzcli tool registrations — remove when replaced by native inspire tools
 const qzToolNames = [
   "qzcli_qz_auth_login",
   "qzcli_qz_set_cookie",
@@ -2009,6 +2010,46 @@ for (const name of qzToolNames) {
             title: info.title,
             subtitle: info.subtitle || "",
             args: info.args || [],
+          })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}
+
+const inspireToolNames = [
+  "inspire_status",
+  "inspire_config",
+  "inspire_images",
+  "inspire_image_push",
+  "inspire_submit",
+  "inspire_submit_hpc",
+  "inspire_stop",
+  "inspire_jobs",
+  "inspire_job_detail",
+] as const
+
+for (const name of inspireToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getToolInfo(name, props.input, props.metadata)
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={() => ({
+            title: info.title,
+            subtitle: info.subtitle || "",
+            args: [],
           })}
         >
           <Show when={props.output}>
