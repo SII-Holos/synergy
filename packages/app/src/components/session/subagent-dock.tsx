@@ -3,12 +3,11 @@ import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
 import "./subagent-dock.css"
 
-const HOLD_TO_CANCEL_MS = 700
+const HOLD_TO_CANCEL_MS = 1400
 const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
 
 function formatElapsed(startedAt: number): string {
@@ -128,7 +127,9 @@ function SubagentAvatar(props: SubagentAvatarProps) {
       <div class="subagent-popover flex flex-col gap-1.5 py-1 max-w-56">
         <div class="flex items-center gap-2">
           <span class="inline-flex items-center gap-1.5 text-13-medium">
-            <Icon name={cfg.icon} size="small" class="text-icon-base" />
+            <span class="select-none leading-none" style={{ "font-size": "14px" }}>
+              {cfg.emoji}
+            </span>
             <span>{cfg.label}</span>
           </span>
 
@@ -183,8 +184,8 @@ function SubagentAvatar(props: SubagentAvatarProps) {
               />
             </svg>
           </Show>
-          <span class="subagent-icon inline-flex items-center justify-center size-5 select-none">
-            <Icon name={config().icon} size="small" class="text-icon-base" />
+          <span class="subagent-icon inline-flex items-center justify-center size-5 select-none text-[16px] leading-none">
+            {config().emoji}
           </span>
         </button>
       </Tooltip>
