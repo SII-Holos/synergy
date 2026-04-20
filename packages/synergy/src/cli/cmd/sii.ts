@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { InspireAuth } from "../../tool/inspire/auth"
+import { Config } from "../../config/config"
 
 export const SiiCommand = cmd({
   command: "sii",
@@ -46,6 +47,11 @@ const SiiInspireLoginCommand = cmd({
     const ok = await InspireAuth.testInspireConnection()
     if (ok) {
       spinner.stop("✅ 启智平台认证成功")
+      const cfg = await Config.get()
+      if (!cfg.sii?.enable) {
+        await Config.updateGlobal({ sii: { ...cfg.sii, enable: true } } as any)
+        console.log("   已自动启用 SII Inspire Tools (sii.enable = true)")
+      }
     } else {
       spinner.stop("⚠️  凭证已保存，但连接验证失败（可能需要 VPN 或校园网环境）")
     }

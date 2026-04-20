@@ -1,4 +1,5 @@
 import { InspireStatusTool } from "./status"
+import { InspireConfigTool } from "./config"
 import { InspireImagesTool } from "./images"
 import { InspireImagePushTool } from "./image-push"
 import { InspireSubmitTool } from "./submit"
@@ -9,6 +10,7 @@ import { InspireJobDetailTool } from "./job-detail"
 
 export const InspireTools = [
   InspireStatusTool,
+  InspireConfigTool,
   InspireImagesTool,
   InspireImagePushTool,
   InspireSubmitTool,

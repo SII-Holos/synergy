@@ -237,6 +237,7 @@ export function DialogSettings(props: DialogSettingsProps) {
     compaction_overflow_threshold: "" as string,
     permission: "" as string,
     question_timeout: "" as string,
+    sii_enable: "" as string,
   })
 
   const [email, setEmail] = createStore<EmailSettings>({
@@ -328,6 +329,7 @@ export function DialogSettings(props: DialogSettingsProps) {
         return ""
       })(),
       question_timeout: cfg.question?.timeout === undefined ? "" : String(cfg.question.timeout),
+      sii_enable: (cfg as any).sii?.enable === undefined ? "" : (cfg as any).sii.enable ? "true" : "false",
     })
 
     setEmail({
@@ -557,6 +559,18 @@ export function DialogSettings(props: DialogSettingsProps) {
         patch.question = undefined
       } else {
         patch.question = { timeout: Number(advanced.question_timeout) }
+      }
+    }
+
+    const origSiiEnable = (cfg as any).sii?.enable === undefined ? "" : (cfg as any).sii.enable ? "true" : "false"
+    if (advanced.sii_enable !== origSiiEnable) {
+      if (advanced.sii_enable === "true") {
+        ;(patch as any).sii = { ...((cfg as any).sii ?? {}), enable: true }
+      } else if (advanced.sii_enable === "false") {
+        ;(patch as any).sii = { ...((cfg as any).sii ?? {}), enable: false }
+      } else {
+        const { enable, ...rest } = ((cfg as any).sii ?? {}) as any
+        ;(patch as any).sii = Object.keys(rest).length > 0 ? rest : undefined
       }
     }
 
@@ -1343,6 +1357,23 @@ export function DialogSettings(props: DialogSettingsProps) {
                         { value: "0.95", label: "95%" },
                       ]}
                       onChange={(value) => setAdvanced("compaction_overflow_threshold", value)}
+                    />
+                  }
+                />
+
+                <SectionLabel title="SII 启智平台" />
+                <SettingRow
+                  title="Inspire Tools"
+                  description="Enable tools for GPU task submission, image management, and monitoring on the SII 启智 platform"
+                  trailing={
+                    <SegmentPill
+                      value={advanced.sii_enable}
+                      options={[
+                        { value: "", label: "Default" },
+                        { value: "true", label: "On" },
+                        { value: "false", label: "Off" },
+                      ]}
+                      onChange={(value) => setAdvanced("sii_enable", value)}
                     />
                   }
                 />

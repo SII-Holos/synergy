@@ -21,7 +21,10 @@ Typical use cases:
 const parameters = z.object({
   name: z.string().describe("Task name"),
   entrypoint: z.string().describe("Shell command to execute (Slurm entrypoint)"),
-  workspace: z.string().describe("Workspace name or ID (e.g. '高性能计算')"),
+  workspace: z
+    .string()
+    .optional()
+    .describe("Workspace name or ID (e.g. '高性能计算'). Uses sii.defaultWorkspace if omitted"),
   compute_group: z.string().optional().describe("HPC compute group name or ID. Auto-detected if omitted"),
   project: z.string().optional().describe("Project name or ID. Uses default or auto-selects if omitted"),
   cpu: z.number().optional().describe("CPU cores per node (default 8)"),
@@ -36,20 +39,28 @@ export const InspireSubmitHpcTool = Tool.define("inspire_submit_hpc", {
   parameters,
   async execute(params: z.infer<typeof parameters>) {
     const config = await Config.get()
+    const sii = config.sii ?? {}
 
-    const ws = await InspireResolve.workspace(params.workspace)
+    const wsInput = params.workspace ?? sii.defaultWorkspace
+    if (!wsInput) {
+      return {
+        title: "缺少工作空间",
+        output: "未指定 workspace 且未设置 sii.defaultWorkspace。",
+        metadata: { error: "missing_workspace" } as Record<string, any>,
+      }
+    }
+    const ws = await InspireResolve.workspace(wsInput)
     if (!ws) {
       return {
         title: "空间未找到",
-        output: `未找到工作空间 "${params.workspace}"。请调用 inspire_status 查看可用空间。`,
+        output: `未找到工作空间 "${wsInput}"。请调用 inspire_status 查看可用空间。`,
         metadata: { error: "workspace_not_found" } as Record<string, any>,
       }
     }
 
-    const proj = params.project
-      ? await InspireResolve.project(params.project, ws.id)
-      : config.sii?.defaultProject
-        ? await InspireResolve.project(config.sii.defaultProject, ws.id)
+    const proj =
+      (params.project ?? sii.defaultProject)
+        ? await InspireResolve.project((params.project ?? sii.defaultProject)!, ws.id)
         : await InspireResolve.firstProject(ws.id)
 
     if (!proj) {
