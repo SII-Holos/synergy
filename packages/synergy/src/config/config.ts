@@ -1513,6 +1513,15 @@ export namespace Config {
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
         })
         .optional(),
+      sii: z
+        .object({
+          enable: z.boolean().optional().describe("Enable SII Inspire Tools for 启智平台 integration"),
+          defaultProject: z.string().optional().describe("Default project name for task submission"),
+          defaultImage: z.string().optional().describe("Default Docker image for training tasks"),
+          defaultShm: z.number().optional().describe("Default shared memory in MB (default: 1200)"),
+        })
+        .optional()
+        .describe("SII 启智平台 integration configuration"),
       category: z
         .record(z.string(), CategoryConfig)
         .optional()

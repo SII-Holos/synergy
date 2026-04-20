@@ -46,6 +46,18 @@ export namespace Global {
     get authMcp() {
       return path.join(root(), "data", "auth", "mcp.json")
     },
+    get authInspire() {
+      return path.join(root(), "data", "auth", "inspire.json")
+    },
+    get authHarbor() {
+      return path.join(root(), "data", "auth", "harbor.json")
+    },
+    get cacheInspireToken() {
+      return path.join(root(), "cache", "inspire-token.json")
+    },
+    get cacheInspireResources() {
+      return path.join(root(), "cache", "inspire-resources.json")
+    },
     get snapshot() {
       return path.join(root(), "data", "snapshot")
     },

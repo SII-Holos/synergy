@@ -63,6 +63,7 @@ import { Truncate } from "./truncation"
 import { DiagramTool } from "./diagram"
 import { EmailTool } from "./email"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { InspireTools } from "./inspire"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -197,6 +198,7 @@ export namespace ToolRegistry {
       RuntimeReloadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
+      ...(config.sii?.enable === true ? InspireTools : []),
       ...custom,
     ]
   }
