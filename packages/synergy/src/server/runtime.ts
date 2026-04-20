@@ -86,6 +86,10 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     process.on("SIGHUP", onSighup)
   }
 
+  // Install persistent signal handlers (not removed during backoff)
+  process.on("SIGINT", () => onWrapperSignal())
+  process.on("SIGTERM", () => onWrapperSignal())
+
   for (;;) {
     child = Bun.spawn({
       cmd: [process.argv0, ...childArgv],
@@ -102,15 +106,9 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     const childStartTime = Date.now()
     const sigint = () => onWrapperSignal()
     const sigterm = () => onWrapperSignal()
-    process.on("SIGINT", sigint)
-    process.on("SIGTERM", sigterm)
 
     // Wait for child
     const exitStatus = await child.exited
-
-    // Clean up signal handlers
-    process.off("SIGINT", sigint)
-    process.off("SIGTERM", sigterm)
 
     // Track crash time for backoff calculation
     crashStartTime.push(childStartTime)
