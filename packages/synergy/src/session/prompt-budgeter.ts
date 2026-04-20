@@ -44,6 +44,22 @@ export namespace PromptBudgeter {
     shouldCompact: boolean
   }
 
+  /**
+   * Calibration data from a previous API call in the same invoke loop.
+   *
+   * The API reports real token counts using the model's native tokenizer.
+   * `actualInput` covers the full prompt (system + messages + tools) as of
+   * that call. `outputTokens` is the response length, which becomes part of
+   * the conversation history in subsequent calls. Together they let us
+   * estimate the next call's cost with far better accuracy than re-tokenizing
+   * everything through a mismatched tokenizer (e.g. o200k_base for Claude).
+   */
+  export interface Calibration {
+    actualInput: number
+    outputTokens: number
+    deltaTokens: number
+  }
+
   export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
     const system = [...input.system]
     const original = [...system]
@@ -96,9 +112,21 @@ export namespace PromptBudgeter {
     modelID: string,
     options?: {
       overflowThreshold?: number
+      calibration?: Calibration
     },
   ): Promise<Decision> {
     const resultBudget = budget(limits, options)
+
+    if (options?.calibration && options.calibration.actualInput > 0) {
+      const { actualInput, outputTokens, deltaTokens } = options.calibration
+      const calibratedTotal = actualInput + outputTokens + deltaTokens
+      return {
+        budget: resultBudget,
+        measure: { system: 0, messages: calibratedTotal, tools: 0, total: calibratedTotal },
+        shouldCompact: resultBudget.usable > 0 && calibratedTotal >= resultBudget.soft,
+      }
+    }
+
     const resultMeasure = await measure(plan, modelID)
     return {
       budget: resultBudget,

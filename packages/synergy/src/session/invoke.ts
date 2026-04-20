@@ -8,6 +8,7 @@ import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
 import { Token } from "@/util/token"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
@@ -481,8 +482,11 @@ export namespace SessionInvoke {
           messages: preparedMessages,
           toolDefinitions,
         })
+
+        const calibration = buildCalibration(msgs)
         const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
+          calibration,
         })
 
         if (
@@ -1062,5 +1066,56 @@ export namespace SessionInvoke {
 
       SessionManager.run(sessionID, () => loop(sessionID)).catch(() => {})
     }
+  }
+
+  /**
+   * Build calibration data from the most recent assistant message that has
+   * real API-reported token counts. This lets PromptBudgeter use the model's
+   * native token count as a baseline and only estimate the small delta of
+   * new messages, rather than re-tokenizing the entire conversation through
+   * a mismatched tokenizer (o200k_base can overestimate by ~2x for Claude).
+   */
+  function buildCalibration(msgs: MessageV2.WithParts[]): PromptBudgeter.Calibration | undefined {
+    let calibrationIdx = -1
+    let calibrationTokens: MessageV2.Assistant["tokens"] | undefined
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const info = msgs[i].info
+      if (info.role !== "assistant") continue
+      const assistant = info as MessageV2.Assistant
+      if (assistant.summary) continue
+      const tokens = assistant.tokens
+      if (ModelLimit.actualInput(tokens) > 0) {
+        calibrationIdx = i
+        calibrationTokens = tokens
+        break
+      }
+    }
+    if (calibrationIdx < 0 || !calibrationTokens) return undefined
+
+    const actualInput = ModelLimit.actualInput(calibrationTokens)
+    const outputTokens = calibrationTokens.output + calibrationTokens.reasoning
+
+    let deltaChars = 0
+    for (let i = calibrationIdx + 1; i < msgs.length; i++) {
+      for (const part of msgs[i].parts) {
+        switch (part.type) {
+          case "text":
+            deltaChars += part.text?.length ?? 0
+            break
+          case "tool":
+            if (part.state.status === "completed") {
+              deltaChars += part.state.time.compacted ? 40 : (part.state.output?.length ?? 0)
+              deltaChars += JSON.stringify(part.state.input).length
+            }
+            break
+          case "file":
+            deltaChars += 200
+            break
+        }
+      }
+    }
+    const deltaTokens = Math.ceil(deltaChars / 4)
+
+    return { actualInput, outputTokens, deltaTokens }
   }
 }
