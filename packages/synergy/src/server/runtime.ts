@@ -11,6 +11,8 @@ import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { EOL } from "os"
+import path from "path"
+import { Global } from "../global"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -40,22 +42,52 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   let crashCount = 0
   const crashStartTime: number[] = []
 
-  const log = Log.create({ service: "server-watchdog" })
+  const isDev = options.restartPolicy === "dev"
+  const log = Log.create({ service: isDev ? "server-dev-watchdog" : "server-watchdog" })
 
-  const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
-    if (shuttingDown) return
-    shuttingDown = true
-    log.info("received shutdown signal, forwarding to child and exiting watchdog")
+  // In dev mode, write the watchdog PID so `synergy restart` can signal us
+  const devPidFile = isDev ? path.join(Global.Path.state, "dev-watchdog.pid") : undefined
+  if (devPidFile) {
     try {
-      child.kill()
-    } catch {}
-    try {
-      await child.exited
+      const { mkdir } = await import("fs/promises")
+      await mkdir(path.dirname(devPidFile), { recursive: true })
+      await Bun.write(devPidFile, String(process.pid))
     } catch {}
   }
 
+  let child: ReturnType<typeof Bun.spawn> | undefined
+
+  const onWrapperSignal = async () => {
+    if (shuttingDown) return
+    shuttingDown = true
+    log.info("received shutdown signal, forwarding to child and exiting watchdog")
+    if (child) {
+      try {
+        child.kill()
+      } catch {}
+      try {
+        await child.exited
+      } catch {}
+    }
+  }
+
+  // In dev mode, SIGHUP triggers a restart (child exits, watchdog respawns it)
+  const onSighup = () => {
+    if (shuttingDown) return
+    log.info("received SIGHUP, restarting server")
+    if (child) {
+      try {
+        child.kill("SIGTERM")
+      } catch {}
+    }
+  }
+
+  if (isDev) {
+    process.on("SIGHUP", onSighup)
+  }
+
   for (;;) {
-    const child = Bun.spawn({
+    child = Bun.spawn({
       cmd: [process.argv0, ...childArgv],
       stdin: "inherit",
       stdout: "inherit",
@@ -63,13 +95,13 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
       cwd: parentCwd,
       env: {
         ...process.env,
-        SYNERGY_RESTART_POLICY: "always",
+        SYNERGY_RESTART_POLICY: options.restartPolicy!,
       },
     })
 
     const childStartTime = Date.now()
-    const sigint = () => onWrapperSignal(child)
-    const sigterm = () => onWrapperSignal(child)
+    const sigint = () => onWrapperSignal()
+    const sigterm = () => onWrapperSignal()
     process.on("SIGINT", sigint)
     process.on("SIGTERM", sigterm)
 
@@ -98,7 +130,19 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     // Decide whether to respawn
     if (shuttingDown) {
       log.info("child exited after shutdown signal, watchdog stopping")
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
       process.exit(0)
+    }
+
+    // In dev mode, reset crash count if the child ran for at least 10 seconds
+    // (a stable run means the restart was intentional, not a crash loop)
+    if (isDev && Date.now() - childStartTime >= 10000) {
+      crashCount = 0
+      crashStartTime.length = 0
     }
 
     // Apply crash backoff logic
@@ -107,13 +151,18 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         exitCode: exitStatus,
         crashCount,
       })
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
       process.exit(1)
     }
 
     // Calculate backoff delay: min(1000 * 2^(n-1), 30000)
     const backoffDelay = Math.min(1000 * Math.pow(2, crashCount - 1), 30000)
 
-    log.info("child exited unexpectedly, scheduling respawn", {
+    log.info("child exited, scheduling respawn", {
       exitCode: exitStatus,
       crashCount,
       delayMs: backoffDelay,
@@ -138,7 +187,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL = 80
 
 export interface RuntimeOptions {
-  restartPolicy?: "none" | "always"
+  restartPolicy?: "none" | "always" | "dev"
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
@@ -150,9 +199,11 @@ export interface RuntimeOptions {
   }
 }
 
+export const DevWatchdogPidFile = path.join(Global.Path.state, "dev-watchdog.pid")
+
 export async function run(options: RuntimeOptions) {
-  // If user asked for always-restart, spawn a child and act as a dumb watcher
-  if (options.restartPolicy === "always") {
+  // If user asked for a restart policy, spawn a child and act as a watchdog
+  if (options.restartPolicy === "always" || options.restartPolicy === "dev") {
     return runWithRestartPolicyAlways(options)
   }
 

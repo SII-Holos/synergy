@@ -29,6 +29,7 @@ import { IdentityCommand } from "./cli/cmd/identity"
 import { StartCommand } from "./cli/cmd/start"
 import { StopCommand } from "./cli/cmd/stop"
 import { RestartCommand } from "./cli/cmd/restart"
+import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
@@ -129,6 +130,8 @@ const cli = yargs(hideBin(process.argv))
   .command(StartCommand)
   .command(StopCommand)
   .command(RestartCommand)
+  .command(PrepareCommand)
+  .command(BuildCommand)
   .command(StatusCommand)
   .command(LogsCommand)
   .command(PluginCommand)

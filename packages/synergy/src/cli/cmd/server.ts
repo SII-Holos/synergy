@@ -5,6 +5,7 @@ import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
 import { ensureMigrations } from "../../migration"
+import { Installation } from "../../global/installation"
 
 export const ServerCommand = cmd({
   command: ["$0", "server"],
@@ -27,9 +28,9 @@ export const ServerCommand = cmd({
       })
       .option("restart", {
         type: "string",
-        choices: ["none", "always"],
-        default: "none",
-        describe: "Server restart policy. 'none': run once and exit; 'always': respawn the server on unexpected exits.",
+        choices: ["none", "always", "dev"],
+        describe:
+          "Server restart policy. 'dev': respawn on exits + accept `synergy restart` to trigger restart; 'none': run once and exit; 'always': respawn on unexpected exits.",
       }),
   describe: "start synergy server",
   handler: async (args) => {
@@ -39,7 +40,8 @@ export const ServerCommand = cmd({
       const managedService = args.managedService
 
       await runServerRuntime({
-        restartPolicy: (args.restart as "none" | "always" | undefined) ?? "none",
+        restartPolicy:
+          (args.restart as "none" | "always" | "dev" | undefined) ?? (Installation.isLocal() ? "dev" : "none"),
         interactive: !(managedService || args.nonInteractive),
         printBanner: args.banner,
         printChannelStatus: !managedService,

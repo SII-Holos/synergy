@@ -1,14 +1,38 @@
 import { cmd } from "./cmd"
 import { withNetworkOptions } from "../network"
+import { UI } from "../ui"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
+import { DevWatchdogPidFile } from "../../server/runtime"
 
 export const RestartCommand = cmd({
   command: "restart",
-  describe: "restart synergy background service",
+  describe: "restart synergy server",
   builder: (yargs) => withNetworkOptions(yargs),
   handler: async () => {
+    // If a dev-mode watchdog PID file exists, signal it.
+    try {
+      const content = await Bun.file(DevWatchdogPidFile).text()
+      const pid = parseInt(content.trim(), 10)
+      if (!isNaN(pid)) {
+        try {
+          process.kill(pid, "SIGHUP")
+          UI.println(`Restarted dev server (watchdog PID ${pid}).`)
+          return
+        } catch {
+          UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
+          try {
+            await Bun.file(DevWatchdogPidFile).unlink()
+          } catch {}
+          process.exit(1)
+        }
+      }
+    } catch {
+      // No PID file — fall through to daemon restart.
+    }
+
+    // Restart the managed background service.
     let service: Awaited<ReturnType<typeof Daemon.restart>>["service"]
     try {
       const restarted = await Daemon.restart()
