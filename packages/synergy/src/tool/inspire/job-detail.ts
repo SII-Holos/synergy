@@ -50,7 +50,7 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
       `  镜像: ${gpuInfo.image || "—"}`,
       `  规格: ${gpuInfo.gpu_count}× ${spec.gpu_type ?? "unknown"}, ${spec.cpu_count ?? "?"} CPU, ${spec.memory_gb ?? "?"} GB 内存`,
       `  节点数: ${gpuInfo.instance_count}`,
-      `  优先级: ${job.priority ?? "—"}`,
+      `  优先级: ${job.priority_name ?? job.priority ?? "—"}`,
       "",
       "归属:",
       `  空间: ${job.workspace_name ?? "—"} (${job.workspace_id ?? "—"})`,

@@ -103,7 +103,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
               workspace_name: ws.name,
               project_name: job.project_name ?? "",
               gpu_count: info.gpu_count,
-              priority: job.priority ?? "",
+              priority: job.priority_name ?? job.priority ?? "",
               created_at: job.created_at ?? "",
               running_time_ms: job.running_time_ms,
               type: "gpu",
