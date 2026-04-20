@@ -2049,7 +2049,7 @@ for (const name of inspireToolNames) {
           trigger={() => ({
             title: info.title,
             subtitle: info.subtitle || "",
-            args: [],
+            args: info.args || [],
           })}
         >
           <Show when={props.output}>

@@ -361,7 +361,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
   }
 }
 
-export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolInfo {
+export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
   const qz = getQzToolInfo(tool, input, metadata)
   if (qz) return qz
 
@@ -890,28 +890,84 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: input.workspace,
       }
     // inspire — SII 启智平台 (native tools)
-    case "inspire_status":
-      return { icon: "layers", title: "Platform Status", subtitle: metadata?.project_names?.[0] ?? input.project }
-    case "inspire_config":
-      return { icon: "diamond", title: input.action === "set" ? "Set Default" : "SII Defaults", subtitle: input.key }
-    case "inspire_images":
-      return { icon: "disc", title: input.repo ? "Image Detail" : "Images", subtitle: input.repo || input.search }
-    case "inspire_image_push":
-      return { icon: "archive", title: "Push Image", subtitle: metadata?.full_image || input.image }
-    case "inspire_submit":
-      return { icon: "rocket", title: "Submit GPU Job", subtitle: input.name }
-    case "inspire_submit_hpc":
-      return { icon: "sigma", title: "Submit HPC Job", subtitle: input.name }
-    case "inspire_stop":
-      return { icon: "ban", title: input.job_id ? "Stop Job" : "Batch Stop", subtitle: input.job_id || input.workspace }
-    case "inspire_jobs":
+    case "inspire_status": {
+      const args: string[] = []
+      pushArg(args, input.project)
+      pushArg(args, input.workspace)
+      pushArg(args, input.refresh ? "refresh" : undefined)
+      return {
+        icon: "layers",
+        title: "Platform Status",
+        subtitle: metadata?.project_names?.[0] ?? input.project ?? "All",
+        args,
+      }
+    }
+    case "inspire_config": {
+      const args: string[] = []
+      pushArg(args, input.action === "set" && input.value !== undefined ? String(input.value) : undefined)
+      return {
+        icon: "diamond",
+        title: input.action === "set" ? "Set Default" : "SII Defaults",
+        subtitle: input.key,
+        args,
+      }
+    }
+    case "inspire_images": {
+      const args: string[] = []
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      return {
+        icon: "disc",
+        title: input.repo ? "Image Detail" : "Search Images",
+        subtitle: input.repo || input.search || "Recent",
+        args,
+      }
+    }
+    case "inspire_image_push": {
+      const args: string[] = []
+      pushArg(args, input.name)
+      pushArg(args, input.tag)
+      return { icon: "archive", title: "Push Image", subtitle: input.image, args }
+    }
+    case "inspire_submit": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
+      pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
+      return { icon: "rocket", title: "Submit GPU Job", subtitle: input.name, args }
+    }
+    case "inspire_submit_hpc": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
+      return { icon: "sigma", title: "Submit HPC Job", subtitle: input.name, args }
+    }
+    case "inspire_stop": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.status && input.status !== "running" ? input.status : undefined)
+      return {
+        icon: "ban",
+        title: input.job_id ? "Stop Job" : "Batch Stop",
+        subtitle: input.job_id ? shortToken(input.job_id, 20) : input.workspace,
+        args,
+      }
+    }
+    case "inspire_jobs": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.status && input.status !== "all" ? input.status : undefined)
+      pushArg(args, input.type && input.type !== "all" ? input.type : undefined)
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
         icon: "boxes",
         title: "Jobs",
-        subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace,
+        subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
+        args,
       }
+    }
     case "inspire_job_detail":
-      return { icon: "scan", title: "Job Detail", subtitle: input.job_id }
+      return { icon: "scan", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
     default:
       return {
         icon: "settings",
