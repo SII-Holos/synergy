@@ -40,15 +40,8 @@ export namespace InspireCache {
       return memory.workspaceInfo[workspaceId].specs[computeGroupId]
     }
 
-    let token: string
     try {
-      token = await InspireAuth.requireToken()
-    } catch {
-      return []
-    }
-
-    try {
-      const specs = await InspireAPI.listSpecs(token, computeGroupId)
+      const specs = await InspireAuth.withCookieRetry((cookie) => InspireAPI.listSpecs(cookie, computeGroupId))
       if (!memory) memory = { projects: [], workspaceInfo: {}, updatedAt: Date.now() }
       if (!memory.workspaceInfo[workspaceId]) memory.workspaceInfo[workspaceId] = { specs: {} }
       memory.workspaceInfo[workspaceId].specs[computeGroupId] = specs

@@ -37,7 +37,7 @@ export const InspireStopTool = Tool.define("inspire_stop", {
 
     if (params.job_id) {
       try {
-        await InspireAuth.withTokenRetry((token) => InspireAPI.stopJob(token, params.job_id!))
+        await InspireAuth.withCookieRetry((cookie) => InspireAPI.stopJob(cookie, params.job_id!))
         return {
           title: `已停止 ${params.job_id}`,
           output: `✅ 任务 ${params.job_id} 已停止`,
@@ -83,7 +83,7 @@ export const InspireStopTool = Tool.define("inspire_stop", {
         const jobId = job.job_id ?? job.id
         const jobName = job.name ?? jobId
         try {
-          await InspireAuth.withTokenRetry((token) => InspireAPI.stopJob(token, jobId))
+          await InspireAuth.withCookieRetry((cookie) => InspireAPI.stopJob(cookie, jobId))
           results.push({ name: jobName, id: jobId, success: true })
         } catch {
           results.push({ name: jobName, id: jobId, success: false })

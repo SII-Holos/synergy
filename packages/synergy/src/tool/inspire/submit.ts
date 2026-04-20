@@ -96,8 +96,8 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
 
     let specId = params.spec
     let specLabel = specId ?? ""
+    const specs = await InspireCache.getSpecs(ws.id, cg.id)
     if (!specId) {
-      const specs = await InspireCache.getSpecs(ws.id, cg.id)
       if (specs.length > 0) {
         const sorted = [...specs].sort((a, b) => (b.gpu_count ?? 0) - (a.gpu_count ?? 0))
         const chosen = sorted[0]
@@ -140,30 +140,50 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
       defaults.push(`命令前缀: ${sii.commandPrefix}`)
     }
 
+    const specInfo =
+      specs.length > 0 ? (specs.find((s: any) => (s.quota_id ?? s.id) === specId) ?? specs[0]) : undefined
+
+    const fcCpu = specInfo?.cpu_count ?? 8
+    const fcMem = specInfo?.memory_size_gib ?? 64
+    const fcGpu = specInfo?.gpu_count ?? 1
+    const fcGpuType = specInfo?.gpu_info?.gpu_product_simple ?? ""
+
+    const resourceSpecPrice: Record<string, any> = {
+      cpu_count: fcCpu,
+      gpu_count: fcGpu,
+      memory_size_gib: fcMem,
+      logic_compute_group_id: cg.id,
+      quota_id: specId ?? "",
+    }
+    if (fcGpuType) resourceSpecPrice.gpu_type = fcGpuType
+
     const jobConfig: Record<string, any> = {
-      job_name: params.name,
+      name: params.name,
       workspace_id: ws.id,
       project_id: proj.id,
       logic_compute_group_id: cg.id,
       command: finalCommand,
-      priority,
-      instance_count: instances,
+      task_priority: priority,
+      framework: "pytorch",
+      auto_fault_tolerance: false,
       enable_notification: false,
+      framework_config: [
+        {
+          image,
+          image_type: "SOURCE_PRIVATE",
+          instance_count: instances,
+          shm_gi: shm,
+          cpu: fcCpu,
+          mem_gi: fcMem,
+          gpu_count: fcGpu,
+          resource_spec_price: resourceSpecPrice,
+        },
+      ],
     }
-    if (specId) jobConfig.spec_id = specId
-    jobConfig.framework_config = [
-      {
-        image,
-        image_type: "SOURCE_PRIVATE",
-        instance_count: instances,
-        shm_size: shm,
-        instance_spec_price_info: specId ? { quota_id: specId } : undefined,
-      },
-    ]
 
     let result: any
     try {
-      result = await InspireAuth.withTokenRetry((token) => InspireAPI.createJob(token, jobConfig))
+      result = await InspireAuth.withCookieRetry((cookie) => InspireAPI.createJob(cookie, jobConfig))
     } catch (err: any) {
       if (String(err).includes("inspire_not_authenticated")) return InspireAuth.notAuthenticatedError("inspire")
       return {

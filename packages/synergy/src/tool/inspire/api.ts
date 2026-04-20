@@ -80,22 +80,26 @@ export namespace InspireAPI {
     return data.node_dimensions ?? []
   }
 
-  export async function listSpecs(token: string, computeGroupId: string): Promise<any[]> {
-    const data = await postOpenAPI("/openapi/v1/specs/list", { logic_compute_group_id: computeGroupId }, token)
-    return data.specs ?? []
-  }
-
-  export async function createJob(token: string, config: Record<string, any>): Promise<any> {
-    return postOpenAPI("/openapi/v1/train_job/create", config, token)
-  }
-
-  export async function getJobDetail(token: string, jobId: string): Promise<any> {
-    return postOpenAPI("/openapi/v1/train_job/detail", { job_id: jobId }, token)
-  }
-
-  export async function stopJob(token: string, jobId: string): Promise<boolean> {
+  export async function listSpecs(cookie: string, computeGroupId: string): Promise<any[]> {
     try {
-      await postOpenAPI("/openapi/v1/train_job/stop", { job_id: jobId }, token)
+      const data = await postInternal("/api/v1/specs/list", { logic_compute_group_id: computeGroupId }, cookie)
+      return data.specs ?? []
+    } catch {
+      return []
+    }
+  }
+
+  export async function createJob(cookie: string, config: Record<string, any>): Promise<any> {
+    return postInternal("/api/v1/train_job/create", config, cookie, config.workspace_id)
+  }
+
+  export async function getJobDetail(cookie: string, jobId: string): Promise<any> {
+    return postInternal("/api/v1/train_job/detail", { job_id: jobId }, cookie)
+  }
+
+  export async function stopJob(cookie: string, jobId: string): Promise<boolean> {
+    try {
+      await postInternal("/api/v1/train_job/stop", { job_id: jobId }, cookie)
       return true
     } catch {
       return false

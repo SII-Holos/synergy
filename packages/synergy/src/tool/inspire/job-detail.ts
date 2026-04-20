@@ -45,7 +45,7 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
 
     let job: any
     try {
-      job = await InspireAuth.withTokenRetry((token) => InspireAPI.getJobDetail(token, params.job_id))
+      job = await InspireAuth.withCookieRetry((cookie) => InspireAPI.getJobDetail(cookie, params.job_id))
     } catch {
       try {
         const found = await findJobViaCookie(params.job_id)

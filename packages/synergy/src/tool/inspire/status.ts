@@ -142,19 +142,16 @@ export const InspireStatusTool = Tool.define("inspire_status", {
               lines.push(`        - ${g.name} (${g.id}): ${gpuInfo}`)
 
               try {
-                const token = await InspireAuth.requireToken().catch(() => "")
-                if (token && !token.startsWith("cookie:")) {
-                  const specs = await InspireCache.getSpecs(space.id, g.id, params.refresh)
-                  if (specs.length > 0) {
-                    lines.push("          可用规格:")
-                    for (const spec of specs) {
-                      const specId = spec.quota_id ?? spec.id
-                      const gpu = spec.gpu_count ?? 0
-                      const cpu = spec.cpu_count ?? 0
-                      const mem = spec.memory_size_gib ?? 0
-                      const gpuType = spec.gpu_info?.gpu_product_simple ?? ""
-                      lines.push(`            ${specId}: ${gpu}× ${gpuType || "GPU"}, ${cpu} CPU, ${mem} GB 内存`)
-                    }
+                const specs = await InspireCache.getSpecs(space.id, g.id, params.refresh)
+                if (specs.length > 0) {
+                  lines.push("          可用规格:")
+                  for (const spec of specs) {
+                    const specId = spec.quota_id ?? spec.id
+                    const gpu = spec.gpu_count ?? 0
+                    const cpu = spec.cpu_count ?? 0
+                    const mem = spec.memory_size_gib ?? 0
+                    const gpuType = spec.gpu_info?.gpu_product_simple ?? ""
+                    lines.push(`            ${specId}: ${gpu}× ${gpuType || "GPU"}, ${cpu} CPU, ${mem} GB 内存`)
                   }
                 }
               } catch {}
