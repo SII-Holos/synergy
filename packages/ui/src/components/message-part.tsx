@@ -892,13 +892,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     // inspire — SII 启智平台 (native tools)
     case "inspire_status": {
       const args: string[] = []
-      pushArg(args, input.project)
       pushArg(args, input.workspace)
       pushArg(args, input.refresh ? "refresh" : undefined)
       return {
-        icon: "layers",
+        icon: "telescope",
         title: "Platform Status",
-        subtitle: metadata?.project_names?.[0] ?? input.project ?? "All",
+        subtitle: input.project || metadata?.project_names?.[0] || "All",
         args,
       }
     }
@@ -906,7 +905,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.action === "set" && input.value !== undefined ? String(input.value) : undefined)
       return {
-        icon: "diamond",
+        icon: "sliders-horizontal",
         title: input.action === "set" ? "Set Default" : "SII Defaults",
         subtitle: input.key,
         args,
@@ -916,7 +915,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
-        icon: "disc",
+        icon: "package",
         title: input.repo ? "Image Detail" : "Search Images",
         subtitle: input.repo || input.search || "Recent",
         args,
@@ -926,7 +925,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.name)
       pushArg(args, input.tag)
-      return { icon: "archive", title: "Push Image", subtitle: input.image, args }
+      return { icon: "cloud-upload", title: "Push Image", subtitle: input.image, args }
     }
     case "inspire_submit": {
       const args: string[] = []
@@ -934,7 +933,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.compute_group)
       pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
       pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
-      return { icon: "rocket", title: "Submit GPU Job", subtitle: input.name, args }
+      return { icon: "flame", title: "Submit GPU Job", subtitle: input.name, args }
     }
     case "inspire_submit_hpc": {
       const args: string[] = []
@@ -967,7 +966,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     }
     case "inspire_job_detail":
-      return { icon: "scan", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
+      return { icon: "microscope", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
     default:
       return {
         icon: "settings",
