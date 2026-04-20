@@ -19,6 +19,16 @@ const DESCRIPTION = `Query SII 启智平台 project, workspace, GPU resource, an
 
 Call this tool first when starting work on the platform. The returned workspace IDs, compute group IDs, spec IDs, and storage paths are needed for inspire_submit and other tools.`
 
+function formatResourceType(raw?: string): string {
+  if (!raw) return ""
+  if (raw === "CPU") return "CPU"
+  return raw
+    .replace(/^NVIDIA_/, "")
+    .replace(/_/g, " ")
+    .replace(/SXM /i, "SXM ")
+    .replace(/(\d+)G$/i, "($1GB)")
+}
+
 const parameters = z.object({
   project: z.string().optional().describe("Filter to a specific project (name or ID). Omit to show all projects"),
   workspace: z
@@ -106,16 +116,22 @@ export const InspireStatusTool = Tool.define("inspire_status", {
           if (logicGroups.length > 0) {
             lines.push("      计算组:")
             for (const g of logicGroups) {
+              const gpuType = formatResourceType(g.resourceTypes[0])
+
               let gpuInfo = ""
               try {
                 const cookie = await InspireAuth.requireCookie()
                 const nodes = await InspireAPI.listNodeDimension(cookie, space.id, g.id)
                 const totalGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.total ?? 0), 0)
                 const usedGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.used ?? 0), 0)
-                const gpuType = nodes[0]?.gpu?.type ?? g.resourceTypes[0] ?? ""
-                gpuInfo = `${gpuType ? gpuType + ", " : ""}总 ${totalGpu} GPU, 空闲 ${totalGpu - usedGpu} GPU`
+                const nodeCount = nodes.length
+                if (gpuType === "CPU") {
+                  gpuInfo = `CPU 资源, ${nodeCount} 节点`
+                } else {
+                  gpuInfo = `${gpuType}, 总 ${totalGpu} GPU, 空闲 ${totalGpu - usedGpu} GPU, ${nodeCount} 节点`
+                }
               } catch {
-                gpuInfo = "资源信息不可用"
+                gpuInfo = gpuType ? `${gpuType}, 资源详情不可用` : "资源信息不可用"
               }
 
               lines.push(`        - ${g.name} (${g.id}): ${gpuInfo}`)
