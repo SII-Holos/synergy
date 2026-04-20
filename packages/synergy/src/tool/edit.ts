@@ -284,6 +284,53 @@ function findMatchLocations(content: string, oldString: string): string {
   return locations.join("\n")
 }
 
+/**
+ * Check whether two strings differ only in leading whitespace per line.
+ * Used to decide if newString indentation should be adjusted to match
+ * the file's actual indentation level.
+ */
+function differsOnlyByIndentation(a: string, b: string): boolean {
+  const aLines = a.split("\n")
+  const bLines = b.split("\n")
+  if (aLines.length !== bLines.length) return false
+  return aLines.every((aLine, i) => aLine.trimStart() === bLines[i].trimStart())
+}
+
+/**
+ * Adjust newString indentation so it aligns with the file's actual
+ * indentation at the match location, based on the offset between
+ * oldString and the actual matched text.
+ */
+function adjustIndentation(oldString: string, newString: string, actualMatch: string): string {
+  const oldLines = oldString.split("\n")
+  const actualLines = actualMatch.split("\n")
+
+  // Compute offset from the first non-empty line
+  let offset = 0
+  for (let i = 0; i < oldLines.length; i++) {
+    if (oldLines[i].trim().length > 0) {
+      const oldIndent = oldLines[i].match(/^(\s*)/)?.[1].length ?? 0
+      const actualIndent = actualLines[i]?.match(/^(\s*)/)?.[1].length ?? 0
+      offset = actualIndent - oldIndent
+      break
+    }
+  }
+
+  if (offset === 0) return newString
+
+  const prefix = offset > 0 ? " ".repeat(offset) : ""
+  return newString
+    .split("\n")
+    .map((line) => {
+      if (line.trim().length === 0) return line
+      if (offset > 0) return prefix + line
+      // Negative offset: strip up to |offset| leading spaces
+      const currentIndent = line.match(/^(\s*)/)?.[1].length ?? 0
+      return line.slice(Math.min(-offset, currentIndent))
+    })
+    .join("\n")
+}
+
 export const SimpleReplacer: Replacer = function* (_content, find) {
   yield find
 }
@@ -735,12 +782,18 @@ export function replace(content: string, oldString: string, newString: string, r
       const index = content.indexOf(search)
       if (index === -1) continue
       notFound = false
+
+      const adjusted =
+        search !== oldString && differsOnlyByIndentation(search, oldString)
+          ? adjustIndentation(oldString, newString, search)
+          : newString
+
       if (replaceAll) {
-        return content.replaceAll(search, newString)
+        return content.replaceAll(search, adjusted)
       }
       const lastIndex = content.lastIndexOf(search)
       if (index !== lastIndex) continue
-      return content.substring(0, index) + newString + content.substring(index + search.length)
+      return content.substring(0, index) + adjusted + content.substring(index + search.length)
     }
   }
 

@@ -132,4 +132,33 @@ describe("tool.edit replace", () => {
       expect(e.message).toContain("line 3")
     }
   })
+
+  test("adjusts newString indentation when oldString matches at a different indent level", () => {
+    const content = "class Service {\n    function process() {\n        return result\n    }\n}"
+
+    const oldString = "function process() {\n    return result\n}"
+    const newString = "function process() {\n    const validated = validate(result)\n    return validated\n}"
+
+    const result = replace(content, oldString, newString)
+    expect(result).toContain("        const validated = validate(result)")
+    expect(result).toContain("        return validated")
+  })
+
+  test("does not adjust indentation when match is exact", () => {
+    const content = "class Service {\n    function process() {\n        return result\n    }\n}"
+    const oldString = "    function process() {\n        return result\n    }"
+    const newString = "    function process() {\n        return updated\n    }"
+
+    const result = replace(content, oldString, newString)
+    expect(result).toContain("        return updated")
+  })
+
+  test("preserves empty lines without adding indentation", () => {
+    const content = "class Service {\n    function process() {\n\n        return result\n    }\n}"
+    const oldString = "function process() {\n\n    return result\n}"
+    const newString = "function process() {\n\n    return updated\n}"
+
+    const result = replace(content, oldString, newString)
+    expect(result).toContain("    function process() {\n\n        return updated")
+  })
 })
