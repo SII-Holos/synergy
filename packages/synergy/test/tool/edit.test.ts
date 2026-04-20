@@ -81,4 +81,55 @@ describe("tool.edit replace", () => {
       replace(duplicated, oldString, "function example() {\n  const value = bar()\n  return value\n}"),
     ).toThrow("Found multiple matches for oldString")
   })
+
+  test("not-found error includes similar lines hint when close match exists", () => {
+    const content = [
+      "export function processOrder(order: Order) {",
+      "  const items = order.getItems()",
+      "  const total = items.reduce((s, i) => s + i.price, 0)",
+      "  return { items, total }",
+      "}",
+    ].join("\n")
+
+    const oldString = [
+      "export function processOrder(order: Order) {",
+      '  log.debug("Processing order", order.id)',
+      "  await notifyWarehouse(order)",
+      "  return order.confirm()",
+      "}",
+    ].join("\n")
+
+    try {
+      replace(content, oldString, "replaced")
+      expect.unreachable("should have thrown")
+    } catch (e: any) {
+      expect(e.message).toContain("most similar lines")
+      expect(e.message).toContain("processOrder")
+    }
+  })
+
+  test("not-found error omits hint when no close match exists", () => {
+    const content = "const x = 1\nconst y = 2\n"
+    const oldString = "import z from 'w'\nexport default z\n"
+
+    try {
+      replace(content, oldString, "replaced")
+      expect.unreachable("should have thrown")
+    } catch (e: any) {
+      expect(e.message).not.toContain("most similar lines")
+      expect(e.message).toContain("oldString not found in content")
+    }
+  })
+
+  test("multiple-match error includes match locations", () => {
+    const content = "const x = 1\nconst y = 2\nconst x = 1\n"
+    try {
+      replace(content, "const x = 1", "const x = 2")
+      expect.unreachable("should have thrown")
+    } catch (e: any) {
+      expect(e.message).toContain("Matches found at")
+      expect(e.message).toContain("line 1")
+      expect(e.message).toContain("line 3")
+    }
+  })
 })

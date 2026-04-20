@@ -186,6 +186,12 @@ export type Replacer = (content: string, find: string) => Generator<string, void
 const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.3
 const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD = 0.3
 
+// Minimum similarity ratio for findSimilarLines to emit a hint
+const SIMILAR_LINES_THRESHOLD = 0.3
+
+// Max file lines before skipping similar-lines search (performance guard)
+const SIMILAR_LINES_MAX_FILE_LINES = 5000
+
 /**
  * Levenshtein distance algorithm implementation
  */
@@ -205,6 +211,77 @@ function levenshtein(a: string, b: string): number {
     }
   }
   return matrix[a.length][b.length]
+}
+
+/**
+ * Find the most similar block of lines in content to the search string,
+ * returning a formatted hint with line numbers. Used to guide the agent
+ * when all Replers fail to match.
+ */
+function findSimilarLines(content: string, search: string): string {
+  const contentLines = content.split("\n")
+  if (contentLines.length > SIMILAR_LINES_MAX_FILE_LINES) return ""
+
+  const searchLines = search.split("\n")
+  if (searchLines[searchLines.length - 1] === "") searchLines.pop()
+  const searchLen = searchLines.length
+  if (searchLen === 0) return ""
+
+  let bestStart = -1
+  let bestSimilarity = -1
+
+  for (let i = 0; i <= contentLines.length - searchLen; i++) {
+    let similarity = 0
+    for (let j = 0; j < searchLen; j++) {
+      const a = contentLines[i + j].trim()
+      const b = searchLines[j].trim()
+      if (a === "" && b === "") {
+        similarity += 1
+      } else if (a.length > 0 || b.length > 0) {
+        const maxLen = Math.max(a.length, b.length)
+        if (maxLen > 0) similarity += 1 - levenshtein(a, b) / maxLen
+      }
+    }
+    similarity /= searchLen
+
+    if (similarity > bestSimilarity) {
+      bestSimilarity = similarity
+      bestStart = i
+    }
+  }
+
+  if (bestStart === -1 || bestSimilarity < SIMILAR_LINES_THRESHOLD) return ""
+
+  const contextPad = 2
+  const startLine = Math.max(0, bestStart - contextPad)
+  const endLine = Math.min(contentLines.length, bestStart + searchLen + contextPad)
+  const padLen = String(endLine).length
+
+  const lines: string[] = []
+  for (let i = startLine; i < endLine; i++) {
+    const marker = i >= bestStart && i < bestStart + searchLen ? ">" : " "
+    const lineNum = String(i + 1).padStart(padLen, " ")
+    lines.push(` ${marker} ${lineNum} | ${contentLines[i]}`)
+  }
+  return lines.join("\n")
+}
+
+/**
+ * List all line locations where oldString appears exactly in content.
+ * Used when "Found multiple matches" to show the agent every occurrence.
+ */
+function findMatchLocations(content: string, oldString: string): string {
+  const locations: string[] = []
+  let fromIndex = 0
+  while (true) {
+    const found = content.indexOf(oldString, fromIndex)
+    if (found === -1) break
+    const lineNum = content.substring(0, found).split("\n").length
+    const lineContent = content.split("\n")[lineNum - 1]?.trim() ?? ""
+    locations.push(`  line ${lineNum}: ${lineContent}`)
+    fromIndex = found + 1
+  }
+  return locations.join("\n")
 }
 
 export const SimpleReplacer: Replacer = function* (_content, find) {
@@ -668,9 +745,18 @@ export function replace(content: string, oldString: string, newString: string, r
   }
 
   if (notFound) {
-    throw new Error("oldString not found in content")
+    const hint = findSimilarLines(content, oldString)
+    throw new Error(
+      hint
+        ? `oldString not found in content\n\nThe most similar lines in the file are:\n${hint}`
+        : "oldString not found in content",
+    )
   }
+
+  const locations = findMatchLocations(content, oldString)
   throw new Error(
-    "Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.",
+    locations
+      ? `Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.\n\nMatches found at:\n${locations}`
+      : "Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.",
   )
 }
