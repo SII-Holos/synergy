@@ -18,6 +18,8 @@ IMPORTANT constraints:
 - For distributed training, the platform auto-injects: MASTER_ADDR, PET_NNODES, PET_NODE_RANK, PET_NPROC_PER_NODE.
 - Shared memory (shm) matters for multi-GPU training (default 1200 MB).
 - Priority must not exceed the project's max (check via inspire_status). Priority ≥4 won't be preempted.
+- The platform has NO log API. To capture output for debugging, append: 2>&1 | tee /inspire/hdd/project/{en_name}/logs/{job_name}.log
+- Images must match the target registry. 七宝 spaces use docker-qb.sii.edu.cn, 松江 spaces use docker.sii.shaipower.online. Mismatched registry causes image pull failure.
 
 Call inspire_status first to discover resources. Use inspire_config to set defaults for repeated use.`
 
@@ -133,6 +135,26 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
       }
     }
     if (!params.priority && sii.defaultPriority) defaults.push(`优先级: ${priority} (默认)`)
+
+    const remainBudget = projFull?.remain_budget ?? undefined
+    if (remainBudget !== undefined && remainBudget <= 0) {
+      warnings.push(
+        `⚠ 项目点券已耗尽（剩余 ${Math.round(remainBudget)}）。任务可能无法创建。低优先级(1-3)的 CPU 任务不受点券限制。`,
+      )
+    }
+
+    const isSongjangImage = image.includes("docker.sii.shaipower.online")
+    const isQibaoImage = image.includes("docker-qb.sii.edu.cn")
+    const isSongjangSpace = ws.name.includes("SJ") || ws.name.includes("松江")
+    if (isSongjangImage && !isSongjangSpace) {
+      warnings.push(
+        "⚠ 镜像地址为松江仓库(docker.sii.shaipower.online)，但目标空间可能在七宝集群。镜像拉取可能失败。七宝空间请使用 docker-qb.sii.edu.cn 的镜像。",
+      )
+    } else if (isQibaoImage && isSongjangSpace) {
+      warnings.push(
+        "⚠ 镜像地址为七宝仓库(docker-qb.sii.edu.cn)，但目标空间在松江集群。镜像拉取可能失败。松江空间请使用 docker.sii.shaipower.online 的镜像。",
+      )
+    }
 
     let finalCommand = params.command
     if (sii.commandPrefix) {

@@ -99,13 +99,15 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
       lines.push("", "⚠ 诊断建议:")
 
       const runMs = parseInt(job.running_time_ms ?? "0", 10)
+      const command = job.command ?? ""
+      const isMultiGpu = gpuInfo.gpu_count > 1 || gpuInfo.instance_count > 1
+
       if (runMs > 0 && runMs < 30_000) {
         lines.push(
           "  - 运行仅 " + Math.round(runMs / 1000) + " 秒后失败 → 可能是命令错误、镜像依赖缺失、conda 未初始化",
         )
       }
 
-      const command = job.command ?? ""
       if (
         command.includes("pip install") ||
         command.includes("git clone") ||
@@ -115,13 +117,30 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
         lines.push("  - 命令中包含联网操作 → 如果是离线空间，请提前将依赖打包到镜像中")
       }
 
+      if (isMultiGpu) {
+        lines.push("  - 多卡/多机任务: 如果报 NCCL Error / Socket timeout，尝试在命令前添加:")
+        lines.push("    export NCCL_P2P_DISABLE=1 NCCL_NVLS_ENABLE=0 NCCL_IB_RETRY_CNT=255 NCCL_IB_TIMEOUT=25")
+        lines.push("  - 确认共享内存(shm)已设置且足够大（多卡训练建议 ≥64GB）")
+      }
+
       if (!command.includes(">") && !command.includes("tee")) {
         lines.push(
-          `  - 建议将输出重定向到文件: command > /inspire/hdd/project/${job.project_name ?? "proj"}/logs/output.log 2>&1`,
+          `  - 建议将输出重定向到文件以便诊断: 2>&1 | tee /inspire/hdd/project/${job.project_en_name ?? job.project_name ?? "proj"}/logs/${job.name ?? "output"}.log`,
         )
       }
 
-      lines.push("  - 常见原因: 环境变量缺失、数据路径不存在、GPU 驱动不兼容")
+      lines.push("  - 常见原因: 环境变量缺失、数据路径不存在、GPU 驱动不兼容、镜像中缺少依赖")
+    }
+
+    if (statusInfo.family === "waiting") {
+      lines.push("", "ℹ 排队说明:")
+      lines.push("  - 任务已提交，等待 GPU 资源分配")
+      lines.push("  - 如果空闲 GPU 充足但仍排不上，可能原因:")
+      lines.push("    • 节点存在污点(Taint): ECC 错误、网卡异常、GPU 故障")
+      lines.push("    • 多机任务需要多个节点同时空闲")
+      lines.push("    • 同优先级下用卡更少的任务优先调度")
+      lines.push("  - 排队超过 24 小时建议: 切换到其他计算组，或联系运维排查")
+      lines.push("  - 可调用 inspire_status 查看目标计算组当前空闲 GPU 数量")
     }
 
     return {
