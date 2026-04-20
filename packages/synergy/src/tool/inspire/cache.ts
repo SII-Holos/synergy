@@ -60,8 +60,7 @@ export namespace InspireCache {
   }
 
   export async function refresh(): Promise<void> {
-    const cookie = await InspireAuth.requireCookie()
-    const projects = await InspireAPI.listProjects(cookie)
+    const projects = await InspireAuth.withCookieRetry((cookie) => InspireAPI.listProjects(cookie))
 
     const workspaceIds = new Set<string>()
     for (const proj of projects) {
@@ -73,8 +72,7 @@ export namespace InspireCache {
     const workspaceInfo: CacheData["workspaceInfo"] = {}
     for (const wsId of workspaceIds) {
       try {
-        const freshCookie = await InspireAuth.requireCookie()
-        const clusterInfo = await InspireAPI.getClusterBasicInfo(freshCookie, wsId)
+        const clusterInfo = await InspireAuth.withCookieRetry((cookie) => InspireAPI.getClusterBasicInfo(cookie, wsId))
         workspaceInfo[wsId] = { clusterInfo, specs: {} }
       } catch (err) {
         log.warn("failed to fetch cluster info", { workspaceId: wsId, error: String(err) })

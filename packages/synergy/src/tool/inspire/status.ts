@@ -119,12 +119,15 @@ export const InspireStatusTool = Tool.define("inspire_status", {
               const gpuType = formatResourceType(g.resourceTypes[0])
 
               let gpuInfo = ""
+              let totalGpu = 0
+              let nodeCount = 0
               try {
-                const cookie = await InspireAuth.requireCookie()
-                const nodes = await InspireAPI.listNodeDimension(cookie, space.id, g.id)
-                const totalGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.total ?? 0), 0)
+                const nodes = await InspireAuth.withCookieRetry((cookie) =>
+                  InspireAPI.listNodeDimension(cookie, space.id, g.id),
+                )
+                totalGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.total ?? 0), 0)
                 const usedGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.used ?? 0), 0)
-                const nodeCount = nodes.length
+                nodeCount = nodes.length
                 if (gpuType === "CPU") {
                   gpuInfo = `CPU 资源, ${nodeCount} 节点`
                 } else {
@@ -133,6 +136,8 @@ export const InspireStatusTool = Tool.define("inspire_status", {
               } catch {
                 gpuInfo = gpuType ? `${gpuType}, 资源详情不可用` : "资源信息不可用"
               }
+
+              if (totalGpu === 0 && nodeCount === 0 && gpuType !== "CPU") continue
 
               lines.push(`        - ${g.name} (${g.id}): ${gpuInfo}`)
 
