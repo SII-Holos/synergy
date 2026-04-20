@@ -380,13 +380,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "glob":
       return {
-        icon: "search",
+        icon: "funnel",
         title: "Glob",
         subtitle: input.pattern,
       }
     case "grep":
       return {
-        icon: "search",
+        icon: "regex",
         title: "Grep",
         subtitle: input.pattern,
       }
@@ -422,38 +422,38 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "patch":
       return {
-        icon: "text-select",
+        icon: "diff",
         title: "Patch",
       }
     case "write":
       return {
-        icon: "text-select",
+        icon: "file-pen",
         title: "Write",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "todowrite":
       return {
-        icon: "list-checks",
+        icon: "clipboard-check",
         title: "To-dos",
       }
     case "todoread":
       return {
-        icon: "list-checks",
+        icon: "list-filter",
         title: "Read to-dos",
       }
     case "dagwrite":
       return {
-        icon: "git-branch",
+        icon: "route",
         title: "DAG",
       }
     case "dagread":
       return {
-        icon: "git-branch",
+        icon: "spline",
         title: "Read DAG",
       }
     case "dagpatch":
       return {
-        icon: "git-branch",
+        icon: "git-merge",
         title: "DAG",
       }
     case "question":
@@ -469,7 +469,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "look_at":
       return {
-        icon: "eye",
+        icon: "scan-eye",
         title: "Look at",
         subtitle: input.file_path
           ? getFilename(Array.isArray(input.file_path) ? input.file_path[0] : input.file_path)
@@ -477,13 +477,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "ast_grep":
       return {
-        icon: "code",
+        icon: "braces",
         title: "AST Search",
         subtitle: input.pattern,
       }
     case "lsp":
       return {
-        icon: "server",
+        icon: "circuit-board",
         title: "LSP",
         subtitle: input.operation,
       }
@@ -495,19 +495,19 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "arxiv_search":
       return {
-        icon: "file-text",
+        icon: "book-open",
         title: "arXiv Search",
         subtitle: input.query,
       }
     case "arxiv_download":
       return {
-        icon: "download",
+        icon: "book-down",
         title: "arXiv Download",
         subtitle: input.arxivId,
       }
     case "process":
       return {
-        icon: "terminal",
+        icon: "activity",
         title: "Process",
         subtitle: input.action,
       }
@@ -565,7 +565,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "task_cancel":
       return {
-        icon: "x",
+        icon: "circle-x",
         title: "Task Cancel",
         subtitle: input.task_id,
       }
@@ -577,7 +577,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "context7_query-docs":
       return {
-        icon: "file-text",
+        icon: "scroll-text",
         title: "Query Docs",
         subtitle: input.query,
       }
@@ -660,13 +660,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     case "profile_get":
       return {
-        icon: "user",
+        icon: "scan",
         title: "Profile",
         subtitle: input.name,
       }
     case "profile_update":
       return {
-        icon: "user",
+        icon: "user-round-pen",
         title: "Update Profile",
         subtitle: input.name,
       }
@@ -684,7 +684,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "agenda_update":
       return {
-        icon: "refresh-ccw",
+        icon: "pencil",
         title: "Update Agenda",
         subtitle: input.id,
       }
@@ -790,7 +790,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           : `${input.target.length} targets`
         : input.target
       return {
-        icon: "refresh-ccw",
+        icon: "rotate-cw",
         title: "Runtime Reload",
         subtitle: target || input.reason,
       }

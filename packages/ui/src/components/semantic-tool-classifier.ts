@@ -54,7 +54,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
   "file-write": {
-    icon: "pen-line",
+    icon: "file-pen",
     label: "Write",
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
@@ -64,7 +64,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["description", "command", "cmd", "script"],
   },
   search: {
-    icon: "search",
+    icon: "regex",
     label: "Search",
     subtitleKeys: ["pattern", "query", "regex", "search"],
     argsKeys: ["include", "lang", "language"],
@@ -92,12 +92,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["description", "prompt"],
   },
   dag: {
-    icon: "git-branch",
+    icon: "route",
     label: "DAG",
     subtitleKeys: [],
   },
   schedule: {
-    icon: "calendar-days",
+    icon: "clipboard-check",
     label: "Schedule",
     subtitleKeys: ["title", "id"],
     argsKeys: ["status"],
@@ -126,12 +126,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     argsKeys: ["action"],
   },
   analyze: {
-    icon: "eye",
+    icon: "scan-eye",
     label: "Analyze",
     subtitleKeys: ["goal", "file_path", "description"],
   },
   config: {
-    icon: "settings",
+    icon: "rotate-cw",
     label: "Config",
     subtitleKeys: ["target", "name", "reason"],
   },
