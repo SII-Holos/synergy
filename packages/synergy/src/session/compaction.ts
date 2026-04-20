@@ -247,6 +247,49 @@ export namespace SessionCompaction {
     }
   }
 
+  const ANCHOR_OPEN = "<anchor>"
+  const ANCHOR_CLOSE = "</anchor>"
+
+  /**
+   * Build the anchor text that preserves the user's original request across
+   * compaction boundaries.  If a previous compaction already embedded an
+   * anchor in one of the continue messages, reuse it verbatim so the same
+   * text survives any number of compactions without degradation.
+   */
+  function buildAnchor(messages: MessageV2.WithParts[]): string | undefined {
+    // Check if a previous compaction already embedded an anchor.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.info.role !== "user") continue
+      for (const part of msg.parts) {
+        if (part.type === "text" && part.synthetic && part.text.startsWith(ANCHOR_OPEN)) {
+          return part.text
+        }
+      }
+    }
+
+    // First compaction — extract the original user request.
+    for (const msg of messages) {
+      if (msg.info.role !== "user") continue
+      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+      if (textParts.length === 0) continue
+      const text = textParts
+        .map((p) => p.text)
+        .join("\n")
+        .trim()
+      if (!text) continue
+      return [
+        ANCHOR_OPEN,
+        "This is the user's original request that initiated this work session.",
+        "",
+        text,
+        ANCHOR_CLOSE,
+      ].join("\n")
+    }
+
+    return undefined
+  }
+
   export async function process(input: {
     parentID: string
     messages: MessageV2.WithParts[]
@@ -365,6 +408,7 @@ export namespace SessionCompaction {
         model: userMessage.model,
         summary: { title: "Compaction complete", diffs: [] },
       })
+      const now = Date.now()
       await Session.updatePart({
         id: Identifier.ascending("part"),
         messageID: continueMsg.id,
@@ -372,11 +416,20 @@ export namespace SessionCompaction {
         type: "text",
         synthetic: true,
         text: "Continue if you have next steps",
-        time: {
-          start: Date.now(),
-          end: Date.now(),
-        },
+        time: { start: now, end: now },
       })
+      const anchor = buildAnchor(input.messages)
+      if (anchor) {
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: continueMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: anchor,
+          time: { start: now, end: now },
+        })
+      }
     }
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
     return input.auto ? "continue" : "stop"

@@ -137,7 +137,6 @@ export namespace SessionInvoke {
     sessionMessages: MessageV2.WithParts[],
     isTopSession: boolean,
     isGenesis: boolean,
-    lastUserParts: MessageV2.Part[] | undefined,
   ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
     if (step === 1 && isTopSession && !isGenesis) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
@@ -150,7 +149,11 @@ export namespace SessionInvoke {
         return undefined
       })
     }
-    if (step > 1 && isTopSession && lastUserParts?.some((p) => p.type === "compaction")) {
+    // Keep the recalled memory/experience in the system prompt for every step
+    // so the prefix stays stable (maximizing cache hits) and the agent retains
+    // its knowledge context across the entire trajectory, including after
+    // compaction boundaries.
+    if (step > 1 && isTopSession) {
       return getCachedResult(sessionID)
     }
     if (step === 1 && !isTopSession) {
@@ -431,7 +434,7 @@ export namespace SessionInvoke {
             ]).then(([env, custom]) => [env, custom] as const),
             buildCortexExecutionContext(sessionID),
             buildCortexReminder(sessionID),
-            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis, lastUserParts),
+            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
           ])
 
         const systemParts = [...envParts, ...customParts]
@@ -449,9 +452,9 @@ export namespace SessionInvoke {
 
         if (memoryResult) {
           systemParts.push(memoryResult.context)
-          cacheResult(sessionID, memoryResult)
+          if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
-          if (injection.memory || injection.experience) {
+          if ((injection.memory || injection.experience) && !lastUser.metadata?.injectedContext) {
             const updated: MessageV2.User = {
               ...lastUser,
               metadata: { ...lastUser.metadata, injectedContext: injection },
