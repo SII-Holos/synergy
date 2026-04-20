@@ -3,6 +3,25 @@ import { Tool } from "../tool"
 import { InspireAPI } from "./api"
 import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
+import { InspireCache } from "./cache"
+
+async function findJobViaCookie(jobId: string): Promise<any | undefined> {
+  const projects = await InspireCache.getProjects()
+  const wsIds = new Set<string>()
+  for (const proj of projects) {
+    for (const space of proj.space_list ?? []) wsIds.add(space.id)
+  }
+  for (const wsId of wsIds) {
+    try {
+      const { jobs } = await InspireAuth.withCookieRetry((cookie) =>
+        InspireAPI.listJobsWithCookie(cookie, wsId, { pageSize: 100 }),
+      )
+      const match = jobs.find((j: any) => (j.job_id ?? j.id) === jobId)
+      if (match) return match
+    } catch {}
+  }
+  return undefined
+}
 
 const DESCRIPTION = `Get detailed information about a specific task on the SII 启智平台, including the full command, image configuration, resource spec, and runtime status.
 
@@ -24,7 +43,23 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
     const creds = await InspireAuth.getInspireCredentials()
     if (!creds) return InspireAuth.notAuthenticatedError("inspire")
 
-    const job = await InspireAuth.withTokenRetry((token) => InspireAPI.getJobDetail(token, params.job_id))
+    let job: any
+    try {
+      job = await InspireAuth.withTokenRetry((token) => InspireAPI.getJobDetail(token, params.job_id))
+    } catch {
+      try {
+        const found = await findJobViaCookie(params.job_id)
+        if (found) job = found
+      } catch {}
+    }
+
+    if (!job) {
+      return {
+        title: "查询失败",
+        output: `无法获取任务 ${params.job_id} 的详情。Token 认证不可用且无法从任务列表中找到该任务。`,
+        metadata: { error: "job_not_found", job_id: params.job_id } as Record<string, any>,
+      }
+    }
 
     const statusInfo = InspireNormalize.status(job.status ?? "")
     const gpuInfo = InspireAPI.extractGpuInfo(job)

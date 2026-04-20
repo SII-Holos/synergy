@@ -22,7 +22,16 @@ export namespace InspireAPI {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    const data = (await resp.json()) as any
+    if (resp.status === 401 || resp.status === 302 || resp.status === 403) {
+      throw Object.assign(new Error("Token expired or invalid"), { code: -1, status: resp.status })
+    }
+    const text = await resp.text()
+    let data: any
+    try {
+      data = JSON.parse(text)
+    } catch {
+      throw Object.assign(new Error(`API returned non-JSON response (HTTP ${resp.status})`), { status: resp.status })
+    }
     if (data.code === -1) throw Object.assign(new Error("Token expired"), { code: -1 })
     if (data.code !== 0) throw new Error(data.message ?? `API error code ${data.code}`)
     return data.data ?? data
