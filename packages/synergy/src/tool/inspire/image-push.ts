@@ -58,12 +58,18 @@ export const InspireImagePushTool = Tool.define("inspire_image_push", {
         remoteTag,
       })
 
+      let descriptionSet = false
       if (params.description) {
-        await InspireHarbor.setDescription(remoteName, params.description)
+        try {
+          await InspireHarbor.setDescription(remoteName, params.description)
+          descriptionSet = true
+        } catch {}
       }
 
       const lines = ["=== 镜像推送成功 ===", "", `完整地址: ${result.fullPath}`]
       if (result.digest) lines.push(`Digest: ${result.digest}`)
+      if (params.description && descriptionSet) lines.push(`描述: ${params.description}`)
+      if (params.description && !descriptionSet) lines.push("⚠ 描述设置失败（权限不足），推送本身已成功")
       lines.push(
         "",
         "可在 inspire_submit 中使用:",
