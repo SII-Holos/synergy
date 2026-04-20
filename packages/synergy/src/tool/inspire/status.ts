@@ -90,32 +90,40 @@ export const InspireStatusTool = Tool.define("inspire_status", {
 
         try {
           const clusterInfo = await InspireCache.getClusterInfo(space.id, params.refresh)
-          const groups = clusterInfo?.logic_compute_groups ?? clusterInfo?.compute_groups ?? []
+          const computeGroups = clusterInfo?.compute_groups ?? []
 
-          if (groups.length > 0) {
+          const logicGroups: { id: string; name: string; resourceTypes: string[] }[] = []
+          for (const cg of computeGroups) {
+            for (const lcg of cg.logic_compute_groups ?? []) {
+              logicGroups.push({
+                id: lcg.logic_compute_group_id,
+                name: lcg.logic_compute_group_name,
+                resourceTypes: lcg.resource_types ?? [],
+              })
+            }
+          }
+
+          if (logicGroups.length > 0) {
             lines.push("      计算组:")
-            for (const g of groups) {
-              const gId = g.id ?? g.logic_compute_group_id
-              const gName = g.name ?? g.logic_compute_group_name ?? gId
-
+            for (const g of logicGroups) {
               let gpuInfo = ""
               try {
                 const cookie = await InspireAuth.requireCookie()
-                const nodes = await InspireAPI.listNodeDimension(cookie, space.id, gId)
+                const nodes = await InspireAPI.listNodeDimension(cookie, space.id, g.id)
                 const totalGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.total ?? 0), 0)
                 const usedGpu = nodes.reduce((sum: number, n: any) => sum + (n.gpu?.used ?? 0), 0)
-                const gpuType = nodes[0]?.gpu?.type ?? ""
+                const gpuType = nodes[0]?.gpu?.type ?? g.resourceTypes[0] ?? ""
                 gpuInfo = `${gpuType ? gpuType + ", " : ""}总 ${totalGpu} GPU, 空闲 ${totalGpu - usedGpu} GPU`
               } catch {
                 gpuInfo = "资源信息不可用"
               }
 
-              lines.push(`        - ${gName} (${gId}): ${gpuInfo}`)
+              lines.push(`        - ${g.name} (${g.id}): ${gpuInfo}`)
 
               try {
                 const token = await InspireAuth.requireToken().catch(() => "")
                 if (token && !token.startsWith("cookie:")) {
-                  const specs = await InspireCache.getSpecs(space.id, gId, params.refresh)
+                  const specs = await InspireCache.getSpecs(space.id, g.id, params.refresh)
                   if (specs.length > 0) {
                     lines.push("          可用规格:")
                     for (const spec of specs) {

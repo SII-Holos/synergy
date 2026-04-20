@@ -46,12 +46,13 @@ export namespace InspireResolve {
     if (input.startsWith("lcg-")) return { id: input, name: input }
     const info = await InspireCache.getClusterInfo(workspaceId)
     if (!info) return undefined
-    const groups = info.logic_compute_groups ?? info.compute_groups ?? []
-    for (const g of groups) {
-      const name = g.name ?? g.logic_compute_group_name ?? ""
-      const id = g.id ?? g.logic_compute_group_id ?? ""
-      if (name === input || name.includes(input)) {
-        return { id, name }
+    for (const cg of info.compute_groups ?? []) {
+      for (const lcg of cg.logic_compute_groups ?? []) {
+        const name = lcg.logic_compute_group_name ?? ""
+        const id = lcg.logic_compute_group_id ?? ""
+        if (name === input || name.includes(input)) {
+          return { id, name }
+        }
       }
     }
     return undefined
@@ -76,9 +77,13 @@ export namespace InspireResolve {
   export async function firstComputeGroup(workspaceId: string): Promise<{ id: string; name: string } | undefined> {
     const info = await InspireCache.getClusterInfo(workspaceId)
     if (!info) return undefined
-    const groups = info.logic_compute_groups ?? info.compute_groups ?? []
-    const first = groups[0]
-    if (!first) return undefined
-    return { id: first.id ?? first.logic_compute_group_id, name: first.name ?? first.logic_compute_group_name }
+    for (const cg of info.compute_groups ?? []) {
+      for (const lcg of cg.logic_compute_groups ?? []) {
+        if (lcg.logic_compute_group_id) {
+          return { id: lcg.logic_compute_group_id, name: lcg.logic_compute_group_name ?? lcg.logic_compute_group_id }
+        }
+      }
+    }
+    return undefined
   }
 }
