@@ -21,7 +21,7 @@ Use this to:
 - Analyze utilization trends and idle windows
 - Download metrics data for custom analysis when summary isn't enough
 
-Only works for GPU training jobs (job-xxx). Requires cookie-based auth.`
+Only works for GPU training jobs (job-xxx).`
 
 const TIME_RANGES = ["5m", "15m", "30m", "1h", "3h", "6h"] as const
 type TimeRange = (typeof TIME_RANGES)[number]

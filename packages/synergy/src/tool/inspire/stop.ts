@@ -5,7 +5,7 @@ import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
 import { InspireResolve } from "./resolve"
 
-const DESCRIPTION = `Stop running tasks on the SII 启智平台. Uses the official OpenAPI. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
+const DESCRIPTION = `Stop running tasks on the SII 启智平台. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
 
 Supports three task types by ID prefix:
 - GPU training jobs (job-xxx)

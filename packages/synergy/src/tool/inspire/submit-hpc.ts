@@ -8,7 +8,7 @@ import { Config } from "../../config/config"
 
 const DESCRIPTION = `Submit an HPC/CPU task on the SII 启智平台 (Slurm scheduling). Use for data preprocessing, evaluation, CPU-intensive computation, or auxiliary tasks.
 
-Uses the official OpenAPI. If OpenAPI is unavailable, falls back to cookie API.
+Requires OpenAPI access. If unavailable, falls back to internal API.
 
 HPC spaces (高性能计算) have NO internet. All dependencies must be pre-installed in the image.
 HPC tasks must use Slurm-compatible images (images with 'slurm' in the name).

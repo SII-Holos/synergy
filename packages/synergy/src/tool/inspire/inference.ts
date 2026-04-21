@@ -7,7 +7,7 @@ import { InspireResolve } from "./resolve"
 import { InspireNormalize } from "./normalize"
 import { Config } from "../../config/config"
 
-const DESCRIPTION = `Deploy and manage inference services (模型部署) on the SII 启智平台. Uses the official OpenAPI.
+const DESCRIPTION = `Deploy and manage inference services (模型部署) on the SII 启智平台.
 
 Supports three actions:
 - create: Deploy a new inference serving with a model, image, and resource spec

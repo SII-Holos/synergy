@@ -18,10 +18,10 @@ IMPORTANT constraints:
 - For distributed training, the platform auto-injects: MASTER_ADDR, PET_NNODES, PET_NODE_RANK, PET_NPROC_PER_NODE.
 - Shared memory (shm) matters for multi-GPU training (default 1200 MB).
 - Priority must not exceed the project's max (check via inspire_status). Priority ≥4 won't be preempted.
-- The platform has NO log API. To capture output for debugging, append: 2>&1 | tee /inspire/hdd/project/{en_name}/logs/{job_name}.log
+- To capture output for debugging, append: 2>&1 | tee /inspire/hdd/project/{en_name}/logs/{job_name}.log
 - Images must match the target registry. 七宝 spaces use docker-qb.sii.edu.cn, 松江 spaces use docker.sii.shaipower.online. Mismatched registry causes image pull failure.
 
-Task submission uses the official OpenAPI. If your account has not enabled OpenAPI access, this tool will return an error — contact the platform administrator to enable it.
+Requires OpenAPI access. If your account has not enabled OpenAPI, this tool will return an error — contact the platform administrator to enable it.
 
 Call inspire_status first to discover resources. Use inspire_config to set defaults for repeated use.`
 

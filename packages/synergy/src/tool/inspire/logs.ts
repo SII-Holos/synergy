@@ -15,7 +15,7 @@ Use this to:
 - Download logs for offline analysis when the output is too large to read inline
 - Check training progress of a running job
 
-The log API uses cookie-based authentication and requires the job to have run (at least partially).`
+The job must have run at least partially for logs to be available.`
 
 const parameters = z.object({
   job_id: z.string().describe("Task ID to query logs for (job-xxx)"),
