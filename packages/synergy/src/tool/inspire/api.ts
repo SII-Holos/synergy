@@ -425,9 +425,11 @@ export namespace InspireAPI {
     workspaceId: string,
     opts?: { page?: number; pageSize?: number },
   ): Promise<{ items: any[]; total: number }> {
-    const body: Record<string, any> = { workspace_id: workspaceId }
-    if (opts?.page) body.page = opts.page
-    if (opts?.pageSize) body.page_size = opts.pageSize
+    const body: Record<string, any> = {
+      workspace_id: workspaceId,
+      page_size: opts?.pageSize ?? 100,
+      page: opts?.page ?? 1,
+    }
     const data = await postInternal("/api/v1/notebook/list", body, cookie, workspaceId)
     return { items: data.list ?? [], total: data.total ?? 0 }
   }
@@ -465,9 +467,11 @@ export namespace InspireAPI {
     workspaceId: string,
     opts?: { page?: number; pageSize?: number },
   ): Promise<{ items: any[]; total: number }> {
-    const body: Record<string, any> = { workspace_id: workspaceId }
-    if (opts?.page) body.page = opts.page
-    if (opts?.pageSize) body.page_size = opts.pageSize
+    const body: Record<string, any> = {
+      workspace_id: workspaceId,
+      page_size: opts?.pageSize ?? 100,
+      page: opts?.page ?? 1,
+    }
     const data = await postInternal("/api/v1/model/list", body, cookie, workspaceId)
     return { items: data.list ?? [], total: data.total ?? 0 }
   }

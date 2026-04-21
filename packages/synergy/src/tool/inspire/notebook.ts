@@ -22,6 +22,9 @@ Call inspire_status first to discover resources. Use inspire_config to set defau
 const parameters = z.object({
   action: z.enum(["list", "detail", "start", "stop", "create"]),
   workspace: z.string().optional().describe("Workspace name or ID (uses default if omitted)"),
+  project: z.string().optional().describe("Filter to a specific project (name or ID)"),
+  offset: z.number().optional().describe("Pagination offset (default 0)"),
+  limit: z.number().optional().describe("Max results per page (default 20, max 100)"),
   notebook_id: z.string().optional().describe("Notebook ID (required for detail/start/stop)"),
   name: z.string().optional().describe("Notebook name (required for create)"),
   image: z.string().optional().describe("Container image address"),
@@ -90,39 +93,62 @@ async function handleList(params: z.infer<typeof parameters>) {
   if (!("ws" in wsResult)) return wsResult
   const ws = wsResult.ws
 
-  const { items, total } = await InspireAuth.withCookieRetry((cookie) => InspireAPI.listNotebooks(cookie, ws.id))
+  const { items, total } = await InspireAuth.withCookieRetry((cookie) =>
+    InspireAPI.listNotebooks(cookie, ws.id, {
+      page: Math.floor((params.offset ?? 0) / (params.limit ?? 20)) + 1,
+      pageSize: Math.min(params.limit ?? 20, 100),
+    }),
+  )
 
-  if (items.length === 0) {
+  let filtered = items
+  if (params.project) {
+    const proj = await InspireResolve.project(params.project, ws.id)
+    if (proj) {
+      filtered = items.filter((nb: any) => nb.project?.id === proj.id || nb.project_id === proj.id)
+    }
+  }
+
+  if (filtered.length === 0) {
     return {
       title: "笔记本列表",
-      output: `📋 工作空间 "${ws.name}" 暂无笔记本`,
-      metadata: { total: 0, workspace_id: ws.id } as Record<string, any>,
+      output: `📋 工作空间 "${ws.name}"${params.project ? ` (项目过滤)` : ""}暂无笔记本`,
+      metadata: { total: 0, workspace_id: ws.id, project: params.project } as Record<string, any>,
     }
   }
 
   const lines = ["=== 笔记本列表 ===", ""]
   lines.push(`工作空间: ${ws.name}`)
-  lines.push(`共 ${total} 个笔记本`)
+  lines.push(
+    `共 ${total} 个笔记本${params.project && filtered.length < total ? `（项目过滤: ${filtered.length}/${total}）` : ""}`,
+  )
   lines.push("")
 
-  for (let i = 0; i < items.length; i++) {
-    const nb = items[i]
+  for (let i = 0; i < filtered.length; i++) {
+    const nb = filtered[i]
     const statusInfo = InspireNormalize.status(nb.status ?? "")
     const label = STATUS_LABELS[statusInfo.family] ?? statusInfo.raw
-    const gpuType = nb.node?.gpu_info ?? nb.logic_compute_group?.name ?? ""
+    const gpuInfo = nb.node?.gpu_info
+    const gpuType = gpuInfo
+      ? `${gpuInfo.gpu_product_simple ?? gpuInfo.brand_name ?? ""}${gpuInfo.gpu_memory_size_gb ? ` ${gpuInfo.gpu_memory_size_gb}G` : ""}`
+      : (nb.logic_compute_group?.name ?? "")
     const createdAt = InspireNormalize.formatTimestamp(nb.created_at)
+    const offset = params.offset ?? 0
 
-    lines.push(`${i + 1}. [${label}] ${nb.name ?? "未命名"}`)
+    lines.push(`${offset + i + 1}. [${label}] ${nb.name ?? "未命名"}`)
     lines.push(`   ID: ${nb.notebook_id ?? "—"}`)
     if (gpuType) lines.push(`   GPU: ${gpuType}`)
     if (createdAt) lines.push(`   创建于: ${createdAt}`)
     lines.push("")
   }
 
+  if (total > items.length + (params.offset ?? 0)) {
+    lines.push(`显示 ${filtered.length}/${total}，还有更多。用 offset=${(params.offset ?? 0) + items.length} 翻页`)
+  }
+
   return {
-    title: `${items.length} 个笔记本`,
+    title: `${filtered.length} 个笔记本`,
     output: lines.join("\n"),
-    metadata: { total, workspace_id: ws.id } as Record<string, any>,
+    metadata: { total, filtered: filtered.length, workspace_id: ws.id, project: params.project } as Record<string, any>,
   }
 }
 

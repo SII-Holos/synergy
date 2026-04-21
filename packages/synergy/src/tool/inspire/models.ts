@@ -21,6 +21,9 @@ Call inspire_status first to discover workspaces. Use inspire_config to set defa
 const parameters = z.object({
   action: z.enum(["list", "detail", "create", "delete"]),
   workspace: z.string().optional().describe("Workspace name or ID (uses default if omitted)"),
+  project: z.string().optional().describe("Filter to a specific project (name or ID)"),
+  offset: z.number().optional().describe("Pagination offset (default 0)"),
+  limit: z.number().optional().describe("Max results per page (default 20, max 100)"),
   model_id: z.string().optional().describe("Model ID (UUID, required for detail/delete)"),
   keyword: z.string().optional().describe("Filter by model name keyword"),
   name: z.string().optional().describe("Model name (required for create)"),
@@ -69,23 +72,37 @@ async function handleList(params: z.infer<typeof parameters>) {
   }
 
   const cookie = await InspireAuth.requireCookie()
-  const { items, total } = await InspireAuth.withCookieRetry((c) => InspireAPI.listModels(c, ws.id))
+  const { items, total } = await InspireAuth.withCookieRetry((c) =>
+    InspireAPI.listModels(c, ws.id, {
+      page: Math.floor((params.offset ?? 0) / (params.limit ?? 20)) + 1,
+      pageSize: Math.min(params.limit ?? 20, 100),
+    }),
+  )
 
   let filtered = items
+  if (params.project) {
+    const proj = await InspireResolve.project(params.project, ws.id)
+    if (proj) {
+      filtered = filtered.filter((item: any) => {
+        const m = item.model ?? item
+        return item.project_id === proj.id || m.project_id === proj.id
+      })
+    }
+  }
   if (params.keyword) {
     const kw = params.keyword.toLowerCase()
-    filtered = items.filter((item: any) => {
+    filtered = filtered.filter((item: any) => {
       const model = item.model ?? item
       return (model.name ?? "").toLowerCase().includes(kw)
     })
   }
 
-  const lines = [
-    `=== 模型列表 ===`,
-    `空间: ${ws.name}`,
-    `共 ${total} 个模型${params.keyword ? `（筛选: "${params.keyword}"，匹配 ${filtered.length} 个）` : ""}`,
-    "",
-  ]
+  const filterParts: string[] = []
+  if (params.project) filterParts.push(`项目: ${params.project}`)
+  if (params.keyword) filterParts.push(`关键词: "${params.keyword}"`)
+  const filterLabel = filterParts.length ? `（筛选: ${filterParts.join(", ")}，匹配 ${filtered.length}/${total}）` : ""
+
+  const lines = [`=== 模型列表 ===`, `空间: ${ws.name}`, `共 ${total} 个模型${filterLabel}`, ""]
 
   if (filtered.length === 0) {
     lines.push(params.keyword ? `未找到包含 "${params.keyword}" 的模型` : "暂无模型")
@@ -99,11 +116,17 @@ async function handleList(params: z.infer<typeof parameters>) {
       const vllm = m.is_vllm_compatible ? "✅" : "❌"
       const status = MODEL_STATUS_MAP[m.status] ?? String(m.status ?? "")
       const projectName = item.project_name ?? ""
+      const offset = params.offset ?? 0
 
-      lines.push(`${i + 1}. ${m.name ?? "未命名"}`)
+      lines.push(`${offset + i + 1}. ${m.name ?? "未命名"}`)
       lines.push(`   model_id: ${modelId}`)
       lines.push(`   版本: ${version} | 类型: ${typeTags || "—"} | vLLM: ${vllm} | 状态: ${status}`)
       if (projectName) lines.push(`   项目: ${projectName}`)
+      lines.push("")
+    }
+
+    if (total > items.length + (params.offset ?? 0)) {
+      lines.push(`显示 ${filtered.length}/${total}，还有更多。用 offset=${(params.offset ?? 0) + items.length} 翻页`)
       lines.push("")
     }
 
@@ -114,7 +137,13 @@ async function handleList(params: z.infer<typeof parameters>) {
   return {
     title: `${filtered.length} 个模型`,
     output: lines.join("\n"),
-    metadata: { total, filtered: filtered.length, workspace_id: ws.id, keyword: params.keyword } as Record<string, any>,
+    metadata: {
+      total,
+      filtered: filtered.length,
+      workspace_id: ws.id,
+      project: params.project,
+      keyword: params.keyword,
+    } as Record<string, any>,
   }
 }
 
@@ -139,9 +168,26 @@ async function handleDetail(params: z.infer<typeof parameters>) {
     }
   }
 
+  // Detail API returns unreliable zero-values for status/version/is_vllm_compatible.
+  // Supplement from list if all three are zero/missing.
+  if (!model.status && !model.version && !model.is_vllm_compatible && model.workspace_id) {
+    try {
+      const { items } = await InspireAuth.withCookieRetry((c) =>
+        InspireAPI.listModels(c, model.workspace_id, { pageSize: 100 }),
+      )
+      const match = items.find((item: any) => item.model?.model_id === params.model_id)
+      if (match?.model) {
+        model = { ...model, ...match.model, model_id: model.model_id }
+      }
+    } catch {}
+  }
+
   const typeTags = Array.isArray(model.model_type) ? model.model_type.join(", ") : ""
-  const vllm = model.is_vllm_compatible ? "✅ 兼容" : "❌ 不兼容"
-  const status = MODEL_STATUS_MAP[model.status] ?? String(model.status ?? "")
+  const vllm = model.is_vllm_compatible === true ? "✅ 兼容" : model.is_vllm_compatible === false ? "❌ 不兼容" : "—"
+  const statusNum = model.status
+  const status =
+    statusNum && MODEL_STATUS_MAP[statusNum] ? MODEL_STATUS_MAP[statusNum] : statusNum ? String(statusNum) : "—"
+  const version = model.version || "—"
   const createdAt = InspireNormalize.formatTimestamp(model.created_at)
   const tagList = Array.isArray(model.tags) ? model.tags.join(", ") : ""
 
@@ -150,17 +196,17 @@ async function handleDetail(params: z.infer<typeof parameters>) {
     "",
     "基本信息:",
     `  model_id: ${model.model_id ?? params.model_id}`,
-    `  版本: ${model.version ?? "—"}`,
+    `  版本: ${version}`,
     `  状态: ${status}`,
     `  vLLM: ${vllm}`,
     `  类型: ${typeTags || "—"}`,
     "",
     "存储:",
-    `  模型路径: ${model.model_path ?? "—"}`,
-    `  源路径: ${model.model_source_path ?? "—"}`,
+    `  模型路径: ${model.model_path || "—"}`,
+    `  源路径: ${model.model_source_path || "—"}`,
     "",
     "描述:",
-    `  ${model.description ?? "（无描述）"}`,
+    `  ${model.description || "（无描述）"}`,
     "",
     "标签:",
     `  ${tagList || "（无标签）"}`,
@@ -172,7 +218,7 @@ async function handleDetail(params: z.infer<typeof parameters>) {
   ]
 
   return {
-    title: `${model.name ?? params.model_id} (${status})`,
+    title: `${model.name ?? params.model_id}${status !== "—" ? ` (${status})` : ""}`,
     output: lines.join("\n"),
     metadata: {
       model_id: model.model_id ?? params.model_id,
