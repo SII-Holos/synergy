@@ -10,6 +10,8 @@ import { InspireJobsTool } from "./jobs"
 import { InspireJobDetailTool } from "./job-detail"
 import { InspireLogsTool } from "./logs"
 import { InspireMetricsTool } from "./metrics"
+import { InspireNotebookTool } from "./notebook"
+import { InspireModelsTool } from "./models"
 
 export const InspireTools = [
   InspireStatusTool,
@@ -24,4 +26,6 @@ export const InspireTools = [
   InspireJobDetailTool,
   InspireLogsTool,
   InspireMetricsTool,
+  InspireNotebookTool,
+  InspireModelsTool,
 ]

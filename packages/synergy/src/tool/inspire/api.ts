@@ -415,4 +415,73 @@ export namespace InspireAPI {
     const data = await postInternal("/api/v1/cluster_metric/resource_metric_by_time", body, cookie)
     return data.time_seris_metric_groups ?? []
   }
+
+  // --- Notebook ---
+
+  export type NotebookOperation = "START" | "STOP"
+
+  export async function listNotebooks(
+    cookie: string,
+    workspaceId: string,
+    opts?: { page?: number; pageSize?: number },
+  ): Promise<{ items: any[]; total: number }> {
+    const body: Record<string, any> = { workspace_id: workspaceId }
+    if (opts?.page) body.page = opts.page
+    if (opts?.pageSize) body.page_size = opts.pageSize
+    const data = await postInternal("/api/v1/notebook/list", body, cookie, workspaceId)
+    return { items: data.list ?? [], total: data.total ?? 0 }
+  }
+
+  export async function getNotebookDetail(cookie: string, notebookId: string): Promise<any> {
+    const resp = await fetch(`${InspireTypes.PLATFORM_URL}/api/v1/notebook/${notebookId}`, {
+      headers: cookieHeaders(cookie),
+    })
+    if (resp.status === 401) throw Object.assign(new Error("Cookie expired"), { status: 401 })
+    const data = (await resp.json()) as any
+    if (data.code !== 0) throw new Error(data.message ?? `API error code ${data.code}`)
+    return data.data
+  }
+
+  export async function operateNotebook(
+    cookie: string,
+    notebookId: string,
+    operation: NotebookOperation,
+  ): Promise<void> {
+    await postInternal("/api/v1/notebook/operate", { notebook_id: notebookId, operation }, cookie)
+  }
+
+  export async function createNotebook(cookie: string, config: Record<string, any>): Promise<any> {
+    return postInternal("/api/v1/notebook/create", config, cookie, config.workspace_id)
+  }
+
+  export function buildNotebookUrl(notebookId: string, workspaceId: string): string {
+    return `${InspireTypes.PLATFORM_URL}/develop/notebook/${notebookId}?spaceId=${workspaceId}`
+  }
+
+  // --- Model ---
+
+  export async function listModels(
+    cookie: string,
+    workspaceId: string,
+    opts?: { page?: number; pageSize?: number },
+  ): Promise<{ items: any[]; total: number }> {
+    const body: Record<string, any> = { workspace_id: workspaceId }
+    if (opts?.page) body.page = opts.page
+    if (opts?.pageSize) body.page_size = opts.pageSize
+    const data = await postInternal("/api/v1/model/list", body, cookie, workspaceId)
+    return { items: data.list ?? [], total: data.total ?? 0 }
+  }
+
+  export async function getModelDetail(cookie: string, modelId: string): Promise<any> {
+    const data = await postInternal("/api/v1/model/detail", { model_id: modelId }, cookie)
+    return data.model ?? data
+  }
+
+  export async function createModel(cookie: string, config: Record<string, any>): Promise<any> {
+    return postInternal("/api/v1/model/create", config, cookie, config.workspace_id)
+  }
+
+  export async function deleteModel(cookie: string, modelId: string): Promise<void> {
+    await postInternal("/api/v1/model/delete", { model_id: modelId }, cookie)
+  }
 }
