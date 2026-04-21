@@ -17,6 +17,11 @@ const DESCRIPTION = `Query SII 启智平台 project, workspace, GPU resource, an
 - **高性能计算**: NO internet, Slurm-scheduled CPU tasks
 - **国产卡资源空间**: has internet, for Ascend 910B hardware
 
+Budget and quota notes:
+- Mentor projects: budget refreshes quarterly (start of Jan/Apr/Jul/Oct), GPU quota capped at 32 cards
+- Public projects: budget refreshes weekly (Monday 10:00), unlimited duration but lowest priority
+- Low-priority CPU tasks (Priority 1-3) are free and not limited by project budget
+
 Call this tool first when starting work on the platform. The returned workspace IDs, compute group IDs, spec IDs, and storage paths are needed for inspire_submit and other tools.`
 
 function formatResourceType(raw?: string): string {

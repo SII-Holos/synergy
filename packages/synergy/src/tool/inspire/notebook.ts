@@ -18,6 +18,8 @@ Supports five actions:
 - **stop**: Stop a running notebook
 - **create**: Create a new notebook
 
+Notebooks are persistent resources — they remain until explicitly stopped. Stop notebooks when not in use to avoid unnecessary costs. GPU utilization on running notebooks is monitored; instances with persistently low GPU usage may be auto-reclaimed by the platform.
+
 Call inspire_status first to discover resources. Use inspire_config to set defaults for repeated use.`
 
 const parameters = z.object({

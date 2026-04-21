@@ -6,15 +6,19 @@ import { InspireTypes } from "./types"
 
 const DESCRIPTION = `Push a local Docker image to the SII 启智平台 Harbor registry (${InspireTypes.HARBOR_REGISTRY}/${InspireTypes.HARBOR_PROJECT}/).
 
-Internally runs docker login → docker tag → docker push. Harbor credentials must be configured via 'synergy sii harbor login'.
-
-After pushing, use the returned full image address in inspire_submit's image parameter.
+Internally runs docker login → docker tag → docker push.
 
 Prerequisites:
 - Docker must be installed and running locally
-- Harbor credentials configured (synergy sii harbor login)
+- Add insecure registry to /etc/docker/daemon.json: { "insecure-registries": ["${InspireTypes.HARBOR_REGISTRY}"] }, then restart Docker
+- Harbor credentials configured (synergy sii harbor login). Harbor password is separate from platform password — find it on the platform under 镜像管理 → 本地推送
+- Must be on VPN or campus network
 
-If this is the first push of a new repository name, you may need to "claim" the image in the platform's Image Management page.`
+After pushing:
+- You MUST claim the image on the platform: go to 镜像管理 → 新建镜像, fill in the repository name and tag
+- The registry only covers 七宝 cluster (${InspireTypes.HARBOR_REGISTRY}). 松江 cluster uses a separate registry (docker.sii.shaipower.online). Images are NOT shared between them.
+
+Use the returned full image address in inspire_submit's image parameter.`
 
 const parameters = z.object({
   image: z

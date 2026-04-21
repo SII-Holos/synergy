@@ -14,6 +14,7 @@ Usage:
 - repo: view all versions (tags) of a specific image
 
 Images are stored at ${InspireTypes.HARBOR_REGISTRY}/${InspireTypes.HARBOR_PROJECT}/.
+This registry covers 七宝 cluster only. 松江 cluster uses docker.sii.shaipower.online — images are NOT shared between registries.
 Use inspire_image_push to push new images. Use the full image address in inspire_submit's image parameter.`
 
 const parameters = z.object({

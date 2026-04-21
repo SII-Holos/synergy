@@ -14,7 +14,13 @@ Supports three actions:
 - detail: Get detailed information about an inference serving
 - stop: Stop a running inference serving
 
-For create, you need a model_id and model_version. These refer to models registered in the platform's model repository.
+For create, you need a model_id and model_version. These refer to models registered in the platform's model repository (use inspire_models to discover available models).
+
+Limitations:
+- No auto-scaling; manage replicas manually
+- No SYS_PTRACE or other advanced container capabilities
+- Multi-node deployments use LWS_WORKER_INDEX for node rank
+- To expose the API to campus network, contact ops to configure DNS access
 
 Call inspire_status first to discover resources. Use inspire_config to set defaults for repeated use.`
 

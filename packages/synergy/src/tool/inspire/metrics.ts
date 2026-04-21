@@ -16,11 +16,12 @@ Supports three modes:
 
 Use this to:
 - Check if a running job is actually training (GPU utilization healthy?)
-- Detect stuck/idle jobs (GPU near 0% for extended periods)
+- Detect stuck/idle jobs (GPU near 0% for extended periods — note: idle instances may be auto-reclaimed by the platform)
 - Spot GPU memory pressure or potential OOM risk
 - Analyze utilization trends and idle windows
 - Download metrics data for custom analysis when summary isn't enough
 
+Note: Monitoring data has ~15s reporting delay. A 0% reading may not reflect the current state.
 Only works for GPU training jobs (job-xxx).`
 
 const TIME_RANGES = ["5m", "15m", "30m", "1h", "3h", "6h"] as const

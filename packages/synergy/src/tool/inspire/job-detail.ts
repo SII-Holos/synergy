@@ -189,6 +189,19 @@ async function handleGpuDetail(jobId: string) {
     }
 
     lines.push("  - 常见原因: 环境变量缺失、数据路径不存在、GPU 驱动不兼容、镜像中缺少依赖")
+
+    if (timeline.neverStarted && timeline.queueMs !== undefined && timeline.queueMs > 1_800_000) {
+      lines.push("  - 停留在创建中超过 30 分钟 → 可能是镜像拉取失败或节点故障，建议联系运维")
+    }
+
+    if (parseInt(job.priority ?? "4", 10) <= 3) {
+      lines.push("  - 低优先级任务 (1-3) 可能被高优先级任务抢占终止")
+    }
+
+    const budget = job.remain_budget ?? job.project_remain_budget
+    if (budget !== undefined && budget <= 0) {
+      lines.push("  - 项目点券已耗尽，可能导致任务中断（低优先级 CPU 任务不受点券限制）")
+    }
   }
 
   if (statusInfo.family === "waiting") {
@@ -205,6 +218,12 @@ async function handleGpuDetail(jobId: string) {
     lines.push("    • 同优先级下用卡更少的任务优先调度")
     lines.push("  - 排队超过 24 小时建议: 切换到其他计算组，或联系运维排查")
     lines.push("  - 可调用 inspire_status 查看目标计算组当前空闲 GPU 数量")
+  }
+
+  if (statusInfo.family === "running") {
+    lines.push("", "ℹ 运行提示:")
+    lines.push("  - GPU 利用率长期过低的实例可能被自动回收，不同分区策略不同")
+    lines.push("  - 使用 inspire_metrics 检查资源利用率是否正常")
   }
 
   // Fetch recent logs for failed or running jobs

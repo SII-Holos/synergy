@@ -15,11 +15,13 @@ IMPORTANT constraints:
 - Offline workspaces (分布式训练空间) have NO internet. Commands must NOT contain pip install, git clone, wget, or any network operations.
 - Tasks run in non-interactive shell. ~/.bashrc is NOT loaded. You MUST initialize the environment in the command (or set commandPrefix via inspire_config to do this automatically):
     source /opt/conda/etc/profile.d/conda.sh && conda activate myenv && cd /inspire/hdd/project/{en_name}/code && python train.py
-- For distributed training, the platform auto-injects: MASTER_ADDR, PET_NNODES, PET_NODE_RANK, PET_NPROC_PER_NODE.
-- Shared memory (shm) matters for multi-GPU training (default 1200 MB).
-- Priority must not exceed the project's max (check via inspire_status). Priority ≥4 won't be preempted.
+- For distributed training, the platform auto-injects: MASTER_ADDR, MASTER_PORT, PET_NNODES, PET_NODE_RANK, PET_NPROC_PER_NODE.
+- Shared memory (shm): multi-GPU training requires ≥64GB (e.g. shm=65536); single-GPU tasks can use the default.
+- Priority must not exceed the project's max (check via inspire_status). Priority ≥4 won't be preempted; Priority 1-3 can be killed by higher-priority tasks.
+- Low-priority CPU tasks (Priority 1-3) are free and not limited by project budget — useful when budget is exhausted.
 - To capture output for debugging, append: 2>&1 | tee /inspire/hdd/project/{en_name}/logs/{job_name}.log
 - Images must match the target registry. 七宝 spaces use docker-qb.sii.edu.cn, 松江 spaces use docker.sii.shaipower.online. Mismatched registry causes image pull failure.
+- For internet-enabled workspaces, use HF mirror for faster downloads: export HF_ENDPOINT=https://hf-mirror.com
 
 Requires OpenAPI access. If your account has not enabled OpenAPI, this tool will return an error — contact the platform administrator to enable it.
 
@@ -45,8 +47,15 @@ const parameters = z.object({
     .optional()
     .describe("Image source type (default: SOURCE_PRIVATE)"),
   instances: z.number().optional().describe("Number of nodes (default 1)"),
-  shm: z.number().optional().describe("Shared memory MB. Uses sii.defaultShm or 1200 if omitted"),
+  shm: z
+    .number()
+    .optional()
+    .describe("Shared memory in MB. Multi-GPU training requires ≥65536. Uses sii.defaultShm or 1200 if omitted"),
   priority: z.number().optional().describe("Task priority. Uses sii.defaultPriority or project max if omitted"),
+  auto_fault_tolerance: z
+    .boolean()
+    .optional()
+    .describe("Enable auto fault tolerance (auto-restart on failure). Default: false"),
 })
 
 export const InspireSubmitTool = Tool.define("inspire_submit", {
@@ -238,6 +247,7 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
           image_type: params.image_type,
           instance_count: instances,
           shm_gi: shm,
+          auto_fault_tolerance: params.auto_fault_tolerance ?? false,
         }),
       )
     } catch (err: any) {
@@ -282,10 +292,15 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
       `  优先级: ${priority}`,
       `  节点数: ${instances}`,
       `  共享内存: ${shm} MB`,
+    ]
+
+    if (params.auto_fault_tolerance) lines.push(`  容错重启: 已开启`)
+
+    lines.push(
       "",
       `存储路径: /inspire/hdd/project/${proj.en_name}/`,
       `任务页面: ${InspireAPI.buildJobUrl(jobId, ws.id)}`,
-    ]
+    )
 
     if (defaults.length > 0) {
       lines.push("", "📋 使用的默认配置:")
@@ -294,6 +309,10 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
     if (warnings.length > 0) {
       lines.push("")
       for (const w of warnings) lines.push(w.startsWith("⚠") ? w : `⚠ ${w}`)
+    }
+
+    if (instances > 1 && shm < 65536) {
+      lines.push("", `⚠ 多机/多卡训练建议共享内存 ≥64GB (当前 ${shm} MB)，可能遇到 NCCL 共享内存错误`)
     }
 
     const network = InspireTypes.WORKSPACE_NETWORK_MAP[ws.name]
