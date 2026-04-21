@@ -10,6 +10,7 @@ import { Flag } from "@/flag/flag"
 import { Global } from "@/global"
 import { BUILTIN_SKILLS } from "./builtin"
 import { SkillPaths } from "./paths"
+import { Plugin } from "../plugin"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
@@ -272,6 +273,28 @@ export namespace Skill {
         },
       }
       priorities[builtin.name] = computePriority("builtin", "builtin")
+    }
+
+    for (const pluginSkill of await Plugin.skillEntries()) {
+      skills[pluginSkill.name] = {
+        name: pluginSkill.name,
+        description: pluginSkill.description,
+        location: "builtin",
+        builtin: false,
+        source: "builtin",
+        scope: "global",
+        entryFile: "builtin",
+        baseDir: "builtin",
+        content: pluginSkill.content,
+        references: pluginSkill.references,
+        rawFrontmatter: {},
+        compatibility: {
+          level: "native",
+          warnings: [],
+          unsupported: [],
+        },
+      }
+      priorities[pluginSkill.name] = computePriority("builtin", "builtin")
     }
 
     const addCandidate = async (candidate: SkillCandidate) => {

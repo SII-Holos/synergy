@@ -64,7 +64,6 @@ import { DiagramTool } from "./diagram"
 import { EmailTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
-import { InspireTools } from "./inspire"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -111,11 +110,25 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const result = await def.execute(args as any, ctx)
-          const out = await Truncate.output(result, {}, initCtx?.agent)
+          const raw = await def.execute(args as any, ctx)
+          if (typeof raw === "object" && raw !== null && "output" in raw) {
+            const structured = raw as { title?: string; output: string; metadata?: Record<string, any> }
+            const out = await Truncate.output(structured.output, {}, initCtx?.agent)
+            return {
+              title: structured.title ?? "",
+              output: out.truncated ? out.content : structured.output,
+              metadata: {
+                ...structured.metadata,
+                truncated: out.truncated,
+                outputPath: out.truncated ? out.outputPath : undefined,
+              },
+            }
+          }
+          const text = raw as string
+          const out = await Truncate.output(text, {}, initCtx?.agent)
           return {
             title: "",
-            output: out.truncated ? out.content : result,
+            output: out.truncated ? out.content : text,
             metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
           }
         },
@@ -200,7 +213,6 @@ export namespace ToolRegistry {
       RuntimeReloadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-      ...(config.sii?.enable === true ? InspireTools : []),
       ...custom,
     ]
   }

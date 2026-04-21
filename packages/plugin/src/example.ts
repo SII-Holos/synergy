@@ -1,4 +1,4 @@
-import { Plugin } from "./index"
+import type { Plugin } from "./index"
 import { tool } from "./tool"
 
 const MAX_NOTE_TAGS = 8
@@ -29,67 +29,73 @@ function preview(text: string, limit = 160) {
   return `${singleLine.slice(0, limit - 1)}…`
 }
 
-export const ExamplePlugin: Plugin = async (ctx) => {
-  const logger = ctx.$.env({ SYNERGY_LOG_LEVEL: "warn" })
+export const ExamplePlugin: Plugin = {
+  id: "example",
+  name: "Example Plugin",
+  async init(ctx) {
+    const logger = ctx.$.env({ SYNERGY_LOG_LEVEL: "warn" })
 
-  return {
-    tool: {
-      workspace_summary: tool({
-        description: "Summarize the active Synergy plugin runtime context",
-        args: {
-          includeDirectorySample: tool.schema.boolean().optional().describe("Include a short directory listing sample"),
-        },
-        async execute(args, context) {
-          const lines = [
-            `scope: ${ctx.scope.type}:${ctx.scope.id}`,
-            `directory: ${ctx.directory}`,
-            `worktree: ${ctx.worktree}`,
-            `server: ${ctx.serverUrl.toString()}`,
-            `session: ${context.sessionID}`,
-            `agent: ${context.agent}`,
-          ]
+    return {
+      tool: {
+        workspace_summary: tool({
+          description: "Summarize the active Synergy plugin runtime context",
+          args: {
+            includeDirectorySample: tool.schema
+              .boolean()
+              .optional()
+              .describe("Include a short directory listing sample"),
+          },
+          async execute(args, context) {
+            const lines = [
+              `scope: ${ctx.scope.type}:${ctx.scope.id}`,
+              `directory: ${ctx.directory}`,
+              `worktree: ${ctx.worktree}`,
+              `server: ${ctx.serverUrl.toString()}`,
+              `session: ${context.sessionID}`,
+              `agent: ${context.agent}`,
+            ]
 
-          if (args.includeDirectorySample) {
-            const result = await logger`ls`
-            const sample = result
-              .text()
-              .split("\n")
-              .map((line: string) => line.trim())
-              .filter(Boolean)
-              .slice(0, 10)
-            if (sample.length > 0) {
-              lines.push(`entries: ${sample.join(", ")}`)
+            if (args.includeDirectorySample) {
+              const result = await logger`ls`
+              const sample = result
+                .text()
+                .split("\n")
+                .map((line: string) => line.trim())
+                .filter(Boolean)
+                .slice(0, 10)
+              if (sample.length > 0) {
+                lines.push(`entries: ${sample.join(", ")}`)
+              }
             }
-          }
 
-          return lines.join("\n")
-        },
-      }),
-    },
-    async "session.turn.after"(input) {
-      const status = input.error ? "error" : (input.finish ?? "unknown")
-      const summary = {
-        sessionID: input.sessionID,
-        assistantMessageID: input.assistantMessageID,
-        agent: input.assistant.agent,
-        finish: status,
-      }
-      console.info("[example-plugin] session.turn.after", summary)
-    },
-    async "note.create.before"(_, output) {
-      output.note.title = output.note.title.trim() || "Untitled note"
-      output.note.tags = mergeTags(output.note.tags)
-      if (!output.note.contentText?.trim()) {
-        output.note.contentText = preview(output.note.title)
-      }
-    },
-    async "engram.memory.search.after"(input, output) {
-      output.results = output.results
-        .slice()
-        .sort((left, right) => right.similarity - left.similarity)
-        .slice(0, input.topK)
-    },
-  }
+            return lines.join("\n")
+          },
+        }),
+      },
+      async "session.turn.after"(input) {
+        const status = input.error ? "error" : (input.finish ?? "unknown")
+        console.info("[example-plugin] session.turn.after", {
+          sessionID: input.sessionID,
+          assistantMessageID: input.assistantMessageID,
+          agent: input.assistant.agent,
+          finish: status,
+        })
+      },
+      async "note.create.before"(_, output) {
+        output.note.title = output.note.title.trim() || "Untitled note"
+        output.note.tags = mergeTags(output.note.tags)
+        if (!output.note.contentText?.trim()) {
+          output.note.contentText = preview(output.note.title)
+        }
+      },
+      async "engram.memory.search.after"(input, output) {
+        output.results = output.results
+          .slice()
+          .sort((left, right) => right.similarity - left.similarity)
+          .slice(0, input.topK)
+      },
+    }
+  },
 }
 
 export default ExamplePlugin

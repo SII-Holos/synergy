@@ -32,7 +32,6 @@ import { RestartCommand } from "./cli/cmd/restart"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
-import { SiiCommand } from "./cli/cmd/sii"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -133,7 +132,6 @@ const cli = yargs(hideBin(process.argv))
   .command(StatusCommand)
   .command(LogsCommand)
   .command(PluginCommand)
-  .command(SiiCommand)
   .fail((msg) => {
     if (
       msg?.startsWith("Unknown argument") ||

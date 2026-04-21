@@ -63,3 +63,7 @@ tmp_*
 
 # External cloned repos for analysis
 qzcli_tool/
+
+# SII-Holos plugin repos (separate git repos, not part of synergy)
+holos-inspire/
+holos-research/

@@ -11,9 +11,9 @@ import { Global } from "../../global"
 import { Plugin } from "../../plugin"
 import { Instance } from "../../scope/instance"
 import { Scope } from "@/scope"
-import type { Hooks } from "@ericsanchezok/synergy-plugin"
+import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 
-type PluginAuth = NonNullable<Hooks["auth"]>
+type PluginAuth = NonNullable<PluginHooks["auth"]>
 
 /**
  * Handle plugin-based authentication flow.
