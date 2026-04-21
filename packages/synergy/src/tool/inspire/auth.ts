@@ -107,8 +107,9 @@ export namespace InspireAuth {
     })
     const data = (await resp.json()) as any
     if (data.code !== 0) {
-      log.warn("token auth failed, will rely on CAS cookie", { message: data.message })
-      throw new Error(`Token auth failed: ${data.message ?? "unknown error"}`)
+      const message = data.message ?? "unknown error"
+      log.warn("token auth failed", { message })
+      throw new Error(message)
     }
 
     const tokenData = data.data ?? data
@@ -138,24 +139,14 @@ export namespace InspireAuth {
   }
 
   export async function withTokenRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {
-    let token: string
-    try {
-      token = await requireToken()
-    } catch {
-      token = await requireTokenViaCas()
-    }
-
+    const token = await requireToken()
     try {
       return await fn(token)
     } catch (err: any) {
       if (isAuthError(err)) {
         clearToken()
-        try {
-          token = await requireToken()
-        } catch {
-          token = await requireTokenViaCas()
-        }
-        return await fn(token)
+        const freshToken = await requireToken()
+        return await fn(freshToken)
       }
       throw err
     }
@@ -182,9 +173,38 @@ export namespace InspireAuth {
     return msg.includes("401") || msg.includes("unauthorized") || msg.includes("cookie") || msg.includes("token")
   }
 
-  async function requireTokenViaCas(): Promise<string> {
-    const cookie = await requireCookie()
-    return `cookie:${cookie}`
+  export class TokenUnavailableError extends Error {
+    constructor(
+      message: string,
+      public readonly reason: "not_authenticated" | "openapi_not_enabled" | "credentials_invalid" | "unknown",
+    ) {
+      super(message)
+      this.name = "TokenUnavailableError"
+    }
+  }
+
+  export async function ensureToken(): Promise<string> {
+    try {
+      return await requireToken()
+    } catch (err: any) {
+      const msg = String(err?.message ?? err ?? "").toLowerCase()
+      if (msg.includes("invalid_grant") || msg.includes("invalid client") || msg.includes("access denied")) {
+        try {
+          await requireCookie()
+          throw new TokenUnavailableError(
+            "OpenAPI Token 认证失败，但 CAS 登录正常。可能该账号未开通 OpenAPI 权限，将回退到 Cookie API。",
+            "openapi_not_enabled",
+          )
+        } catch (cookieErr: any) {
+          if (cookieErr instanceof TokenUnavailableError) throw cookieErr
+          throw new TokenUnavailableError("用户名或密码错误，CAS 登录也失败。请检查凭据。", "credentials_invalid")
+        }
+      }
+      if (msg.includes("inspire_not_authenticated")) {
+        throw new TokenUnavailableError("启智平台账号未配置。请运行 synergy sii inspire login。", "not_authenticated")
+      }
+      throw new TokenUnavailableError(`Token 获取失败: ${err?.message ?? err}`, "unknown")
+    }
   }
 
   async function performCasLogin(): Promise<string> {

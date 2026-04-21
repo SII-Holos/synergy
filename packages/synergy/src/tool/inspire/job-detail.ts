@@ -29,6 +29,7 @@ Use this to:
 - Inspect a failed task's configuration for debugging
 - Copy a successful task's settings to resubmit
 - Check the actual resource allocation of a running task
+- Obtain the quota_id/spec_id needed for inspire_submit
 
 When a task has failed, diagnostic suggestions are included based on common failure patterns (wrong environment, missing data, offline network, etc.).`
 
@@ -44,19 +45,27 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
     if (!creds) return InspireAuth.notAuthenticatedError("inspire")
 
     let job: any
+    let usedOpenAPI = false
+
     try {
-      job = await InspireAuth.withCookieRetry((cookie) => InspireAPI.getJobDetail(cookie, params.job_id))
+      const token = await InspireAuth.ensureToken()
+      job = await InspireAuth.withTokenRetry((t) => InspireAPI.getJobDetailOpenAPI(t, params.job_id))
+      usedOpenAPI = true
     } catch {
       try {
-        const found = await findJobViaCookie(params.job_id)
-        if (found) job = found
-      } catch {}
+        job = await InspireAuth.withCookieRetry((cookie) => InspireAPI.getJobDetail(cookie, params.job_id))
+      } catch {
+        try {
+          const found = await findJobViaCookie(params.job_id)
+          if (found) job = found
+        } catch {}
+      }
     }
 
     if (!job) {
       return {
         title: "查询失败",
-        output: `无法获取任务 ${params.job_id} 的详情。Token 认证不可用且无法从任务列表中找到该任务。`,
+        output: `无法获取任务 ${params.job_id} 的详情。请确认任务 ID 正确且账号有权限查看。`,
         metadata: { error: "job_not_found", job_id: params.job_id } as Record<string, any>,
       }
     }
@@ -70,6 +79,13 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
     const fc = job.framework_config ?? []
     const first = fc[0] ?? {}
     const spec = first.instance_spec_price_info ?? {}
+    const specId = spec.quota_id ?? InspireAPI.extractSpecId(job)
+
+    if (specId && job.workspace_id && job.logic_compute_group_id) {
+      InspireCache.setCachedSpecId(job.workspace_id, job.logic_compute_group_id, specId, {
+        gpuCount: gpuInfo.gpu_count,
+      })
+    }
 
     const lines = [
       `=== 任务详情: ${job.name} ===`,
@@ -86,6 +102,17 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
       `  规格: ${gpuInfo.gpu_count}× ${spec.gpu_type ?? "unknown"}, ${spec.cpu_count ?? "?"} CPU, ${spec.memory_gb ?? "?"} GB 内存`,
       `  节点数: ${gpuInfo.instance_count}`,
       `  优先级: ${job.priority_name ?? job.priority ?? "—"}`,
+    ]
+
+    if (specId) {
+      lines.push(`  规格 ID (quota_id): ${specId}`)
+    }
+
+    if (spec.total_price_per_hour) {
+      lines.push(`  每小时价格: ${spec.total_price_per_hour}`)
+    }
+
+    lines.push(
       "",
       "归属:",
       `  空间: ${job.workspace_name ?? "—"} (${job.workspace_id ?? "—"})`,
@@ -93,7 +120,11 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
       `  计算组: ${job.logic_compute_group_name ?? "—"} (${job.logic_compute_group_id ?? "—"})`,
       "",
       `任务页面: ${url}`,
-    ]
+    )
+
+    if (usedOpenAPI) {
+      lines.push(`查询方式: OpenAPI`)
+    }
 
     if (statusInfo.family === "failed") {
       lines.push("", "⚠ 诊断建议:")
@@ -152,6 +183,7 @@ export const InspireJobDetailTool = Tool.define("inspire_job_detail", {
         is_terminal: statusInfo.is_terminal,
         gpu_count: gpuInfo.gpu_count,
         instance_count: gpuInfo.instance_count,
+        spec_id: specId,
       } as Record<string, any>,
     }
   },

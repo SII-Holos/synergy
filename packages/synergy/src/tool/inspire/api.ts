@@ -89,6 +89,59 @@ export namespace InspireAPI {
     }
   }
 
+  export async function createJobOpenAPI(
+    token: string,
+    config: {
+      name: string
+      workspace_id: string
+      project_id: string
+      logic_compute_group_id: string
+      command: string
+      task_priority: number
+      spec_id: string
+      image: string
+      instance_count: number
+      shm_gi: number
+      framework?: string
+    },
+  ): Promise<any> {
+    const body = {
+      name: config.name,
+      workspace_id: config.workspace_id,
+      project_id: config.project_id,
+      logic_compute_group_id: config.logic_compute_group_id,
+      command: config.command,
+      task_priority: config.task_priority,
+      framework: config.framework ?? "pytorch",
+      auto_fault_tolerance: false,
+      enable_notification: false,
+      framework_config: [
+        {
+          image: config.image,
+          image_type: "SOURCE_PRIVATE",
+          instance_count: config.instance_count,
+          shm_gi: config.shm_gi,
+          spec_id: config.spec_id,
+        },
+      ],
+    }
+    return postOpenAPI("/openapi/v1/train_job/create", body, token)
+  }
+
+  export async function getJobDetailOpenAPI(token: string, jobId: string): Promise<any> {
+    return postOpenAPI("/openapi/v1/train_job/detail", { job_id: jobId }, token)
+  }
+
+  export async function stopJobOpenAPI(token: string, jobId: string): Promise<void> {
+    await postOpenAPI("/openapi/v1/train_job/stop", { job_id: jobId }, token)
+  }
+
+  export function extractSpecId(job: any): string | undefined {
+    const fc = job.framework_config ?? []
+    const first = fc[0] ?? {}
+    return first.instance_spec_price_info?.quota_id ?? first.spec_id ?? undefined
+  }
+
   export async function createJob(cookie: string, config: Record<string, any>): Promise<any> {
     return postInternal("/api/v1/train_job/create", config, cookie, config.workspace_id)
   }

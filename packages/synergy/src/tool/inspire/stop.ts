@@ -5,9 +5,9 @@ import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
 import { InspireResolve } from "./resolve"
 
-const DESCRIPTION = `Stop running tasks on the SII 启智平台. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
+const DESCRIPTION = `Stop running tasks on the SII 启智平台. Uses the official OpenAPI. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
 
-Use job_id to stop a specific task, or workspace + status to stop multiple tasks at once.`
+Use job_id to stop a single task, or workspace + status to stop multiple tasks at once.`
 
 const parameters = z.object({
   job_id: z.string().optional().describe("Task ID to stop. Mutually exclusive with workspace parameter"),
@@ -26,7 +26,7 @@ const parameters = z.object({
 export const InspireStopTool = Tool.define("inspire_stop", {
   description: DESCRIPTION,
   parameters,
-  async execute(params, ctx) {
+  async execute(params) {
     if (!params.job_id && !params.workspace) {
       return {
         title: "参数错误",
@@ -35,22 +35,55 @@ export const InspireStopTool = Tool.define("inspire_stop", {
       }
     }
 
+    // Obtain OpenAPI token — write operations must use the official API
+    let token: string
+    try {
+      token = await InspireAuth.ensureToken()
+    } catch (err: any) {
+      if (err instanceof InspireAuth.TokenUnavailableError) {
+        if (err.reason === "not_authenticated") {
+          return InspireAuth.notAuthenticatedError("inspire")
+        }
+        if (err.reason === "openapi_not_enabled") {
+          return {
+            title: "OpenAPI 权限未开通",
+            output: ["当前账号未开通 OpenAPI 权限，无法停止任务。", "", "请联系平台管理员开通 OpenAPI 权限。"].join(
+              "\n",
+            ),
+            metadata: { error: "openapi_not_enabled" } as Record<string, any>,
+          }
+        }
+        return {
+          title: "停止失败",
+          output: `OpenAPI 认证失败: ${err.message}`,
+          metadata: { error: "token_unavailable", reason: err.reason } as Record<string, any>,
+        }
+      }
+      return {
+        title: "认证失败",
+        output: `无法获取 OpenAPI Token: ${err.message ?? err}`,
+        metadata: { error: "token_error" } as Record<string, any>,
+      }
+    }
+
     if (params.job_id) {
       try {
-        await InspireAuth.withCookieRetry((cookie) => InspireAPI.stopJob(cookie, params.job_id!))
+        await InspireAuth.withTokenRetry((t) => InspireAPI.stopJobOpenAPI(t, params.job_id!))
         return {
           title: `已停止 ${params.job_id}`,
           output: `✅ 任务 ${params.job_id} 已停止`,
           metadata: { job_id: params.job_id, action: "stopped" } as Record<string, any>,
         }
       } catch (err: any) {
-        if (String(err).includes("inspire_not_authenticated")) {
-          return InspireAuth.notAuthenticatedError("inspire")
+        return {
+          title: "停止失败",
+          output: `无法停止任务 ${params.job_id}: ${err.message ?? err}`,
+          metadata: { error: "stop_failed", job_id: params.job_id } as Record<string, any>,
         }
-        throw err
       }
     }
 
+    // Batch stop: list jobs (read via Cookie API), then stop each via OpenAPI
     try {
       const ws = await InspireResolve.workspace(params.workspace!)
       if (!ws) {
@@ -83,7 +116,7 @@ export const InspireStopTool = Tool.define("inspire_stop", {
         const jobId = job.job_id ?? job.id
         const jobName = job.name ?? jobId
         try {
-          await InspireAuth.withCookieRetry((cookie) => InspireAPI.stopJob(cookie, jobId))
+          await InspireAuth.withTokenRetry((t) => InspireAPI.stopJobOpenAPI(t, jobId))
           results.push({ name: jobName, id: jobId, success: true })
         } catch {
           results.push({ name: jobName, id: jobId, success: false })

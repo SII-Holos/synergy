@@ -7,6 +7,7 @@ const VALID_KEYS = [
   "defaultWorkspace",
   "defaultComputeGroup",
   "defaultImage",
+  "defaultSpecId",
   "defaultPriority",
   "defaultShm",
   "commandPrefix",
@@ -19,6 +20,7 @@ const KEY_DESCRIPTIONS: Record<ConfigKey, string> = {
   defaultWorkspace: "默认工作空间（如 '分布式训练空间'）",
   defaultComputeGroup: "默认计算组（如 'cuda12.8版本H100'）",
   defaultImage: "默认训练镜像（完整地址，如 'docker-qb.sii.edu.cn/inspire-studio/xxx:v1'）",
+  defaultSpecId: "默认资源规格 ID（即 quota_id，可从已有任务的 detail 中获取）",
   defaultPriority: "默认任务优先级（数字 1-10，通常为项目最大值）",
   defaultShm: "默认共享内存 MB（推荐 1200，多卡训练必须）",
   commandPrefix:
@@ -32,6 +34,7 @@ Available configuration keys:
 - defaultWorkspace: ${KEY_DESCRIPTIONS.defaultWorkspace}
 - defaultComputeGroup: ${KEY_DESCRIPTIONS.defaultComputeGroup}
 - defaultImage: ${KEY_DESCRIPTIONS.defaultImage}
+- defaultSpecId: ${KEY_DESCRIPTIONS.defaultSpecId}
 - defaultPriority: ${KEY_DESCRIPTIONS.defaultPriority}
 - defaultShm: ${KEY_DESCRIPTIONS.defaultShm}
 - commandPrefix: ${KEY_DESCRIPTIONS.commandPrefix}
@@ -49,7 +52,7 @@ const parameters = z.object({
     .string()
     .optional()
     .describe(
-      "Config key to set (required for 'set'). One of: defaultProject, defaultWorkspace, defaultComputeGroup, defaultImage, defaultPriority, defaultShm, commandPrefix",
+      "Config key to set (required for 'set'). One of: defaultProject, defaultWorkspace, defaultComputeGroup, defaultImage, defaultSpecId, defaultPriority, defaultShm, commandPrefix",
     ),
   value: z
     .union([z.string(), z.number()])

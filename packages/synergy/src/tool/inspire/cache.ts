@@ -2,16 +2,25 @@ import { Global } from "../../global"
 import { InspireAPI } from "./api"
 import { InspireAuth } from "./auth"
 import { Log } from "../../util/log"
-import type { InspireTypes } from "./types"
 
 const TTL_MS = 5 * 60 * 1000
 
 export namespace InspireCache {
   const log = Log.create({ service: "inspire.cache" })
 
+  interface SpecCache {
+    specId: string
+    gpuCount: number
+    cpuCount: number
+    memGi: number
+    gpuType: string
+    resolvedAt: number
+  }
+
   interface CacheData {
     projects: any[]
-    workspaceInfo: Record<string, { clusterInfo?: any; specs: Record<string, any[]> }>
+    workspaceInfo: Record<string, { clusterInfo?: any }>
+    specCache: Record<string, SpecCache>
     updatedAt: number
   }
 
@@ -19,6 +28,10 @@ export namespace InspireCache {
 
   function isStale(): boolean {
     return !memory || Date.now() - memory.updatedAt > TTL_MS
+  }
+
+  function specCacheKey(workspaceId: string, computeGroupId: string): string {
+    return `${workspaceId}:${computeGroupId}`
   }
 
   export async function getProjects(forceRefresh?: boolean): Promise<any[]> {
@@ -35,21 +48,53 @@ export namespace InspireCache {
     return memory?.workspaceInfo[workspaceId]?.clusterInfo
   }
 
-  export async function getSpecs(workspaceId: string, computeGroupId: string, forceRefresh?: boolean): Promise<any[]> {
-    if (!forceRefresh && !isStale() && memory?.workspaceInfo[workspaceId]?.specs[computeGroupId]) {
-      return memory.workspaceInfo[workspaceId].specs[computeGroupId]
+  export function getCachedSpecId(workspaceId: string, computeGroupId: string): string | undefined {
+    const key = specCacheKey(workspaceId, computeGroupId)
+    return memory?.specCache[key]?.specId
+  }
+
+  export function setCachedSpecId(
+    workspaceId: string,
+    computeGroupId: string,
+    specId: string,
+    info?: { gpuCount?: number; cpuCount?: number; memGi?: number; gpuType?: string },
+  ): void {
+    if (!memory) memory = { projects: [], workspaceInfo: {}, specCache: {}, updatedAt: Date.now() }
+    const key = specCacheKey(workspaceId, computeGroupId)
+    memory.specCache[key] = {
+      specId,
+      gpuCount: info?.gpuCount ?? 0,
+      cpuCount: info?.cpuCount ?? 0,
+      memGi: info?.memGi ?? 0,
+      gpuType: info?.gpuType ?? "",
+      resolvedAt: Date.now(),
     }
+  }
+
+  export async function resolveSpecId(workspaceId: string, computeGroupId: string): Promise<string | undefined> {
+    const cached = getCachedSpecId(workspaceId, computeGroupId)
+    if (cached) return cached
 
     try {
-      const specs = await InspireAuth.withCookieRetry((cookie) => InspireAPI.listSpecs(cookie, computeGroupId))
-      if (!memory) memory = { projects: [], workspaceInfo: {}, updatedAt: Date.now() }
-      if (!memory.workspaceInfo[workspaceId]) memory.workspaceInfo[workspaceId] = { specs: {} }
-      memory.workspaceInfo[workspaceId].specs[computeGroupId] = specs
-      return specs
+      const { jobs } = await InspireAuth.withCookieRetry((cookie) =>
+        InspireAPI.listJobsWithCookie(cookie, workspaceId, { pageSize: 50 }),
+      )
+      for (const job of jobs) {
+        const specId = InspireAPI.extractSpecId(job)
+        if (specId) {
+          const gpuInfo = InspireAPI.extractGpuInfo(job)
+          setCachedSpecId(workspaceId, computeGroupId, specId, {
+            gpuCount: gpuInfo.gpu_count,
+            gpuType: "",
+          })
+          return specId
+        }
+      }
     } catch (err) {
-      log.warn("failed to fetch specs", { computeGroupId, error: String(err) })
-      return []
+      log.warn("failed to resolve spec_id from job list", { workspaceId, error: String(err) })
     }
+
+    return undefined
   }
 
   export async function refresh(): Promise<void> {
@@ -66,14 +111,15 @@ export namespace InspireCache {
     for (const wsId of workspaceIds) {
       try {
         const clusterInfo = await InspireAuth.withCookieRetry((cookie) => InspireAPI.getClusterBasicInfo(cookie, wsId))
-        workspaceInfo[wsId] = { clusterInfo, specs: {} }
+        workspaceInfo[wsId] = { clusterInfo }
       } catch (err) {
         log.warn("failed to fetch cluster info", { workspaceId: wsId, error: String(err) })
-        workspaceInfo[wsId] = { specs: {} }
+        workspaceInfo[wsId] = {}
       }
     }
 
-    memory = { projects, workspaceInfo, updatedAt: Date.now() }
+    const prevSpecCache = memory?.specCache ?? {}
+    memory = { projects, workspaceInfo, specCache: prevSpecCache, updatedAt: Date.now() }
 
     try {
       const filepath = Global.Path.cacheInspireResources

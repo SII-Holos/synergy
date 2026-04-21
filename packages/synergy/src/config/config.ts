@@ -1520,6 +1520,10 @@ export namespace Config {
           defaultWorkspace: z.string().optional().describe("Default workspace name for task submission"),
           defaultComputeGroup: z.string().optional().describe("Default compute group name"),
           defaultImage: z.string().optional().describe("Default Docker image for training tasks"),
+          defaultSpecId: z
+            .string()
+            .optional()
+            .describe("Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)"),
           defaultPriority: z.number().optional().describe("Default task priority (usually project max)"),
           defaultShm: z.number().optional().describe("Default shared memory in MB (default: 1200)"),
           commandPrefix: z

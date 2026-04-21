@@ -21,6 +21,8 @@ IMPORTANT constraints:
 - The platform has NO log API. To capture output for debugging, append: 2>&1 | tee /inspire/hdd/project/{en_name}/logs/{job_name}.log
 - Images must match the target registry. 七宝 spaces use docker-qb.sii.edu.cn, 松江 spaces use docker.sii.shaipower.online. Mismatched registry causes image pull failure.
 
+Task submission uses the official OpenAPI. If your account has not enabled OpenAPI access, this tool will return an error — contact the platform administrator to enable it.
+
 Call inspire_status first to discover resources. Use inspire_config to set defaults for repeated use.`
 
 const parameters = z.object({
@@ -36,7 +38,7 @@ const parameters = z.object({
     .optional()
     .describe("Compute group name or ID. Uses sii.defaultComputeGroup or auto-selects if omitted"),
   project: z.string().optional().describe("Project name or ID. Uses sii.defaultProject or auto-selects if omitted"),
-  spec: z.string().optional().describe("Spec/quota ID. Auto-selects the largest GPU spec if omitted"),
+  spec: z.string().optional().describe("Spec/quota ID. Uses sii.defaultSpecId or auto-resolves if omitted"),
   image: z.string().optional().describe("Docker image address. Uses sii.defaultImage if omitted"),
   instances: z.number().optional().describe("Number of nodes (default 1)"),
   shm: z.number().optional().describe("Shared memory MB. Uses sii.defaultShm or 1200 if omitted"),
@@ -96,18 +98,23 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
     if (!params.compute_group && sii.defaultComputeGroup) defaults.push(`计算组: ${cg.name} (默认)`)
     else if (!params.compute_group) warnings.push(`自动选择计算组: ${cg.name}`)
 
-    let specId = params.spec
-    let specLabel = specId ?? ""
-    const specs = await InspireCache.getSpecs(ws.id, cg.id)
+    let specId = params.spec ?? sii.defaultSpecId
     if (!specId) {
-      if (specs.length > 0) {
-        const sorted = [...specs].sort((a, b) => (b.gpu_count ?? 0) - (a.gpu_count ?? 0))
-        const chosen = sorted[0]
-        specId = chosen.quota_id ?? chosen.id
-        specLabel = `${chosen.gpu_count ?? 0}× ${chosen.gpu_info?.gpu_product_simple ?? "GPU"}`
-        warnings.push(`自动选择规格: ${specLabel}`)
+      const cached = InspireCache.getCachedSpecId(ws.id, cg.id)
+      if (cached) {
+        specId = cached
+        defaults.push(`规格 ID: ${specId} (缓存)`)
       }
     }
+    if (!specId) {
+      const resolved = await InspireCache.resolveSpecId(ws.id, cg.id)
+      if (resolved) {
+        specId = resolved
+        warnings.push(`自动解析规格 ID: ${specId}`)
+      }
+    }
+    if (!params.spec && sii.defaultSpecId) defaults.push(`规格 ID: ${specId} (默认)`)
+    else if (!params.spec && !sii.defaultSpecId && specId) warnings.push(`使用解析的规格 ID: ${specId}`)
 
     const image = params.image ?? sii.defaultImage
     if (!image) {
@@ -162,60 +169,98 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
       defaults.push(`命令前缀: ${sii.commandPrefix}`)
     }
 
-    const specInfo =
-      specs.length > 0 ? (specs.find((s: any) => (s.quota_id ?? s.id) === specId) ?? specs[0]) : undefined
-
-    const fcCpu = specInfo?.cpu_count ?? 8
-    const fcMem = specInfo?.memory_size_gib ?? 64
-    const fcGpu = specInfo?.gpu_count ?? 1
-    const fcGpuType = specInfo?.gpu_info?.gpu_product_simple ?? ""
-
-    const resourceSpecPrice: Record<string, any> = {
-      cpu_count: fcCpu,
-      gpu_count: fcGpu,
-      memory_size_gib: fcMem,
-      logic_compute_group_id: cg.id,
-      quota_id: specId ?? "",
+    // OpenAPI only — write operations must use the official API
+    let token: string
+    try {
+      token = await InspireAuth.ensureToken()
+    } catch (err: any) {
+      if (err instanceof InspireAuth.TokenUnavailableError) {
+        if (err.reason === "not_authenticated") {
+          return InspireAuth.notAuthenticatedError("inspire")
+        }
+        if (err.reason === "openapi_not_enabled") {
+          return {
+            title: "OpenAPI 权限未开通",
+            output: [
+              "当前账号未开通 OpenAPI 权限，无法提交任务。",
+              "",
+              "启智平台的任务操作必须通过 OpenAPI 进行。请联系平台管理员开通 OpenAPI 权限。",
+              "",
+              "验证方式: 在启智平台「个人中心 → OpenAPI」页面查看是否有 Token 管理入口。",
+            ].join("\n"),
+            metadata: { error: "openapi_not_enabled" } as Record<string, any>,
+          }
+        }
+        return {
+          title: "提交失败",
+          output: `OpenAPI 认证失败: ${err.message}`,
+          metadata: { error: "token_unavailable", reason: err.reason } as Record<string, any>,
+        }
+      }
+      return {
+        title: "认证失败",
+        output: `无法获取 OpenAPI Token: ${err.message ?? err}`,
+        metadata: { error: "token_error" } as Record<string, any>,
+      }
     }
-    if (fcGpuType) resourceSpecPrice.gpu_type = fcGpuType
 
-    const jobConfig: Record<string, any> = {
-      name: params.name,
-      workspace_id: ws.id,
-      project_id: proj.id,
-      logic_compute_group_id: cg.id,
-      command: finalCommand,
-      task_priority: priority,
-      framework: "pytorch",
-      auto_fault_tolerance: false,
-      enable_notification: false,
-      framework_config: [
-        {
-          image,
-          image_type: "SOURCE_PRIVATE",
-          instance_count: instances,
-          shm_gi: shm,
-          cpu: fcCpu,
-          mem_gi: fcMem,
-          gpu_count: fcGpu,
-          resource_spec_price: resourceSpecPrice,
-        },
-      ],
+    if (!specId) {
+      return {
+        title: "缺少规格 ID",
+        output: [
+          "未指定 spec_id 且无法自动解析。",
+          "",
+          "OpenAPI 提交任务必须提供 spec_id（即 quota_id）。获取方式：",
+          "1. 调用 inspire_job_detail 查看已有任务的「规格 ID (quota_id)」",
+          '2. 用 inspire_config(action="set", key="defaultSpecId", value="...") 设置默认值',
+          "3. 在 inspire_submit 的 spec 参数中直接指定",
+        ].join("\n"),
+        metadata: { error: "missing_spec_id" } as Record<string, any>,
+      }
     }
 
     let result: any
     try {
-      result = await InspireAuth.withCookieRetry((cookie) => InspireAPI.createJob(cookie, jobConfig))
+      result = await InspireAuth.withTokenRetry((t) =>
+        InspireAPI.createJobOpenAPI(t, {
+          name: params.name,
+          workspace_id: ws.id,
+          project_id: proj.id,
+          logic_compute_group_id: cg.id,
+          command: finalCommand,
+          task_priority: priority,
+          spec_id: specId!,
+          image,
+          instance_count: instances,
+          shm_gi: shm,
+        }),
+      )
     } catch (err: any) {
-      if (String(err).includes("inspire_not_authenticated")) return InspireAuth.notAuthenticatedError("inspire")
+      const msg = String(err?.message ?? err)
+      if (msg.includes("spec_id") || msg.includes("SpecId") || msg.includes("spec not found")) {
+        return {
+          title: "提交失败: 规格 ID 无效",
+          output: [
+            `spec_id "${specId}" 无效，可能不属于当前空间/计算组。`,
+            "",
+            "建议:",
+            "  1. 用 inspire_job_detail 查看同空间下成功任务的 quota_id",
+            '  2. 更新默认值: inspire_config(action="set", key="defaultSpecId", value="正确的quota_id")',
+            "  3. 确认镜像地址与空间集群匹配",
+          ].join("\n"),
+          metadata: { error: "invalid_spec_id", spec_id: specId } as Record<string, any>,
+        }
+      }
       return {
         title: "提交失败",
-        output: `任务提交失败: ${err.message ?? err}\n\n常见原因: 镜像不存在、计算组已满、点券不足、需 VPN`,
+        output: `任务提交失败: ${msg}\n\n常见原因: 镜像不存在、计算组已满、点券不足、spec_id 不匹配`,
         metadata: { error: "submit_failed" } as Record<string, any>,
       }
     }
 
     const jobId = result.job_id ?? result.id ?? ""
+    InspireCache.setCachedSpecId(ws.id, cg.id, specId)
+
     const lines = [
       "=== 任务提交成功 ===",
       "",
@@ -227,7 +272,7 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
       `  空间: ${ws.name}`,
       `  项目: ${proj.name}`,
       `  计算组: ${cg.name}`,
-      `  规格: ${specLabel || specId || "默认"}`,
+      `  规格 ID: ${specId}`,
       `  镜像: ${image}`,
       `  优先级: ${priority}`,
       `  节点数: ${instances}`,
@@ -243,7 +288,7 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
     }
     if (warnings.length > 0) {
       lines.push("")
-      for (const w of warnings) lines.push(`⚠ ${w}`)
+      for (const w of warnings) lines.push(w.startsWith("⚠") ? w : `⚠ ${w}`)
     }
 
     const network = InspireTypes.WORKSPACE_NETWORK_MAP[ws.name]
@@ -254,10 +299,7 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
     return {
       title: params.name,
       output: lines.join("\n"),
-      metadata: { job_id: jobId, workspace_id: ws.id, project_id: proj.id, defaults_used: defaults.length } as Record<
-        string,
-        any
-      >,
+      metadata: { job_id: jobId, workspace_id: ws.id, project_id: proj.id } as Record<string, any>,
     }
   },
 })

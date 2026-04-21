@@ -97,10 +97,11 @@ export const InspireSubmitHpcTool = Tool.define("inspire_submit_hpc", {
 
     let quotaId = params.predef_quota_id
     if (!quotaId) {
-      const specs = await InspireCache.getSpecs(ws.id, cg.id)
-      if (specs.length > 0) {
-        quotaId = specs[0].quota_id ?? specs[0].id
-      }
+      quotaId = InspireCache.getCachedSpecId(ws.id, cg.id)
+    }
+    if (!quotaId) {
+      const resolved = await InspireCache.resolveSpecId(ws.id, cg.id)
+      if (resolved) quotaId = resolved
     }
     if (!quotaId) quotaId = ""
 
