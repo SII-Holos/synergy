@@ -2035,6 +2035,9 @@ const inspireToolNames = [
   "inspire_stop",
   "inspire_jobs",
   "inspire_job_detail",
+  "inspire_logs",
+  "inspire_metrics",
+  "inspire_inference",
 ] as const
 
 for (const name of inspireToolNames) {
