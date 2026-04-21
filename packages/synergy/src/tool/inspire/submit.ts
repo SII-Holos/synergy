@@ -40,6 +40,10 @@ const parameters = z.object({
   project: z.string().optional().describe("Project name or ID. Uses sii.defaultProject or auto-selects if omitted"),
   spec: z.string().optional().describe("Spec/quota ID. Uses sii.defaultSpecId or auto-resolves if omitted"),
   image: z.string().optional().describe("Docker image address. Uses sii.defaultImage if omitted"),
+  image_type: z
+    .enum(["SOURCE_PUBLIC", "SOURCE_PRIVATE", "SOURCE_OFFICIAL"])
+    .optional()
+    .describe("Image source type (default: SOURCE_PRIVATE)"),
   instances: z.number().optional().describe("Number of nodes (default 1)"),
   shm: z.number().optional().describe("Shared memory MB. Uses sii.defaultShm or 1200 if omitted"),
   priority: z.number().optional().describe("Task priority. Uses sii.defaultPriority or project max if omitted"),
@@ -231,6 +235,7 @@ export const InspireSubmitTool = Tool.define("inspire_submit", {
           task_priority: priority,
           spec_id: specId!,
           image,
+          image_type: params.image_type,
           instance_count: instances,
           shm_gi: shm,
         }),

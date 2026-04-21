@@ -30,6 +30,28 @@ inspire_jobs(status="running")                            → monitor
 inspire_job_detail(job_id="...")                          → check details if failed
 ```
 
+### Submit an HPC (Slurm) job
+
+For CPU-intensive tasks like data preprocessing, evaluation, or file operations:
+
+```
+inspire_submit_hpc(name="preprocess-data", entrypoint="python preprocess.py",
+  workspace="高性能计算", number_of_tasks=2, cpus_per_task=4, memory_per_cpu="8G")
+inspire_job_detail(job_id="hpc-job-xxx")                  → HPC jobs use hpc-job- prefix
+```
+
+### Deploy an inference service
+
+Deploy a trained model as a serving endpoint:
+
+```
+inspire_inference(action="create", name="llama3-serving",
+  model_id="model-xxx", model_version=1, command="python -m vllm.entrypoint.openai.api_server",
+  image="docker-qb.sii.edu.cn/inspire-studio/vllm:latest", port=2400, replicas=1)
+inspire_inference(action="detail", serving_id="sv-xxx")   → inference servings use sv- prefix
+inspire_inference(action="stop", serving_id="sv-xxx")
+```
+
 ### Prepare a Docker image
 
 ```
@@ -85,6 +107,8 @@ agenda_create({
 - **Two registries**: 七宝 uses `docker-qb.sii.edu.cn`, 松江 uses `docker.sii.shaipower.online`. They are NOT interchangeable.
 - **Storage is shared**: `/inspire/hdd/project/{en_name}/` is accessible from ALL spaces in the same project.
 - **No log API**: Always use `2>&1 | tee` to capture output to a file in the project directory.
+- **Task types by ID prefix**: `job-xxx` (GPU training), `hpc-job-xxx` (HPC/Slurm), `sv-xxx` (inference serving). The `inspire_stop` and `inspire_job_detail` tools auto-detect the type by prefix.
+- **OpenAPI required**: Task submission and stop operations use the official OpenAPI. HPC submission falls back to cookie API if OpenAPI is unavailable. Inference serving creation requires OpenAPI.
 
 ## When to Load References
 

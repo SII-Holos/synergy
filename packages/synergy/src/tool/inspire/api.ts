@@ -89,6 +89,8 @@ export namespace InspireAPI {
     }
   }
 
+  export type ImageType = "SOURCE_PUBLIC" | "SOURCE_PRIVATE" | "SOURCE_OFFICIAL"
+
   export async function createJobOpenAPI(
     token: string,
     config: {
@@ -100,12 +102,15 @@ export namespace InspireAPI {
       task_priority: number
       spec_id: string
       image: string
+      image_type?: ImageType
       instance_count: number
       shm_gi: number
       framework?: string
+      auto_fault_tolerance?: boolean
+      fault_tolerance_max_retry?: number
     },
   ): Promise<any> {
-    const body = {
+    const body: Record<string, any> = {
       name: config.name,
       workspace_id: config.workspace_id,
       project_id: config.project_id,
@@ -113,17 +118,19 @@ export namespace InspireAPI {
       command: config.command,
       task_priority: config.task_priority,
       framework: config.framework ?? "pytorch",
-      auto_fault_tolerance: false,
-      enable_notification: false,
+      auto_fault_tolerance: config.auto_fault_tolerance ?? false,
       framework_config: [
         {
           image: config.image,
-          image_type: "SOURCE_PRIVATE",
+          image_type: config.image_type ?? "SOURCE_PRIVATE",
           instance_count: config.instance_count,
           shm_gi: config.shm_gi,
           spec_id: config.spec_id,
         },
       ],
+    }
+    if (config.auto_fault_tolerance && config.fault_tolerance_max_retry) {
+      body.fault_tolerance_max_retry = config.fault_tolerance_max_retry
     }
     return postOpenAPI("/openapi/v1/train_job/create", body, token)
   }
@@ -134,6 +141,110 @@ export namespace InspireAPI {
 
   export async function stopJobOpenAPI(token: string, jobId: string): Promise<void> {
     await postOpenAPI("/openapi/v1/train_job/stop", { job_id: jobId }, token)
+  }
+
+  // --- HPC OpenAPI ---
+
+  export async function createHpcJobOpenAPI(
+    token: string,
+    config: {
+      name: string
+      workspace_id: string
+      project_id: string
+      logic_compute_group_id: string
+      entrypoint: string
+      image: string
+      image_type?: ImageType
+      instance_count: number
+      spec_id: string
+      task_priority: number
+      number_of_tasks: number
+      cpus_per_task: number
+      memory_per_cpu: string
+      enable_hyper_threading: boolean
+      ttl_after_finish_seconds?: number
+    },
+  ): Promise<any> {
+    const body: Record<string, any> = {
+      name: config.name,
+      workspace_id: config.workspace_id,
+      project_id: config.project_id,
+      logic_compute_group_id: config.logic_compute_group_id,
+      entrypoint: config.entrypoint,
+      image: config.image,
+      image_type: config.image_type ?? "SOURCE_PRIVATE",
+      instance_count: config.instance_count,
+      spec_id: config.spec_id,
+      task_priority: config.task_priority,
+      number_of_tasks: config.number_of_tasks,
+      cpus_per_task: config.cpus_per_task,
+      memory_per_cpu: config.memory_per_cpu,
+      enable_hyper_threading: config.enable_hyper_threading,
+    }
+    if (config.ttl_after_finish_seconds) {
+      body.ttl_after_finish_seconds = config.ttl_after_finish_seconds
+    }
+    return postOpenAPI("/openapi/v1/hpc_jobs/create", body, token)
+  }
+
+  export async function getHpcJobDetailOpenAPI(token: string, jobId: string): Promise<any> {
+    return postOpenAPI("/openapi/v1/hpc_jobs/detail", { job_id: jobId }, token)
+  }
+
+  export async function stopHpcJobOpenAPI(token: string, jobId: string): Promise<void> {
+    await postOpenAPI("/openapi/v1/hpc_jobs/stop", { job_id: jobId }, token)
+  }
+
+  // --- Inference Serving OpenAPI ---
+
+  export async function createInferenceOpenAPI(
+    token: string,
+    config: {
+      name: string
+      workspace_id: string
+      project_id: string
+      logic_compute_group_id: string
+      command: string
+      image: string
+      image_type?: ImageType
+      model_id: string
+      model_version: number
+      port: number
+      replicas: number
+      node_num_per_replica: number
+      task_priority: number
+      spec_id: string
+      custom_domain?: string
+    },
+  ): Promise<any> {
+    const body: Record<string, any> = {
+      name: config.name,
+      workspace_id: config.workspace_id,
+      project_id: config.project_id,
+      logic_compute_group_id: config.logic_compute_group_id,
+      command: config.command,
+      image: config.image,
+      image_type: config.image_type ?? "SOURCE_PUBLIC",
+      model_id: config.model_id,
+      model_version: config.model_version,
+      port: config.port,
+      replicas: config.replicas,
+      node_num_per_replica: config.node_num_per_replica,
+      task_priority: config.task_priority,
+      spec_id: config.spec_id,
+    }
+    if (config.custom_domain) {
+      body.custom_domain = config.custom_domain
+    }
+    return postOpenAPI("/openapi/v1/inference_servings/create", body, token)
+  }
+
+  export async function getInferenceDetailOpenAPI(token: string, servingId: string): Promise<any> {
+    return postOpenAPI("/openapi/v1/inference_servings/detail", { inference_serving_id: servingId }, token)
+  }
+
+  export async function stopInferenceOpenAPI(token: string, servingId: string): Promise<void> {
+    await postOpenAPI("/openapi/v1/inference_servings/stop", { inference_serving_id: servingId }, token)
   }
 
   export function extractSpecId(job: any): string | undefined {
@@ -203,8 +314,9 @@ export namespace InspireAPI {
     }
   }
 
-  export function buildJobUrl(jobId: string, workspaceId: string, type: "gpu" | "hpc" = "gpu"): string {
+  export function buildJobUrl(jobId: string, workspaceId: string, type: "gpu" | "hpc" | "inference" = "gpu"): string {
     if (type === "hpc") return `${InspireTypes.PLATFORM_URL}/jobs/hpc?spaceId=${workspaceId}`
+    if (type === "inference") return `${InspireTypes.PLATFORM_URL}/deploy/inference?spaceId=${workspaceId}`
     return `${InspireTypes.PLATFORM_URL}/jobs/distributedTrainingDetail/${jobId}?spaceId=${workspaceId}`
   }
 }

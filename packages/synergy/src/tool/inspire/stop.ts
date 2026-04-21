@@ -7,10 +7,18 @@ import { InspireResolve } from "./resolve"
 
 const DESCRIPTION = `Stop running tasks on the SII 启智平台. Uses the official OpenAPI. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
 
+Supports three task types by ID prefix:
+- GPU training jobs (job-xxx)
+- HPC jobs (hpc-job-xxx)
+- Inference servings (sv-xxx)
+
 Use job_id to stop a single task, or workspace + status to stop multiple tasks at once.`
 
 const parameters = z.object({
-  job_id: z.string().optional().describe("Task ID to stop. Mutually exclusive with workspace parameter"),
+  job_id: z
+    .string()
+    .optional()
+    .describe("Task ID to stop (job-xxx, hpc-job-xxx, or sv-xxx). Mutually exclusive with workspace parameter"),
   workspace: z
     .string()
     .optional()
@@ -22,6 +30,12 @@ const parameters = z.object({
       "Status filter for batch stop (default 'running'). Only used with workspace parameter. Options: 'running', 'waiting', 'all'",
     ),
 })
+
+function classifyJobId(id: string): "gpu" | "hpc" | "inference" {
+  if (id.startsWith("sv-")) return "inference"
+  if (id.startsWith("hpc-job-")) return "hpc"
+  return "gpu"
+}
 
 export const InspireStopTool = Tool.define("inspire_stop", {
   description: DESCRIPTION,
@@ -35,15 +49,12 @@ export const InspireStopTool = Tool.define("inspire_stop", {
       }
     }
 
-    // Obtain OpenAPI token — write operations must use the official API
     let token: string
     try {
       token = await InspireAuth.ensureToken()
     } catch (err: any) {
       if (err instanceof InspireAuth.TokenUnavailableError) {
-        if (err.reason === "not_authenticated") {
-          return InspireAuth.notAuthenticatedError("inspire")
-        }
+        if (err.reason === "not_authenticated") return InspireAuth.notAuthenticatedError("inspire")
         if (err.reason === "openapi_not_enabled") {
           return {
             title: "OpenAPI 权限未开通",
@@ -67,17 +78,28 @@ export const InspireStopTool = Tool.define("inspire_stop", {
     }
 
     if (params.job_id) {
+      const type = classifyJobId(params.job_id)
       try {
-        await InspireAuth.withTokenRetry((t) => InspireAPI.stopJobOpenAPI(t, params.job_id!))
+        await InspireAuth.withTokenRetry((t) => {
+          switch (type) {
+            case "hpc":
+              return InspireAPI.stopHpcJobOpenAPI(t, params.job_id!)
+            case "inference":
+              return InspireAPI.stopInferenceOpenAPI(t, params.job_id!)
+            default:
+              return InspireAPI.stopJobOpenAPI(t, params.job_id!)
+          }
+        })
+        const typeLabel = type === "hpc" ? "HPC 任务" : type === "inference" ? "推理服务" : "任务"
         return {
           title: `已停止 ${params.job_id}`,
-          output: `✅ 任务 ${params.job_id} 已停止`,
-          metadata: { job_id: params.job_id, action: "stopped" } as Record<string, any>,
+          output: `✅ ${typeLabel} ${params.job_id} 已停止`,
+          metadata: { job_id: params.job_id, type, action: "stopped" } as Record<string, any>,
         }
       } catch (err: any) {
         return {
           title: "停止失败",
-          output: `无法停止任务 ${params.job_id}: ${err.message ?? err}`,
+          output: `无法停止 ${params.job_id}: ${err.message ?? err}`,
           metadata: { error: "stop_failed", job_id: params.job_id } as Record<string, any>,
         }
       }
@@ -116,7 +138,17 @@ export const InspireStopTool = Tool.define("inspire_stop", {
         const jobId = job.job_id ?? job.id
         const jobName = job.name ?? jobId
         try {
-          await InspireAuth.withTokenRetry((t) => InspireAPI.stopJobOpenAPI(t, jobId))
+          const type = classifyJobId(jobId)
+          await InspireAuth.withTokenRetry((t) => {
+            switch (type) {
+              case "hpc":
+                return InspireAPI.stopHpcJobOpenAPI(t, jobId)
+              case "inference":
+                return InspireAPI.stopInferenceOpenAPI(t, jobId)
+              default:
+                return InspireAPI.stopJobOpenAPI(t, jobId)
+            }
+          })
           results.push({ name: jobName, id: jobId, success: true })
         } catch {
           results.push({ name: jobName, id: jobId, success: false })
