@@ -991,7 +991,10 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
               : "Inference Detail",
         subtitle: input.name || input.serving_id,
       }
-    case "inspire_models":
+    case "inspire_models": {
+      const args: string[] = []
+      pushArg(args, input.keyword)
+      pushArg(args, input.model_source_path ? "registered" : undefined)
       return {
         icon: "boxes",
         title:
@@ -1003,8 +1006,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
                 ? "Delete Model"
                 : "Models",
         subtitle: input.keyword || input.name || input.model_id,
+        args,
       }
-    case "inspire_notebook":
+    }
+    case "inspire_notebook": {
+      const args: string[] = []
+      pushArg(args, input.compute_group)
+      pushArg(args, input.gpu_count ? `${input.gpu_count}× GPU` : undefined)
+      pushArg(args, input.priority)
       return {
         icon: "code",
         title:
@@ -1018,7 +1027,9 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
                   ? "Notebook Detail"
                   : "Notebooks",
         subtitle: input.name || input.notebook_id,
+        args,
       }
+    }
     default:
       return {
         icon: "settings",
