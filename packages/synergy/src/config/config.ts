@@ -456,6 +456,18 @@ export namespace Config {
     .meta({ ref: "EmailSmtpConfig" })
   export type EmailSmtp = z.infer<typeof EmailSmtp>
 
+  export const EmailImap = z
+    .object({
+      host: z.string().optional().describe("IMAP server hostname"),
+      port: z.number().int().positive().optional().describe("IMAP server port"),
+      secure: z.boolean().optional().describe("Use TLS/SSL for the IMAP connection"),
+      username: z.string().optional().describe("IMAP username"),
+      password: z.string().optional().describe("IMAP password or app token"),
+    })
+    .strict()
+    .meta({ ref: "EmailImapConfig" })
+  export type EmailImap = z.infer<typeof EmailImap>
+
   export const EmailFrom = z
     .object({
       address: z.string().optional().describe("Sender email address"),
@@ -467,9 +479,10 @@ export namespace Config {
 
   export const Email = z
     .object({
-      enabled: z.boolean().optional().describe("Enable outgoing email features"),
+      enabled: z.boolean().optional().describe("Enable email features"),
       from: EmailFrom.optional().describe("Sender identity for outgoing emails"),
       smtp: EmailSmtp.optional().describe("SMTP transport settings for outgoing emails"),
+      imap: EmailImap.optional().describe("IMAP settings for reading emails"),
     })
     .strict()
     .meta({ ref: "EmailConfig" })
