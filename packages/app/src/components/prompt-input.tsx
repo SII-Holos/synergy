@@ -1777,6 +1777,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearInput()
     addOptimisticMessage()
 
+    const wsConnected = sdk.connected()
+
     client.session
       .promptAsync({
         sessionID: session.id,
@@ -1785,6 +1787,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         messageID,
         parts: requestParts,
         variant,
+      })
+      .then(() => {
+        if (!wsConnected) {
+          showToast({
+            title: "Message sent",
+            description: "Response will appear after reconnection",
+          })
+        }
       })
       .catch((err) => {
         showToast({
@@ -2291,6 +2301,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   e.currentTarget.value = ""
                 }}
               />
+              <Show when={!sdk.connected()}>
+                <Tooltip placement="top" value="Connection lost — responses may be delayed">
+                  <div class="flex items-center justify-center size-5">
+                    <Icon name="signal" size="small" class="text-icon-warning-base animate-pulse" />
+                  </div>
+                </Tooltip>
+              </Show>
               <Tooltip
                 placement="top"
                 inactive={!prompt.dirty() && !working()}

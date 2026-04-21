@@ -49,6 +49,8 @@ export const Terminal = (props: TerminalProps) => {
   let handleTextareaBlur: () => void
   let reconnect: number | undefined
   let disposed = false
+  let reconnectDelay = 1000
+  const [connected, setConnected] = createSignal(false)
 
   const getTerminalColors = (): TerminalColors => {
     const mode = theme.mode()
@@ -99,11 +101,6 @@ export const Terminal = (props: TerminalProps) => {
   onMount(async () => {
     const mod = await import("ghostty-web")
     ghostty = await mod.Ghostty.load()
-
-    const socket = new WebSocket(
-      sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
-    )
-    ws = socket
 
     const t = new mod.Terminal({
       cursorBlink: true,
@@ -202,7 +199,7 @@ export const Terminal = (props: TerminalProps) => {
     handleResize = () => fitAddon.fit()
     window.addEventListener("resize", handleResize)
     t.onResize(async (size) => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         await sdk.client.pty
           .update({
             ptyID: local.pty.id,
@@ -215,8 +212,8 @@ export const Terminal = (props: TerminalProps) => {
       }
     })
     t.onData((data) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(data)
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(data)
       }
     })
     t.onKey((key) => {
@@ -224,28 +221,51 @@ export const Terminal = (props: TerminalProps) => {
         props.onSubmit?.()
       }
     })
-    socket.addEventListener("open", () => {
-      sdk.client.pty
-        .update({
-          ptyID: local.pty.id,
-          size: {
-            cols: t.cols,
-            rows: t.rows,
-          },
-        })
-        .catch(() => {})
-    })
-    socket.addEventListener("message", (event) => {
-      t.write(event.data)
-    })
-    socket.addEventListener("error", (error) => {
-      console.error("WebSocket error:", error)
-      props.onConnectError?.(error)
-    })
-    socket.addEventListener("close", () => {})
+
+    const connect = () => {
+      const socket = new WebSocket(
+        sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
+      )
+      ws = socket
+
+      socket.addEventListener("open", () => {
+        setConnected(true)
+        reconnectDelay = 1000
+        sdk.client.pty
+          .update({
+            ptyID: local.pty.id,
+            size: {
+              cols: t.cols,
+              rows: t.rows,
+            },
+          })
+          .catch(() => {})
+      })
+      socket.addEventListener("message", (event) => {
+        t.write(event.data)
+      })
+      socket.addEventListener("error", (error) => {
+        console.error("WebSocket error:", error)
+        props.onConnectError?.(error)
+      })
+      socket.addEventListener("close", () => {
+        setConnected(false)
+        if (disposed) return
+        reconnect = window.setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 10_000)
+          connect()
+        }, reconnectDelay)
+      })
+    }
+
+    connect()
   })
 
   onCleanup(() => {
+    disposed = true
+    if (reconnect) {
+      clearTimeout(reconnect)
+    }
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
@@ -278,10 +298,16 @@ export const Terminal = (props: TerminalProps) => {
       classList={{
         ...(local.classList ?? {}),
         "select-text": true,
-        "size-full px-6 py-3 font-mono": true,
+        "size-full px-6 py-3 font-mono relative": true,
         [local.class ?? ""]: !!local.class,
       }}
       {...others}
-    />
+    >
+      {!connected() && (
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background/80 pointer-events-none">
+          <span class="text-muted-foreground text-sm">Reconnecting...</span>
+        </div>
+      )}
+    </div>
   )
 }

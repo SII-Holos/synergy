@@ -28,6 +28,7 @@ import { useGlobalSDK } from "./global-sdk"
 import { ErrorPage, type InitError } from "../pages/error"
 import {
   batch,
+  createEffect,
   createContext,
   createSignal,
   useContext,
@@ -837,6 +838,30 @@ function createGlobalSync() {
     }
   })
   onCleanup(unsub)
+
+  let wasConnected = false
+  createEffect(() => {
+    const isConnected = globalSDK.connected()
+    if (isConnected && !wasConnected && globalStore.ready) {
+      for (const directory of Object.keys(children)) {
+        const [store, setStore] = child(directory)
+        const activeSessions = store.session.filter((s) => {
+          const status = store.session_status[s.id]
+          return status?.type === "busy" || status?.type === "retry"
+        })
+        if (activeSessions.length > 0) {
+          loadSessions(directory)
+        }
+        const scopeSdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+        scopeSdk.session
+          .status()
+          .then((x) => setStore("session_status", x.data!))
+          .catch(() => {})
+      }
+      loadGlobalAgenda()
+    }
+    wasConnected = isConnected
+  })
 
   async function bootstrap() {
     const health = await globalSDK.client.global

@@ -287,6 +287,22 @@ export namespace Server {
               onError() {
                 cleanup?.()
               },
+              onMessage(_event, ws) {
+                try {
+                  if (typeof _event.data !== "string") return
+                  const data = JSON.parse(_event.data)
+                  if (data?.payload?.type === "client.ping") {
+                    ws.send(
+                      JSON.stringify({
+                        payload: {
+                          type: "server.pong",
+                          properties: {},
+                        },
+                      }),
+                    )
+                  }
+                } catch {}
+              },
             }
           }),
         )
