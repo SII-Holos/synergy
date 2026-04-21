@@ -895,7 +895,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.workspace)
       pushArg(args, input.refresh ? "refresh" : undefined)
       return {
-        icon: "telescope",
+        icon: "satellite",
         title: "Platform Status",
         subtitle: input.project || metadata?.project_names?.[0] || "All",
         args,
@@ -915,7 +915,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
-        icon: "package",
+        icon: "disc",
         title: input.repo ? "Image Detail" : "Search Images",
         subtitle: input.repo || input.search || "Recent",
         args,
@@ -925,7 +925,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.name)
       pushArg(args, input.tag)
-      return { icon: "cloud-upload", title: "Push Image", subtitle: input.image, args }
+      return { icon: "archive", title: "Push Image", subtitle: input.image, args }
     }
     case "inspire_submit": {
       const args: string[] = []
@@ -933,20 +933,20 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.compute_group)
       pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
       pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
-      return { icon: "flame", title: "Submit GPU Job", subtitle: input.name, args }
+      return { icon: "gpu", title: "Submit GPU Job", subtitle: input.name, args }
     }
     case "inspire_submit_hpc": {
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
-      return { icon: "sigma", title: "Submit HPC Job", subtitle: input.name, args }
+      return { icon: "cpu", title: "Submit HPC Job", subtitle: input.name, args }
     }
     case "inspire_stop": {
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.status && input.status !== "running" ? input.status : undefined)
       return {
-        icon: "ban",
+        icon: "circle-stop",
         title: input.job_id ? "Stop Job" : "Batch Stop",
         subtitle: input.job_id ? shortToken(input.job_id, 20) : input.workspace,
         args,
@@ -959,14 +959,38 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.type && input.type !== "all" ? input.type : undefined)
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
-        icon: "boxes",
+        icon: "list-filter",
         title: "Jobs",
         subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
         args,
       }
     }
     case "inspire_job_detail":
-      return { icon: "microscope", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
+      return { icon: "scan-search", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
+    case "inspire_logs": {
+      const args: string[] = []
+      pushArg(args, input.keyword)
+      pushArg(args, input.download ? "download" : undefined)
+      return {
+        icon: "file-terminal",
+        title: input.download ? "Download Logs" : "Job Logs",
+        subtitle: shortToken(input.job_id, 20),
+        args,
+      }
+    }
+    case "inspire_metrics":
+      return { icon: "heart-pulse", title: "Job Metrics", subtitle: shortToken(input.job_id, 20) }
+    case "inspire_inference":
+      return {
+        icon: "square-play",
+        title:
+          input.action === "create"
+            ? "Deploy Inference"
+            : input.action === "stop"
+              ? "Stop Inference"
+              : "Inference Detail",
+        subtitle: input.name || input.serving_id,
+      }
     default:
       return {
         icon: "settings",
