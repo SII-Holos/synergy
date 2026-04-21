@@ -36,14 +36,16 @@
   "files": [
     "dist"
   ],
-  "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
-    "zod": "catalog:"
+  "dependencies": {},
+  "peerDependencies": {
+    "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "zod": "catalog:"
   }
 }
