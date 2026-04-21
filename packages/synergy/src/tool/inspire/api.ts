@@ -319,4 +319,47 @@ export namespace InspireAPI {
     if (type === "inference") return `${InspireTypes.PLATFORM_URL}/deploy/inference?spaceId=${workspaceId}`
     return `${InspireTypes.PLATFORM_URL}/jobs/distributedTrainingDetail/${jobId}?spaceId=${workspaceId}`
   }
+
+  export interface TrainLogEntry {
+    log_id: string
+    message: string
+    node: string
+    pod_name: string
+    time: string
+    timestamp_ms: string
+    timestamp_str: string
+  }
+
+  export async function getTrainLogs(
+    cookie: string,
+    opts: {
+      jobId: string
+      instanceCount?: number
+      pageSize?: number
+      startTimestampMs?: string
+      endTimestampMs?: string
+    },
+  ): Promise<{ logs: TrainLogEntry[]; total: number }> {
+    const podNames: string[] = []
+    const count = opts.instanceCount ?? 1
+    for (let i = 0; i < count; i++) {
+      podNames.push(`${opts.jobId}-worker-${i}`)
+    }
+
+    const filter: Record<string, any> = { podNames }
+    if (opts.startTimestampMs) filter.start_timestamp_ms = opts.startTimestampMs
+    if (opts.endTimestampMs) filter.end_timestamp_ms = opts.endTimestampMs
+
+    const body: Record<string, any> = {
+      page_size: opts.pageSize ?? 200,
+      filter,
+      sorter: [
+        { field: "time", sort: "descend" },
+        { field: "log-id.keyword", sort: "descend" },
+      ],
+    }
+
+    const data = await postInternal("/api/v1/logs/train", body, cookie)
+    return { logs: data.logs ?? [], total: data.total ?? 0 }
+  }
 }
