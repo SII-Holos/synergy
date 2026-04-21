@@ -146,6 +146,118 @@ async function migrateSchemaUrl(filepath: string): Promise<boolean> {
   return true
 }
 
+async function migrateSiiAuthToPlugin(): Promise<boolean> {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const oldInspirePath = path.join(home, ".synergy", "data", "auth", "inspire.json")
+  const oldHarborPath = path.join(home, ".synergy", "data", "auth", "harbor.json")
+  const pluginAuthPath = path.join(home, ".synergy", "data", "plugin", "inspire", "auth.json")
+
+  const pluginAuthExists = await Bun.file(pluginAuthPath).exists()
+  if (pluginAuthExists) return false
+
+  const inspireExists = await Bun.file(oldInspirePath).exists()
+  const harborExists = await Bun.file(oldHarborPath).exists()
+  if (!inspireExists && !harborExists) return false
+
+  const auth: Record<string, string> = {}
+
+  if (inspireExists) {
+    try {
+      const data = JSON.parse(await Bun.file(oldInspirePath).text())
+      if (data.username) auth["inspire-username"] = data.username
+      if (data.password) auth["inspire-password"] = data.password
+    } catch {}
+  }
+
+  if (harborExists) {
+    try {
+      const data = JSON.parse(await Bun.file(oldHarborPath).text())
+      if (data.username) auth["harbor-username"] = data.username
+      if (data.password) auth["harbor-password"] = data.password
+    } catch {}
+  }
+
+  if (Object.keys(auth).length === 0) return false
+
+  await fs.mkdir(path.dirname(pluginAuthPath), { recursive: true })
+  await Bun.write(pluginAuthPath, JSON.stringify(auth, null, 2))
+  log.info("migrated inspire/harbor auth to plugin auth store", { keys: Object.keys(auth) })
+  return true
+}
+
+async function migrateSiiCacheToPlugin(): Promise<boolean> {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const oldTokenPath = path.join(home, ".synergy", "cache", "inspire-token.json")
+  const oldResourcesPath = path.join(home, ".synergy", "cache", "inspire-resources.json")
+  const pluginCacheDir = path.join(home, ".synergy", "cache", "plugin", "inspire")
+
+  let migrated = false
+
+  for (const [oldPath, key] of [
+    [oldTokenPath, "inspire-token"],
+    [oldResourcesPath, "resources"],
+  ] as const) {
+    if (!(await Bun.file(oldPath).exists())) continue
+    const targetPath = path.join(pluginCacheDir, `${key}.json`)
+    if (await Bun.file(targetPath).exists()) continue
+    try {
+      const data = JSON.parse(await Bun.file(oldPath).text())
+      await fs.mkdir(pluginCacheDir, { recursive: true })
+      await Bun.write(targetPath, JSON.stringify({ value: data }))
+      migrated = true
+    } catch {}
+  }
+
+  if (migrated) log.info("migrated inspire cache to plugin cache store")
+  return migrated
+}
+
+async function migrateSiiToPluginConfig(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const sii =
+    config.sii && typeof config.sii === "object" && !Array.isArray(config.sii)
+      ? (config.sii as Record<string, unknown>)
+      : undefined
+
+  if (!sii) return false
+
+  const formattingOptions = { tabSize: 2, insertSpaces: true } as const
+
+  const { enable, ...defaults } = sii as Record<string, unknown>
+  const hasDefaults = Object.keys(defaults).length > 0
+
+  let text = raw
+
+  if (hasDefaults) {
+    const existing =
+      config.pluginConfig && typeof config.pluginConfig === "object" && !Array.isArray(config.pluginConfig)
+        ? ((config.pluginConfig as Record<string, unknown>).inspire as Record<string, unknown> | undefined)
+        : undefined
+
+    if (!existing) {
+      text = applyEdits(text, modify(text, ["pluginConfig", "inspire"], defaults, { formattingOptions }))
+    }
+  }
+
+  text = applyEdits(text, modify(text, ["sii"], undefined, { formattingOptions }))
+
+  await Bun.write(filepath, text)
+  log.info("migrated sii config to pluginConfig.inspire", {
+    path: filepath,
+    movedKeys: Object.keys(defaults),
+  })
+  return true
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
@@ -190,6 +302,29 @@ export const migrations: Migration[] = [
         done++
         progress(done, files.length)
       }
+    },
+  },
+  {
+    id: "20260422-config-sii-to-plugin",
+    description: "Migrate sii config, auth, and cache to inspire plugin",
+    async up(progress) {
+      const files = await findConfigFiles()
+      const total = files.length + 2
+
+      let done = 0
+      for (const filepath of files) {
+        await migrateSiiToPluginConfig(filepath)
+        done++
+        progress(done, total)
+      }
+
+      await migrateSiiAuthToPlugin()
+      done++
+      progress(done, total)
+
+      await migrateSiiCacheToPlugin()
+      done++
+      progress(done, total)
     },
   },
 ]
