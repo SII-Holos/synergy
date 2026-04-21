@@ -232,7 +232,7 @@ async function migrateSiiToPluginConfig(filepath: string): Promise<boolean> {
 
   const formattingOptions = { tabSize: 2, insertSpaces: true } as const
 
-  const { enable, ...defaults } = sii as Record<string, unknown>
+  const { enable, defaultSpecId, defaultComputeGroup, ...defaults } = sii as Record<string, unknown>
   const hasDefaults = Object.keys(defaults).length > 0
 
   let text = raw
