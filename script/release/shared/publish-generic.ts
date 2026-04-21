@@ -88,7 +88,7 @@ export async function publishGenericWorkspacePackage(options: {
     packageJson.exports = distExports(packageJson.exports)
   }
   packageJson.dependencies = resolveDeps(packageJson.dependencies, options.version, catalog)
-  packageJson.devDependencies = resolveDeps(packageJson.devDependencies, options.version, catalog)
+  delete packageJson.devDependencies
   packageJson.peerDependencies = resolveDeps(packageJson.peerDependencies, options.version, catalog)
   await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2))
 
