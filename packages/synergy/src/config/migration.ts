@@ -327,4 +327,73 @@ export const migrations: Migration[] = [
       progress(done, total)
     },
   },
+  {
+    id: "20260422-config-inspire-remove-deprecated-keys",
+    description: "Remove deprecated defaultSpecId and defaultComputeGroup from pluginConfig.inspire",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      const formattingOptions = { tabSize: 2, insertSpaces: true } as const
+      let done = 0
+      for (const filepath of files) {
+        const file = Bun.file(filepath)
+        if (!(await file.exists())) {
+          done++
+          progress(done, files.length)
+          continue
+        }
+
+        const raw = await file.text()
+        if (!raw.trim()) {
+          done++
+          progress(done, files.length)
+          continue
+        }
+
+        const parsed = parseJsonc(raw)
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          done++
+          progress(done, files.length)
+          continue
+        }
+
+        const config = parsed as Record<string, unknown>
+        const pluginCfg = config.pluginConfig as Record<string, unknown> | undefined
+        const inspire = pluginCfg?.inspire as Record<string, unknown> | undefined
+        if (!inspire) {
+          done++
+          progress(done, files.length)
+          continue
+        }
+
+        const hasSpecId = "defaultSpecId" in inspire
+        const hasComputeGroup = "defaultComputeGroup" in inspire
+        if (!hasSpecId && !hasComputeGroup) {
+          done++
+          progress(done, files.length)
+          continue
+        }
+
+        let text = raw
+        if (hasSpecId) {
+          text = applyEdits(
+            text,
+            modify(text, ["pluginConfig", "inspire", "defaultSpecId"], undefined, { formattingOptions }),
+          )
+        }
+        if (hasComputeGroup) {
+          text = applyEdits(
+            text,
+            modify(text, ["pluginConfig", "inspire", "defaultComputeGroup"], undefined, { formattingOptions }),
+          )
+        }
+
+        await Bun.write(filepath, text)
+        log.info("removed deprecated keys from pluginConfig.inspire", { path: filepath })
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
 ]
