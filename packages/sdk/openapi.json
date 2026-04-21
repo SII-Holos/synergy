@@ -12605,12 +12605,41 @@
         },
         "additionalProperties": false
       },
+      "EmailImapConfig": {
+        "description": "IMAP settings for reading emails",
+        "type": "object",
+        "properties": {
+          "host": {
+            "description": "IMAP server hostname",
+            "type": "string"
+          },
+          "port": {
+            "description": "IMAP server port",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "secure": {
+            "description": "Use TLS/SSL for the IMAP connection",
+            "type": "boolean"
+          },
+          "username": {
+            "description": "IMAP username",
+            "type": "string"
+          },
+          "password": {
+            "description": "IMAP password or app token",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "EmailConfig": {
         "description": "Outgoing email configuration",
         "type": "object",
         "properties": {
           "enabled": {
-            "description": "Enable outgoing email features",
+            "description": "Enable email features",
             "type": "boolean"
           },
           "from": {
@@ -12618,6 +12647,9 @@
           },
           "smtp": {
             "$ref": "#/components/schemas/EmailSmtpConfig"
+          },
+          "imap": {
+            "$ref": "#/components/schemas/EmailImapConfig"
           }
         },
         "additionalProperties": false
@@ -13098,6 +13130,48 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              }
+            }
+          },
+          "sii": {
+            "description": "SII 启智平台 integration configuration",
+            "type": "object",
+            "properties": {
+              "enable": {
+                "description": "Enable SII Inspire Tools for 启智平台 integration",
+                "type": "boolean"
+              },
+              "defaultProject": {
+                "description": "Default project name for task submission",
+                "type": "string"
+              },
+              "defaultWorkspace": {
+                "description": "Default workspace name for task submission",
+                "type": "string"
+              },
+              "defaultComputeGroup": {
+                "description": "Default compute group name",
+                "type": "string"
+              },
+              "defaultImage": {
+                "description": "Default Docker image for training tasks",
+                "type": "string"
+              },
+              "defaultSpecId": {
+                "description": "Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)",
+                "type": "string"
+              },
+              "defaultPriority": {
+                "description": "Default task priority (usually project max)",
+                "type": "number"
+              },
+              "defaultShm": {
+                "description": "Default shared memory in MB (default: 1200)",
+                "type": "number"
+              },
+              "commandPrefix": {
+                "description": "Command prefix prepended to every submit command. Typically conda init + cd to project code directory",
+                "type": "string"
               }
             }
           },

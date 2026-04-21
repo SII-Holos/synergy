@@ -1321,15 +1321,42 @@ export type EmailSmtpConfig = {
 }
 
 /**
+ * IMAP settings for reading emails
+ */
+export type EmailImapConfig = {
+  /**
+   * IMAP server hostname
+   */
+  host?: string
+  /**
+   * IMAP server port
+   */
+  port?: number
+  /**
+   * Use TLS/SSL for the IMAP connection
+   */
+  secure?: boolean
+  /**
+   * IMAP username
+   */
+  username?: string
+  /**
+   * IMAP password or app token
+   */
+  password?: string
+}
+
+/**
  * Outgoing email configuration
  */
 export type EmailConfig = {
   /**
-   * Enable outgoing email features
+   * Enable email features
    */
   enabled?: boolean
   from?: EmailFromConfig
   smtp?: EmailSmtpConfig
+  imap?: EmailImapConfig
 }
 
 /**
@@ -1588,6 +1615,47 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
+  }
+  /**
+   * SII 启智平台 integration configuration
+   */
+  sii?: {
+    /**
+     * Enable SII Inspire Tools for 启智平台 integration
+     */
+    enable?: boolean
+    /**
+     * Default project name for task submission
+     */
+    defaultProject?: string
+    /**
+     * Default workspace name for task submission
+     */
+    defaultWorkspace?: string
+    /**
+     * Default compute group name
+     */
+    defaultComputeGroup?: string
+    /**
+     * Default Docker image for training tasks
+     */
+    defaultImage?: string
+    /**
+     * Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)
+     */
+    defaultSpecId?: string
+    /**
+     * Default task priority (usually project max)
+     */
+    defaultPriority?: number
+    /**
+     * Default shared memory in MB (default: 1200)
+     */
+    defaultShm?: number
+    /**
+     * Command prefix prepended to every submit command. Typically conda init + cd to project code directory
+     */
+    commandPrefix?: string
   }
   /**
    * Custom category configurations for background tasks. Categories define model and prompt presets.

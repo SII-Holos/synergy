@@ -86,6 +86,11 @@ type EmailSettings = {
   smtpSecure: boolean
   smtpUsername: string
   smtpPassword: string
+  imapHost: string
+  imapPort: string
+  imapSecure: boolean
+  imapUsername: string
+  imapPassword: string
 }
 
 type AccountToggle = {
@@ -249,6 +254,11 @@ export function DialogSettings(props: DialogSettingsProps) {
     smtpSecure: true,
     smtpUsername: "",
     smtpPassword: "",
+    imapHost: "",
+    imapPort: "",
+    imapSecure: true,
+    imapUsername: "",
+    imapPassword: "",
   })
 
   const [channels, setChannels] = createStore<ChannelSettings>({
@@ -341,6 +351,11 @@ export function DialogSettings(props: DialogSettingsProps) {
       smtpSecure: cfg.email?.smtp?.secure ?? true,
       smtpUsername: cfg.email?.smtp?.username ?? "",
       smtpPassword: cfg.email?.smtp?.password ?? "",
+      imapHost: cfg.email?.imap?.host ?? "",
+      imapPort: cfg.email?.imap?.port === undefined ? "" : String(cfg.email.imap.port),
+      imapSecure: cfg.email?.imap?.secure ?? true,
+      imapUsername: cfg.email?.imap?.username ?? "",
+      imapPassword: cfg.email?.imap?.password ?? "",
     })
 
     const feishuAccounts = cfg.channel?.feishu?.accounts
@@ -582,7 +597,14 @@ export function DialogSettings(props: DialogSettingsProps) {
       email.smtpUsername.trim() ||
       email.smtpPassword.trim() ||
       email.smtpSecure !== true
-    const shouldMaterializeEmail = hasEmailFrom || hasEmailSmtp || email.enabled !== true || cfg.email !== undefined
+    const hasEmailImap =
+      email.imapHost.trim() ||
+      email.imapPort.trim() ||
+      email.imapUsername.trim() ||
+      email.imapPassword.trim() ||
+      email.imapSecure !== true
+    const shouldMaterializeEmail =
+      hasEmailFrom || hasEmailSmtp || hasEmailImap || email.enabled !== true || cfg.email !== undefined
     const newEmail: Record<string, unknown> = {}
     if (shouldMaterializeEmail) {
       if (email.enabled !== true || cfg.email?.enabled !== undefined) {
@@ -601,6 +623,15 @@ export function DialogSettings(props: DialogSettingsProps) {
           secure: email.smtpSecure,
           ...(email.smtpUsername.trim() ? { username: email.smtpUsername.trim() } : {}),
           ...(email.smtpPassword.trim() ? { password: email.smtpPassword.trim() } : {}),
+        }
+      }
+      if (hasEmailImap) {
+        newEmail.imap = {
+          ...(email.imapHost.trim() ? { host: email.imapHost.trim() } : {}),
+          ...(email.imapPort.trim() ? { port: Number(email.imapPort) } : {}),
+          secure: email.imapSecure,
+          ...(email.imapUsername.trim() ? { username: email.imapUsername.trim() } : {}),
+          ...(email.imapPassword.trim() ? { password: email.imapPassword.trim() } : {}),
         }
       }
     }
@@ -1384,14 +1415,14 @@ export function DialogSettings(props: DialogSettingsProps) {
                     <div>
                       <span class="text-13-medium text-text-base">Outgoing email</span>
                       <p class="text-12-regular text-text-weak mt-0.5">
-                        Configure SMTP here. If you need advanced or provider-specific fields, switch to the JSON
-                        editor.
+                        Configure SMTP for sending emails. If you need advanced or provider-specific fields, switch to
+                        the JSON editor.
                       </p>
                     </div>
                   </div>
                   <SettingRow
                     title="Enabled"
-                    description="Allow email sending for tools"
+                    description="Allow email sending and reading for tools"
                     trailing={<Switch checked={email.enabled} onChange={(value) => setEmail("enabled", value)} />}
                   />
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1436,6 +1467,47 @@ export function DialogSettings(props: DialogSettingsProps) {
                     title="Use TLS/SSL"
                     description="Controls the SMTP secure flag"
                     trailing={<Switch checked={email.smtpSecure} onChange={(value) => setEmail("smtpSecure", value)} />}
+                  />
+                </div>
+                <div class="ds-panel-card">
+                  <div class="ds-panel-card-header">
+                    <div>
+                      <span class="text-13-medium text-text-base">Incoming email</span>
+                      <p class="text-12-regular text-text-weak mt-0.5">
+                        Configure IMAP for reading emails. Leave empty to disable email reading.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <TextField
+                      label="IMAP Host"
+                      type="text"
+                      value={email.imapHost}
+                      onChange={(value) => setEmail("imapHost", value)}
+                    />
+                    <TextField
+                      label="IMAP Port"
+                      type="text"
+                      value={email.imapPort}
+                      onChange={(value) => setEmail("imapPort", value)}
+                    />
+                    <TextField
+                      label="IMAP Username"
+                      type="text"
+                      value={email.imapUsername}
+                      onChange={(value) => setEmail("imapUsername", value)}
+                    />
+                    <TextField
+                      label="IMAP Password"
+                      type="password"
+                      value={email.imapPassword}
+                      onChange={(value) => setEmail("imapPassword", value)}
+                    />
+                  </div>
+                  <SettingRow
+                    title="Use TLS/SSL"
+                    description="Controls the IMAP secure flag"
+                    trailing={<Switch checked={email.imapSecure} onChange={(value) => setEmail("imapSecure", value)} />}
                   />
                 </div>
 
