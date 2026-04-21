@@ -362,4 +362,57 @@ export namespace InspireAPI {
     const data = await postInternal("/api/v1/logs/train", body, cookie)
     return { logs: data.logs ?? [], total: data.total ?? 0 }
   }
+
+  export type MetricType =
+    | "gpu_usage_rate"
+    | "gpu_memory_usage_rate"
+    | "cpu_usage_rate"
+    | "memory_usage_rate"
+    | "disk_io_read"
+    | "disk_io_write"
+    | "network_io_read"
+    | "network_io_write"
+    | "network_storage_io_read"
+    | "network_storage_io_write"
+
+  export interface MetricTimeSeries {
+    group_name: string
+    metric_type: string
+    resource_name: string
+    time_series: Array<{ data: number; timestamp: string }>
+  }
+
+  export async function getClusterMetrics(
+    cookie: string,
+    opts: {
+      computeGroupId: string
+      taskId: string
+      metricTypes: MetricType[]
+      startTimestamp: number
+      endTimestamp: number
+      intervalSecond?: number
+      taskType?: string
+      runningRound?: number
+    },
+  ): Promise<MetricTimeSeries[]> {
+    const filter: Record<string, any> = {
+      logic_compute_group_id: opts.computeGroupId,
+      task_type: opts.taskType ?? "distributed_training",
+      task_id: opts.taskId,
+    }
+    if (opts.runningRound) filter.running_round = opts.runningRound
+
+    const body: Record<string, any> = {
+      metric_types: opts.metricTypes,
+      filter,
+      time_range: {
+        start_timestamp: opts.startTimestamp,
+        end_timestamp: opts.endTimestamp,
+        interval_second: opts.intervalSecond ?? 60,
+      },
+    }
+
+    const data = await postInternal("/api/v1/cluster_metric/resource_metric_by_time", body, cookie)
+    return data.time_seris_metric_groups ?? []
+  }
 }

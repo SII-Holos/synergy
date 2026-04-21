@@ -254,6 +254,16 @@ async function handleGpuDetail(jobId: string) {
       gpu_count: gpuInfo.gpu_count,
       instance_count: gpuInfo.instance_count,
       spec_id: specId,
+      image: gpuInfo.image || undefined,
+      command: job.command ?? undefined,
+      project_id: job.project_id ?? undefined,
+      project_name: job.project_name ?? undefined,
+      project_en_name: job.project_en_name ?? undefined,
+      workspace_id: job.workspace_id ?? undefined,
+      workspace_name: job.workspace_name ?? undefined,
+      compute_group_id: job.logic_compute_group_id ?? undefined,
+      compute_group_name: job.logic_compute_group_name ?? undefined,
+      priority: job.priority ?? job.priority_name ?? undefined,
     } as Record<string, any>,
   }
 }
