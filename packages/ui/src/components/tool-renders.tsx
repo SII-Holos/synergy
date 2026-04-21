@@ -2038,6 +2038,8 @@ const inspireToolNames = [
   "inspire_logs",
   "inspire_metrics",
   "inspire_inference",
+  "inspire_models",
+  "inspire_notebook",
 ] as const
 
 for (const name of inspireToolNames) {

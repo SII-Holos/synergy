@@ -991,6 +991,34 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
               : "Inference Detail",
         subtitle: input.name || input.serving_id,
       }
+    case "inspire_models":
+      return {
+        icon: "boxes",
+        title:
+          input.action === "detail"
+            ? "Model Detail"
+            : input.action === "create"
+              ? "Register Model"
+              : input.action === "delete"
+                ? "Delete Model"
+                : "Models",
+        subtitle: input.keyword || input.name || input.model_id,
+      }
+    case "inspire_notebook":
+      return {
+        icon: "code",
+        title:
+          input.action === "start"
+            ? "Start Notebook"
+            : input.action === "stop"
+              ? "Stop Notebook"
+              : input.action === "create"
+                ? "Create Notebook"
+                : input.action === "detail"
+                  ? "Notebook Detail"
+                  : "Notebooks",
+        subtitle: input.name || input.notebook_id,
+      }
     default:
       return {
         icon: "settings",
