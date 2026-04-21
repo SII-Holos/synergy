@@ -4,6 +4,7 @@ import { InspireAPI } from "./api"
 import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
 import { InspireResolve } from "./resolve"
+import { requireWorkspace, requireProject } from "./shared"
 import { Config } from "../../config/config"
 
 const DESCRIPTION = `Search and browse models in the SII 启智平台 model repository.
@@ -54,22 +55,10 @@ export const InspireModelsTool = Tool.define("inspire_models", {
   },
 })
 
-async function resolveWorkspace(input: string | undefined) {
-  const config = await Config.get()
-  const wsInput = input ?? config.sii?.defaultWorkspace
-  if (!wsInput) return undefined
-  return InspireResolve.workspace(wsInput)
-}
-
 async function handleList(params: z.infer<typeof parameters>) {
-  const ws = await resolveWorkspace(params.workspace)
-  if (!ws) {
-    return {
-      title: "空间未找到",
-      output: "未指定 workspace 且未设置 sii.defaultWorkspace。请调用 inspire_status 查看可用空间。",
-      metadata: { error: "workspace_not_found" } as Record<string, any>,
-    }
-  }
+  const wsResult = await requireWorkspace(params.workspace)
+  if (!("ws" in wsResult)) return wsResult
+  const ws = wsResult.ws
 
   const cookie = await InspireAuth.requireCookie()
   const { items, total } = await InspireAuth.withCookieRetry((c) =>
@@ -239,19 +228,15 @@ async function handleCreate(params: z.infer<typeof parameters>) {
     }
   }
 
-  const ws = await resolveWorkspace(params.workspace)
-  if (!ws) {
-    return {
-      title: "空间未找到",
-      output: "未指定 workspace 且未设置 sii.defaultWorkspace。",
-      metadata: { error: "workspace_not_found" } as Record<string, any>,
-    }
-  }
+  const wsResult = await requireWorkspace(params.workspace)
+  if (!("ws" in wsResult)) return wsResult
+  const ws = wsResult.ws
 
   const config = await Config.get()
   const sii = config.sii ?? {}
-  const projInput = sii.defaultProject
-  const proj = projInput ? await InspireResolve.project(projInput, ws.id) : await InspireResolve.firstProject(ws.id)
+  const projResult = await requireProject(undefined, ws.id)
+  if (!("proj" in projResult)) return projResult
+  const proj = projResult.proj
   if (!proj) {
     return {
       title: "项目未找到",

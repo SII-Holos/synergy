@@ -27,7 +27,8 @@ const parameters = z.object({
     .describe(
       "Repository name to view all tags/versions (e.g. 'dhyu-wan-torch29'). Can include or omit 'inspire-studio/' prefix.",
     ),
-  limit: z.number().optional().describe("Number of results to return (default 20)"),
+  limit: z.number().optional().describe("Number of results to return (default 20, max 100)"),
+  offset: z.number().optional().describe("Pagination offset (default 0)"),
 })
 
 export const InspireImagesTool = Tool.define("inspire_images", {
@@ -71,15 +72,22 @@ export const InspireImagesTool = Tool.define("inspire_images", {
         }
       }
 
-      const result = await InspireHarbor.listRepositories({ search: params.search, limit: params.limit ?? 20 })
+      const limit = Math.min(params.limit ?? 20, 100)
+      const page = Math.floor((params.offset ?? 0) / limit) + 1
+      const result = await InspireHarbor.listRepositories({ search: params.search, limit, page })
 
       const header = params.search ? `=== 镜像搜索: "${params.search}" ===` : `=== 最近推送的镜像 ===`
+      const offset = params.offset ?? 0
 
-      const lines = [header, `共 ${result.total} 个仓库（显示前 ${result.repositories.length} 个）:`, ""]
+      const lines = [
+        header,
+        `共 ${result.total} 个仓库（显示 ${offset + 1}-${offset + result.repositories.length}）:`,
+        "",
+      ]
 
       for (let i = 0; i < result.repositories.length; i++) {
         const r = result.repositories[i]
-        lines.push(`${i + 1}. ${r.name}`)
+        lines.push(`${offset + i + 1}. ${r.name}`)
         if (r.description) lines.push(`   描述: ${r.description}`)
         lines.push(
           `   版本数: ${r.artifact_count} | 拉取次数: ${r.pull_count} | 更新于: ${r.update_time.split("T")[0]}`,
@@ -87,12 +95,17 @@ export const InspireImagesTool = Tool.define("inspire_images", {
         lines.push("")
       }
 
+      if (result.total > offset + result.repositories.length) {
+        lines.push(`用 offset=${offset + result.repositories.length} 查看下一页`)
+        lines.push("")
+      }
+
       lines.push('使用 repo 参数查看某个镜像的所有版本: inspire_images(repo="{name}")')
 
       return {
-        title: `${result.repositories.length} images`,
+        title: `${result.repositories.length} 个镜像`,
         output: lines.join("\n"),
-        metadata: { total: result.total, shown: result.repositories.length } as Record<string, any>,
+        metadata: { total: result.total, shown: result.repositories.length, offset, limit } as Record<string, any>,
       }
     } catch (err: any) {
       if (String(err).includes("harbor_not_authenticated") || String(err).includes("not authenticated")) {

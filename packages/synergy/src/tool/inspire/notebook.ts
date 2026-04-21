@@ -6,6 +6,7 @@ import { InspireCache } from "./cache"
 import { InspireResolve } from "./resolve"
 import { InspireNormalize } from "./normalize"
 import { InspireTypes } from "./types"
+import { STATUS_LABELS, requireWorkspace, requireProject } from "./shared"
 import { Config } from "../../config/config"
 
 const DESCRIPTION = `Manage interactive notebook environments on the SII 启智平台.
@@ -38,15 +39,6 @@ const parameters = z.object({
   memory_size: z.number().optional().describe("Memory in GB"),
 })
 
-const STATUS_LABELS: Record<string, string> = {
-  running: "运行中",
-  waiting: "排队中",
-  succeeded: "成功",
-  failed: "失败",
-  stopped: "已停止",
-  unknown: "未知",
-}
-
 export const InspireNotebookTool = Tool.define("inspire_notebook", {
   description: DESCRIPTION,
   parameters,
@@ -59,31 +51,6 @@ export const InspireNotebookTool = Tool.define("inspire_notebook", {
     return { title: "参数错误", output: "无效的 action", metadata: { error: "invalid_action" } }
   },
 })
-
-async function requireWorkspace(
-  workspaceInput?: string,
-): Promise<{ ws: { id: string; name: string } } | InspireTypes.ToolResult> {
-  const config = await Config.get()
-  const sii = config.sii ?? {}
-  const wsInput = workspaceInput ?? sii.defaultWorkspace
-  if (!wsInput) {
-    return {
-      title: "缺少工作空间",
-      output:
-        '未指定 workspace 且未设置 sii.defaultWorkspace。请调用 inspire_status 查看可用空间，或用 inspire_config(action="set", key="defaultWorkspace", value="...") 设置默认值。',
-      metadata: { error: "missing_workspace" },
-    }
-  }
-  const ws = await InspireResolve.workspace(wsInput)
-  if (!ws) {
-    return {
-      title: "空间未找到",
-      output: `未找到工作空间 "${wsInput}"。请调用 inspire_status 查看可用空间。`,
-      metadata: { error: "workspace_not_found" },
-    }
-  }
-  return { ws }
-}
 
 async function handleList(params: z.infer<typeof parameters>) {
   const creds = await InspireAuth.getInspireCredentials()
@@ -275,15 +242,9 @@ async function handleCreate(params: z.infer<typeof parameters>) {
   const ws = wsResult.ws
   if (!params.workspace && sii.defaultWorkspace) defaults.push(`空间: ${ws.name} (默认)`)
 
-  const projInput = sii.defaultProject
-  const proj = projInput ? await InspireResolve.project(projInput, ws.id) : await InspireResolve.firstProject(ws.id)
-  if (!proj) {
-    return {
-      title: "项目未找到",
-      output: "未找到项目。请调用 inspire_status 查看可用项目。",
-      metadata: { error: "project_not_found" } as Record<string, any>,
-    }
-  }
+  const projResult = await requireProject(undefined, ws.id)
+  if (!("proj" in projResult)) return projResult
+  const proj = projResult.proj
 
   const cgInput = params.compute_group ?? sii.defaultComputeGroup
   const cg = cgInput ? await InspireResolve.computeGroup(cgInput, ws.id) : await InspireResolve.firstComputeGroup(ws.id)

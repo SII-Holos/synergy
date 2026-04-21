@@ -4,12 +4,7 @@ import { InspireAPI } from "./api"
 import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
 import { InspireCache } from "./cache"
-
-function classifyJobId(id: string): "gpu" | "hpc" | "inference" {
-  if (id.startsWith("sv-")) return "inference"
-  if (id.startsWith("hpc-job-")) return "hpc"
-  return "gpu"
-}
+import { classifyJobId } from "./shared"
 
 async function findJobViaCookie(jobId: string): Promise<any | undefined> {
   const projects = await InspireCache.getProjects()

@@ -6,6 +6,7 @@ import { InspireNormalize } from "./normalize"
 import { InspireResolve } from "./resolve"
 import { InspireCache } from "./cache"
 import { InspireTypes } from "./types"
+import { STATUS_LABELS, requireWorkspace } from "./shared"
 
 const DESCRIPTION = `List training and HPC tasks on the SII 启智平台 with status filtering and pagination.
 
@@ -21,6 +22,7 @@ Returns a summary with status counts and a formatted task list. Use inspire_job_
 
 const parameters = z.object({
   workspace: z.string().optional().describe("Filter to a workspace (name or ID). Omit to check all cached workspaces"),
+  project: z.string().optional().describe("Filter to a specific project (name or ID)"),
   status: z
     .string()
     .optional()
@@ -42,15 +44,9 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
     let workspaceIds: { id: string; name: string }[] = []
 
     if (params.workspace) {
-      const ws = await InspireResolve.workspace(params.workspace)
-      if (!ws) {
-        return {
-          title: "空间未找到",
-          output: `未找到工作空间 "${params.workspace}"。请调用 inspire_status 查看可用空间。`,
-          metadata: { error: "workspace_not_found" } as Record<string, any>,
-        }
-      }
-      workspaceIds = [ws]
+      const wsResult = await requireWorkspace(params.workspace)
+      if (!("ws" in wsResult)) return wsResult
+      workspaceIds = [wsResult.ws]
     } else {
       const projects = await InspireCache.getProjects()
       const seen = new Set<string>()
@@ -64,12 +60,20 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
       }
     }
 
+    // Resolve project filter once for client-side filtering
+    let projectFilter: { id: string } | undefined
+    if (params.project) {
+      const resolved = await InspireResolve.project(params.project)
+      if (resolved) projectFilter = { id: resolved.id }
+    }
+
     interface JobEntry {
       name: string
       job_id: string
       status: InspireTypes.StatusFamily
       workspace_name: string
       project_name: string
+      project_id: string
       gpu_count: number
       priority: string
       created_at: string
@@ -94,6 +98,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
             totalCount++
 
             if (statusFilter !== "all" && family !== statusFilter) continue
+            if (projectFilter && job.project_id !== projectFilter.id) continue
 
             const info = InspireAPI.extractGpuInfo(job)
             allJobs.push({
@@ -102,6 +107,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
               status: s,
               workspace_name: ws.name,
               project_name: job.project_name ?? "",
+              project_id: job.project_id ?? "",
               gpu_count: info.gpu_count,
               priority: job.priority_name ?? job.priority ?? "",
               created_at: job.created_at ?? "",
@@ -125,6 +131,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
             totalCount++
 
             if (statusFilter !== "all" && s.family !== statusFilter) continue
+            if (projectFilter && job.project_id !== projectFilter.id) continue
 
             allJobs.push({
               name: job.job_name ?? job.name ?? "",
@@ -132,6 +139,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
               status: s,
               workspace_name: ws.name,
               project_name: job.project_name ?? "",
+              project_id: job.project_id ?? "",
               gpu_count: 0,
               priority: "",
               created_at: job.created_at ?? "",
@@ -156,22 +164,18 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
       .map(([k, v]) => `${v} ${k}`)
       .join(", ")
 
+    const filterParts: string[] = []
+    if (params.project) filterParts.push(`项目: ${params.project}`)
+    if (statusFilter !== "all") filterParts.push(`状态: ${statusFilter}`)
+    const filterLabel = filterParts.length ? `（过滤: ${filterParts.join(", ")}）` : ""
+
     const lines = ["=== 任务列表 ===", ""]
-    lines.push(`共 ${totalCount} 个任务${statusFilter !== "all" ? `（过滤: ${statusFilter}）` : ""}`)
+    lines.push(`共 ${totalCount} 个任务${filterLabel}`)
     if (statusSummary) lines.push(`状态统计: ${statusSummary}`)
     if (page.length > 0 && (offset > 0 || allJobs.length > limit)) {
       lines.push(`显示: ${offset + 1}-${offset + page.length}`)
     }
     lines.push("")
-
-    const STATUS_LABELS: Record<string, string> = {
-      running: "运行中",
-      waiting: "排队中",
-      succeeded: "成功",
-      failed: "失败",
-      stopped: "已停止",
-      unknown: "未知",
-    }
 
     for (let i = 0; i < page.length; i++) {
       const j = page[i]
@@ -198,7 +202,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
     }
 
     if (page.length === 0) {
-      lines.push(statusFilter !== "all" ? `没有 ${statusFilter} 状态的任务。` : "没有任务。")
+      lines.push(filterParts.length > 0 ? `没有匹配的任务。` : "没有任务。")
     }
 
     return {
@@ -208,6 +212,7 @@ export const InspireJobsTool = Tool.define("inspire_jobs", {
         total: totalCount,
         shown: page.length,
         status_counts: statusCounts,
+        project: params.project,
         offset,
         limit,
       } as Record<string, any>,

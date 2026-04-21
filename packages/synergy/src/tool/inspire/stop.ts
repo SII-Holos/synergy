@@ -4,6 +4,7 @@ import { InspireAPI } from "./api"
 import { InspireAuth } from "./auth"
 import { InspireNormalize } from "./normalize"
 import { InspireResolve } from "./resolve"
+import { classifyJobId, requireWorkspace } from "./shared"
 
 const DESCRIPTION = `Stop running tasks on the SII 启智平台. Supports stopping a single task by ID or batch-stopping all tasks matching a status filter in a workspace.
 
@@ -23,6 +24,7 @@ const parameters = z.object({
     .string()
     .optional()
     .describe("Stop all matching tasks in this workspace (name or ID). Mutually exclusive with job_id"),
+  project: z.string().optional().describe("Filter by project (name or ID). Only used with workspace parameter"),
   status: z
     .string()
     .optional()
@@ -30,12 +32,6 @@ const parameters = z.object({
       "Status filter for batch stop (default 'running'). Only used with workspace parameter. Options: 'running', 'waiting', 'all'",
     ),
 })
-
-function classifyJobId(id: string): "gpu" | "hpc" | "inference" {
-  if (id.startsWith("sv-")) return "inference"
-  if (id.startsWith("hpc-job-")) return "hpc"
-  return "gpu"
-}
 
 export const InspireStopTool = Tool.define("inspire_stop", {
   description: DESCRIPTION,
@@ -107,22 +103,26 @@ export const InspireStopTool = Tool.define("inspire_stop", {
 
     // Batch stop: list jobs (read via Cookie API), then stop each via OpenAPI
     try {
-      const ws = await InspireResolve.workspace(params.workspace!)
-      if (!ws) {
-        return {
-          title: "空间未找到",
-          output: `未找到工作空间: ${params.workspace}`,
-          metadata: { error: "workspace_not_found" } as Record<string, any>,
-        }
-      }
+      const wsResult = await requireWorkspace(params.workspace)
+      if (!("ws" in wsResult)) return wsResult
+      const ws = wsResult.ws
 
       const statusFilter = params.status ?? "running"
       const { jobs } = await InspireAuth.withCookieRetry((cookie) => InspireAPI.listJobsWithCookie(cookie, ws.id))
 
+      // Resolve project filter for client-side filtering
+      let projectFilter: { id: string } | undefined
+      if (params.project) {
+        const resolved = await InspireResolve.project(params.project, ws.id)
+        if (resolved) projectFilter = { id: resolved.id }
+      }
+
       const matching = jobs.filter((job) => {
         const normalized = InspireNormalize.status(job.status ?? "")
         if (statusFilter === "all") return !normalized.is_terminal
-        return normalized.family === statusFilter
+        if (normalized.family !== statusFilter) return false
+        if (projectFilter && job.project_id !== projectFilter.id) return false
+        return true
       })
 
       if (matching.length === 0) {
