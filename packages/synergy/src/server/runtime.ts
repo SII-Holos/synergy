@@ -52,20 +52,26 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   // Scope the PID file by working directory to support multiple dev servers
   // Use SYNERGY_CWD to match the directory used by the restart command
   const devCwd = process.env.SYNERGY_CWD ?? parentCwd
-  const devPidFile = isDev
-    ? path.join(
-        Global.Path.state,
-        `dev-watchdog-${crypto.createHash("sha256").update(devCwd).digest("hex").slice(0, 12)}.pid`,
-      )
-    : undefined
+  const cwdHash = crypto.createHash("sha256").update(devCwd).digest("hex").slice(0, 12)
+  const devPidFile = isDev ? path.join(Global.Path.state, `dev-watchdog-${cwdHash}.pid`) : undefined
+  // On Windows, a flag file is used instead of SIGUSR1 for restart triggering
+  const devRestartFlag = isDev ? path.join(Global.Path.state, `dev-restart-${cwdHash}.flag`) : undefined
   if (devPidFile) {
     try {
       const { mkdir } = await import("fs/promises")
       await mkdir(path.dirname(devPidFile), { recursive: true })
-      // Store PID + startup timestamp as identity token to prevent
-      // signaling the wrong process if PID gets reused after exit
-      const identity = JSON.stringify({ pid: process.pid, startTime: Date.now() })
-      await Bun.write(devPidFile, identity)
+      // Store PID + startup identity for verification.
+      // On Linux, include the starttime jiffies from /proc/self/stat so
+      // restart.ts can verify the process identity without knowing CLK_TCK.
+      let identity: Record<string, unknown> = { pid: process.pid, startTime: Date.now() }
+      if (process.platform === "linux") {
+        try {
+          const selfStat = await Bun.file("/proc/self/stat").text()
+          const fields = selfStat.split(" ")
+          identity.starttimeJiffies = parseInt(fields[21], 10)
+        } catch {}
+      }
+      await Bun.write(devPidFile, JSON.stringify(identity))
     } catch {}
   }
 
@@ -213,6 +219,21 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     }
     abortController = new AbortController()
 
+    // Check for restart flag file (Windows-compatible restart trigger)
+    if (devRestartFlag && !shuttingDown) {
+      try {
+        const flagExists = await Bun.file(devRestartFlag).exists()
+        if (flagExists) {
+          devRestartRequested = true
+          try {
+            await Bun.file(devRestartFlag).unlink()
+          } catch {}
+          log.info("restart flag detected, respawning immediately")
+          continue
+        }
+      } catch {}
+    }
+
     // After aborted sleep, check if we should exit instead of respawning
     if (shuttingDown) {
       log.info("shutdown requested during backoff, stopping watchdog")
@@ -251,12 +272,15 @@ export interface RuntimeOptions {
     cors?: string[]
   }
 }
-
 export function getDevWatchdogPidFile(cwd?: string) {
   const hash = cwd ? crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12) : "unknown"
   return path.join(Global.Path.state, `dev-watchdog-${hash}.pid`)
 }
 
+export function getDevRestartFlagFile(cwd?: string) {
+  const hash = cwd ? crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12) : "unknown"
+  return path.join(Global.Path.state, `dev-restart-${hash}.flag`)
+}
 export async function run(options: RuntimeOptions) {
   // If user asked for a restart policy, spawn a child and act as a watchdog
   if (options.restartPolicy === "always" || options.restartPolicy === "dev") {

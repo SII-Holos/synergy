@@ -4,7 +4,7 @@ import { UI } from "../ui"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
-import { getDevWatchdogPidFile } from "../../server/runtime"
+import { getDevWatchdogPidFile, getDevRestartFlagFile } from "../../server/runtime"
 
 async function isWatchdogRunning(pid: number): Promise<boolean> {
   try {
@@ -15,46 +15,19 @@ async function isWatchdogRunning(pid: number): Promise<boolean> {
   }
 }
 
-async function verifyWatchdogIdentity(pid: number, startTime: number): Promise<boolean> {
-  // Verify the process at `pid` started around the same time as recorded
-  // in the PID file. This prevents signaling the wrong process if the PID
-  // was reused after the original watchdog exited.
+async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJiffies?: number): Promise<boolean> {
+  // Verify the process at `pid` is the same one that wrote the PID file.
+  // This prevents signaling the wrong process if the PID was reused.
   try {
-    if (process.platform === "linux") {
+    if (process.platform === "linux" && starttimeJiffies !== undefined) {
+      // Compare the starttime jiffies from /proc/<pid>/stat with the stored value.
+      // If the PID was reused, the new process will have a different starttime.
       const fs = await import("fs/promises")
-      // On Linux, read /proc/<pid>/stat to get the process start time in jiffies
-      // and /proc/uptime to calculate real start time without hardcoding CLK_TCK
       const stat = await fs.readFile(`/proc/${pid}/stat`, "utf-8")
-      // Field 22 is starttime (jiffies since boot)
       const fields = stat.split(" ")
-      const startTimeJiffies = parseInt(fields[21], 10)
-      if (isNaN(startTimeJiffies)) return false
-      // Use /proc/uptime to get system uptime in seconds
-      const uptime = await fs.readFile("/proc/uptime", "utf-8")
-      const uptimeSec = parseFloat(uptime.split(" ")[0])
-      if (isNaN(uptimeSec)) return false
-      // Read CLK_TCK dynamically via sysconf — but Node/Bun don't expose sysconf.
-      // Instead, calculate: process age = (uptime * CLK_TCK - starttime) / CLK_TCK
-      // We can derive CLK_TCK from the known start time:
-      //   startTimeMs ≈ (Date.now() - (uptimeSec * 1000 - startTimeJiffies / CLK_TCK * 1000))
-      // But simpler: use /proc/<pid>/stat field 22 relative to btime from /proc/stat
-      const procStat = await fs.readFile("/proc/stat", "utf-8")
-      const btimeMatch = procStat.match(/btime\s+(\d+)/)
-      if (!btimeMatch) return false
-      const bootTimeSec = parseInt(btimeMatch[1], 10)
-      // Derive CLK_TCK from the fact that we know the watchdog's own start time
-      // The PID file was written when the watchdog started, so:
-      //   startTimeJiffies = (startTimeSec - bootTimeSec) * CLK_TCK
-      //   CLK_TCK = startTimeJiffies / (startTimeSec - bootTimeSec)
-      const startTimeSec = startTime / 1000
-      const elapsedSec = startTimeSec - bootTimeSec
-      if (elapsedSec <= 0) return false
-      const derivedClkTck = startTimeJiffies / elapsedSec
-      // Re-calculate the process start time using the derived CLK_TCK
-      const procStartSec = bootTimeSec + startTimeJiffies / derivedClkTck
-      const procStartMs = procStartSec * 1000
-      // Allow 2s tolerance for timing differences
-      return Math.abs(procStartMs - startTime) < 2000
+      const currentStarttime = parseInt(fields[21], 10)
+      if (isNaN(currentStarttime)) return false
+      return currentStarttime === starttimeJiffies
     }
     // On non-Linux, fall back to just checking if the process exists
     // PID reuse is rare on macOS and in dev mode the risk is acceptable
@@ -70,57 +43,62 @@ export const RestartCommand = cmd({
   builder: (yargs) => withNetworkOptions(yargs),
   handler: async () => {
     // If a dev-mode watchdog PID file exists, signal it.
-    // SIGUSR1 is POSIX-only; skip signal-based restart on Windows
-    const canSignalRestart = process.platform !== "win32"
     const cwd = process.env.SYNERGY_CWD ?? process.cwd()
     const pidFile = getDevWatchdogPidFile(cwd)
-    if (canSignalRestart) {
+    try {
+      const content = await Bun.file(pidFile).text()
+      let pid: number
+      let startTime: number | undefined
+      let starttimeJiffies: number | undefined
+
+      // Parse PID file — may be JSON with identity token or plain PID (legacy)
       try {
-        const content = await Bun.file(pidFile).text()
-        let pid: number
-        let startTime: number | undefined
+        const data = JSON.parse(content)
+        pid = parseInt(String(data.pid), 10)
+        startTime = data.startTime
+        starttimeJiffies = data.starttimeJiffies
+      } catch {
+        pid = parseInt(content.trim(), 10)
+      }
 
-        // Parse PID file — may be JSON with identity token or plain PID (legacy)
-        try {
-          const data = JSON.parse(content)
-          pid = parseInt(String(data.pid), 10)
-          startTime = data.startTime
-        } catch {
-          pid = parseInt(content.trim(), 10)
-        }
-
-        if (!isNaN(pid)) {
-          const isRunning = await isWatchdogRunning(pid)
-          if (!isRunning) {
-            UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
-            try {
-              await Bun.file(pidFile).unlink()
-            } catch {}
-            // Fall through to daemon restart
-          } else if (startTime && !(await verifyWatchdogIdentity(pid, startTime))) {
-            UI.error(`PID ${pid} in dev-watchdog.pid belongs to a different process. Removing stale PID file.`)
-            try {
-              await Bun.file(pidFile).unlink()
-            } catch {}
-            // Fall through to daemon restart
-          } else {
-            try {
+      if (!isNaN(pid)) {
+        const isRunning = await isWatchdogRunning(pid)
+        if (!isRunning) {
+          UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
+          try {
+            await Bun.file(pidFile).unlink()
+          } catch {}
+          // Fall through to daemon restart
+        } else if (startTime !== undefined && !(await verifyWatchdogIdentity(pid, startTime, starttimeJiffies))) {
+          UI.error(`PID ${pid} in dev-watchdog.pid belongs to a different process. Removing stale PID file.`)
+          try {
+            await Bun.file(pidFile).unlink()
+          } catch {}
+          // Fall through to daemon restart
+        } else {
+          try {
+            if (process.platform === "win32") {
+              // On Windows, SIGUSR1 is not available. Use a flag file
+              // that the watchdog polls to trigger a restart.
+              await Bun.write(getDevRestartFlagFile(cwd), String(Date.now()))
+              UI.println(`Restart requested for dev server (watchdog PID ${pid}).`)
+            } else {
               process.kill(pid, "SIGUSR1")
               UI.println(`Restarted dev server (watchdog PID ${pid}).`)
-              return
-            } catch (error) {
-              UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
-              try {
-                await Bun.file(pidFile).unlink()
-              } catch {}
-              // Fall through to daemon restart instead of exiting
             }
+            return
+          } catch (error) {
+            UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
+            try {
+              await Bun.file(pidFile).unlink()
+            } catch {}
+            // Fall through to daemon restart instead of exiting
           }
         }
-      } catch {
-        // No PID file — fall through to daemon restart.
       }
-    } // end if (canSignalRestart)
+    } catch {
+      // No PID file — fall through to daemon restart.
+    }
 
     // Restart the managed background service.
     let service: Awaited<ReturnType<typeof Daemon.restart>>["service"]

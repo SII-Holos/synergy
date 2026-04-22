@@ -39,7 +39,7 @@ describe("dev watchdog shutdown during backoff", () => {
     const afterSleepCatch = source.substring(source.indexOf("sleep was aborted by shutdown signal"))
 
     // The next significant code after the catch should check shuttingDown
-    const nextLines = afterSleepCatch.substring(0, 500)
+    const nextLines = afterSleepCatch.substring(0, 1000)
 
     // Should contain a check like: if (shuttingDown) { ... process.exit }
     // before respawning
@@ -218,11 +218,72 @@ describe("PID file identity token", () => {
   test("verifyWatchdogIdentity should not hardcode CLK_TCK=100", () => {
     const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
 
-    // CLK_TCK (clock ticks per second) varies by system — typically 100 on x86 Linux
-    // but can differ on other architectures. The code should read it dynamically
-    // via sysconf(_SC_CLK_TCK) or by parsing /proc/<pid>/stat relative to /proc/uptime.
+    // CLK_TCK should not be hardcoded — it varies by system
     const hardcodesClkTck = /const\s+clockTicks\s*=\s*100\b/.test(restartSource)
 
     expect(hardcodesClkTck).toBe(false)
+  })
+
+  test("verifyWatchdogIdentity should not be a circular calculation", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // The identity check must NOT derive CLK_TCK from the stored startTime
+    // and then use that derived value to reconstruct the start time — that's
+    // algebraically tautological and validates any PID.
+    //
+    // Instead, it should compare the process's actual running time
+    // (from /proc/uptime and /proc/<pid>/stat) with the expected
+    // running time (Date.now() - stored startTime).
+    const usesDerivedClkTck = /derivedClkTck/.test(restartSource)
+
+    expect(usesDerivedClkTck).toBe(false)
+  })
+
+  test("verifyWatchdogIdentity should compare starttimeJiffies directly from /proc/<pid>/stat", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // The correct approach: store starttimeJiffies (field 22 of /proc/self/stat)
+    // in the PID file at startup, then compare it with the current value from
+    // /proc/<pid>/stat. If the PID was reused, the starttime will differ.
+    // No need for CLK_TCK or /proc/uptime.
+    const comparesJiffies = /starttimeJiffies/.test(restartSource)
+    const readsProcStat = /proc\/\$\{pid\}\/stat/.test(restartSource)
+
+    expect(comparesJiffies).toBe(true)
+    expect(readsProcStat).toBe(true)
+  })
+})
+
+describe("Windows dev restart", () => {
+  test("restart command should use flag file instead of SIGUSR1 on win32", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // On Windows, SIGUSR1 doesn't exist. The restart command should write a
+    // flag file that the watchdog polls for, rather than sending a signal.
+    const hasWin32Branch = /win32/.test(restartSource)
+    const usesFlagFile = /getDevRestartFlagFile|devRestartFlag|restart.*\.flag/.test(restartSource)
+
+    expect(hasWin32Branch).toBe(true)
+    expect(usesFlagFile).toBe(true)
+  })
+
+  test("watchdog should poll for restart flag file", () => {
+    const runtimeSource = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // The watchdog loop must check for the restart flag file so Windows
+    // restart requests (written by restart.ts) are actually picked up.
+    const checksRestartFlag = /devRestartFlag/.test(runtimeSource)
+
+    expect(checksRestartFlag).toBe(true)
+  })
+
+  test("PID file should store starttimeJiffies on Linux", () => {
+    const runtimeSource = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // On Linux, the PID file should include starttimeJiffies from
+    // /proc/self/stat so restart.ts can verify process identity.
+    const storesJiffies = /starttimeJiffies/.test(runtimeSource)
+
+    expect(storesJiffies).toBe(true)
   })
 })
