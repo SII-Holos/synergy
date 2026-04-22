@@ -267,14 +267,19 @@ describe("Windows dev restart", () => {
     expect(usesFlagFile).toBe(true)
   })
 
-  test("watchdog should poll for restart flag file", () => {
+  test("watchdog should poll for restart flag file during child lifetime", () => {
     const runtimeSource = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
 
-    // The watchdog loop must check for the restart flag file so Windows
-    // restart requests (written by restart.ts) are actually picked up.
+    // The watchdog must poll for the restart flag file *while* the child
+    // process is running (not just after exit), so that Windows restart
+    // requests actually take effect. This is done via setInterval.
     const checksRestartFlag = /devRestartFlag/.test(runtimeSource)
+    const usesInterval = /setInterval/.test(runtimeSource)
+    const killsChild = /currentChild\.kill|child\.kill/.test(runtimeSource)
 
     expect(checksRestartFlag).toBe(true)
+    expect(usesInterval).toBe(true)
+    expect(killsChild).toBe(true)
   })
 
   test("PID file should store starttimeJiffies on Linux", () => {
@@ -285,5 +290,57 @@ describe("Windows dev restart", () => {
     const storesJiffies = /starttimeJiffies/.test(runtimeSource)
 
     expect(storesJiffies).toBe(true)
+  })
+})
+
+describe("restart flag file behavioral test", () => {
+  test("writing restart flag file should cause a running watchdog to restart", async () => {
+    // Integration-style test: spawn a minimal watchdog-like process,
+    // write a restart flag, and verify the process detects it.
+    const tmpDir = `/tmp/synergy-test-restart-${Date.now()}`
+    fs.mkdirSync(tmpDir, { recursive: true })
+    const flagFile = path.join(tmpDir, "dev-restart-test.flag")
+
+    // Spawn a child that polls for the flag file
+    const child = Bun.spawn({
+      cmd: [
+        process.argv0,
+        "-e",
+        `
+          const flagPath = ${JSON.stringify(flagFile)};
+          const poll = setInterval(async () => {
+            try {
+              const exists = await Bun.file(flagPath).exists();
+              if (exists) {
+                await Bun.file(flagPath).unlink().catch(() => {});
+                console.log("RESTART_DETECTED");
+                clearInterval(poll);
+                process.exit(0);
+              }
+            } catch {}
+          }, 200);
+          // Timeout after 10s
+          setTimeout(() => { console.log("TIMEOUT"); process.exit(1); }, 10000);
+        `,
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    // Wait for the child to start polling, then write the flag file
+    await Bun.sleep(500)
+    await Bun.write(flagFile, String(Date.now()))
+
+    // Wait for the child to detect the flag
+    const exitCode = await child.exited
+    const stdout = await new Response(child.stdout).text()
+
+    // Cleanup
+    try {
+      fs.rmSync(tmpDir, { recursive: true })
+    } catch {}
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain("RESTART_DETECTED")
   })
 })

@@ -15,10 +15,10 @@ export const PrepareCommand = cmd({
       process.exit(1)
     }
 
-    UI.println("🔧 Generating SDK...")
-    const sdk = await $`bun ./packages/sdk/js/script/build.ts`.cwd(repoRoot).nothrow()
-    if (sdk.exitCode !== 0) {
-      UI.error("Failed to generate SDK.")
+    UI.println("🔧 Generating SDK and OpenAPI spec...")
+    const generate = await $`bun ./script/generate.ts`.cwd(repoRoot).nothrow()
+    if (generate.exitCode !== 0) {
+      UI.error("Failed to generate SDK / OpenAPI spec.")
       process.exit(1)
     }
 

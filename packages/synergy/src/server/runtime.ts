@@ -131,8 +131,32 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
 
     const childStartTime = Date.now()
 
+    // Poll for restart flag file while child is running.
+    // This is the primary restart mechanism on Windows (no SIGUSR1),
+    // and acts as a fallback on all platforms.
+    const currentChild = child
+    let restartPoller: ReturnType<typeof setInterval> | undefined
+    if (devRestartFlag && currentChild) {
+      restartPoller = setInterval(async () => {
+        try {
+          if (await Bun.file(devRestartFlag).exists()) {
+            devRestartRequested = true
+            try {
+              await Bun.file(devRestartFlag).unlink()
+            } catch {}
+            log.info("restart flag detected, killing child for restart")
+            currentChild.kill()
+            clearInterval(restartPoller)
+          }
+        } catch {}
+      }, 1000)
+    }
+
     // Wait for child
     const exitStatus = await child.exited
+
+    // Clean up the restart poller
+    if (restartPoller !== undefined) clearInterval(restartPoller)
 
     // Intentional dev restarts should not count as crashes
     if (devRestartRequested) {
@@ -219,16 +243,16 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     }
     abortController = new AbortController()
 
-    // Check for restart flag file (Windows-compatible restart trigger)
+    // Check for restart flag file as a fallback (e.g., flag written
+    // while child was already exiting, or during backoff sleep)
     if (devRestartFlag && !shuttingDown) {
       try {
-        const flagExists = await Bun.file(devRestartFlag).exists()
-        if (flagExists) {
+        if (await Bun.file(devRestartFlag).exists()) {
           devRestartRequested = true
           try {
             await Bun.file(devRestartFlag).unlink()
           } catch {}
-          log.info("restart flag detected, respawning immediately")
+          log.info("restart flag detected during backoff, respawning immediately")
           continue
         }
       } catch {}
