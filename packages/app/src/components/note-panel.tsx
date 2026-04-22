@@ -578,7 +578,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     setConflict(null)
     setDirty(false)
     if (ed && !ed.isDestroyed) {
+      const scrollTop = editorRef?.scrollTop ?? 0
+      const { from } = ed.state.selection
       ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
+      const docSize = ed.state.doc.content.size
+      if (from > 0 && from < docSize) {
+        try {
+          ed.commands.setTextSelection(from)
+        } catch {
+          /* position may be invalid */
+        }
+      }
+      if (editorRef) editorRef.scrollTop = scrollTop
     }
   }
 
@@ -830,15 +841,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   function handleEditorAreaClick(e: MouseEvent) {
     const ed = editor()
-    if (!ed || ed.isDestroyed) return
+    if (!ed || ed.isDestroyed || ed.isFocused) return
     const target = e.target as HTMLElement
     if (target === editorRef) {
-      ed.commands.focus("end")
+      ed.commands.focus()
       return
     }
     if (!target.classList.contains("tiptap")) return
     const pos = ed.view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (!pos) ed.commands.focus("end")
+    if (pos) {
+      ed.commands.focus()
+      ed.commands.setTextSelection(pos.pos)
+    }
   }
 
   function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
