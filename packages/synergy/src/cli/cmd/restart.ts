@@ -21,26 +21,28 @@ export const RestartCommand = cmd({
   builder: (yargs) => withNetworkOptions(yargs),
   handler: async () => {
     // If a dev-mode watchdog PID file exists, signal it.
+    const cwd = process.env.SYNERGY_CWD ?? process.cwd()
+    const pidFile = getDevWatchdogPidFile(cwd)
     try {
-      const content = await Bun.file(getDevWatchdogPidFile()).text()
+      const content = await Bun.file(pidFile).text()
       const pid = parseInt(content.trim(), 10)
       if (!isNaN(pid)) {
         const isRunning = await isWatchdogRunning(pid)
         if (!isRunning) {
           UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
           try {
-            await Bun.file(getDevWatchdogPidFile()).unlink()
+            await Bun.file(pidFile).unlink()
           } catch {}
           // Fall through to daemon restart
         } else {
           try {
-            process.kill(pid, "SIGHUP")
+            process.kill(pid, "SIGUSR1")
             UI.println(`Restarted dev server (watchdog PID ${pid}).`)
             return
           } catch (error) {
             UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
             try {
-              await Bun.file(getDevWatchdogPidFile()).unlink()
+              await Bun.file(pidFile).unlink()
             } catch {}
             // Fall through to daemon restart instead of exiting
           }

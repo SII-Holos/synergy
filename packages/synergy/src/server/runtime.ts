@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { EOL } from "os"
 import path from "path"
+import crypto from "crypto"
 import { Global } from "../global"
 
 const log = Log.create({ service: "server-runtime" })
@@ -39,6 +40,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   const parentCwd = process.cwd()
 
   let shuttingDown = false
+  let devRestartRequested = false
   let crashCount = 0
   let abortController = new AbortController()
   const crashStartTime: number[] = []
@@ -47,7 +49,13 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   const log = Log.create({ service: isDev ? "server-dev-watchdog" : "server-watchdog" })
 
   // In dev mode, write the watchdog PID so `synergy restart` can signal us
-  const devPidFile = isDev ? path.join(Global.Path.state, "dev-watchdog.pid") : undefined
+  // Scope the PID file by working directory to support multiple dev servers
+  const devPidFile = isDev
+    ? path.join(
+        Global.Path.state,
+        `dev-watchdog-${crypto.createHash("sha256").update(parentCwd).digest("hex").slice(0, 12)}.pid`,
+      )
+    : undefined
   if (devPidFile) {
     try {
       const { mkdir } = await import("fs/promises")
@@ -73,10 +81,13 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     abortController.abort()
   }
 
-  // In dev mode, SIGHUP triggers a restart (child exits, watchdog respawns it)
-  const onSighup = () => {
+  // In dev mode, SIGUSR1 triggers a restart (child exits, watchdog respawns it)
+  // We use SIGUSR1 instead of SIGHUP because SIGHUP is also sent on terminal
+  // hangup (closing the terminal), which should trigger shutdown instead.
+  const onDevRestart = () => {
     if (shuttingDown) return
-    log.info("received SIGHUP, restarting server")
+    devRestartRequested = true
+    log.info("received SIGUSR1, restarting server")
     if (child) {
       try {
         child.kill("SIGTERM")
@@ -85,12 +96,14 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   }
 
   if (isDev) {
-    process.on("SIGHUP", onSighup)
+    process.on("SIGUSR1", onDevRestart)
   }
 
   // Install persistent signal handlers (not removed during backoff)
+  // SIGHUP is treated the same as SIGINT/SIGTERM (shutdown)
   process.on("SIGINT", () => onWrapperSignal())
   process.on("SIGTERM", () => onWrapperSignal())
+  process.on("SIGHUP", () => onWrapperSignal())
 
   for (;;) {
     child = Bun.spawn({
@@ -106,11 +119,26 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     })
 
     const childStartTime = Date.now()
-    const sigint = () => onWrapperSignal()
-    const sigterm = () => onWrapperSignal()
 
     // Wait for child
     const exitStatus = await child.exited
+
+    // Intentional dev restarts should not count as crashes
+    if (devRestartRequested) {
+      devRestartRequested = false
+      log.info("child exited due to dev restart, respawning immediately", {
+        exitCode: exitStatus,
+      })
+      if (shuttingDown) {
+        if (devPidFile) {
+          try {
+            await Bun.file(devPidFile).unlink()
+          } catch {}
+        }
+        process.exit(0)
+      }
+      continue
+    }
 
     // Track crash time for backoff calculation
     crashStartTime.push(childStartTime)
@@ -136,13 +164,6 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         } catch {}
       }
       process.exit(0)
-    }
-
-    // In dev mode, reset crash count if the child ran for at least 10 seconds
-    // (a stable run means the restart was intentional, not a crash loop)
-    if (isDev && Date.now() - childStartTime >= 10000) {
-      crashCount = 0
-      crashStartTime.length = 0
     }
 
     // Apply crash backoff logic
@@ -187,6 +208,17 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     }
     abortController = new AbortController()
 
+    // After aborted sleep, check if we should exit instead of respawning
+    if (shuttingDown) {
+      log.info("shutdown requested during backoff, stopping watchdog")
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
+      process.exit(0)
+    }
+
     log.info("respawning child", { crashCount, nextDelayMinMs: Math.min(1000 * Math.pow(2, crashCount), 30000) })
   }
 }
@@ -215,8 +247,9 @@ export interface RuntimeOptions {
   }
 }
 
-export function getDevWatchdogPidFile() {
-  return path.join(Global.Path.state, "dev-watchdog.pid")
+export function getDevWatchdogPidFile(cwd?: string) {
+  const hash = cwd ? crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12) : "unknown"
+  return path.join(Global.Path.state, `dev-watchdog-${hash}.pid`)
 }
 
 export async function run(options: RuntimeOptions) {
