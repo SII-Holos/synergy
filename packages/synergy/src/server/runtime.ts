@@ -179,6 +179,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     // Intentional dev restarts should not count as crashes
     if (devRestartRequested) {
       devRestartRequested = false
+      abortController = new AbortController()
       log.info("child exited due to dev restart, respawning immediately", {
         exitCode: exitStatus,
       })
@@ -279,10 +280,13 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     if (devRestartFlag && !shuttingDown) {
       try {
         if (await Bun.file(devRestartFlag).exists()) {
-          devRestartRequested = true
           try {
             await Bun.file(devRestartFlag).unlink()
           } catch {}
+          // Undo the crash entry we pushed before the sleep
+          if (crashStartTime.length > 0 && crashStartTime[crashStartTime.length - 1] === childStartTime) {
+            crashStartTime.pop()
+          }
           log.info("restart flag detected during backoff, respawning immediately")
           continue
         }
