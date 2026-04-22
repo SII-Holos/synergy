@@ -198,7 +198,7 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
         </button>
         <button
           type="button"
-          class="inline-flex items-center justify-center gap-2 rounded-full bg-surface-interactive-base px-4 py-2 text-12-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-base-hover disabled:opacity-40"
+          class="inline-flex items-center justify-center gap-2 rounded-full bg-surface-interactive-solid px-4 py-2 text-12-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-solid-hover disabled:opacity-40"
           disabled={!agentId().trim() || loading()}
           onClick={handleSend}
         >

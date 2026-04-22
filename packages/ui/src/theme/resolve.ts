@@ -57,6 +57,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-interactive-hover"] = interactive[3]
   tokens["surface-interactive-weak"] = interactive[1]
   tokens["surface-interactive-weak-hover"] = interactive[2]
+  tokens["surface-interactive-solid"] = interactive[8]
+  tokens["surface-interactive-solid-hover"] = interactive[9]
   tokens["surface-interactive-selected"] = isDark ? (withAlpha(interactive[2], 0.3) as ColorValue) : interactive[4]
   tokens["surface-interactive-selected-weak"] = isDark
     ? (withAlpha(interactive[2], 0.15) as ColorValue)

@@ -546,7 +546,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   })
 
   function cellClass(ts: number): string {
-    if (ts === selected()) return "bg-surface-interactive-base text-text-on-interactive-base"
+    if (ts === selected()) return "bg-surface-interactive-solid text-text-on-interactive-base"
     if (ts === today()) return "bg-surface-interactive-selected-weak text-text-interactive-base"
     const inMonth = new Date(ts).getMonth() === currentMonth()
     return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"

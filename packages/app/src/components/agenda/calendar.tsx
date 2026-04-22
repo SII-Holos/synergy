@@ -131,7 +131,7 @@ const TIME_EVENT_COLORS: Record<string, string> = {
 const MONTH_DOT_COLORS: Record<string, string> = {
   active: "bg-icon-success-base",
   paused: "bg-icon-warning-base",
-  pending: "bg-surface-interactive-base",
+  pending: "bg-surface-interactive-solid",
   done: "bg-text-weaker",
   cancelled: "bg-text-diff-delete-base",
 }
@@ -348,7 +348,7 @@ function TimeGrid(props: {
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-surface-interactive-base text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(10,132,255,0.18)]":
+                    "bg-surface-interactive-solid text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(10,132,255,0.18)]":
                       col.isToday,
                     "text-text-strong": !col.isToday,
                   }}
@@ -500,7 +500,7 @@ function MonthGrid(props: {
                     <span
                       classList={{
                         "inline-flex items-center justify-center text-11-medium w-5 h-5 rounded-full mb-0.5": true,
-                        "bg-surface-interactive-base text-text-on-interactive-base": cell.isToday,
+                        "bg-surface-interactive-solid text-text-on-interactive-base": cell.isToday,
                         "text-text-strong": !cell.isToday && cell.isCurrentMonth,
                         "text-text-weaker/40": !cell.isToday && !cell.isCurrentMonth,
                       }}

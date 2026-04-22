@@ -149,7 +149,7 @@ export function HolosPanel() {
             <span class="flex items-center gap-1.5">
               Contacts
               <Show when={pendingIncoming().length > 0}>
-                <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-base text-text-on-interactive-base text-[9px] font-medium leading-none">
+                <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
                   {pendingIncoming().length}
                 </span>
               </Show>

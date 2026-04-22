@@ -521,7 +521,7 @@ function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
       onClick={props.onClick}
     >
       <span
-        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-surface-interactive-base"}`}
+        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-interactive-base"}`}
       />
       <span class="text-11-regular text-text-strong flex-1 min-w-0 truncate">{props.item.title}</span>
       <span class="text-[9px] text-text-weaker shrink-0">{triggerSummary(props.item.triggers)}</span>

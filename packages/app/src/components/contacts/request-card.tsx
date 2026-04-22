@@ -121,7 +121,7 @@ export function RequestsSection(props: {
           <div class="flex items-center gap-2">
             <span class="text-13-medium text-text-strong">Requests</span>
             <span
-              class="flex items-center justify-center rounded-full bg-surface-interactive-base px-2.5 py-1 text-10-medium leading-none text-text-on-interactive-base"
+              class="flex items-center justify-center rounded-full bg-surface-interactive-solid px-2.5 py-1 text-10-medium leading-none text-text-on-interactive-base"
               style={{ animation: "badgePopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
             >
               {totalCount()}
@@ -155,7 +155,7 @@ export function RequestsSection(props: {
                         <div class="flex items-center gap-2">
                           <button
                             type="button"
-                            class="inline-flex items-center gap-1.5 rounded-full bg-surface-interactive-base px-3 py-1.5 text-11-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-base-hover disabled:opacity-40"
+                            class="inline-flex items-center gap-1.5 rounded-full bg-surface-interactive-solid px-3 py-1.5 text-11-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-solid-hover disabled:opacity-40"
                             onClick={() => props.onRespond(request.id, "accepted")}
                             disabled={busy()}
                           >

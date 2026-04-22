@@ -266,7 +266,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
                 type="button"
                 class={`rounded-full px-2.5 py-1 text-11-medium transition-all duration-200 ${
                   active()
-                    ? "bg-surface-interactive-base text-text-on-interactive-base shadow-sm"
+                    ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
                     : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
                 }`}
                 onClick={() => setRange(item.value)}
