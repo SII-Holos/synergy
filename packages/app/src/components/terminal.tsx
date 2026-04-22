@@ -109,7 +109,7 @@ export const Terminal = (props: TerminalProps) => {
       fontFamily: "IBM Plex Mono, monospace",
       allowTransparency: true,
       theme: terminalColors(),
-      scrollback: 10_000,
+      scrollback: 2_000,
       ghostty,
     })
     term = t

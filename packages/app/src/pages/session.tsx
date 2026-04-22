@@ -312,10 +312,22 @@ export default function Page() {
   let promptDock: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
 
-  createEffect(() => {
-    if (!params.id) return
-    sync.session.sync(params.id)
-  })
+  const hydratedSessions = new Set<string>()
+  const initializedSessions = new Set<string>()
+
+  createEffect(
+    on(
+      () => params.id,
+      (id, prevId) => {
+        if (prevId && prevId !== id) {
+          sync.evictSession(prevId)
+          hydratedSessions.delete(prevId)
+          initializedSessions.delete(prevId)
+        }
+        if (id) sync.session.sync(id)
+      },
+    ),
+  )
 
   createEffect(() => {
     if (params.id) return
@@ -570,73 +582,11 @@ export default function Page() {
 
   const turnInit = 20
   const turnBatch = 20
-  let turnHandle: number | undefined
-  let turnIdle = false
-
-  function cancelTurnBackfill() {
-    const handle = turnHandle
-    if (handle === undefined) return
-    turnHandle = undefined
-
-    if (turnIdle && window.cancelIdleCallback) {
-      window.cancelIdleCallback(handle)
-      return
-    }
-
-    clearTimeout(handle)
-  }
-
-  function scheduleTurnBackfill() {
-    if (turnHandle !== undefined) return
-    if (store.turnStart <= 0) return
-
-    if (window.requestIdleCallback) {
-      turnIdle = true
-      turnHandle = window.requestIdleCallback(() => {
-        turnHandle = undefined
-        backfillTurns()
-      })
-      return
-    }
-
-    turnIdle = false
-    turnHandle = window.setTimeout(() => {
-      turnHandle = undefined
-      backfillTurns()
-    }, 0)
-  }
-
-  function backfillTurns() {
-    const start = store.turnStart
-    if (start <= 0) return
-
-    const nextStart = Math.max(0, start - turnBatch)
-
-    const el = scroller
-    if (!el) {
-      setStore("turnStart", nextStart)
-      scheduleTurnBackfill()
-      return
-    }
-
-    const beforeHeight = el.scrollHeight
-    const beforeTop = el.scrollTop
-
-    setStore("turnStart", nextStart)
-
-    const delta = el.scrollHeight - beforeHeight
-    if (delta) el.scrollTop = beforeTop + delta
-
-    scheduleTurnBackfill()
-  }
-
-  const hydratedSessions = new Set<string>()
 
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
       ([id, ready]) => {
-        cancelTurnBackfill()
         setStore("turnStart", 0)
         if (!id || !ready) return
 
@@ -646,7 +596,6 @@ export default function Page() {
         const len = visibleUserMessages().length
         const start = len > turnInit ? len - turnInit : 0
         setStore("turnStart", start)
-        scheduleTurnBackfill()
       },
       { defer: true },
     ),
@@ -688,7 +637,6 @@ export default function Page() {
     const index = msgs.findIndex((m) => m.id === message.id)
     if (index !== -1 && index < store.turnStart) {
       setStore("turnStart", index)
-      scheduleTurnBackfill()
 
       requestAnimationFrame(() => {
         const el = document.getElementById(anchor(message.id))
@@ -732,8 +680,6 @@ export default function Page() {
       setStore("messageId", id)
     })
   }
-
-  const initializedSessions = new Set<string>()
 
   createEffect(
     on(
@@ -830,10 +776,11 @@ export default function Page() {
   })
 
   onCleanup(() => {
-    cancelTurnBackfill()
     document.removeEventListener("keydown", handleKeyDown)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
+    hydratedSessions.clear()
+    initializedSessions.clear()
   })
 
   return (
@@ -968,6 +915,7 @@ export default function Page() {
                         showTabs={showTabs}
                         isWorking={isWorking}
                         turnStart={store.turnStart}
+                        turnBatch={turnBatch}
                         onSetTurnStart={(start) => setStore("turnStart", start)}
                         historyMore={historyMore}
                         historyLoading={historyLoading}

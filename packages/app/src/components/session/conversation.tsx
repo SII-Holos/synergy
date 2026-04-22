@@ -22,6 +22,7 @@ export function SessionConversation(props: {
   showTabs: Accessor<boolean>
   isWorking: Accessor<boolean>
   turnStart: number
+  turnBatch: number
   onSetTurnStart: (start: number) => void
   historyMore: Accessor<boolean>
   historyLoading: Accessor<boolean>
@@ -69,7 +70,7 @@ export function SessionConversation(props: {
             variant="ghost"
             size="large"
             class="text-12-medium opacity-50"
-            onClick={() => props.onSetTurnStart(0)}
+            onClick={() => props.onSetTurnStart(Math.max(0, props.turnStart - props.turnBatch))}
           >
             Render earlier messages
           </Button>

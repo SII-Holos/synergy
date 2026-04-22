@@ -144,6 +144,13 @@ function createGlobalSync() {
     return children[directory]
   }
 
+  function releaseChild(directory: string) {
+    // The global event listener calls child() which may recreate the store
+    // if a late event arrives for this directory. The recreated store stays
+    // empty (no bootstrapInstance) and will be collected on the next release.
+    delete children[directory]
+  }
+
   async function loadAgenda(directory: string) {
     const [_, setStore] = child(directory)
     const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
@@ -934,6 +941,7 @@ function createGlobalSync() {
       return globalStore.error
     },
     child,
+    releaseChild,
     bootstrap,
     noteVersion,
     get agenda() {
