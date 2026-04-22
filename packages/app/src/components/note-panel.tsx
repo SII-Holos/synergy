@@ -122,7 +122,7 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
 
     const dragImage = document.createElement("div")
     dragImage.className =
-      "flex items-center gap-2 px-2.5 py-1.5 bg-surface-raised-base rounded-lg border border-border-base text-12-medium text-text-base"
+      "flex items-center gap-2 rounded-xl border border-border-base/55 bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
     dragImage.style.position = "absolute"
     dragImage.style.top = "-1000px"
     dragImage.textContent = props.note.title || "Untitled"
@@ -134,15 +134,15 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
   return (
     <button
       type="button"
-      class="relative w-full rounded-xl bg-surface-raised-base border border-border-base/30 overflow-hidden text-left transition-all hover:bg-surface-raised-base-hover hover:border-border-base/50 active:scale-[0.98] cursor-pointer group flex flex-col"
+      class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-base/55 bg-surface-raised-base/95 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_18px_44px_-34px_rgba(28,34,48,0.24)] transition-all hover:-translate-y-0.5 hover:border-border-base/70 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.1),0_24px_54px_-34px_rgba(28,34,48,0.3)] active:scale-[0.985] cursor-pointer"
       draggable={true}
       onDragStart={handleDragStart}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-surface-raised-stronger-non-alpha/90 backdrop-blur-sm border border-border-base/30 shadow-sm">
+        <div class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
           <Icon name="folder" class="size-2.5 text-text-weak" />
-          <span class="text-10-regular text-text-weak leading-tight">{props.originName}</span>
+          <span class="text-10-medium leading-tight">{props.originName}</span>
         </div>
       </Show>
       <Show
@@ -161,35 +161,40 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
           />
           <div
             class="absolute bottom-0 inset-x-0 h-8 pointer-events-none"
-            style={{ background: "linear-gradient(to top, var(--surface-raised-base), transparent)" }}
+            style={{
+              background:
+                "linear-gradient(to top, color-mix(in srgb, var(--surface-raised-base) 92%, transparent), transparent)",
+            }}
           />
         </div>
       </Show>
 
-      <div class="px-3 py-2 border-t border-border-base/20 mt-auto">
+      <div class="mt-auto border-t border-border-base/30 px-3.5 py-3">
         <div class="flex items-center gap-1.5">
           <Show when={props.note.pinned}>
-            <Icon name="pin" size="small" class="text-text-interactive-base shrink-0" />
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base ring-1 ring-inset ring-border-base/45">
+              <Icon name="pin" size="small" class="size-3" />
+            </span>
           </Show>
-          <span class="text-12-medium text-text-strong line-clamp-1 leading-snug flex-1">
+          <span class="flex-1 line-clamp-1 text-12-medium leading-snug text-text-strong">
             {props.note.title || "Untitled"}
           </span>
         </div>
         <Show when={(props.note.tags ?? []).length > 0}>
-          <div class="flex items-center gap-1 mt-1 flex-wrap">
+          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
             <For each={(props.note.tags ?? []).slice(0, 3)}>
               {(tag) => (
-                <span class="inline-block px-1.5 py-px rounded bg-surface-interactive-base/10 text-10-regular text-text-interactive-base leading-tight">
+                <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-[10px] font-medium leading-none text-text-weak ring-1 ring-inset ring-border-base/45">
                   {tag}
                 </span>
               )}
             </For>
             <Show when={(props.note.tags ?? []).length > 3}>
-              <span class="text-10-regular text-text-weaker">+{(props.note.tags ?? []).length - 3}</span>
+              <span class="text-10-medium text-text-weaker">+{(props.note.tags ?? []).length - 3}</span>
             </Show>
           </div>
         </Show>
-        <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
+        <span class="mt-2 block text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
       </div>
     </button>
   )
@@ -220,7 +225,7 @@ function ScopeSection(props: {
       <div
         role="button"
         tabIndex={0}
-        class="w-full flex items-center gap-2 px-1 py-1.5 rounded-lg hover:bg-surface-raised-base-hover transition-colors group/scope cursor-pointer"
+        class="group/scope flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-surface-inset-base/42"
         onClick={props.onToggle}
         onKeyDown={(e: KeyboardEvent) => {
           if (e.key === "Enter" || e.key === " ") props.onToggle()
@@ -240,14 +245,15 @@ function ScopeSection(props: {
         </Show>
         <span class="text-12-medium text-text-base text-left truncate">{props.group.name}</span>
         <Show when={props.group.isCurrent}>
-          <span class="text-10-regular text-text-interactive-base opacity-60">·</span>
-          <span class="text-10-regular text-text-interactive-base">Current</span>
+          <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-base/45">
+            Current
+          </span>
         </Show>
         <span class="flex-1" />
         <span class="text-11-regular text-text-weaker">{props.group.notes.length}</span>
         <button
           type="button"
-          class="flex items-center justify-center size-6 rounded-md text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-active opacity-0 group-hover/scope:opacity-100 transition-all"
+          class="flex size-7 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak opacity-0 shadow-sm transition-all group-hover/scope:opacity-100 hover:bg-surface-raised-base-hover hover:text-icon-base"
           onClick={(e: MouseEvent) => {
             e.stopPropagation()
             props.onCreateNote()
@@ -932,128 +938,151 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="flex items-center gap-2 px-4 py-3 border-b border-border-base shrink-0">
-          <button
-            type="button"
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={handleBack}
-          >
-            <Icon name="arrow-left" size="normal" />
-          </button>
+        <div class="shrink-0 border-b border-border-base/45 bg-surface-raised-base/92 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+            <button
+              type="button"
+              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              onClick={handleBack}
+            >
+              <Icon name="arrow-left" size="normal" />
+            </button>
 
-          <input
-            type="text"
-            class="flex-1 bg-transparent text-14-medium text-text-strong outline-none placeholder:text-text-weak/50"
-            placeholder="Untitled"
-            value={title()}
-            onInput={onTitleInput}
-          />
+            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+              <input
+                type="text"
+                class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
+                placeholder="Untitled"
+                value={title()}
+                onInput={onTitleInput}
+              />
+            </div>
 
-          <button
-            type="button"
-            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-12-medium transition-colors"
-            classList={{
-              "text-text-interactive-base bg-surface-interactive-base/15": baseNote()!.pinned,
-              "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !baseNote()!.pinned,
-            }}
-            onClick={togglePin}
-          >
-            <Icon name="pin" size="small" />
-            <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
-          </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              classList={{
+                "bg-surface-interactive-base/14 text-text-interactive-base ring-border-base/45 shadow-sm":
+                  baseNote()!.pinned,
+                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                  !baseNote()!.pinned,
+              }}
+              onClick={togglePin}
+            >
+              <Icon name="pin" size="small" />
+              <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
+            </button>
 
-          <button
-            type="button"
-            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-12-medium transition-colors"
-            classList={{
-              "text-text-diff-add-base bg-surface-diff-add-base/10": baseNote()!.global,
-              "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !baseNote()!.global,
-            }}
-            onClick={toggleGlobal}
-          >
-            <Icon name="globe" size="small" />
-            <span>{baseNote()!.global ? "Global" : "Local"}</span>
-          </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              classList={{
+                "bg-surface-diff-add-base/12 text-text-diff-add-base ring-border-base/45 shadow-sm": baseNote()!.global,
+                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                  !baseNote()!.global,
+              }}
+              onClick={toggleGlobal}
+            >
+              <Icon name="globe" size="small" />
+              <span>{baseNote()!.global ? "Global" : "Local"}</span>
+            </button>
 
-          <button
-            type="button"
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={downloadNote}
-            title="Download as Markdown"
-          >
-            <Icon name="download" size="small" />
-          </button>
+            <button
+              type="button"
+              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              onClick={downloadNote}
+              title="Download as Markdown"
+            >
+              <Icon name="download" size="small" />
+            </button>
 
-          <button
-            type="button"
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-text-diff-delete-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={deleteNote}
-            title="Delete"
-          >
-            <Icon name="x" size="small" />
-          </button>
+            <button
+              type="button"
+              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              onClick={deleteNote}
+              title="Delete"
+            >
+              <Icon name="x" size="small" />
+            </button>
+          </div>
         </div>
 
         <Show when={conflict()}>
-          <div class="flex items-center gap-2 px-4 py-2 border-b border-border-warning-base/40 bg-surface-warning-base/10 text-12-regular text-text-base shrink-0">
-            <div class="size-1.5 rounded-full bg-icon-warning-base shrink-0" />
-            <span class="flex-1">{conflict()!.message}</span>
-            <Show when={conflict()?.type === "remote-update"}>
-              <button
-                type="button"
-                class="px-2 py-1 rounded-md text-11-medium text-text-base hover:bg-surface-raised-base-hover transition-colors"
-                onClick={reloadRemote}
-              >
-                Reload remote
-              </button>
-              <button
-                type="button"
-                class="px-2 py-1 rounded-md text-11-medium text-text-interactive-base hover:bg-surface-interactive-base/10 transition-colors"
-                onClick={overwriteRemote}
-              >
-                Overwrite remote
-              </button>
-            </Show>
+          <div class="shrink-0 border-b border-border-warning-base/45 bg-[color:color-mix(in_srgb,var(--surface-warning-base)_12%,var(--surface-raised-base))] px-4 py-3 text-12-regular text-text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] border border-border-warning-base/40 bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
+              <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-warning-base/18 text-icon-warning-base">
+                <div class="size-1.5 rounded-full bg-icon-warning-base" />
+              </div>
+              <span class="flex-1 text-11-regular leading-5 text-text-base">{conflict()!.message}</span>
+              <Show when={conflict()?.type === "remote-update"}>
+                <button
+                  type="button"
+                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-raised-base-hover"
+                  onClick={reloadRemote}
+                >
+                  Reload remote
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-interactive-base/18"
+                  onClick={overwriteRemote}
+                >
+                  Overwrite remote
+                </button>
+              </Show>
+            </div>
           </div>
         </Show>
 
-        <div class="flex items-center gap-1.5 px-5 py-2 border-b border-border-base/40 shrink-0 flex-wrap">
-          <For each={tags()}>
-            {(tag) => (
-              <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-surface-interactive-base/15 text-11-medium text-text-interactive-base">
-                {tag}
-                <button
-                  type="button"
-                  class="size-3.5 flex items-center justify-center rounded-full hover:bg-surface-interactive-base/20 transition-colors"
-                  onClick={() => removeTag(tag)}
-                >
-                  <Icon name="x" size="small" class="size-2.5" />
-                </button>
-              </span>
-            )}
-          </For>
-          <input
-            type="text"
-            class="bg-transparent text-11-regular text-text-weak outline-none placeholder:text-text-weaker min-w-16 flex-1"
-            placeholder={tags().length === 0 ? "Add tags..." : "+"}
-            value={tagInput()}
-            onInput={(e) => setTagInput(e.currentTarget.value)}
-            onKeyDown={handleTagKeyDown}
-            onBlur={() => {
-              if (tagInput().trim()) addTag(tagInput())
-            }}
-          />
+        <div class="shrink-0 border-b border-border-base/40 bg-surface-raised-base/88 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+            <For each={tags()}>
+              {(tag) => (
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45">
+                  <span>{tag}</span>
+                  <button
+                    type="button"
+                    class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+                    onClick={() => removeTag(tag)}
+                  >
+                    <Icon name="x" size="small" class="size-2.5" />
+                  </button>
+                </span>
+              )}
+            </For>
+            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+              <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
+              <input
+                type="text"
+                class="min-w-0 flex-1 bg-transparent text-11-regular text-text-base outline-none placeholder:text-text-weaker"
+                placeholder={tags().length === 0 ? "Add tags..." : "Add tag"}
+                value={tagInput()}
+                onInput={(e) => setTagInput(e.currentTarget.value)}
+                onKeyDown={handleTagKeyDown}
+                onBlur={() => {
+                  if (tagInput().trim()) addTag(tagInput())
+                }}
+              />
+            </div>
+          </div>
         </div>
 
-        <div class="flex-1 min-h-0 relative">
-          <div ref={editorRef} class="h-full overflow-y-auto px-6 py-4" onClick={handleEditorAreaClick} />
+        <div class="relative flex-1 min-h-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-raised-base)_92%,transparent)_0%,transparent_18%)] px-4 pb-4 pt-3">
+          <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-base/50 bg-surface-raised-base/94 shadow-[inset_0_1px_0_rgba(214,204,190,0.09),0_24px_56px_-42px_rgba(28,34,48,0.34)]">
+            <div
+              ref={editorRef}
+              class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              onClick={handleEditorAreaClick}
+            />
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-[linear-gradient(to_top,color-mix(in_srgb,var(--surface-raised-base)_96%,transparent),transparent)]" />
+          </div>
           <div ref={bubbleRef} class="note-bubble-menu">
             <Show when={editor()}>
               <BubbleMenuContent editor={editor()!} />
             </Show>
           </div>
 
-          <div class="absolute bottom-3 right-4 text-11-regular text-text-weak pointer-events-none">
+          <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 backdrop-blur-sm">
             {saving() ? "Saving..." : dirty() ? "Unsaved changes" : "Saved"}
           </div>
         </div>
@@ -1067,6 +1096,7 @@ const TIPTAP_STYLES = `
     outline: none;
     min-height: 100%;
     font-family: ui-sans-serif, system-ui, sans-serif;
+    color: var(--text-base);
   }
   .tiptap::after {
     content: '';
@@ -1108,47 +1138,57 @@ const TIPTAP_STYLES = `
   .tiptap ul { list-style-type: disc; }
   .tiptap ol { list-style-type: decimal; }
   .tiptap blockquote {
-    border-left: 3px solid var(--border-strong-base);
-    padding-left: 1em;
     margin-left: 0;
     margin-right: 0;
+    margin-bottom: 0.95em;
+    border-left: 3px solid color-mix(in srgb, var(--border-strong-base) 78%, var(--surface-brand-base));
+    border-radius: 0 0.9rem 0.9rem 0;
+    background: color-mix(in srgb, var(--surface-inset-base) 74%, transparent);
+    padding: 0.9em 1.05em;
     font-style: italic;
     color: var(--text-weak);
+    box-shadow: inset 0 1px 0 rgba(214,204,190,0.06);
   }
   .tiptap pre {
-    background: #0d1117;
-    border-radius: 0.5rem;
-    padding: 1em;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-inset-base) 92%, #10141c 8%), color-mix(in srgb, var(--surface-inset-base) 80%, #0b0f16 20%));
+    border: 1px solid color-mix(in srgb, var(--border-base) 72%, transparent);
+    border-radius: 0.95rem;
+    padding: 1em 1.05em;
     overflow-x: auto;
-    margin-bottom: 0.75em;
+    margin-bottom: 0.95em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 14px 34px -28px rgba(16,20,28,0.52);
   }
   .tiptap pre code {
     background: none;
     padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.875rem;
-    color: #e6edf3;
+    color: color-mix(in srgb, var(--text-strong) 82%, white 18%);
   }
   .tiptap code {
-    background: var(--surface-raised-base);
-    padding: 0.2em 0.4em;
-    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-base) 58%, transparent);
+    padding: 0.18em 0.45em;
+    border-radius: 0.45rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85em;
     color: var(--text-strong);
+    box-shadow: inset 0 1px 0 rgba(214,204,190,0.08);
   }
   .tiptap table {
     border-collapse: collapse;
     width: 100%;
-    margin-bottom: 0.75em;
+    margin-bottom: 0.95em;
+    overflow: hidden;
+    border-radius: 0.95rem;
   }
   .tiptap td, .tiptap th {
-    border: 1px solid var(--border-weak-base);
-    padding: 0.5em;
+    border: 1px solid color-mix(in srgb, var(--border-weak-base) 82%, transparent);
+    padding: 0.6em 0.7em;
     text-align: left;
   }
   .tiptap th {
-    background: var(--surface-raised-base);
+    background: color-mix(in srgb, var(--surface-inset-base) 72%, transparent);
     font-weight: 600;
   }
   .tiptap p.is-editor-empty:first-child::before {
@@ -1173,6 +1213,7 @@ const TIPTAP_STYLES = `
   .tiptap a {
     color: var(--text-interactive-base);
     text-decoration: none;
+    text-decoration-color: color-mix(in srgb, var(--text-interactive-base) 38%, transparent);
   }
   .tiptap a:hover {
     text-decoration: underline;

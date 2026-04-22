@@ -8,6 +8,15 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
 import { Panel } from "@/components/panel"
 import type { SkillList } from "@ericsanchezok/synergy-sdk/client"
+import {
+  engramActionButtonClass,
+  engramCardBaseClass,
+  engramCardExpandedClass,
+  engramCardHoverClass,
+  engramInsetClass,
+  engramMenuClass,
+  engramMetaLabelClass,
+} from "./shared"
 
 type SkillScope = "all" | "project" | "global" | "builtin"
 type SkillItem = SkillList["items"][number]
@@ -185,15 +194,11 @@ export function SkillView(props: {
                 if (!open) resetImport()
               }}
               placement="bottom-end"
-              gutter={4}
+              gutter={6}
             >
               <Popover.Trigger
                 as="button"
-                classList={{
-                  "flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium transition-colors": true,
-                  "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !importing(),
-                  "text-text-weaker pointer-events-none": importing(),
-                }}
+                class={`${engramActionButtonClass} ${importing() ? "pointer-events-none text-text-weaker" : ""}`}
                 disabled={importing()}
               >
                 <Show when={importing()} fallback={<Icon name="download" size="small" class="opacity-70" />}>
@@ -202,12 +207,12 @@ export function SkillView(props: {
                 <span>Import</span>
               </Popover.Trigger>
               <Popover.Portal>
-                <Popover.Content class="w-64 rounded-xl border border-border-weak-base/40 bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden">
+                <Popover.Content class={`w-64 ${engramMenuClass}`}>
                   <Show when={importMode() === "menu"}>
-                    <div class="py-1.5">
+                    <div class="p-1.5">
                       <button
                         type="button"
-                        class="w-full px-3 py-2 flex items-center gap-2.5 text-left text-13-regular text-text-base hover:bg-surface-raised-base-hover transition-colors"
+                        class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
                         onClick={() => {
                           setImportOpen(false)
                           fileInputRef.click()
@@ -221,7 +226,7 @@ export function SkillView(props: {
                       </button>
                       <button
                         type="button"
-                        class="w-full px-3 py-2 flex items-center gap-2.5 text-left text-13-regular text-text-base hover:bg-surface-raised-base-hover transition-colors"
+                        class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
                         onClick={() => setImportMode("url")}
                       >
                         <Icon name="globe" size="small" class="text-icon-weak shrink-0" />
@@ -233,12 +238,15 @@ export function SkillView(props: {
                     </div>
                   </Show>
                   <Show when={importMode() === "url"}>
-                    <div class="p-3 flex flex-col gap-2.5">
-                      <div class="text-12-medium text-text-strong">Import from URL</div>
+                    <div class="flex flex-col gap-2.5 p-3">
+                      <div>
+                        <div class={engramMetaLabelClass}>Import</div>
+                        <div class="mt-1 text-12-medium text-text-strong">Import from URL</div>
+                      </div>
                       <input
                         type="url"
                         placeholder="https://example.com/skill.zip"
-                        class="w-full px-3 py-2 rounded-lg bg-surface-inset-base/60 text-13-regular text-text-base placeholder:text-text-weak outline-none border border-border-base/30 focus:border-text-interactive-base/50 transition-colors"
+                        class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base/58 px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-text-interactive-base/40 focus:bg-surface-inset-base/7"
                         value={importUrl()}
                         onInput={(e) => setImportUrl(e.currentTarget.value)}
                         onKeyDown={(e) => {
@@ -249,7 +257,7 @@ export function SkillView(props: {
                       <div class="flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          class="px-2.5 py-1 rounded-lg text-12-medium text-text-weak hover:text-text-base transition-colors"
+                          class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base/4 hover:text-text-base"
                           onClick={() => setImportMode("menu")}
                         >
                           Back
@@ -257,10 +265,11 @@ export function SkillView(props: {
                         <button
                           type="button"
                           classList={{
-                            "px-3 py-1 rounded-lg text-12-medium transition-colors": true,
-                            "bg-text-interactive-base text-white hover:bg-text-interactive-base/90":
+                            "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
+                            "bg-text-interactive-base text-white ring-text-interactive-base/15 hover:bg-text-interactive-base/90":
                               !!importUrl().trim(),
-                            "bg-surface-inset-base text-text-weaker pointer-events-none": !importUrl().trim(),
+                            "bg-surface-inset-base/6 text-text-weaker ring-border-base/35 pointer-events-none":
+                              !importUrl().trim(),
                           }}
                           disabled={!importUrl().trim()}
                           onClick={handleUrlImport}
@@ -286,11 +295,7 @@ export function SkillView(props: {
             />
             <button
               type="button"
-              classList={{
-                "flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium transition-colors": true,
-                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !reloading(),
-                "text-text-weaker pointer-events-none": reloading(),
-              }}
+              class={`${engramActionButtonClass} ${reloading() ? "pointer-events-none text-text-weaker" : ""}`}
               onClick={reloadSkills}
               disabled={reloading()}
             >
@@ -310,7 +315,7 @@ export function SkillView(props: {
 
         <Show when={!skills.loading}>
           <Show when={diagnostics().length > 0}>
-            <div class="mb-3 rounded-2xl border border-border-warning-base/40 bg-surface-warning-base/10 px-4 py-3">
+            <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-[rgba(196,132,36,0.08)] px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
               <button
                 type="button"
                 class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
@@ -331,7 +336,7 @@ export function SkillView(props: {
                 <div class="mt-2 flex flex-col gap-2">
                   <For each={diagnostics()}>
                     {(item) => (
-                      <div class="rounded-xl bg-surface-raised-base/60 px-3 py-2">
+                      <div class={`rounded-[0.95rem] px-3 py-2 ${engramInsetClass}`}>
                         <div class="text-11-medium text-text-strong">{item.name}</div>
                         <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">{item.message}</div>
                         <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
@@ -418,23 +423,27 @@ function SkillCard(props: {
   return (
     <div
       classList={{
-        "flex flex-col rounded-2xl bg-surface-raised-base border border-border-base/30 transition-all cursor-pointer overflow-hidden": true,
-        "bg-surface-raised-base-hover shadow-md shadow-black/[0.08] border-border-base/50": props.expanded,
-        "hover:bg-surface-raised-base-hover hover:border-border-base/50": !props.expanded,
+        [`${engramCardBaseClass} cursor-pointer`]: true,
+        [engramCardExpandedClass]: props.expanded,
+        [engramCardHoverClass]: !props.expanded,
       }}
       onClick={props.onToggle}
     >
-      <div class="p-4 flex flex-col gap-2">
+      <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
           <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug truncate">{props.skill.name}</span>
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="flex shrink-0 items-center gap-1.5">
             <Show when={scopeLabel()}>
-              <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${scopeColor()}`}>{scopeLabel()}</span>
+              <span
+                class={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${scopeColor()}`}
+              >
+                {scopeLabel()}
+              </span>
             </Show>
             <Show when={props.expanded && !props.skill.builtin}>
               <button
                 type="button"
-                class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-text-diff-delete-base hover:bg-surface-raised-base-active transition-colors"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -445,7 +454,7 @@ function SkillCard(props: {
 
         <p
           classList={{
-            "text-12-regular text-text-weak leading-relaxed": true,
+            "text-12-regular leading-relaxed text-text-weak/90": true,
             "line-clamp-2": !props.expanded,
           }}
         >
@@ -453,41 +462,52 @@ function SkillCard(props: {
         </p>
 
         <Show when={props.expanded}>
-          <div class="flex flex-col gap-2 mt-0.5">
+          <div class="mt-0.5 flex flex-col gap-2.5 border-t border-border-base/28 pt-3">
             <Show when={displayLocation()}>
-              <div class="text-11-regular text-text-weaker truncate" title={props.skill.location}>
-                {displayLocation()}
+              <div class={`px-3.5 py-3 ${engramInsetClass}`} title={props.skill.location}>
+                <div class={engramMetaLabelClass}>Location</div>
+                <div class="mt-1 truncate text-11-regular text-text-weaker">{displayLocation()}</div>
               </div>
             </Show>
 
             <Show when={hasResources()}>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <For each={props.skill.scripts ?? []}>
-                  {(script) => (
-                    <span class="px-1.5 py-0.5 rounded-md bg-icon-warning-base/10 text-10-medium text-icon-warning-base">
-                      {script}
-                    </span>
-                  )}
-                </For>
-                <For each={props.skill.references ?? []}>
-                  {(ref) => (
-                    <span class="px-1.5 py-0.5 rounded-md bg-text-interactive-base/10 text-10-medium text-text-interactive-base">
-                      {ref}
-                    </span>
-                  )}
-                </For>
+              <div class={`px-3.5 py-3 ${engramInsetClass}`}>
+                <div class={engramMetaLabelClass}>Resources</div>
+                <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                  <For each={props.skill.scripts ?? []}>
+                    {(script) => (
+                      <span class="rounded-full bg-icon-warning-base/10 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
+                        {script}
+                      </span>
+                    )}
+                  </For>
+                  <For each={props.skill.references ?? []}>
+                    {(ref) => (
+                      <span class="rounded-full bg-text-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+                        {ref}
+                      </span>
+                    )}
+                  </For>
+                </div>
               </div>
             </Show>
           </div>
         </Show>
 
-        <div class="flex items-center justify-end mt-0.5">
-          <Icon
-            name="chevron-down"
-            size="small"
-            class="text-icon-weak transition-transform"
-            classList={{ "rotate-180": props.expanded }}
-          />
+        <div
+          classList={{
+            "mt-0.5 flex items-center justify-end border-t border-border-base/28 pt-2.5": props.expanded,
+            "mt-0.5 flex items-center justify-end": !props.expanded,
+          }}
+        >
+          <span
+            classList={{
+              "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+              "rotate-180 bg-surface-inset-base/5": props.expanded,
+            }}
+          >
+            <Icon name="chevron-down" size="small" />
+          </span>
         </div>
       </div>
     </div>
