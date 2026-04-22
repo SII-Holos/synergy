@@ -121,7 +121,7 @@ function eventHeight(): number {
 
 const TIME_EVENT_COLORS: Record<string, string> = {
   active:
-    "bg-surface-interactive-selected border-l-border-interactive-base shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+    "bg-surface-interactive-selected border-l-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
   paused: "bg-icon-warning-base/20 border-l-icon-warning-base",
   pending: "bg-surface-interactive-selected-weak border-l-border-interactive-base",
   done: "bg-surface-inset-base border-l-text-weaker",
@@ -275,7 +275,7 @@ function NavBar(props: {
     <div class="flex items-center gap-1.5 px-3 py-2 border-b border-border-weaker-base/50 shrink-0">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-lg text-10-medium text-text-interactive-base bg-surface-interactive-selected ring-1 ring-border-interactive-base/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-colors"
+        class="px-2.5 py-1 rounded-lg text-10-medium text-text-interactive-base bg-surface-interactive-selected ring-1 ring-border-interactive-base/35 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-colors"
         onClick={props.onToday}
       >
         Today
@@ -302,7 +302,7 @@ function NavBar(props: {
               type="button"
               classList={{
                 "px-2.5 py-1 rounded-lg text-10-medium transition-all": true,
-                "bg-surface-interactive-selected text-text-interactive-base shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]":
+                "bg-surface-interactive-selected text-text-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
                   props.viewMode === mode,
                 "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
               }}
@@ -348,7 +348,7 @@ function TimeGrid(props: {
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-surface-interactive-solid text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(10,132,255,0.18)]":
+                    "bg-surface-interactive-solid text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(56,88,182,0.16)]":
                       col.isToday,
                     "text-text-strong": !col.isToday,
                   }}

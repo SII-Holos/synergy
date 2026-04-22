@@ -36,9 +36,9 @@ function StatusPill(props: { label: string; tone?: "default" | "success" | "warn
       class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-10-medium"
       classList={{
         "bg-surface-inset-base/70 text-text-weak": !props.tone || props.tone === "default",
-        "bg-emerald-500/10 text-icon-success-base": props.tone === "success",
-        "bg-amber-500/10 text-icon-warning-base": props.tone === "warning",
-        "bg-rose-500/10 text-icon-critical-base": props.tone === "danger",
+        "bg-emerald-500/12 text-icon-success-base": props.tone === "success",
+        "bg-amber-500/12 text-icon-warning-base": props.tone === "warning",
+        "bg-rose-500/9 text-icon-critical-base": props.tone === "danger",
       }}
     >
       {props.label}
@@ -57,7 +57,7 @@ function RequestCardShell(props: {
 }) {
   return (
     <div
-      class="flex items-start gap-3 rounded-[22px] border border-border-base bg-background-base/86 p-3.5 shadow-[0_16px_38px_-32px_color-mix(in_srgb,var(--surface-brand-base)_32%,transparent)] backdrop-blur-xl transition-all"
+      class="flex items-start gap-3 rounded-[22px] border border-border-base/70 bg-background-base/86 p-3.5 shadow-[0_16px_38px_-32px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] backdrop-blur-xl transition-all"
       classList={{
         "opacity-55": props.muted && !props.busy,
         "opacity-45 pointer-events-none": props.busy,
@@ -112,7 +112,7 @@ export function RequestsSection(props: {
   const isLoading = (id: string) => props.loadingIds?.has(id) ?? false
 
   return (
-    <section class="mt-5 rounded-[26px] border border-border-base bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_40%,transparent)] backdrop-blur-xl">
+    <section class="mt-5 rounded-[26px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_28%,transparent)] backdrop-blur-xl">
       <button type="button" class="flex w-full items-center gap-3 text-left" onClick={() => setCollapsed((v) => !v)}>
         <div class="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-surface-brand-base/15 text-text-strong shadow-sm ring-1 ring-border-base/60">
           <Icon name="user-plus" size="small" />

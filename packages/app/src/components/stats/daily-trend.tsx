@@ -33,15 +33,15 @@ const RANGES: { label: string; value: Range }[] = [
   { label: "All", value: "all" },
 ]
 
-const COST_COLOR = "rgba(99, 102, 241, 0.96)"
-const COST_FILL_TOP = "rgba(99, 102, 241, 0.26)"
-const COST_FILL_BOTTOM = "rgba(99, 102, 241, 0.02)"
-const TOKEN_COLOR = "rgba(16, 185, 129, 0.96)"
-const TOKEN_FILL_TOP = "rgba(16, 185, 129, 0.24)"
-const TOKEN_FILL_BOTTOM = "rgba(16, 185, 129, 0.02)"
-const AXIS_TEXT = "rgba(120,120,135,.82)"
-const AXIS_TEXT_STRONG = "rgba(146,146,162,.92)"
-const GRID_COLOR = "rgba(120,120,135,.12)"
+const COST_COLOR = "rgba(56, 88, 182, 0.96)"
+const COST_FILL_TOP = "rgba(56, 88, 182, 0.24)"
+const COST_FILL_BOTTOM = "rgba(56, 88, 182, 0.03)"
+const TOKEN_COLOR = "rgba(39, 143, 116, 0.96)"
+const TOKEN_FILL_TOP = "rgba(39, 143, 116, 0.22)"
+const TOKEN_FILL_BOTTOM = "rgba(39, 143, 116, 0.03)"
+const AXIS_TEXT = "rgba(125,122,118,.84)"
+const AXIS_TEXT_STRONG = "rgba(152,148,144,.94)"
+const GRID_COLOR = "rgba(124,118,110,.14)"
 
 function formatDayLabel(day: string): string {
   return new Date(day).toLocaleDateString("en-US", {
@@ -121,7 +121,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         pointHoverBorderWidth: 3,
         pointHitRadius: 18,
         pointBackgroundColor: COST_COLOR,
-        pointHoverBackgroundColor: "rgba(255,255,255,0.95)",
+        pointHoverBackgroundColor: "rgba(247, 243, 235, 0.96)",
         pointHoverBorderColor: COST_COLOR,
       },
       {
@@ -138,7 +138,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         pointHoverBorderWidth: 3,
         pointHitRadius: 18,
         pointBackgroundColor: TOKEN_COLOR,
-        pointHoverBackgroundColor: "rgba(255,255,255,0.95)",
+        pointHoverBackgroundColor: "rgba(247, 243, 235, 0.96)",
         pointHoverBorderColor: TOKEN_COLOR,
       },
     ],
@@ -164,7 +164,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         intersect: false,
         displayColors: false,
         backgroundColor: "rgba(14, 16, 24, 0.94)",
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: "rgba(215, 205, 192, 0.18)",
         borderWidth: 1,
         padding: 12,
         titleColor: "rgba(247,247,250,0.98)",
@@ -293,7 +293,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         <div class="mb-3 flex flex-wrap gap-2">
           <Show when={peaks().cost}>
             {(peak) => (
-              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-text-base backdrop-blur-sm">
+              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: COST_COLOR }} />
                 <div class="min-w-0">
                   <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest cost</div>
@@ -307,7 +307,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           </Show>
           <Show when={peaks().tokens}>
             {(peak) => (
-              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-text-base backdrop-blur-sm">
+              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: TOKEN_COLOR }} />
                 <div class="min-w-0">
                   <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest volume</div>
@@ -324,7 +324,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         <Show
           when={points().length > 0}
           fallback={
-            <div class="flex h-56 items-center justify-center rounded-xl border border-white/6 bg-black/10 text-12-medium text-text-weak">
+            <div class="flex h-56 items-center justify-center rounded-xl border border-border-base/45 bg-surface-raised-stronger-non-alpha/65 text-12-medium text-text-weak">
               No daily activity yet
             </div>
           }

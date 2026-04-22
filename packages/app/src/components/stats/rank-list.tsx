@@ -49,36 +49,40 @@ const LEGACY_METRIC: RankingMetric = {
 
 const PALETTE = {
   indigo: {
-    tab: "bg-indigo-500/14 text-indigo-200 ring-indigo-400/30",
-    text: "text-indigo-200",
-    badge: "bg-indigo-500/12 text-indigo-200 ring-indigo-400/20",
-    rail: "rgba(99, 102, 241, 0.12)",
-    bar: "linear-gradient(90deg, rgba(99,102,241,0.88), rgba(129,140,248,0.64))",
-    glow: "0 0 0 1px rgba(129,140,248,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
+    tab: "bg-[rgba(56,88,182,0.14)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.28)] dark:text-[rgba(157,183,255,0.92)]",
+    text: "text-[rgba(73,103,194,0.96)] dark:text-[rgba(157,183,255,0.92)]",
+    badge:
+      "bg-[rgba(56,88,182,0.12)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.2)] dark:text-[rgba(157,183,255,0.92)]",
+    rail: "rgba(56, 88, 182, 0.14)",
+    bar: "linear-gradient(90deg, rgba(56,88,182,0.88), rgba(86,118,204,0.62))",
+    glow: "0 0 0 1px rgba(73,103,194,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
   },
   emerald: {
-    tab: "bg-emerald-500/14 text-emerald-200 ring-emerald-400/30",
-    text: "text-emerald-200",
-    badge: "bg-emerald-500/12 text-emerald-200 ring-emerald-400/20",
-    rail: "rgba(16, 185, 129, 0.12)",
-    bar: "linear-gradient(90deg, rgba(16,185,129,0.88), rgba(52,211,153,0.64))",
-    glow: "0 0 0 1px rgba(52,211,153,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
+    tab: "bg-[rgba(39,143,116,0.14)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.26)] dark:text-[rgba(126,213,188,0.92)]",
+    text: "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]",
+    badge:
+      "bg-[rgba(39,143,116,0.12)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.2)] dark:text-[rgba(126,213,188,0.92)]",
+    rail: "rgba(39, 143, 116, 0.14)",
+    bar: "linear-gradient(90deg, rgba(39,143,116,0.88), rgba(72,175,144,0.62))",
+    glow: "0 0 0 1px rgba(39,143,116,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
   },
   amber: {
-    tab: "bg-amber-500/14 text-amber-100 ring-amber-400/30",
-    text: "text-amber-100",
-    badge: "bg-amber-500/12 text-amber-100 ring-amber-400/20",
-    rail: "rgba(245, 158, 11, 0.12)",
-    bar: "linear-gradient(90deg, rgba(245,158,11,0.9), rgba(251,191,36,0.66))",
-    glow: "0 0 0 1px rgba(251,191,36,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
+    tab: "bg-[rgba(196,132,36,0.14)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.28)] dark:text-[rgba(245,202,134,0.92)]",
+    text: "text-[rgba(155,103,26,0.96)] dark:text-[rgba(245,202,134,0.92)]",
+    badge:
+      "bg-[rgba(196,132,36,0.12)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.2)] dark:text-[rgba(245,202,134,0.92)]",
+    rail: "rgba(196, 132, 36, 0.14)",
+    bar: "linear-gradient(90deg, rgba(196,132,36,0.9), rgba(222,168,84,0.64))",
+    glow: "0 0 0 1px rgba(196,132,36,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
   },
   rose: {
-    tab: "bg-rose-500/14 text-rose-200 ring-rose-400/30",
-    text: "text-rose-200",
-    badge: "bg-rose-500/12 text-rose-200 ring-rose-400/20",
-    rail: "rgba(244, 63, 94, 0.12)",
-    bar: "linear-gradient(90deg, rgba(244,63,94,0.88), rgba(251,113,133,0.64))",
-    glow: "0 0 0 1px rgba(251,113,133,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
+    tab: "bg-[rgba(163,92,68,0.14)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.24)] dark:text-[rgba(236,176,156,0.9)]",
+    text: "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]",
+    badge:
+      "bg-[rgba(163,92,68,0.12)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.18)] dark:text-[rgba(236,176,156,0.9)]",
+    rail: "rgba(163, 92, 68, 0.13)",
+    bar: "linear-gradient(90deg, rgba(163,92,68,0.86), rgba(196,125,102,0.6))",
+    glow: "0 0 0 1px rgba(163,92,68,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
   },
 } satisfies Record<
   RankingMetric["color"],
@@ -172,7 +176,7 @@ export function RankList(props: RankListProps) {
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <section class="mt-5 rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+      <section class="mt-5 rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
         <div class="flex items-start justify-between gap-4 px-1 pb-3">
           <div class="min-w-0">
             <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Ranking</div>
@@ -195,8 +199,8 @@ export function RankList(props: RankListProps) {
                   type="button"
                   class={`rounded-full px-2.5 py-1.5 text-10-medium ring-1 ring-inset transition-all ${
                     isActive()
-                      ? `${PALETTE[metric.color].tab} shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]`
-                      : "bg-surface-inset-base/65 text-text-weak ring-white/6 hover:bg-surface-inset-base hover:text-text-base"
+                      ? `${PALETTE[metric.color].tab} shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]`
+                      : "bg-surface-inset-base/65 text-text-weak ring-border-base/45 hover:bg-surface-inset-base hover:text-text-base"
                   }`}
                   onClick={() => setState({ activeMetricID: metric.id, expanded: false })}
                 >
@@ -231,7 +235,7 @@ export function RankList(props: RankListProps) {
 
                 return (
                   <article
-                    class="rounded-xl bg-surface-inset-base/45 px-3.5 py-3 ring-1 ring-inset ring-white/6"
+                    class="rounded-xl bg-surface-inset-base/45 px-3.5 py-3 ring-1 ring-inset ring-border-base/45"
                     style={{
                       animation: `rankListEnter 0.32s ease-out ${index() * 34}ms both`,
                       "box-shadow": palette().glow,
@@ -274,7 +278,7 @@ export function RankList(props: RankListProps) {
                           <div class="mt-3 flex flex-wrap gap-1.5">
                             <For each={secondaryMetrics()}>
                               {(metric) => (
-                                <span class="rounded-full bg-black/10 px-2 py-1 text-[9px] font-medium tabular-nums text-text-weak ring-1 ring-inset ring-white/6">
+                                <span class="rounded-full bg-surface-raised-stronger-non-alpha/70 px-2 py-1 text-[9px] font-medium tabular-nums text-text-weak ring-1 ring-inset ring-border-base/45">
                                   {metric.label} {formatMetricValue(metric, row.values[metric.id] ?? 0, "compact")}
                                 </span>
                               )}
@@ -294,7 +298,7 @@ export function RankList(props: RankListProps) {
           <div class="mt-3 flex justify-center">
             <button
               type="button"
-              class="rounded-full bg-surface-inset-base/65 px-3 py-1.5 text-10-medium text-text-weak ring-1 ring-inset ring-white/6 transition-colors hover:bg-surface-inset-base hover:text-text-base"
+              class="rounded-full bg-surface-inset-base/65 px-3 py-1.5 text-10-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-inset-base hover:text-text-base"
               onClick={() => setState("expanded", (expanded) => !expanded)}
             >
               {state.expanded ? `Show top ${top()}` : `Show all ${sortedRows().length}`}

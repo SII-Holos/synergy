@@ -56,7 +56,7 @@ export function FriendsSection(props: {
       </div>
 
       <Show when={props.contacts.length > 3 || props.search}>
-        <div class="rounded-[24px] border border-border-base bg-background-base/88 p-3 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_34%,transparent)] backdrop-blur-xl">
+        <div class="rounded-[24px] border border-border-base/70 bg-background-base/88 p-3 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] backdrop-blur-xl">
           <Panel.Search value={props.search} onInput={props.onSearch} placeholder="Search contacts..." />
         </div>
       </Show>
@@ -110,7 +110,7 @@ function ContactCard(props: {
 
   return (
     <div
-      class="group relative flex flex-col overflow-hidden rounded-[24px] border border-border-base bg-background-base/88 p-4 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_34%,transparent)] backdrop-blur-xl transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-background-base hover:shadow-[0_20px_48px_-32px_color-mix(in_srgb,var(--surface-brand-base)_44%,transparent)] active:scale-[0.995]"
+      class="group relative flex flex-col overflow-hidden rounded-[24px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] backdrop-blur-xl transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-background-base hover:shadow-[0_20px_48px_-32px_color-mix(in_srgb,var(--surface-brand-base)_32%,transparent)] active:scale-[0.995]"
       style={{
         animation: "contactFadeUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
         "animation-delay": `${props.delay}ms`,
@@ -127,7 +127,7 @@ function ContactCard(props: {
         }
       }}
     >
-      <div class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-surface-brand-base/12 to-transparent" />
+      <div class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-surface-brand-base/8 to-transparent" />
 
       <div class="relative flex items-start gap-3">
         <div class="relative shrink-0">
@@ -155,8 +155,9 @@ function ContactCard(props: {
                 <span
                   class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-10-medium"
                   classList={{
-                    "bg-emerald-500/10 text-icon-success-base": status() === "online",
-                    "bg-surface-inset-base/70 text-text-weak": status() !== "online",
+                    "bg-emerald-500/12 text-icon-success-base": status() === "online",
+                    "bg-surface-inset-base/70 text-text-weak ring-1 ring-inset ring-border-base/45":
+                      status() !== "online",
                   }}
                 >
                   <span
@@ -169,7 +170,7 @@ function ContactCard(props: {
                   {presenceLabel(status())}
                 </span>
                 <Show when={props.contact.holosId}>
-                  <span class="inline-flex max-w-full items-center rounded-full bg-surface-inset-base/70 px-2.5 py-1 font-mono text-[10px] text-text-subtle">
+                  <span class="inline-flex max-w-full items-center rounded-full bg-surface-inset-base/70 px-2.5 py-1 font-mono text-[10px] text-text-subtle ring-1 ring-inset ring-border-base/45">
                     {(props.contact.holosId ?? "").slice(0, 8)}…
                   </span>
                 </Show>
@@ -178,7 +179,7 @@ function ContactCard(props: {
 
             <DropdownMenu onOpenChange={setMenuOpen}>
               <DropdownMenu.Trigger
-                class="flex items-center justify-center size-8 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
+                class="flex items-center justify-center size-8 rounded-full border border-border-base/70 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <Icon name="ellipsis" size="small" />
@@ -292,7 +293,7 @@ function ContactCard(props: {
               </span>
             </Show>
             <Show when={isBlocked()}>
-              <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-10-medium text-icon-critical-base">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/9 px-2.5 py-1 text-10-medium text-icon-critical-base ring-1 ring-inset ring-rose-400/15">
                 <Icon name="x" size="small" />
                 Blocked
               </span>
@@ -310,7 +311,7 @@ function ContactCard(props: {
           <Icon name="message-circle" size="small" />
           Open conversation
         </span>
-        <span class="inline-flex items-center justify-center size-7 rounded-full bg-surface-inset-base/70 text-icon-weak transition-all group-hover:bg-surface-raised-base-hover group-hover:text-icon-base">
+        <span class="inline-flex items-center justify-center size-7 rounded-full bg-surface-inset-base/70 text-icon-weak ring-1 ring-inset ring-border-base/45 transition-all group-hover:bg-surface-raised-base-hover group-hover:text-icon-base">
           <Icon name="chevron-right" size="small" />
         </span>
       </div>

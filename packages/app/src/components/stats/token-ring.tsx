@@ -15,19 +15,19 @@ type Segment = {
 }
 
 const SEGMENTS: Segment[] = [
-  { key: "input", label: "Input", color: "rgba(99, 102, 241, 0.9)" },
-  { key: "output", label: "Output", color: "rgba(16, 185, 129, 0.9)" },
-  { key: "reasoning", label: "Reasoning", color: "rgba(245, 158, 11, 0.9)" },
+  { key: "input", label: "Input", color: "rgba(56, 88, 182, 0.9)" },
+  { key: "output", label: "Output", color: "rgba(39, 143, 116, 0.9)" },
+  { key: "reasoning", label: "Reasoning", color: "rgba(196, 132, 36, 0.9)" },
   {
     key: "cacheRead",
     label: "Cache read",
-    color: "rgba(139, 92, 246, 0.9)",
+    color: "rgba(72, 118, 164, 0.88)",
     note: "Prompt tokens reused from cache",
   },
   {
     key: "cacheWrite",
     label: "Cache write",
-    color: "rgba(236, 72, 153, 0.9)",
+    color: "rgba(102, 147, 102, 0.88)",
     note: "Prompt tokens stored for reuse",
   },
 ]
@@ -79,8 +79,8 @@ function Connector(props: { color: string; side: "left" | "right" }) {
         style={{
           background:
             props.side === "left"
-              ? `linear-gradient(to right, rgba(255,255,255,0.06), ${props.color})`
-              : `linear-gradient(to left, rgba(255,255,255,0.06), ${props.color})`,
+              ? `linear-gradient(to right, rgba(198,186,170,0.08), ${props.color})`
+              : `linear-gradient(to left, rgba(198,186,170,0.08), ${props.color})`,
         }}
       />
       <span
@@ -98,7 +98,7 @@ function Callout(props: { align: "left" | "right"; segment: Segment & { value: n
     <div class={`flex items-center gap-3 ${isLeft() ? "justify-end" : "justify-start"}`}>
       {isLeft() ? null : <Connector color={props.segment.color} side="right" />}
       <div
-        class={`min-w-0 flex-1 rounded-2xl bg-surface-inset-base/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${
+        class={`min-w-0 flex-1 rounded-2xl bg-surface-inset-base/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] ${
           isLeft() ? "text-right" : "text-left"
         }`}
       >
@@ -143,8 +143,8 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
         data: segmentData().map((segment) => segment.value),
         backgroundColor: segmentData().map((segment) => segment.color),
         borderWidth: 3,
-        borderColor: "rgba(15, 23, 42, 0.35)",
-        hoverBorderColor: "rgba(255, 255, 255, 0.12)",
+        borderColor: "rgba(41, 49, 73, 0.3)",
+        hoverBorderColor: "rgba(214, 203, 189, 0.18)",
         spacing: 4,
       },
     ],
@@ -188,7 +188,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
           </div>
 
           <div class="order-1 flex justify-center lg:order-2">
-            <div class="relative rounded-full bg-surface-inset-base/35 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_30px_rgba(15,23,42,0.12)]">
+            <div class="relative rounded-full bg-surface-inset-base/35 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_12px_30px_rgba(28,34,48,0.12)]">
               <div class="relative h-40 w-40 sm:h-44 sm:w-44">
                 <Doughnut data={chartData()} options={chartOptions()} />
                 <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7 text-center">

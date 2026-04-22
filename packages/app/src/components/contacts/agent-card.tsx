@@ -32,7 +32,7 @@ function statusChipTone(status: string, needsLogin: boolean): string {
   if (status === "connecting") {
     return "bg-amber-500/14 text-icon-warning-base ring-amber-400/20"
   }
-  return "bg-surface-raised-stronger-non-alpha text-text-weak ring-white/8"
+  return "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/50"
 }
 
 export function AgentCard(props: {
@@ -64,15 +64,15 @@ export function AgentCard(props: {
 
   return (
     <div
-      class="overflow-hidden rounded-[1.15rem] bg-surface-inset-base/45 p-3 ring-1 ring-inset ring-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all"
+      class="overflow-hidden rounded-[1.15rem] bg-surface-inset-base/45 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-all"
       style={{ animation: "contactFadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
     >
       <Show
         when={!props.isGuest && props.profile}
         fallback={
-          <div class="flex flex-col gap-4 rounded-[1rem] bg-surface-raised-base/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+          <div class="flex flex-col gap-4 rounded-[1rem] bg-surface-raised-base/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.09),inset_0_-1px_0_rgba(24,28,38,0.04)]">
             <div class="flex items-start gap-3">
-              <div class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-surface-raised-stronger-non-alpha ring-1 ring-inset ring-white/8 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+              <div class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-surface-raised-stronger-non-alpha ring-1 ring-inset ring-border-base/50 shadow-[0_12px_30px_rgba(28,34,48,0.08)]">
                 <Icon name="globe" size="normal" class="text-icon-weak" />
               </div>
               <div class="min-w-0 flex-1">
@@ -95,10 +95,10 @@ export function AgentCard(props: {
         }
       >
         {(profile) => (
-          <div class="rounded-[1rem] bg-surface-raised-base/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+          <div class="rounded-[1rem] bg-surface-raised-base/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.09),inset_0_-1px_0_rgba(24,28,38,0.04)]">
             <div class="flex items-start gap-3.5">
               <div class="relative shrink-0">
-                <div class="rounded-[1.1rem] bg-surface-raised-stronger-non-alpha p-1 ring-1 ring-inset ring-white/8 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
+                <div class="rounded-[1.1rem] bg-surface-raised-stronger-non-alpha p-1 ring-1 ring-inset ring-border-base/50 shadow-[0_14px_36px_rgba(28,34,48,0.12)]">
                   <Avatar fallback={profile().name} size="large" class="size-12 rounded-[0.95rem] overflow-hidden" />
                 </div>
                 <div
@@ -163,7 +163,7 @@ export function AgentCard(props: {
 
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <Show when={props.agentId}>
-                    <div class="inline-flex max-w-full items-center rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-white/8">
+                    <div class="inline-flex max-w-full items-center rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/50">
                       <span class="mr-1.5 text-text-weaker/70">ID</span>
                       <span class="truncate font-mono text-text-weak">{truncateId(props.agentId ?? "")}</span>
                     </div>
@@ -183,7 +183,7 @@ export function AgentCard(props: {
                   <Show when={canReconnect()}>
                     <button
                       type="button"
-                      class="inline-flex h-7 items-center rounded-full bg-surface-raised-stronger-non-alpha px-3 text-10-medium text-text-base ring-1 ring-inset ring-white/8 transition-all hover:bg-surface-raised-base-hover disabled:opacity-60"
+                      class="inline-flex h-7 items-center rounded-full bg-surface-raised-stronger-non-alpha px-3 text-10-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-all hover:bg-surface-raised-base-hover disabled:opacity-60"
                       onClick={props.onReconnect}
                       disabled={props.reconnecting}
                     >
@@ -193,7 +193,7 @@ export function AgentCard(props: {
                 </div>
 
                 <Show when={profile().bio}>
-                  <div class="mt-3 rounded-xl bg-surface-inset-base/50 px-3 py-2.5 text-11-regular leading-relaxed text-text-weak shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                  <div class="mt-3 rounded-xl bg-surface-inset-base/50 px-3 py-2.5 text-11-regular leading-relaxed text-text-weak shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
                     {profile().bio}
                   </div>
                 </Show>

@@ -6,7 +6,7 @@ import { StatsSection } from "@/components/stats/stats-section"
 function capabilityTone(status: "available" | "locked" | "degraded" | "unknown") {
   if (status === "locked") return "text-icon-critical-base bg-rose-500/12 ring-rose-400/18"
   if (status === "degraded") return "text-icon-warning-base bg-amber-500/12 ring-amber-400/18"
-  return "text-text-weak bg-surface-raised-stronger-non-alpha ring-white/8"
+  return "text-text-weak bg-surface-raised-stronger-non-alpha ring-border-base/50"
 }
 
 function quotaTone(percent: number | null) {
@@ -44,7 +44,7 @@ export function HubView(props: {
 
   return (
     <>
-      <section class="rounded-[1.35rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+      <section class="rounded-[1.35rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
         <AgentCard
           profile={props.profile}
           agentId={props.agentId}
@@ -61,9 +61,9 @@ export function HubView(props: {
         />
 
         <Show when={!props.isGuest && props.profile}>
-          <div class="mt-3 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <div class="mt-3 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
             <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
-              <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+              <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Capabilities</div>
@@ -71,7 +71,7 @@ export function HubView(props: {
                       {allReady() ? "All systems available" : `${issueItems().length} needs attention`}
                     </div>
                   </div>
-                  <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-white/8">
+                  <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/50">
                     {props.capabilityItems.length} total
                   </div>
                 </div>
@@ -99,7 +99,7 @@ export function HubView(props: {
               </div>
 
               <Show when={showQuota()}>
-                <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.03)]">
+                <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Quota</div>
@@ -116,7 +116,7 @@ export function HubView(props: {
                   </div>
 
                   <Show when={quotaPercent() != null}>
-                    <div class="mt-3 h-2 rounded-full bg-surface-inset-base/65 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                    <div class="mt-3 h-2 rounded-full bg-surface-inset-base/65 p-0.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
                       <div
                         class={`h-full rounded-full transition-all duration-500 ${quotaTone(quotaPercent())}`}
                         style={{ width: `${quotaPercent()}%` }}

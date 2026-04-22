@@ -15,13 +15,13 @@ const HEATMAP_STYLE = `
 }
 `
 
-const LEVEL_COLORS = ["rgba(120, 130, 120, 0.14)", "#193d2b", "#25663f", "#2f8b4f", "#52b46f"] as const
+const LEVEL_COLORS = ["rgba(128, 120, 108, 0.13)", "#214438", "#2b6a58", "#338472", "#4fa08a"] as const
 const LEVEL_BORDERS = [
-  "rgba(255,255,255,0.04)",
-  "rgba(93, 188, 123, 0.16)",
-  "rgba(101, 206, 133, 0.24)",
-  "rgba(114, 224, 147, 0.3)",
-  "rgba(140, 242, 171, 0.38)",
+  "rgba(182,170,154,0.08)",
+  "rgba(78, 145, 121, 0.18)",
+  "rgba(86, 163, 136, 0.24)",
+  "rgba(96, 181, 152, 0.3)",
+  "rgba(122, 204, 174, 0.36)",
 ] as const
 const WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""] as const
 const RANGES = [
@@ -137,8 +137,8 @@ export function ActivityHeatmap(props: { days: StatsSnapshot["timeSeries"]["days
                                       animation: `heatmapCellEnter 320ms cubic-bezier(0.22, 1, 0.36, 1) ${(weekIndex() * 7 + dayIndex()) * 12}ms both`,
                                       "box-shadow":
                                         value().level > 0
-                                          ? "inset 0 1px 0 rgba(255,255,255,0.08)"
-                                          : "inset 0 1px 0 rgba(255,255,255,0.03)",
+                                          ? "inset 0 1px 0 rgba(214,204,190,0.1)"
+                                          : "inset 0 1px 0 rgba(214,204,190,0.05)",
                                     }}
                                     title={value().dateLabel}
                                   />

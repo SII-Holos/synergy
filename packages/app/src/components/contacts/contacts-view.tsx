@@ -101,12 +101,12 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
 
   return (
     <section
-      class="rounded-[26px] border border-border-base bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_40%,transparent)] backdrop-blur-xl"
+      class="rounded-[26px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_28%,transparent)] backdrop-blur-xl"
       style={{ animation: "contactFadeUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
     >
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-10-medium uppercase tracking-[0.14em] text-text-weak">
+          <div class="inline-flex items-center gap-1.5 rounded-full border border-border-base/70 bg-surface-raised-stronger-non-alpha px-3 py-1 text-10-medium uppercase tracking-[0.14em] text-text-weak">
             <Icon name="user-plus" size="small" />
             New contact
           </div>
@@ -159,7 +159,7 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
 
       <Show when={preview()}>
         {(p) => (
-          <div class="mt-4 rounded-[22px] border border-border-base/70 bg-surface-raised-stronger-non-alpha p-3.5">
+          <div class="mt-4 rounded-[22px] border border-border-base/60 bg-surface-raised-stronger-non-alpha p-3.5">
             <div class="flex items-start gap-3">
               <Avatar
                 fallback={p().name || "?"}
@@ -183,7 +183,7 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
       </Show>
 
       <Show when={error()}>
-        <div class="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/8 px-3 py-2.5 text-12-regular text-text-diff-delete-base">
+        <div class="mt-4 rounded-2xl border border-rose-500/16 bg-rose-500/7 px-3 py-2.5 text-12-regular text-text-diff-delete-base">
           {error()}
         </div>
       </Show>
@@ -311,10 +311,10 @@ export function ContactsView() {
       }
     >
       <div class="flex flex-col gap-4 pb-2">
-        <section class="rounded-[26px] border border-border-base bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_40%,transparent)] backdrop-blur-xl">
+        <section class="rounded-[26px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_28%,transparent)] backdrop-blur-xl">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-10-medium uppercase tracking-[0.14em] text-text-weak">
+              <div class="inline-flex items-center gap-1.5 rounded-full border border-border-base/70 bg-surface-raised-stronger-non-alpha px-3 py-1 text-10-medium uppercase tracking-[0.14em] text-text-weak">
                 <Icon name="users" size="small" />
                 Holos network
               </div>
@@ -325,7 +325,7 @@ export function ContactsView() {
             </div>
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-full border border-border-base bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98]"
+              class="inline-flex items-center gap-2 rounded-full border border-border-base/70 bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98]"
               onClick={() => setShowAddFriend((v) => !v)}
             >
               <Icon name={showAddFriend() ? "x" : "user-plus"} size="small" />
