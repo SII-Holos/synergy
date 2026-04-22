@@ -24,9 +24,8 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
       // If the PID was reused, the new process will have a different starttime.
       const fs = await import("fs/promises")
       const stat = await fs.readFile(`/proc/${pid}/stat`, "utf-8")
-      const fields = stat.split(" ")
-      const currentStarttime = parseInt(fields[21], 10)
-      if (isNaN(currentStarttime)) return false
+      const currentStarttime = parseProcStatStarttime(stat)
+      if (currentStarttime === undefined) return false
       return currentStarttime === starttimeJiffies
     }
     // On non-Linux, fall back to just checking if the process exists
@@ -35,6 +34,19 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
   } catch {
     return false
   }
+}
+
+// Parse starttime (field 22) from /proc/<pid>/stat output.
+// Field 2 (comm) is parenthesized and may contain spaces, so we
+// split from the last ')' rather than naively splitting on spaces.
+function parseProcStatStarttime(stat: string): number | undefined {
+  const lastParen = stat.lastIndexOf(")")
+  if (lastParen === -1) return undefined
+  const afterComm = stat.slice(lastParen + 2).trim()
+  const fields = afterComm.split(" ")
+  // After comm, starttime is at index 19 (0-indexed)
+  const starttime = parseInt(fields[19], 10)
+  return isNaN(starttime) ? undefined : starttime
 }
 
 export const RestartCommand = cmd({

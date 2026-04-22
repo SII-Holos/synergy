@@ -39,6 +39,22 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   // as the parent, regardless of SYNERGY_CWD or later chdir() calls.
   const parentCwd = process.cwd()
 
+  // Parse starttime (field 22) from /proc/<pid>/stat output.
+  // Field 2 (comm) is parenthesized and may contain spaces, so we
+  // split from the last ')' rather than naively splitting on spaces.
+  function parseProcStatStarttime(stat: string): number | undefined {
+    const lastParen = stat.lastIndexOf(")")
+    if (lastParen === -1) return undefined
+    const afterComm = stat.slice(lastParen + 2).trim()
+    const fields = afterComm.split(" ")
+    // After comm, fields are: state, ppid, pgrp, session, tty_nr, tpgid,
+    // flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime,
+    // cstime, priority, nice, num_threads, itrealvalue, starttime (field 22)
+    // That's field index 19 in the afterComm split (0-indexed)
+    const starttime = parseInt(fields[19], 10)
+    return isNaN(starttime) ? undefined : starttime
+  }
+
   let shuttingDown = false
   let devRestartRequested = false
   let crashCount = 0
@@ -67,8 +83,8 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
       if (process.platform === "linux") {
         try {
           const selfStat = await Bun.file("/proc/self/stat").text()
-          const fields = selfStat.split(" ")
-          identity.starttimeJiffies = parseInt(fields[21], 10)
+          const starttime = parseProcStatStarttime(selfStat)
+          if (starttime !== undefined) identity.starttimeJiffies = starttime
         } catch {}
       }
       await Bun.write(devPidFile, JSON.stringify(identity))
@@ -99,6 +115,8 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     if (shuttingDown) return
     devRestartRequested = true
     log.info("received SIGUSR1, restarting server")
+    // Abort backoff sleep so the watchdog respawns immediately
+    abortController.abort()
     if (child) {
       try {
         child.kill("SIGTERM")
@@ -239,9 +257,22 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         }),
       ])
     } catch {
-      // sleep was aborted by shutdown signal
+      // sleep was aborted — by shutdown or by SIGUSR1/restart flag
     }
     abortController = new AbortController()
+
+    // If a restart was requested during backoff, skip to respawn immediately.
+    // The previous child exit was caused by the restart, not a crash —
+    // remove the crash entry we already pushed.
+    if (devRestartRequested) {
+      devRestartRequested = false
+      // Undo the crash entry we pushed before the sleep
+      if (crashStartTime.length > 0 && crashStartTime[crashStartTime.length - 1] === childStartTime) {
+        crashStartTime.pop()
+      }
+      log.info("restart requested during backoff, respawning immediately")
+      continue
+    }
 
     // Check for restart flag file as a fallback (e.g., flag written
     // while child was already exiting, or during backoff sleep)

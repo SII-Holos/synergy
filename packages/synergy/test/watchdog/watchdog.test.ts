@@ -36,10 +36,10 @@ describe("dev watchdog shutdown during backoff", () => {
 
     // After the catch block for the aborted sleep, there should be
     // a check of shuttingDown before falling through to respawn
-    const afterSleepCatch = source.substring(source.indexOf("sleep was aborted by shutdown signal"))
+    const afterSleepCatch = source.substring(source.indexOf("sleep was aborted"))
 
     // The next significant code after the catch should check shuttingDown
-    const nextLines = afterSleepCatch.substring(0, 1000)
+    const nextLines = afterSleepCatch.substring(0, 2000)
 
     // Should contain a check like: if (shuttingDown) { ... process.exit }
     // before respawning
@@ -239,18 +239,16 @@ describe("PID file identity token", () => {
     expect(usesDerivedClkTck).toBe(false)
   })
 
-  test("verifyWatchdogIdentity should compare starttimeJiffies directly from /proc/<pid>/stat", () => {
+  test("verifyWatchdogIdentity should parse /proc/<pid>/stat correctly (handle comm with spaces)", () => {
     const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
 
-    // The correct approach: store starttimeJiffies (field 22 of /proc/self/stat)
-    // in the PID file at startup, then compare it with the current value from
-    // /proc/<pid>/stat. If the PID was reused, the starttime will differ.
-    // No need for CLK_TCK or /proc/uptime.
-    const comparesJiffies = /starttimeJiffies/.test(restartSource)
-    const readsProcStat = /proc\/\$\{pid\}\/stat/.test(restartSource)
+    // Must NOT use naive fields[21] which breaks when comm contains spaces.
+    // Instead, should find last ')' and parse from there.
+    const usesNaiveSplit = /fields\[21\]/.test(restartSource)
+    const usesLastParen = /lastIndexOf/.test(restartSource) && /lastParen/.test(restartSource)
 
-    expect(comparesJiffies).toBe(true)
-    expect(readsProcStat).toBe(true)
+    expect(usesNaiveSplit).toBe(false)
+    expect(usesLastParen).toBe(true)
   })
 })
 
