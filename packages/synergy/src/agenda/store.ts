@@ -8,6 +8,7 @@ import { Bus } from "../bus"
 import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
+import { Session } from "../session"
 
 export namespace AgendaStore {
   const log = Log.create({ service: "agenda.store" })
@@ -237,6 +238,134 @@ export namespace AgendaStore {
     const runs = results.filter((run): run is AgendaTypes.RunLog => run !== undefined)
     runs.sort((a, b) => b.time.started - a.time.started)
     return runs
+  }
+
+  async function getSessionSummary(sessionID: string): Promise<AgendaTypes.ActivitySession | undefined> {
+    const indexed = await Storage.read<{ scopeID: string }>(
+      StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
+    ).catch(() => undefined)
+    if (!indexed) return undefined
+    const session = await Storage.read<Session.Info>(
+      StoragePath.sessionInfo(Identifier.asScopeID(indexed.scopeID), Identifier.asSessionID(sessionID)),
+    ).catch(() => undefined)
+    if (!session) return undefined
+    return {
+      id: session.id,
+      scopeID: indexed.scopeID,
+      title: session.title,
+      time: {
+        created: session.time.created,
+        updated: session.time.updated,
+        archived: session.time.archived,
+      },
+    }
+  }
+
+  function toActivityAgenda(item: AgendaTypes.Item, scopeID: string): AgendaTypes.ActivityAgenda {
+    return {
+      id: item.id,
+      scopeID,
+      title: item.title,
+      description: item.description,
+      status: item.status,
+      tags: item.tags,
+      global: item.global,
+      time: {
+        created: item.time.created,
+        updated: item.time.updated,
+      },
+    }
+  }
+
+  function matchesActivityQuery(
+    run: AgendaTypes.RunLog,
+    item: AgendaTypes.Item,
+    session: AgendaTypes.ActivitySession | undefined,
+    query: string | undefined,
+  ) {
+    if (!query) return true
+    const needle = query.trim().toLowerCase()
+    if (!needle) return true
+    const haystacks = [
+      item.id,
+      item.title,
+      item.description,
+      ...(item.tags ?? []),
+      run.id,
+      run.status,
+      run.trigger.type,
+      run.trigger.source,
+      run.sessionID,
+      run.error,
+      session?.id,
+      session?.title,
+    ]
+    return haystacks.some((value) => value?.toLowerCase().includes(needle))
+  }
+
+  export async function listActivity(input?: {
+    scopeID?: string
+    itemID?: string
+    query?: string
+    offset?: number
+    limit?: number
+  }): Promise<AgendaTypes.ActivityPage> {
+    const offset = input?.offset ?? 0
+    const limit = input?.limit ?? 50
+    const items = input?.itemID
+      ? [await find(input.itemID)]
+      : input?.scopeID
+        ? (await listForScope(input.scopeID)).map((item) => ({
+            item,
+            scopeID: Identifier.asScopeID(item.global ? "global" : item.origin.scope.id),
+          }))
+        : (await listAll()).map((item) => ({
+            item,
+            scopeID: Identifier.asScopeID(item.global ? "global" : item.origin.scope.id),
+          }))
+
+    const allRuns = await Promise.all(
+      items.map(async ({ item, scopeID }) => {
+        const runs = await listRuns(scopeID, item.id)
+        return runs.map((run) => ({ run, item, scopeID }))
+      }),
+    )
+
+    const sessionIDs = [
+      ...new Set(
+        allRuns
+          .flat()
+          .map(({ run }) => run.sessionID)
+          .filter((value): value is string => !!value),
+      ),
+    ]
+    const sessions = new Map<string, AgendaTypes.ActivitySession>()
+    await Promise.all(
+      sessionIDs.map(async (sessionID) => {
+        const session = await getSessionSummary(sessionID)
+        if (session) sessions.set(sessionID, session)
+      }),
+    )
+
+    const filtered = allRuns
+      .flat()
+      .filter(({ run, item }) =>
+        matchesActivityQuery(run, item, run.sessionID ? sessions.get(run.sessionID) : undefined, input?.query),
+      )
+      .sort((a, b) => b.run.time.started - a.run.time.started)
+
+    const page = filtered.slice(offset, offset + limit)
+    return {
+      items: page.map(({ run, item, scopeID }) => ({
+        run,
+        agenda: toActivityAgenda(item, scopeID),
+        session: run.sessionID ? sessions.get(run.sessionID) : undefined,
+      })),
+      total: filtered.length,
+      limit,
+      offset,
+      hasMore: offset + page.length < filtered.length,
+    }
   }
 
   export async function loadActive(): Promise<AgendaTypes.Item[]> {

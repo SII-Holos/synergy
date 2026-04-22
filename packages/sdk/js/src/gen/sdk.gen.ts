@@ -11,6 +11,8 @@ import {
 import type {
   AgendaActivateErrors,
   AgendaActivateResponses,
+  AgendaActivityErrors,
+  AgendaActivityResponses,
   AgendaCancelErrors,
   AgendaCancelResponses,
   AgendaCompleteErrors,
@@ -396,6 +398,46 @@ export class Agenda extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "token" }] }])
     return (options?.client ?? this.client).post<AgendaWebhookResponses, AgendaWebhookErrors, ThrowOnError>({
       url: "/agenda/webhook/{token}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Browse agenda activity
+   *
+   * Browse agenda execution activity with pagination, optional search, and agenda/session metadata.
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      itemID?: string
+      query?: string
+      search?: string
+      offset?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "itemID" },
+            { in: "query", key: "query" },
+            { in: "query", key: "search" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AgendaActivityResponses, AgendaActivityErrors, ThrowOnError>({
+      url: "/agenda/activity",
       ...options,
       ...params,
     })

@@ -2694,6 +2694,37 @@ export type MemoryInfo = {
   updatedAt: number
 }
 
+export type AgendaActivityAgenda = {
+  id: string
+  /**
+   * Scope that owns the agenda item
+   */
+  scopeID: string
+  title: string
+  description?: string
+  status: "pending" | "active" | "paused" | "done" | "cancelled"
+  tags?: Array<string>
+  global: boolean
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type AgendaActivitySession = {
+  id: string
+  /**
+   * Scope that owns the session
+   */
+  scopeID: string
+  title: string
+  time: {
+    created: number
+    updated: number
+    archived?: number
+  }
+}
+
 export type AgendaSessionList = Array<{
   sessionID: string
   scopeID: string
@@ -2729,6 +2760,20 @@ export type AgendaRunLog = {
     started: number
     completed?: number
   }
+}
+
+export type AgendaActivityEntry = {
+  run: AgendaRunLog
+  agenda: AgendaActivityAgenda
+  session?: AgendaActivitySession
+}
+
+export type AgendaActivityPage = {
+  items: Array<AgendaActivityEntry>
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
 }
 
 export type AgendaTriggerResult = {
@@ -7233,6 +7278,57 @@ export type EngramListResponses = {
 }
 
 export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+
+export type AgendaActivityData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Limit activity to this scope (includes global items when provided)
+     */
+    scopeID?: string
+    /**
+     * Limit activity to a specific agenda item
+     */
+    itemID?: string
+    /**
+     * Optional case-insensitive text search across item, run, and session metadata
+     */
+    query?: string
+    /**
+     * Alias for query
+     */
+    search?: string
+    /**
+     * Page offset
+     */
+    offset?: number
+    /**
+     * Page size
+     */
+    limit?: number
+  }
+  url: "/agenda/activity"
+}
+
+export type AgendaActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AgendaActivityError = AgendaActivityErrors[keyof AgendaActivityErrors]
+
+export type AgendaActivityResponses = {
+  /**
+   * Paginated agenda activity
+   */
+  200: AgendaActivityPage
+}
+
+export type AgendaActivityResponse = AgendaActivityResponses[keyof AgendaActivityResponses]
 
 export type AgendaSessionsData = {
   body?: never

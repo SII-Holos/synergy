@@ -3,10 +3,45 @@ import type { HolosState, HolosProfile } from "@ericsanchezok/synergy-sdk"
 import { AgentCard } from "./agent-card"
 import { StatsSection } from "@/components/stats/stats-section"
 
-function capabilityTone(status: "available" | "locked" | "degraded" | "unknown") {
-  if (status === "locked") return "text-icon-critical-base bg-rose-500/12 ring-rose-400/18"
-  if (status === "degraded") return "text-icon-warning-base bg-amber-500/12 ring-amber-400/18"
-  return "text-text-weak bg-surface-raised-stronger-non-alpha ring-border-base/50"
+function capabilityStateMeta(status: "available" | "locked" | "degraded" | "unknown") {
+  if (status === "available") {
+    return {
+      badgeClass: "bg-emerald-500/14 text-icon-success-base ring-emerald-400/20",
+      iconClass: "bg-emerald-500/16 text-icon-success-base ring-emerald-400/20",
+      icon: "✓",
+      label: "Ready",
+    }
+  }
+  if (status === "locked") {
+    return {
+      badgeClass: "bg-rose-500/12 text-icon-critical-base ring-rose-400/18",
+      iconClass: "bg-rose-500/14 text-icon-critical-base ring-rose-400/20",
+      icon: "—",
+      label: "Unavailable",
+    }
+  }
+  if (status === "degraded") {
+    return {
+      badgeClass: "bg-amber-500/12 text-icon-warning-base ring-amber-400/18",
+      iconClass: "bg-amber-500/14 text-icon-warning-base ring-amber-400/20",
+      icon: "!",
+      label: "Limited",
+    }
+  }
+  return {
+    badgeClass: "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/50",
+    iconClass: "bg-surface-raised-stronger-non-alpha text-text-weaker ring-border-base/50",
+    icon: "?",
+    label: "Unknown",
+  }
+}
+
+function capabilityStatusCopy(item: HolosState["capability"]["items"][number]) {
+  if (item.status === "available") return "Ready in this shell."
+  if (item.reason === "not_logged_in") return "Sign in to Holos to enable it."
+  if (item.reason === "not_connected") return "Reconnect the shell to enable it."
+  if (item.reason === "temporarily_unavailable") return "Temporarily unavailable in this shell."
+  return "Currently unavailable in this shell."
 }
 
 function quotaTone(percent: number | null) {
@@ -68,34 +103,46 @@ export function HubView(props: {
                   <div class="min-w-0">
                     <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Capabilities</div>
                     <div class="mt-1 text-13-semibold tracking-tight text-text-strong">
-                      {allReady() ? "All systems available" : `${issueItems().length} needs attention`}
+                      {allReady()
+                        ? "Holos shell ready"
+                        : `${issueItems().length} feature${issueItems().length === 1 ? "" : "s"} need attention`}
                     </div>
                   </div>
                   <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/50">
-                    {props.capabilityItems.length} total
+                    {props.capabilityItems.length} features
                   </div>
                 </div>
 
-                <Show
-                  when={!allReady()}
-                  fallback={
-                    <div class="mt-3 text-11-regular text-text-weak">
-                      Everything needed for Holos is currently available.
-                    </div>
-                  }
-                >
-                  <div class="mt-3 flex flex-wrap gap-1.5">
-                    <For each={issueItems()}>
-                      {(item) => (
-                        <span
-                          class={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ${capabilityTone(item.status)}`}
-                        >
-                          {item.title}
-                        </span>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+                <div class="mt-3 space-y-2">
+                  <For each={props.capabilityItems}>
+                    {(item) => {
+                      const meta = capabilityStateMeta(item.status)
+                      return (
+                        <div class="flex items-start gap-3 rounded-[0.95rem] bg-surface-inset-base/48 px-3 py-2.5 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                          <div
+                            class={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ring-1 ring-inset ${meta.iconClass}`}
+                          >
+                            {meta.icon}
+                          </div>
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-3">
+                              <div class="text-12-medium text-text-strong">{item.title}</div>
+                              <div
+                                class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] ring-1 ring-inset ${meta.badgeClass}`}
+                              >
+                                {meta.label}
+                              </div>
+                            </div>
+                            <div class="mt-1 text-11-regular leading-relaxed text-text-weak">{item.description}</div>
+                            <div class="mt-1 text-[10px] font-medium text-text-weaker">
+                              {capabilityStatusCopy(item)}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }}
+                  </For>
+                </div>
               </div>
 
               <Show when={showQuota()}>

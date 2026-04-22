@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show, onCleanup } from "solid-js"
+import { createSignal, createMemo, Show } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -9,18 +9,6 @@ import { Panel } from "@/components/panel"
 import { EditProfileDialog } from "./edit-profile-dialog"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
-
-const HOLOS_EVENTS = new Set([
-  "holos.contact.added",
-  "holos.contact.removed",
-  "holos.contact.updated",
-  "holos.contact.config_updated",
-  "holos.friend_request.created",
-  "holos.friend_request.updated",
-  "holos.friend_request.removed",
-  "holos.profile.updated",
-  "holos.connection.status_changed",
-])
 
 const CARD_ENTER_STYLE = `
 @keyframes contactFadeUp {
@@ -37,14 +25,6 @@ export function HolosPanel() {
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
-
-  const unsub = globalSDK.event.listen((e) => {
-    const eventType = e.details?.type
-    if (eventType && HOLOS_EVENTS.has(eventType)) {
-      void holos.refresh()
-    }
-  })
-  onCleanup(unsub)
 
   const pendingIncoming = createMemo(() =>
     (holos.state.social.friendRequests ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),

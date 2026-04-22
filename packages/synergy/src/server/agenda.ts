@@ -5,7 +5,56 @@ import { errors } from "./error"
 import { Agenda, AgendaStore, AgendaTypes } from "../agenda"
 import { Storage } from "../storage/storage"
 
+const ActivityQuery = z
+  .object({
+    scopeID: z
+      .string()
+      .optional()
+      .meta({ description: "Limit activity to this scope (includes global items when provided)" }),
+    itemID: z.string().optional().meta({ description: "Limit activity to a specific agenda item" }),
+    query: z
+      .string()
+      .optional()
+      .meta({ description: "Optional case-insensitive text search across item, run, and session metadata" }),
+    search: z.string().optional().meta({ description: "Alias for query" }),
+    offset: z.coerce.number().int().min(0).optional().default(0).meta({ description: "Page offset" }),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(50).meta({ description: "Page size" }),
+  })
+  .transform((value) => ({
+    scopeID: value.scopeID,
+    itemID: value.itemID,
+    query: value.query ?? value.search,
+    offset: value.offset,
+    limit: value.limit,
+  }))
+
 export const AgendaRoute = new Hono()
+
+  .get(
+    "/activity",
+    describeRoute({
+      summary: "Browse agenda activity",
+      description: "Browse agenda execution activity with pagination, optional search, and agenda/session metadata.",
+      operationId: "agenda.activity",
+      responses: {
+        200: {
+          description: "Paginated agenda activity",
+          content: { "application/json": { schema: resolver(AgendaTypes.ActivityPage) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("query", ActivityQuery),
+    async (c) => {
+      try {
+        const query = c.req.valid("query")
+        const page = await AgendaStore.listActivity(query)
+        return c.json(page)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
 
   .get(
     "/:id/sessions",

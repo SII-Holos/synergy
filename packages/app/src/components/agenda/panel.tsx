@@ -7,12 +7,18 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { Panel } from "@/components/panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
-import type { AgendaItem, AgendaRunLog, Session } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  AgendaActivityEntry,
+  AgendaActivityPage,
+  AgendaItem,
+  AgendaRunLog,
+} from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
 import { MiniCalendar } from "./mini-calendar"
 import { AgendaForm } from "./form"
 import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
 import { ViewTab } from "../engram/shared"
+import { ActivityView } from "./activity-view"
 
 const statusColors: Record<string, string> = {
   active: "bg-icon-success-base/12 text-icon-success-base ring-1 ring-inset ring-icon-success-base/15",
@@ -70,12 +76,12 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
 type PanelView = "main" | "form"
 type PanelTab = "schedule" | "activity"
 
-type ActivitySession = {
-  sessionID: string
-  itemID: string
-  itemTitle: string
-  session?: Session
-  loading: boolean
+type AgendaActivityState = {
+  items: AgendaActivityEntry[]
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
 }
 
 export function AgendaPanel() {
@@ -96,9 +102,15 @@ export function AgendaPanel() {
   const [anchor, setAnchor] = createSignal(Date.now())
   const [calendarRange, setCalendarRange] = createSignal<{ start: number; end: number }>({ start: 0, end: 0 })
 
-  const [activitySessions, setActivitySessions] = createSignal<ActivitySession[]>([])
+  const [activity, setActivity] = createSignal<AgendaActivityState>({
+    items: [],
+    total: 0,
+    offset: 0,
+    limit: 25,
+    hasMore: false,
+  })
   const [activityLoading, setActivityLoading] = createSignal(false)
-  const [activityLoaded, setActivityLoaded] = createSignal(false)
+  const [activityQuery, setActivityQuery] = createSignal("")
 
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
 
@@ -192,7 +204,7 @@ export function AgendaPanel() {
       })
       loadRuns(pi.id)
     }
-    if (tab() === "activity") loadActivity(true)
+    if (tab() === "activity") void loadActivity({ reset: true })
   }
 
   function formDirectory(): string {
@@ -225,73 +237,55 @@ export function AgendaPanel() {
     setAnchor(ts)
   }
 
-  async function loadActivity(force = false) {
-    if (activityLoaded() && !force) return
+  async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
+    if (activityLoading()) return
     setActivityLoading(true)
     try {
-      const allItems = items()
-      const sessionRefs: { sessionID: string; itemID: string; itemTitle: string }[] = []
+      const reset = options?.reset ?? false
+      const append = options?.append ?? false
+      const query = options?.query ?? activityQuery()
+      const currentOffset = append ? activity().offset + activity().items.length : 0
+      const scopeID = directory() === "global" ? "global" : undefined
 
-      const results = await Promise.allSettled(
-        allItems.map(async (item) => {
-          const dir = directoryForItem(item)
-          if (!dir) return []
-          const res = await sdk.client.agenda.sessions({ id: item.id, directory: dir })
-          return ((res.data as { sessionID: string; scopeID: string }[]) ?? []).map((s) => ({
-            sessionID: s.sessionID,
-            itemID: item.id,
-            itemTitle: item.title,
-          }))
-        }),
-      )
+      const res = await sdk.client.agenda.activity({
+        directory: directory() ?? globalSync.data.path.home,
+        scopeID,
+        query: query || undefined,
+        offset: currentOffset,
+        limit: activity().limit,
+      })
 
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) sessionRefs.push(...r.value)
+      const page = (res.data as AgendaActivityPage | undefined) ?? {
+        items: [],
+        total: 0,
+        offset: 0,
+        limit: activity().limit,
+        hasMore: false,
       }
 
-      sessionRefs.sort((a, b) => b.sessionID.localeCompare(a.sessionID))
-
-      const initial: ActivitySession[] = sessionRefs.slice(0, 50).map((ref) => ({
-        ...ref,
-        loading: true,
+      setActivity((prev) => ({
+        items: append ? [...prev.items, ...page.items] : page.items,
+        total: page.total,
+        offset: page.offset,
+        limit: page.limit,
+        hasMore: page.hasMore,
       }))
-      setActivitySessions(initial)
-      setActivityLoaded(true)
 
-      const enriched = await Promise.allSettled(
-        initial.map(async (entry) => {
-          const res = await sdk.client.session.get({ sessionID: entry.sessionID })
-          return { sessionID: entry.sessionID, session: res.data as Session | undefined }
-        }),
-      )
-
-      setActivitySessions((prev) =>
-        prev
-          .map((entry) => {
-            const match = enriched.find((r) => r.status === "fulfilled" && r.value.sessionID === entry.sessionID)
-            if (match && match.status === "fulfilled" && match.value.session) {
-              return { ...entry, session: match.value.session, loading: false }
-            }
-            return { ...entry, loading: false }
-          })
-          .sort((a, b) => {
-            const ta = a.session?.time.created ?? 0
-            const tb = b.session?.time.created ?? 0
-            return tb - ta
-          }),
-      )
+      if (reset) {
+        setActivityQuery(query)
+      }
     } catch {}
     setActivityLoading(false)
   }
 
   createEffect(() => {
-    if (tab() === "activity") loadActivity()
+    if (tab() === "activity") void loadActivity()
   })
 
-  function navigateToSession(session: Session) {
-    const dir = session.scope.type === "global" ? "global" : session.scope.directory
+  function navigateToSession(sessionID: string, scopeID: string) {
+    const dir = scopeID === "global" ? "global" : directory()
     if (!dir) return
-    navigate(`/${base64Encode(dir)}/session/${session.id}`)
+    navigate(`/${base64Encode(dir)}/session/${sessionID}`)
   }
 
   return (
@@ -382,8 +376,16 @@ export function AgendaPanel() {
 
         <Show when={tab() === "activity"}>
           <ActivityView
-            sessions={activitySessions()}
+            items={activity().items}
+            total={activity().total}
+            hasMore={activity().hasMore}
             loading={activityLoading()}
+            query={activityQuery()}
+            onQueryChange={(value: string) => {
+              setActivityQuery(value)
+              void loadActivity({ reset: true, query: value })
+            }}
+            onLoadMore={() => void loadActivity({ append: true })}
             onNavigate={navigateToSession}
             onItemClick={(itemId) => {
               const item = itemById(itemId)
@@ -393,131 +395,6 @@ export function AgendaPanel() {
         </Show>
       </Show>
     </Panel.Root>
-  )
-}
-
-function ActivityView(props: {
-  sessions: ActivitySession[]
-  loading: boolean
-  onNavigate: (session: Session) => void
-  onItemClick: (itemId: string) => void
-}) {
-  const grouped = createMemo(() => {
-    const map = new Map<string, { itemID: string; itemTitle: string; sessions: ActivitySession[] }>()
-    for (const s of props.sessions) {
-      const existing = map.get(s.itemID)
-      if (existing) {
-        existing.sessions.push(s)
-      } else {
-        map.set(s.itemID, { itemID: s.itemID, itemTitle: s.itemTitle, sessions: [s] })
-      }
-    }
-    return [...map.values()]
-  })
-
-  return (
-    <div class="flex-1 min-h-0 overflow-y-auto px-3 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <Show
-        when={!props.loading || props.sessions.length > 0}
-        fallback={
-          <div class="flex items-center justify-center py-16">
-            <Spinner class="size-4" />
-          </div>
-        }
-      >
-        <Show
-          when={grouped().length > 0}
-          fallback={
-            <div class="flex flex-col items-center justify-center py-16 gap-2">
-              <Icon name="clock" size="large" class="text-icon-weak" />
-              <span class="text-12-regular text-text-weaker">No activity yet</span>
-            </div>
-          }
-        >
-          <div class="flex flex-col gap-2.5">
-            <For each={grouped()}>
-              {(group) => <ActivityGroup group={group} onNavigate={props.onNavigate} onItemClick={props.onItemClick} />}
-            </For>
-          </div>
-        </Show>
-      </Show>
-    </div>
-  )
-}
-
-function ActivityGroup(props: {
-  group: { itemID: string; itemTitle: string; sessions: ActivitySession[] }
-  onNavigate: (session: Session) => void
-  onItemClick: (itemId: string) => void
-}) {
-  const [expanded, setExpanded] = createSignal(true)
-
-  return (
-    <div class="overflow-hidden rounded-[1.1rem] bg-surface-inset-base/38 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 w-full px-3.5 py-3 text-left hover:bg-surface-raised-base-hover/18 transition-colors"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <Icon
-          name="chevron-right"
-          size="small"
-          class={`shrink-0 text-icon-weak transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
-        />
-        <span class="text-11-medium text-text-weak flex-1 min-w-0 truncate">{props.group.itemTitle}</span>
-        <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45 shrink-0">
-          {props.group.sessions.length}
-        </span>
-      </button>
-      <Show when={expanded()}>
-        <div class="flex flex-col gap-1.5 px-2.5 pb-2.5">
-          <For each={props.group.sessions}>
-            {(entry) => <ActivitySessionRow entry={entry} onNavigate={props.onNavigate} />}
-          </For>
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function ActivitySessionRow(props: { entry: ActivitySession; onNavigate: (session: Session) => void }) {
-  const session = () => props.entry.session
-  const status = () => {
-    const s = session()
-    if (!s) return undefined
-    return s.time.updated > Date.now() - 60_000 ? "recent" : undefined
-  }
-
-  return (
-    <div
-      classList={{
-        "flex items-center gap-2.5 rounded-[0.95rem] bg-surface-raised-base/88 px-3.5 py-2.5 cursor-pointer hover:bg-surface-raised-base transition-colors shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]": true,
-        "opacity-50": !session() && !props.entry.loading,
-      }}
-      onClick={() => {
-        const s = session()
-        if (s) props.onNavigate(s)
-      }}
-    >
-      <Show when={props.entry.loading}>
-        <Spinner class="size-3 shrink-0" />
-      </Show>
-      <Show when={!props.entry.loading}>
-        <span
-          classList={{
-            "shrink-0 w-1.5 h-1.5 rounded-full": true,
-            "bg-icon-success-base": status() === "recent",
-            "bg-text-weaker/40": status() !== "recent",
-          }}
-        />
-      </Show>
-      <span class="text-11-regular text-text-base flex-1 min-w-0 truncate">
-        {session()?.title ?? props.entry.sessionID.slice(0, 12)}
-      </span>
-      <Show when={session()}>
-        {(s) => <span class="text-10-regular text-text-weaker shrink-0">{relativeTime(s().time.created)}</span>}
-      </Show>
-    </div>
   )
 }
 

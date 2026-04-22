@@ -675,15 +675,17 @@ function ExperienceCard(props: {
               <SelectionCheckbox selected={props.selected} />
             </div>
           </Show>
-          <span
-            classList={{
-              "text-13-medium text-text-strong flex-1 min-w-0 leading-snug": true,
-              "line-clamp-2": !props.expanded || props.selecting,
-            }}
-          >
-            {props.item.intent}
-          </span>
-          <div class="flex shrink-0 items-center gap-1.5">
+          <div class="min-w-0 flex-1">
+            <span
+              classList={{
+                "block text-13-medium text-text-strong leading-snug [overflow-wrap:anywhere]": true,
+                "line-clamp-2": !props.expanded || props.selecting,
+              }}
+            >
+              {props.item.intent}
+            </span>
+          </div>
+          <div class="flex shrink-0 items-center gap-1.5 self-start">
             <Show when={props.searching && props.similarity !== undefined}>
               <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
                 {Math.round((props.similarity ?? 0) * 100)}%
@@ -744,11 +746,6 @@ function ExperienceCard(props: {
                   C {rewards()!.confidence!.toFixed(2)}
                 </span>
               </Show>
-              <Show when={sourceModel()}>
-                <span class="max-w-full truncate rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weak ring-1 ring-inset ring-border-base/35">
-                  {sourceModel()}
-                </span>
-              </Show>
               <Show when={props.searching && searchScore() !== undefined}>
                 <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   S {searchScore()!.toFixed(2)}
@@ -762,7 +759,12 @@ function ExperienceCard(props: {
               <QValueDimensions qValues={qValues()!} />
             </Show>
             <Show when={rewards()?.reason}>
-              <p class="rounded-[0.9rem] bg-surface-inset-base/36 px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 line-clamp-2">
+              <p
+                classList={{
+                  "rounded-[0.9rem] bg-surface-inset-base/36 px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
+                  "line-clamp-2": !props.expanded,
+                }}
+              >
                 {rewards()!.reason}
               </p>
             </Show>
