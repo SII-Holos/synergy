@@ -103,4 +103,15 @@ export namespace StoragePath {
     triggerMessageID,
   ]
   export const holosAutoTurnCount = (contactId: string) => ["holos", "auto_turns", contactId]
+
+  // Stats
+  export const statsRoot = () => ["stats"]
+  export const statsWatermark = () => ["stats", "watermark"]
+  export const statsSnapshot = () => ["stats", "snapshot"]
+  /** Per-session digest: stats/digests/{sessionID} */
+  export const statsDigestsRoot = () => ["stats", "digests"]
+  export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]
+  /** Daily buckets: stats/daily/{YYYY-MM-DD} */
+  export const statsDailyRoot = () => ["stats", "daily"]
+  export const statsDaily = (day: string) => ["stats", "daily", day]
 }
