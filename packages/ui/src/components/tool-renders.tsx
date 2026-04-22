@@ -1047,12 +1047,17 @@ ToolRegistry.register({
       if (paths.length <= 3) return paths.map(getFilename).join(", ")
       return `${paths.length} files`
     }
+    const countdown = () => {
+      if (props.metadata?.timedOut) return undefined
+      return props.input.timeout ?? 120
+    }
     return (
       <BasicTool
         {...props}
         icon="eye"
+        countdown={countdown()}
         trigger={() => ({
-          title: "Look at",
+          title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
           subtitle: props.input.goal || "",
           args: subtitle() ? [subtitle()] : [],
         })}
