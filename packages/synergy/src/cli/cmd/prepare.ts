@@ -1,12 +1,24 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { $ } from "bun"
+import fs from "fs"
+import path from "path"
+
+function requireSourceCheckout(repoRoot: string): void {
+  const generateScript = path.join(repoRoot, "script", "generate.ts")
+  if (!fs.existsSync(generateScript)) {
+    UI.error("'synergy prepare' is only available in source checkouts (development mode).")
+    UI.error("Installed builds do not need this step.")
+    process.exit(1)
+  }
+}
 
 export const PrepareCommand = cmd({
   command: "prepare",
   describe: "one-time dev setup: install deps, generate SDK, build frontend",
   handler: async () => {
     const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
+    requireSourceCheckout(repoRoot)
 
     UI.println("📦 Installing dependencies...")
     const install = await $`bun install`.cwd(repoRoot).nothrow()
@@ -38,6 +50,7 @@ export const BuildCommand = cmd({
   describe: "rebuild the web frontend",
   handler: async () => {
     const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
+    requireSourceCheckout(repoRoot)
 
     UI.println("🏗️  Building web frontend...")
     const build = await $`bun run --cwd packages/app build`.cwd(repoRoot).nothrow()
