@@ -69,17 +69,17 @@ describe("dev watchdog signal handling", () => {
   test("SIGHUP should trigger shutdown, not restart", () => {
     const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
 
-    // The onSighup handler should NOT just kill the child for restart.
-    // Instead, SIGHUP should be treated the same as SIGINT/SIGTERM (shutdown).
-    // Intentional restart should use SIGUSR1 instead.
-    const onSighupSection = source.substring(source.indexOf("onSighup"), source.indexOf("onSighup") + 300)
+    // SIGHUP should be treated as a shutdown signal (like SIGINT/SIGTERM)
+    // Check that SIGHUP is handled by onWrapperSignal in the signal handlers section
+    const signalSection = source.substring(
+      source.indexOf("Install persistent signal handlers"),
+      source.indexOf("Install persistent signal handlers") + 500,
+    )
 
-    // SIGHUP should call onWrapperSignal (shutdown) or be removed as a restart trigger
-    const sighupTriggersShutdown = /onWrapperSignal|shuttingDown\s*=\s*true/.test(onSighupSection)
-    // It should NOT just kill the child (restart behavior)
-    const sighupJustKillsChild = /child\.kill\("SIGTERM"\)/.test(onSighupSection) && !sighupTriggersShutdown
+    // SIGHUP should call onWrapperSignal (shutdown)
+    const sighupTriggersShutdown = signalSection.includes("SIGHUP") && signalSection.includes("onWrapperSignal")
 
-    expect(sighupJustKillsChild).toBe(false)
+    expect(sighupTriggersShutdown).toBe(true)
   })
 
   test("intentional restart should use SIGUSR1 instead of SIGHUP", () => {
@@ -88,6 +88,24 @@ describe("dev watchdog signal handling", () => {
     // For dev restart, use SIGUSR1 (which is never sent by the terminal)
     const usesSigusr1 = /SIGUSR1/.test(source)
     expect(usesSigusr1).toBe(true)
+  })
+
+  test("Windows should have a non-signal restart path", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // On Windows, SIGUSR1 is not available. The restart command should
+    // fall back to a non-signal mechanism (e.g. writing a restart flag file,
+    // or just using daemon restart) instead of trying process.kill with SIGUSR1.
+    const hasWindowsFallback =
+      /win32/.test(source) &&
+      !/SIGUSR1/.test(
+        // Check that SIGUSR1 is not used on the Windows path
+        source.substring(source.indexOf("win32")),
+      )
+    // OR: restart.ts should check platform before sending SIGUSR1
+    const platformChecksBeforeSignal = /platform.*win32|win32.*platform/.test(source)
+
+    expect(hasWindowsFallback || platformChecksBeforeSignal).toBe(true)
   })
 })
 
@@ -195,5 +213,16 @@ describe("PID file identity token", () => {
     const verifiesIdentity = /startTime|identity|token|birthtime|start_time|proc.*stat/.test(restartSource)
 
     expect(verifiesIdentity).toBe(true)
+  })
+
+  test("verifyWatchdogIdentity should not hardcode CLK_TCK=100", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // CLK_TCK (clock ticks per second) varies by system — typically 100 on x86 Linux
+    // but can differ on other architectures. The code should read it dynamically
+    // via sysconf(_SC_CLK_TCK) or by parsing /proc/<pid>/stat relative to /proc/uptime.
+    const hardcodesClkTck = /const\s+clockTicks\s*=\s*100\b/.test(restartSource)
+
+    expect(hardcodesClkTck).toBe(false)
   })
 })
