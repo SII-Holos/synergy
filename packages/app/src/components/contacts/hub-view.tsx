@@ -1,6 +1,7 @@
 import { Show, For, createMemo } from "solid-js"
 import type { HolosState, HolosProfile } from "@ericsanchezok/synergy-sdk"
 import { AgentCard } from "./agent-card"
+import { StatsSection } from "@/components/stats/stats-section"
 
 function capabilityTone(status: "available" | "locked" | "degraded" | "unknown") {
   if (status === "locked") return "text-icon-critical-base bg-rose-500/10"
@@ -122,6 +123,10 @@ export function HubView(props: {
           })()}
         </Show>
       </Show>
+
+      <div class="mt-6">
+        <StatsSection />
+      </div>
     </>
   )
 }

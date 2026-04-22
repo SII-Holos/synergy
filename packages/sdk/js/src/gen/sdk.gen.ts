@@ -312,6 +312,8 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StatsGetErrors,
+  StatsGetResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -5142,6 +5144,38 @@ export class Asset extends HeyApiClient {
   }
 }
 
+export class Stats extends HeyApiClient {
+  /**
+   * Get stats snapshot
+   *
+   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      recompute?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "recompute" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<StatsGetResponses, StatsGetErrors, ThrowOnError>({
+      url: "/stats",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class App extends HeyApiClient {
   /**
    * Write log
@@ -5874,6 +5908,8 @@ export class SynergyClient extends HeyApiClient {
   note = new Note({ client: this.client })
 
   asset = new Asset({ client: this.client })
+
+  stats = new Stats({ client: this.client })
 
   app = new App({ client: this.client })
 

@@ -1617,45 +1617,12 @@ export type Config = {
     mcp_timeout?: number
   }
   /**
-   * SII 启智平台 integration configuration
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
    */
-  sii?: {
-    /**
-     * Enable SII Inspire Tools for 启智平台 integration
-     */
-    enable?: boolean
-    /**
-     * Default project name for task submission
-     */
-    defaultProject?: string
-    /**
-     * Default workspace name for task submission
-     */
-    defaultWorkspace?: string
-    /**
-     * Default compute group name
-     */
-    defaultComputeGroup?: string
-    /**
-     * Default Docker image for training tasks
-     */
-    defaultImage?: string
-    /**
-     * Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)
-     */
-    defaultSpecId?: string
-    /**
-     * Default task priority (usually project max)
-     */
-    defaultPriority?: number
-    /**
-     * Default shared memory in MB (default: 1200)
-     */
-    defaultShm?: number
-    /**
-     * Command prefix prepended to every submit command. Typically conda init + cd to project code directory
-     */
-    commandPrefix?: string
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
   }
   /**
    * Custom category configurations for background tasks. Categories define model and prompt presets.
@@ -2863,6 +2830,140 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
+}
+
+export type StatsSnapshot = {
+  overview: {
+    totalSessions: number
+    activeSessions: number
+    archivedSessions: number
+    totalMessages: number
+    totalTurns: number
+    totalDays: number
+    longestStreak: number
+    currentStreak: number
+    projectCount: number
+  }
+  tokenCost: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    cost: number
+    cacheHitRate: number
+    avgCostPerTurn: number
+    avgTokensPerTurn: number
+    dailyCost: number
+    dailyTokens: number
+  }
+  models: {
+    models: Array<{
+      providerID: string
+      modelID: string
+      messages: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      avgResponseMs: number
+    }>
+  }
+  agents: {
+    agents: Array<{
+      agent: string
+      messages: number
+      sessions: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      subagentInvocations: number
+    }>
+    totalSubagentCalls: number
+  }
+  tools: {
+    tools: Array<{
+      tool: string
+      calls: number
+      successes: number
+      errors: number
+      avgDurationMs: number
+    }>
+  }
+  codeChanges: {
+    totalAdditions: number
+    totalDeletions: number
+    totalFiles: number
+    netLines: number
+    dailyAdditions: number
+    dailyDeletions: number
+  }
+  lifecycle: {
+    pinnedCount: number
+    avgTurnsPerSession: number
+    medianTurnsPerSession: number
+    compactionCount: number
+    retryCount: number
+    errorCount: number
+    errorRate: number
+    durationBuckets: {
+      short: number
+      medium: number
+      long: number
+    }
+  }
+  channels: {
+    channels: Array<{
+      channel: string
+      sessions: number
+      messages: number
+    }>
+    interactiveSessions: number
+    unattendedSessions: number
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      sessions: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      additions: number
+      deletions: number
+      files: number
+      toolCalls: number
+      errors: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
+  watermark: number
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -7798,6 +7899,37 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type StatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Set to 'true' to force full recompute from scratch
+     */
+    recompute?: "true" | "false"
+  }
+  url: "/stats"
+}
+
+export type StatsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type StatsGetError = StatsGetErrors[keyof StatsGetErrors]
+
+export type StatsGetResponses = {
+  /**
+   * Stats snapshot
+   */
+  200: StatsSnapshot
+}
+
+export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
 
 export type HolosCredentialsStatusData = {
   body?: never

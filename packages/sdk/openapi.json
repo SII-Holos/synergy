@@ -7887,6 +7887,60 @@
         ]
       }
     },
+    "/stats": {
+      "get": {
+        "operationId": "stats.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "recompute",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Set to 'true' to force full recompute from scratch"
+          }
+        ],
+        "summary": "Get stats snapshot",
+        "description": "Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.",
+        "responses": {
+          "200": {
+            "description": "Stats snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/holos/credentials/status": {
       "get": {
         "operationId": "holos.credentials.status",
@@ -13133,46 +13187,18 @@
               }
             }
           },
-          "sii": {
-            "description": "SII 启智平台 integration configuration",
+          "pluginConfig": {
+            "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
             "type": "object",
-            "properties": {
-              "enable": {
-                "description": "Enable SII Inspire Tools for 启智平台 integration",
-                "type": "boolean"
-              },
-              "defaultProject": {
-                "description": "Default project name for task submission",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": {
                 "type": "string"
               },
-              "defaultWorkspace": {
-                "description": "Default workspace name for task submission",
-                "type": "string"
-              },
-              "defaultComputeGroup": {
-                "description": "Default compute group name",
-                "type": "string"
-              },
-              "defaultImage": {
-                "description": "Default Docker image for training tasks",
-                "type": "string"
-              },
-              "defaultSpecId": {
-                "description": "Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)",
-                "type": "string"
-              },
-              "defaultPriority": {
-                "description": "Default task priority (usually project max)",
-                "type": "number"
-              },
-              "defaultShm": {
-                "description": "Default shared memory in MB (default: 1200)",
-                "type": "number"
-              },
-              "commandPrefix": {
-                "description": "Command prefix prepended to every submit command. Typically conda init + cd to project code directory",
-                "type": "string"
-              }
+              "additionalProperties": {}
             }
           },
           "category": {
@@ -16604,6 +16630,480 @@
           }
         },
         "required": ["id", "url", "mime", "size"]
+      },
+      "StatsSnapshot": {
+        "type": "object",
+        "properties": {
+          "overview": {
+            "type": "object",
+            "properties": {
+              "totalSessions": {
+                "type": "number"
+              },
+              "activeSessions": {
+                "type": "number"
+              },
+              "archivedSessions": {
+                "type": "number"
+              },
+              "totalMessages": {
+                "type": "number"
+              },
+              "totalTurns": {
+                "type": "number"
+              },
+              "totalDays": {
+                "type": "number"
+              },
+              "longestStreak": {
+                "type": "number"
+              },
+              "currentStreak": {
+                "type": "number"
+              },
+              "projectCount": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "totalSessions",
+              "activeSessions",
+              "archivedSessions",
+              "totalMessages",
+              "totalTurns",
+              "totalDays",
+              "longestStreak",
+              "currentStreak",
+              "projectCount"
+            ]
+          },
+          "tokenCost": {
+            "type": "object",
+            "properties": {
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  },
+                  "reasoning": {
+                    "type": "number"
+                  },
+                  "cache": {
+                    "type": "object",
+                    "properties": {
+                      "read": {
+                        "type": "number"
+                      },
+                      "write": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["read", "write"]
+                  }
+                },
+                "required": ["input", "output", "reasoning", "cache"]
+              },
+              "cost": {
+                "type": "number"
+              },
+              "cacheHitRate": {
+                "type": "number"
+              },
+              "avgCostPerTurn": {
+                "type": "number"
+              },
+              "avgTokensPerTurn": {
+                "type": "number"
+              },
+              "dailyCost": {
+                "type": "number"
+              },
+              "dailyTokens": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "tokens",
+              "cost",
+              "cacheHitRate",
+              "avgCostPerTurn",
+              "avgTokensPerTurn",
+              "dailyCost",
+              "dailyTokens"
+            ]
+          },
+          "models": {
+            "type": "object",
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "providerID": {
+                      "type": "string"
+                    },
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "messages": {
+                      "type": "number"
+                    },
+                    "turns": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "avgResponseMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["providerID", "modelID", "messages", "turns", "tokens", "cost", "avgResponseMs"]
+                }
+              }
+            },
+            "required": ["models"]
+          },
+          "agents": {
+            "type": "object",
+            "properties": {
+              "agents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "agent": {
+                      "type": "string"
+                    },
+                    "messages": {
+                      "type": "number"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "subagentInvocations": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["agent", "messages", "sessions", "tokens", "cost", "subagentInvocations"]
+                }
+              },
+              "totalSubagentCalls": {
+                "type": "number"
+              }
+            },
+            "required": ["agents", "totalSubagentCalls"]
+          },
+          "tools": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "calls": {
+                      "type": "number"
+                    },
+                    "successes": {
+                      "type": "number"
+                    },
+                    "errors": {
+                      "type": "number"
+                    },
+                    "avgDurationMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["tool", "calls", "successes", "errors", "avgDurationMs"]
+                }
+              }
+            },
+            "required": ["tools"]
+          },
+          "codeChanges": {
+            "type": "object",
+            "properties": {
+              "totalAdditions": {
+                "type": "number"
+              },
+              "totalDeletions": {
+                "type": "number"
+              },
+              "totalFiles": {
+                "type": "number"
+              },
+              "netLines": {
+                "type": "number"
+              },
+              "dailyAdditions": {
+                "type": "number"
+              },
+              "dailyDeletions": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "totalAdditions",
+              "totalDeletions",
+              "totalFiles",
+              "netLines",
+              "dailyAdditions",
+              "dailyDeletions"
+            ]
+          },
+          "lifecycle": {
+            "type": "object",
+            "properties": {
+              "pinnedCount": {
+                "type": "number"
+              },
+              "avgTurnsPerSession": {
+                "type": "number"
+              },
+              "medianTurnsPerSession": {
+                "type": "number"
+              },
+              "compactionCount": {
+                "type": "number"
+              },
+              "retryCount": {
+                "type": "number"
+              },
+              "errorCount": {
+                "type": "number"
+              },
+              "errorRate": {
+                "type": "number"
+              },
+              "durationBuckets": {
+                "type": "object",
+                "properties": {
+                  "short": {
+                    "type": "number"
+                  },
+                  "medium": {
+                    "type": "number"
+                  },
+                  "long": {
+                    "type": "number"
+                  }
+                },
+                "required": ["short", "medium", "long"]
+              }
+            },
+            "required": [
+              "pinnedCount",
+              "avgTurnsPerSession",
+              "medianTurnsPerSession",
+              "compactionCount",
+              "retryCount",
+              "errorCount",
+              "errorRate",
+              "durationBuckets"
+            ]
+          },
+          "channels": {
+            "type": "object",
+            "properties": {
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "channel": {
+                      "type": "string"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "messages": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["channel", "sessions", "messages"]
+                }
+              },
+              "interactiveSessions": {
+                "type": "number"
+              },
+              "unattendedSessions": {
+                "type": "number"
+              }
+            },
+            "required": ["channels", "interactiveSessions", "unattendedSessions"]
+          },
+          "timeSeries": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "day": {
+                      "type": "string"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "turns": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "additions": {
+                      "type": "number"
+                    },
+                    "deletions": {
+                      "type": "number"
+                    },
+                    "files": {
+                      "type": "number"
+                    },
+                    "toolCalls": {
+                      "type": "number"
+                    },
+                    "errors": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "day",
+                    "sessions",
+                    "turns",
+                    "tokens",
+                    "cost",
+                    "additions",
+                    "deletions",
+                    "files",
+                    "toolCalls",
+                    "errors"
+                  ]
+                }
+              },
+              "hourlyActivity": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "required": ["days", "hourlyActivity"]
+          },
+          "computedAt": {
+            "type": "number"
+          },
+          "watermark": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "overview",
+          "tokenCost",
+          "models",
+          "agents",
+          "tools",
+          "codeChanges",
+          "lifecycle",
+          "channels",
+          "timeSeries",
+          "computedAt",
+          "watermark"
+        ]
       },
       "HolosCredentialsStatusResponse": {
         "type": "object",
