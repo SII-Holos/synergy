@@ -15,6 +15,38 @@ async function isWatchdogRunning(pid: number): Promise<boolean> {
   }
 }
 
+async function verifyWatchdogIdentity(pid: number, startTime: number): Promise<boolean> {
+  // Verify the process at `pid` started around the same time as recorded
+  // in the PID file. This prevents signaling the wrong process if the PID
+  // was reused after the original watchdog exited.
+  try {
+    const fs = await import("fs/promises")
+    if (process.platform === "linux") {
+      // On Linux, read /proc/<pid>/stat to get the process start time in jiffies
+      const stat = await fs.readFile(`/proc/${pid}/stat`, "utf-8")
+      // Field 22 is starttime (jiffies since boot)
+      const fields = stat.split(" ")
+      const startTimeJiffies = parseInt(fields[21], 10)
+      if (isNaN(startTimeJiffies)) return false
+      // Read boot time in jiffies from /proc/stat
+      const procStat = await fs.readFile("/proc/stat", "utf-8")
+      const btimeMatch = procStat.match(/btime\s+(\d+)/)
+      if (!btimeMatch) return false
+      const bootTimeSec = parseInt(btimeMatch[1], 10)
+      const clockTicks = 100 // CLK_TCK on Linux, typically 100
+      const procStartSec = bootTimeSec + startTimeJiffies / clockTicks
+      const procStartMs = procStartSec * 1000
+      // Allow 2s tolerance for timing differences
+      return Math.abs(procStartMs - startTime) < 2000
+    }
+    // On non-Linux, fall back to just checking if the process exists
+    // PID reuse is rare on macOS and in dev mode the risk is acceptable
+    return isWatchdogRunning(pid)
+  } catch {
+    return false
+  }
+}
+
 export const RestartCommand = cmd({
   command: "restart",
   describe: "restart synergy server",
@@ -25,11 +57,28 @@ export const RestartCommand = cmd({
     const pidFile = getDevWatchdogPidFile(cwd)
     try {
       const content = await Bun.file(pidFile).text()
-      const pid = parseInt(content.trim(), 10)
+      let pid: number
+      let startTime: number | undefined
+
+      // Parse PID file — may be JSON with identity token or plain PID (legacy)
+      try {
+        const data = JSON.parse(content)
+        pid = parseInt(String(data.pid), 10)
+        startTime = data.startTime
+      } catch {
+        pid = parseInt(content.trim(), 10)
+      }
+
       if (!isNaN(pid)) {
         const isRunning = await isWatchdogRunning(pid)
         if (!isRunning) {
           UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
+          try {
+            await Bun.file(pidFile).unlink()
+          } catch {}
+          // Fall through to daemon restart
+        } else if (startTime && !(await verifyWatchdogIdentity(pid, startTime))) {
+          UI.error(`PID ${pid} in dev-watchdog.pid belongs to a different process. Removing stale PID file.`)
           try {
             await Bun.file(pidFile).unlink()
           } catch {}

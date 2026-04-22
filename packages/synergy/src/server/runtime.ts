@@ -50,17 +50,22 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
 
   // In dev mode, write the watchdog PID so `synergy restart` can signal us
   // Scope the PID file by working directory to support multiple dev servers
+  // Use SYNERGY_CWD to match the directory used by the restart command
+  const devCwd = process.env.SYNERGY_CWD ?? parentCwd
   const devPidFile = isDev
     ? path.join(
         Global.Path.state,
-        `dev-watchdog-${crypto.createHash("sha256").update(parentCwd).digest("hex").slice(0, 12)}.pid`,
+        `dev-watchdog-${crypto.createHash("sha256").update(devCwd).digest("hex").slice(0, 12)}.pid`,
       )
     : undefined
   if (devPidFile) {
     try {
       const { mkdir } = await import("fs/promises")
       await mkdir(path.dirname(devPidFile), { recursive: true })
-      await Bun.write(devPidFile, String(process.pid))
+      // Store PID + startup timestamp as identity token to prevent
+      // signaling the wrong process if PID gets reused after exit
+      const identity = JSON.stringify({ pid: process.pid, startTime: Date.now() })
+      await Bun.write(devPidFile, identity)
     } catch {}
   }
 

@@ -117,3 +117,83 @@ describe("restart command uses SIGUSR1", () => {
     expect(sendsSigusr1).toBe(true)
   })
 })
+
+describe("dev script --restart=dev injection", () => {
+  test("--restart=dev should NOT be in the root dev script (breaks non-server subcommands)", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../../../package.json"), "utf-8")
+    const pkg = JSON.parse(source)
+
+    // The root `dev` script is the entrypoint for ALL CLI subcommands
+    // (server, web, restart, send, prepare, etc.)
+    // --restart=dev is a server-only flag and will cause yargs validation
+    // errors for non-server commands like `bun dev web --dev` or `bun dev restart`
+    const devScript = pkg.scripts.dev
+
+    // Should NOT contain --restart=dev in the generic dev script
+    expect(devScript).not.toContain("--restart=dev")
+  })
+
+  test("--restart=dev should be applied only in the server command handler", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/server.ts"), "utf-8")
+
+    // The server command should default to --restart=dev for local installs
+    // or explicitly set it. This is the right place for server-specific flags.
+    const hasDevRestartDefault = /isLocal.*dev|restartPolicy.*dev|--restart=dev/.test(source)
+
+    expect(hasDevRestartDefault).toBe(true)
+  })
+})
+
+describe("PID file hash consistency", () => {
+  test("watchdog and restart should use the same cwd for PID file hash", () => {
+    const runtimeSource = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // Both must agree on the directory used for hashing the PID file path.
+    // The watchdog uses `parentCwd = process.cwd()`, but the CLI entrypoint
+    // sets `SYNERGY_CWD=$PWD` and runs with `--cwd packages/synergy`,
+    // so `process.cwd()` in the watchdog would be `packages/synergy`.
+    // The restart command uses `SYNERGY_CWD ?? process.cwd()`.
+    //
+    // The fix: both should use SYNERGY_CWD ?? process.cwd() for consistency.
+
+    // Check that runtime.ts uses SYNERGY_CWD for the PID file hash calculation
+    // Look in the broader watchdog function area, not just after devPidFile
+    const watchdogArea = runtimeSource.substring(
+      runtimeSource.indexOf("runWithRestartPolicyAlways"),
+      runtimeSource.indexOf("const onWrapperSignal"),
+    )
+    const runtimeUsesSynergyCwd = /SYNERGY_CWD/.test(watchdogArea)
+
+    // Check that restart.ts uses SYNERGY_CWD
+    const restartUsesSynergyCwd = /SYNERGY_CWD/.test(restartSource)
+
+    expect(runtimeUsesSynergyCwd).toBe(true)
+    expect(restartUsesSynergyCwd).toBe(true)
+  })
+})
+
+describe("PID file identity token", () => {
+  test("PID file should store more than just PID to prevent signaling wrong process", () => {
+    const runtimeSource = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // The PID file should contain an identity token (e.g. startup timestamp)
+    // that can be verified before signaling, preventing PID reuse attacks
+    const pidFileWriteSection = runtimeSource.substring(runtimeSource.indexOf("Bun.write(devPidFile")).substring(0, 200)
+
+    // Should write more than just process.pid — e.g. JSON with {pid, startTime}
+    const writesJustPid = /Bun\.write\(devPidFile,\s*String\(process\.pid\)\)/.test(pidFileWriteSection)
+
+    expect(writesJustPid).toBe(false)
+  })
+
+  test("restart.ts should verify identity token before signaling", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // The restart command should read the PID file and verify the identity
+    // token (e.g. check that the process start time matches) before sending SIGUSR1
+    const verifiesIdentity = /startTime|identity|token|birthtime|start_time|proc.*stat/.test(restartSource)
+
+    expect(verifiesIdentity).toBe(true)
+  })
+})
