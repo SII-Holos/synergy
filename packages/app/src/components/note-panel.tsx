@@ -21,7 +21,7 @@ import { NoteMarkdown } from "@ericsanchezok/synergy-util/note-markdown"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Video, Mermaid, createFileUpload } from "@/components/note/extensions"
+import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
@@ -812,6 +812,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           TableRow,
           TableHeader,
           TableCell,
+          CrossCellSelection,
           TaskList,
           TaskItem.configure({
             nested: true,
