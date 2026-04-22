@@ -5,7 +5,6 @@ import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
 import { ensureMigrations } from "../../migration"
-import { Installation } from "../../global/installation"
 
 export const ServerCommand = cmd({
   command: ["$0", "server"],
@@ -40,8 +39,7 @@ export const ServerCommand = cmd({
       const managedService = args.managedService
 
       await runServerRuntime({
-        restartPolicy:
-          (args.restart as "none" | "always" | "dev" | undefined) ?? (Installation.isLocal() ? "dev" : "none"),
+        restartPolicy: (args.restart as "none" | "always" | "dev" | undefined) ?? "none",
         interactive: !(managedService || args.nonInteractive),
         printBanner: args.banner,
         printChannelStatus: !managedService,

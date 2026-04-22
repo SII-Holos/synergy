@@ -4,32 +4,10 @@ import { UI } from "../ui"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
-import { DevWatchdogPidFile } from "../../server/runtime"
+import { getDevWatchdogPidFile } from "../../server/runtime"
 
-/**
- * Verify that a PID is actually our dev watchdog process.
- * On Unix, checks that the process command matches synergy/bun running our server.
- * On Windows, just checks if the process exists.
- */
-async function verifyWatchdogPid(pid: number): Promise<boolean> {
+async function isWatchdogRunning(pid: number): Promise<boolean> {
   try {
-    // On Unix, we can check the process command
-    if (process.platform !== "win32") {
-      const { exec } = await import("child_process")
-      const psCmd = `ps -p ${pid} -o comm= 2>/dev/null`
-      const comm = await new Promise<string>((resolve) => {
-        exec(psCmd, (error, stdout) => {
-          resolve(error ? "" : stdout.trim())
-        })
-      })
-      // Check if it's bun/node running synergy
-      if (comm.includes("bun") || comm.includes("node") || comm.includes("synergy")) {
-        return true
-      }
-      // Process exists but doesn't look like our watchdog
-      return false
-    }
-    // On Windows, just check if process exists
     process.kill(pid, 0)
     return true
   } catch {
@@ -44,15 +22,14 @@ export const RestartCommand = cmd({
   handler: async () => {
     // If a dev-mode watchdog PID file exists, signal it.
     try {
-      const content = await Bun.file(DevWatchdogPidFile).text()
+      const content = await Bun.file(getDevWatchdogPidFile()).text()
       const pid = parseInt(content.trim(), 10)
       if (!isNaN(pid)) {
-        // Verify the PID is actually our watchdog process
-        const isValid = await verifyWatchdogPid(pid)
-        if (!isValid) {
-          UI.error(`PID ${pid} in dev-watchdog.pid is not a valid watchdog process. Removing stale PID file.`)
+        const isRunning = await isWatchdogRunning(pid)
+        if (!isRunning) {
+          UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
           try {
-            await Bun.file(DevWatchdogPidFile).unlink()
+            await Bun.file(getDevWatchdogPidFile()).unlink()
           } catch {}
           // Fall through to daemon restart
         } else {
@@ -63,9 +40,9 @@ export const RestartCommand = cmd({
           } catch (error) {
             UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
             try {
-              await Bun.file(DevWatchdogPidFile).unlink()
+              await Bun.file(getDevWatchdogPidFile()).unlink()
             } catch {}
-            process.exit(1)
+            // Fall through to daemon restart instead of exiting
           }
         }
       }

@@ -15,6 +15,9 @@ const sdkDistExists = fs.existsSync(path.join(sdkRoot, "dist/index.js"))
 /**
  * Fallback aliases for the SDK — only active when dist/ hasn't been built yet.
  * In production (where dist/ exists), Vite resolves normally via package.json exports.
+ *
+ * Evaluated once at Vite config load time. After generating the SDK dist/,
+ * restart the dev server to switch back to normal package resolution.
  * @type {import("vite").Alias[]}
  */
 const sdkAliases = sdkDistExists

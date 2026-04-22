@@ -292,16 +292,16 @@ bun install
 
 #### Quick start
 
-First-time setup (install deps, generate SDK, build frontend):
+`bun dev prepare` does everything in one step (install deps, generate SDK, build frontend). If you prefer manual control:
 
-```bash
-bun dev prepare
-```
+1. `bun install`
+2. `./script/generate.ts` (or `bun dev prepare` to do all three)
+3. `bun run --cwd packages/app build`
 
 Then start the dev server:
 
 ```bash
-bun dev server   # start the server
+bun dev server   # start the server (watchdog wraps it for auto-restart)
 bun dev web --dev  # open the web UI (separate terminal)
 ```
 
@@ -312,23 +312,7 @@ bun dev build      # rebuild frontend (after app changes)
 bun dev restart    # restart the server
 ```
 
-#### Manual step-by-step
-
-**Build the frontend** (required before first run):
-
-```bash
-bun run --cwd packages/app build
-```
-
-This produces static files in `packages/app/dist`. The server serves them automatically.
-
 > **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.
-
-**Start the server:**
-
-```bash
-bun dev
-```
 
 **Web UI (development mode)** — run in a second terminal while the server is up:
 

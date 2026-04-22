@@ -9,13 +9,25 @@ export const PrepareCommand = cmd({
     const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
 
     UI.println("📦 Installing dependencies...")
-    await $`bun install`.cwd(repoRoot).quiet()
+    const install = await $`bun install`.cwd(repoRoot).nothrow()
+    if (install.exitCode !== 0) {
+      UI.error("Failed to install dependencies.")
+      process.exit(1)
+    }
 
     UI.println("🔧 Generating SDK...")
-    await $`bun ./packages/sdk/js/script/build.ts`.cwd(repoRoot).quiet()
+    const sdk = await $`bun ./packages/sdk/js/script/build.ts`.cwd(repoRoot).nothrow()
+    if (sdk.exitCode !== 0) {
+      UI.error("Failed to generate SDK.")
+      process.exit(1)
+    }
 
     UI.println("🏗️  Building web frontend...")
-    await $`bun run --cwd packages/app build`.cwd(repoRoot).quiet()
+    const build = await $`bun run --cwd packages/app build`.cwd(repoRoot).nothrow()
+    if (build.exitCode !== 0) {
+      UI.error("Failed to build web frontend.")
+      process.exit(1)
+    }
 
     UI.println("✅ Dev environment ready. Start the server with: bun dev server")
   },
@@ -28,7 +40,11 @@ export const BuildCommand = cmd({
     const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
 
     UI.println("🏗️  Building web frontend...")
-    await $`bun run --cwd packages/app build`.cwd(repoRoot).quiet()
+    const build = await $`bun run --cwd packages/app build`.cwd(repoRoot).nothrow()
+    if (build.exitCode !== 0) {
+      UI.error("Failed to build web frontend.")
+      process.exit(1)
+    }
 
     UI.println("✅ Frontend built. Restart the server with: bun dev restart")
   },

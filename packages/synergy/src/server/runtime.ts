@@ -40,6 +40,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
 
   let shuttingDown = false
   let crashCount = 0
+  let abortController = new AbortController()
   const crashStartTime: number[] = []
 
   const isDev = options.restartPolicy === "dev"
@@ -69,6 +70,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         await child.exited
       } catch {}
     }
+    abortController.abort()
   }
 
   // In dev mode, SIGHUP triggers a restart (child exits, watchdog respawns it)
@@ -167,7 +169,23 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     })
 
     // Always delay at least 1s, and apply exponential backoff for rapid crashes
-    await Bun.sleep(backoffDelay)
+    try {
+      await Promise.race([
+        Bun.sleep(backoffDelay),
+        new Promise<void>((_, reject) => {
+          if (abortController.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"))
+            return
+          }
+          abortController.signal.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"))
+          })
+        }),
+      ])
+    } catch {
+      // sleep was aborted by shutdown signal
+    }
+    abortController = new AbortController()
 
     log.info("respawning child", { crashCount, nextDelayMinMs: Math.min(1000 * Math.pow(2, crashCount), 30000) })
   }
@@ -197,7 +215,9 @@ export interface RuntimeOptions {
   }
 }
 
-export const DevWatchdogPidFile = path.join(Global.Path.state, "dev-watchdog.pid")
+export function getDevWatchdogPidFile() {
+  return path.join(Global.Path.state, "dev-watchdog.pid")
+}
 
 export async function run(options: RuntimeOptions) {
   // If user asked for a restart policy, spawn a child and act as a watchdog
