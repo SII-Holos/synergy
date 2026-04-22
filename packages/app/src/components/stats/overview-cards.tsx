@@ -1,69 +1,65 @@
-import { createSignal, onMount } from "solid-js"
-import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
-import { formatCompact, formatCost } from "./use-stats"
+import { For } from "solid-js"
+import type { OverviewMetric } from "./model"
 
 const ANIMATION_STYLE = `
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes pulse-fire {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
+@keyframes overviewCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 `
 
-function useCountUp(target: number, duration = 800) {
-  const [value, setValue] = createSignal(0)
-  onMount(() => {
-    const start = performance.now()
-    const step = (now: number) => {
-      const t = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - t, 3)
-      setValue(Math.round(eased * target))
-      if (t < 1) requestAnimationFrame(step)
-    }
-    requestAnimationFrame(step)
-  })
-  return value
+function dayLabel(days: number) {
+  return `${days} day${days === 1 ? "" : "s"}`
 }
 
-function StatCard(props: { value: string; label: string; delay: number }) {
+function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="bg-surface-raised-base rounded-xl p-3 flex flex-col items-center gap-1"
-      style={{ animation: `fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${props.delay}ms both` }}
+      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]"
+      style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}
     >
-      <span class="text-20-semibold text-text-strong tabular-nums">{props.value}</span>
-      <span class="text-10-medium text-text-weak uppercase tracking-wide">{props.label}</span>
+      <div class="flex min-h-[5.5rem] flex-col justify-between gap-2">
+        <span class="text-22-semibold text-text-strong tracking-tight tabular-nums">{props.metric.value}</span>
+        <span class="text-10-medium uppercase tracking-[0.16em] text-text-weaker">{props.metric.label}</span>
+        <span class="mt-1 line-clamp-1 text-10-regular text-text-weak">{props.metric.hint ?? "—"}</span>
+      </div>
     </div>
   )
 }
 
-export function OverviewCards(props: { overview: StatsSnapshot["overview"]; tokenCost: StatsSnapshot["tokenCost"] }) {
-  const sessions = useCountUp(props.overview.totalSessions)
-  const cost = useCountUp(Math.round(props.tokenCost.cost * 100))
-  const days = useCountUp(props.overview.totalDays)
+function StreakItem(props: { label: string; value: number; delay: number }) {
+  return (
+    <div style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}>
+      <span class="text-11-medium text-text-weak">{props.label}</span>
+      <span class="ml-1.5 text-11-semibold text-text-strong tabular-nums">{dayLabel(props.value)}</span>
+    </div>
+  )
+}
 
-  const costDisplay = () => {
-    const raw = cost() / 100
-    return formatCost(raw)
-  }
+export function OverviewCards(props: { metrics: OverviewMetric[]; streak: { current: number; longest: number } }) {
+  const metrics = () => props.metrics.slice(0, 6)
 
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <div class="flex gap-2">
-        <StatCard value={formatCompact(sessions())} label="sessions" delay={0} />
-        <StatCard value={costDisplay()} label="cost" delay={60} />
-        <StatCard value={days().toString()} label="days" delay={120} />
-      </div>
-      {props.overview.currentStreak > 0 && (
-        <div class="flex items-center justify-center gap-1 text-12-medium text-text-weak">
-          <span style={{ animation: "pulse-fire 1.5s ease-in-out infinite", display: "inline-block" }}>🔥</span>
-          {props.overview.currentStreak}-day streak
+      <section class="rounded-2xl bg-surface-raised-base p-2.5">
+        <div class="mt-4 grid grid-cols-3 gap-2.5">
+          <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
         </div>
-      )}
+        <div
+          class="mt-2.5 flex items-center justify-between rounded-2xl bg-amber-500/8 px-3.5 py-2.5"
+          style={{ animation: `overviewCardEnter 0.32s ease-out ${metrics().length * 40}ms both` }}
+        >
+          <StreakItem label="Current streak ·" value={props.streak.current} delay={0} />
+          <StreakItem label="Best streak ·" value={props.streak.longest} delay={40} />
+        </div>
+      </section>
     </>
   )
 }

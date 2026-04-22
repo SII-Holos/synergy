@@ -547,7 +547,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
   function cellClass(ts: number): string {
     if (ts === selected()) return "bg-surface-interactive-base text-text-on-interactive-base"
-    if (ts === today()) return "bg-surface-interactive-base/20 text-text-interactive-base"
+    if (ts === today()) return "bg-surface-interactive-selected-weak text-text-interactive-base"
     const inMonth = new Date(ts).getMonth() === currentMonth()
     return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"
   }
@@ -684,7 +684,7 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-base/15 text-text-interactive-base": h === props.hour,
+                    "bg-surface-interactive-selected-weak text-text-interactive-base": h === props.hour,
                     "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
                   }}
                   onClick={() => props.onHourChange(h)}
@@ -701,7 +701,7 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-base/15 text-text-interactive-base": m === props.minute,
+                    "bg-surface-interactive-selected-weak text-text-interactive-base": m === props.minute,
                     "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
                   }}
                   onClick={() => props.onMinuteChange(m)}
@@ -832,7 +832,7 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
       type="button"
       classList={{
         "px-1.5 py-0.5 rounded-md text-10-medium transition-colors": true,
-        "bg-surface-interactive-base/15 text-text-interactive-base": props.active,
+        "bg-surface-interactive-selected-weak text-text-interactive-base": props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
       onClick={props.onClick}

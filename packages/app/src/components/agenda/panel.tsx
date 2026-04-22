@@ -17,7 +17,7 @@ import { ViewTab } from "../engram/shared"
 const statusColors: Record<string, string> = {
   active: "bg-icon-success-base/15 text-icon-success-base",
   paused: "bg-icon-warning-base/15 text-icon-warning-base",
-  pending: "bg-surface-interactive-base/10 text-text-interactive-base",
+  pending: "bg-surface-interactive-selected-weak text-text-interactive-base",
   done: "bg-surface-inset-base text-text-weak",
   cancelled: "bg-text-diff-delete-base/15 text-text-diff-delete-base",
 }
@@ -621,7 +621,7 @@ function DetailPopover(props: {
                 </span>
               </Show>
               <Show when={props.item.createdBy === "agent"}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-interactive-base/10 text-10-medium text-text-interactive-base">
+                <span class="px-1.5 py-0.5 rounded-md bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base">
                   agent
                 </span>
               </Show>
@@ -808,7 +808,7 @@ function ActionButton(props: {
       classList={{
         "px-2.5 py-1 rounded-lg text-11-medium border transition-colors": true,
         "border-icon-success-base/30 text-icon-success-base": done(),
-        "border-surface-interactive-base/30 text-text-interactive-base hover:bg-surface-interactive-base/10":
+        "border-border-interactive-base/30 text-text-interactive-base hover:bg-surface-interactive-selected":
           variant() === "primary" && !props.loading && !done(),
         "border-text-diff-delete-base/30 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           variant() === "danger" && !props.loading && !done(),

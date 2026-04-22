@@ -120,9 +120,10 @@ function eventHeight(): number {
 }
 
 const TIME_EVENT_COLORS: Record<string, string> = {
-  active: "bg-surface-interactive-base/80 border-l-icon-interactive-base",
+  active:
+    "bg-surface-interactive-selected border-l-border-interactive-base shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
   paused: "bg-icon-warning-base/20 border-l-icon-warning-base",
-  pending: "bg-surface-interactive-base/30 border-l-surface-interactive-base",
+  pending: "bg-surface-interactive-selected-weak border-l-border-interactive-base",
   done: "bg-surface-inset-base border-l-text-weaker",
   cancelled: "bg-text-diff-delete-base/15 border-l-text-diff-delete-base",
 }
@@ -274,7 +275,7 @@ function NavBar(props: {
     <div class="flex items-center gap-1.5 px-3 py-2 border-b border-border-weaker-base/50 shrink-0">
       <button
         type="button"
-        class="px-2 py-0.5 rounded-md text-10-medium text-text-interactive-base bg-surface-interactive-base/10 hover:bg-surface-interactive-base/20 transition-colors"
+        class="px-2.5 py-1 rounded-lg text-10-medium text-text-interactive-base bg-surface-interactive-selected ring-1 ring-border-interactive-base/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-colors"
         onClick={props.onToday}
       >
         Today
@@ -294,14 +295,15 @@ function NavBar(props: {
         ›
       </button>
       <span class="text-11-medium text-text-strong flex-1 min-w-0 truncate">{props.title}</span>
-      <div class="flex items-center rounded-md bg-surface-inset-base overflow-hidden">
+      <div class="flex items-center rounded-xl bg-surface-inset-base/85 p-0.5 ring-1 ring-inset ring-border-weaker-base/50 overflow-hidden">
         <For each={modes}>
           {(mode) => (
             <button
               type="button"
               classList={{
-                "px-2 py-0.5 text-10-medium transition-colors": true,
-                "bg-surface-interactive-base/15 text-text-interactive-base": props.viewMode === mode,
+                "px-2.5 py-1 rounded-lg text-10-medium transition-all": true,
+                "bg-surface-interactive-selected text-text-interactive-base shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]":
+                  props.viewMode === mode,
                 "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
               }}
               onClick={() => props.onViewModeChange?.(mode)}
@@ -346,7 +348,8 @@ function TimeGrid(props: {
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-surface-interactive-base text-text-on-interactive-base": col.isToday,
+                    "bg-surface-interactive-base text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(10,132,255,0.18)]":
+                      col.isToday,
                     "text-text-strong": !col.isToday,
                   }}
                 >
@@ -508,7 +511,7 @@ function MonthGrid(props: {
                       <For each={visible()}>
                         {(event) => (
                           <div
-                            class="flex items-center gap-1 min-w-0 rounded px-0.5 hover:bg-surface-interactive-base/10 transition-colors"
+                            class="flex items-center gap-1 min-w-0 rounded px-0.5 hover:bg-surface-interactive-selected-weak transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
                               props.onEventClick?.(event)

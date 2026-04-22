@@ -1,13 +1,22 @@
-import { Show, Switch, Match } from "solid-js"
+import { Show, createMemo } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
-import { useStats, formatCost } from "./use-stats"
+import { useStats } from "./use-stats"
 import { OverviewCards } from "./overview-cards"
 import { DailyTrend } from "./daily-trend"
 import { TokenRing } from "./token-ring"
 import { RankList } from "./rank-list"
 import { CodeSummary } from "./code-summary"
-import { HourlyHeatmap } from "./hourly-heatmap"
+import { ActivityHeatmap } from "./hourly-heatmap"
 import { Milestones } from "./milestones"
+import {
+  buildOverviewMetrics,
+  buildModelRows,
+  buildAgentRows,
+  buildToolRows,
+  MODEL_METRICS,
+  AGENT_METRICS,
+  TOOL_METRICS,
+} from "./model"
 
 export function StatsSection() {
   const { data, refresh } = useStats()
@@ -23,59 +32,57 @@ export function StatsSection() {
         </div>
       }
     >
-      {(snapshot) => <StatsContent snapshot={snapshot()} onRefresh={refresh} />}
+      {(snapshot) => <StatsContent snapshot={snapshot()} />}
     </Show>
   )
 }
 
-function StatsContent(props: { snapshot: StatsSnapshot; onRefresh: () => void }) {
-  const s = () => props.snapshot
+function StatsContent(props: { snapshot: StatsSnapshot }) {
+  const snapshot = () => props.snapshot
+  const overviewMetrics = createMemo(() => buildOverviewMetrics(snapshot()))
+  const modelRows = createMemo(() => buildModelRows(snapshot()))
+  const agentRows = createMemo(() => buildAgentRows(snapshot()))
+  const toolRows = createMemo(() => buildToolRows(snapshot()))
 
   return (
-    <div class="flex flex-col gap-0 pb-4">
-      <OverviewCards overview={s().overview} tokenCost={s().tokenCost} />
-      <DailyTrend days={s().timeSeries.days} />
-      <TokenRing tokens={s().tokenCost.tokens} cacheHitRate={s().tokenCost.cacheHitRate} />
+    <div class="flex flex-col gap-0 pb-5">
+      <OverviewCards
+        metrics={overviewMetrics()}
+        streak={{
+          current: snapshot().overview.currentStreak,
+          longest: snapshot().overview.longestStreak,
+        }}
+      />
+      <DailyTrend days={snapshot().timeSeries.days} />
+      <TokenRing tokens={snapshot().tokenCost.tokens} cacheHitRate={snapshot().tokenCost.cacheHitRate} />
 
       <RankList
         title="Models"
-        icon="🤖"
-        items={s().models.models.map((m) => ({
-          id: `${m.providerID}/${m.modelID}`,
-          label: m.modelID,
-          value: m.messages,
-          detail: formatCost(m.cost),
-          sublabel: m.providerID,
-        }))}
+        description="Compare which models you rely on most by calls, token volume, or spend."
+        metrics={MODEL_METRICS}
+        rows={modelRows()}
+        defaultMetric="messages"
       />
 
       <RankList
         title="Agents"
-        icon="⚡"
-        items={s().agents.agents.map((a) => ({
-          id: a.agent,
-          label: a.agent,
-          value: a.messages,
-          detail: formatCost(a.cost),
-          sublabel: `${a.sessions} sessions`,
-        }))}
+        description="See which agents carry the workload, cover the most sessions, or spend the most budget."
+        metrics={AGENT_METRICS}
+        rows={agentRows()}
+        defaultMetric="messages"
       />
 
       <RankList
         title="Tools"
-        icon="🔧"
-        items={s().tools.tools.map((t) => ({
-          id: t.tool,
-          label: t.tool,
-          value: t.calls,
-          detail: t.calls > 0 ? `${Math.round((t.successes / t.calls) * 100)}%ok` : "—",
-          sublabel: t.calls > 0 ? `${Math.round(t.avgDurationMs)}ms avg` : undefined,
-        }))}
+        description="Switch between usage, latency, and reliability to understand your working rhythm."
+        metrics={TOOL_METRICS}
+        rows={toolRows()}
+        defaultMetric="calls"
       />
 
-      <CodeSummary codeChanges={s().codeChanges} />
-      <HourlyHeatmap hourlyActivity={s().timeSeries.hourlyActivity} />
-      <Milestones snapshot={s()} />
+      <CodeSummary codeChanges={snapshot().codeChanges} />
+      <ActivityHeatmap days={snapshot().timeSeries.days} />
+      <Milestones snapshot={snapshot()} />
     </div>
   )
 }
