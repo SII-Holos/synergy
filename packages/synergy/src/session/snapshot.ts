@@ -98,25 +98,27 @@ export namespace Snapshot {
       for (const file of item.files) {
         if (files.has(file)) continue
         log.info("reverting", { file, hash: item.hash })
-        const result = await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${file}`
-          .quiet()
-          .cwd(Instance.directory)
-          .nothrow()
-        if (result.exitCode !== 0) {
-          const relativePath = path.relative(Instance.directory, file)
-          const checkTree =
-            await $`git --git-dir ${git} --work-tree ${Instance.directory} ls-tree ${item.hash} -- ${relativePath}`
+        const relativePath = path.relative(Instance.directory, file)
+        const checkTree =
+          await $`git --git-dir ${git} --work-tree ${Instance.directory} ls-tree ${item.hash} -- ${relativePath}`
+            .quiet()
+            .cwd(Instance.directory)
+            .nothrow()
+        if (checkTree.exitCode === 0 && checkTree.text().trim()) {
+          const result =
+            await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${relativePath}`
               .quiet()
               .cwd(Instance.directory)
               .nothrow()
-          if (checkTree.exitCode === 0 && checkTree.text().trim()) {
-            log.info("file existed in snapshot but checkout failed, keeping", {
+          if (result.exitCode !== 0) {
+            log.warn("file existed in snapshot but checkout failed", {
               file,
+              stderr: result.stderr.toString(),
             })
-          } else {
-            log.info("file did not exist in snapshot, deleting", { file })
-            await fs.unlink(file).catch(() => {})
           }
+        } else {
+          log.info("file did not exist in snapshot, deleting", { file })
+          await fs.unlink(file).catch(() => {})
         }
         files.add(file)
       }
