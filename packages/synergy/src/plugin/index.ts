@@ -7,9 +7,11 @@ import type {
   PluginCacheStore,
   PluginCLIEntry,
   PluginSkill,
+  PluginAgent,
 } from "@ericsanchezok/synergy-plugin"
 import path from "path"
 import fs from "fs/promises"
+import { existsSync } from "fs"
 import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
@@ -45,10 +47,6 @@ export namespace Plugin {
   // ---------------------------------------------------------------------------
   // Plugin auth store — encrypted credentials at ~/.synergy/data/plugin/{id}/auth.json
   // ---------------------------------------------------------------------------
-
-  function authPath(pluginId: string) {
-    return path.join(Instance.directory, "..", ".synergy", "data", "plugin", pluginId, "auth.json")
-  }
 
   function resolveAuthPath(pluginId: string) {
     const home = process.env.HOME || process.env.USERPROFILE || "~"
@@ -149,8 +147,22 @@ export namespace Plugin {
     id: string
     name?: string
     hooks: PluginHooks
+    pluginDir: string
     cli?: Record<string, PluginCLIEntry>
     skills?: PluginSkill[]
+    agents?: Record<string, PluginAgent>
+  }
+
+  /** Walk up from a file path to find the nearest directory containing package.json. */
+  function findPackageRoot(entryPath: string): string {
+    let dir = path.dirname(entryPath)
+    for (let i = 0; i < 10; i++) {
+      if (existsSync(path.join(dir, "package.json"))) return dir
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return path.dirname(entryPath)
   }
 
   const state = Instance.state(async () => {
@@ -162,7 +174,7 @@ export namespace Plugin {
     })
     const config = await Config.get()
     const loaded: LoadedPlugin[] = []
-    const baseInput: Omit<PluginInput, "config" | "auth" | "cache"> = {
+    const baseInput: Omit<PluginInput, "config" | "auth" | "cache" | "pluginDir"> = {
       client,
       scope: Instance.scope,
       worktree: Instance.worktree,
@@ -178,6 +190,8 @@ export namespace Plugin {
 
     for (let pluginPath of pluginPaths) {
       log.info("loading plugin", { path: pluginPath })
+      let pluginDir: string
+
       if (!pluginPath.startsWith("file://")) {
         const lastAtIndex = pluginPath.lastIndexOf("@")
         const pkg = lastAtIndex > 0 ? pluginPath.substring(0, lastAtIndex) : pluginPath
@@ -188,11 +202,14 @@ export namespace Plugin {
           throw err
         })
         if (!pluginPath) continue
+        pluginDir = findPackageRoot(pluginPath)
       } else {
         const filePath = pluginPath.slice("file://".length)
         if (!path.isAbsolute(filePath)) {
           pluginPath = "file://" + path.resolve(Instance.directory, filePath)
         }
+        const resolved = pluginPath.startsWith("file://") ? pluginPath.slice("file://".length) : pluginPath
+        pluginDir = findPackageRoot(resolved)
       }
 
       const mod = await import(pluginPath)
@@ -206,6 +223,7 @@ export namespace Plugin {
         const pluginId = descriptor.id
         const input: PluginInput = {
           ...baseInput,
+          pluginDir,
           config: createConfigAccessor(pluginId),
           auth: createAuthStore(pluginId),
           cache: createCacheStore(pluginId),
@@ -216,10 +234,12 @@ export namespace Plugin {
           id: pluginId,
           name: descriptor.name,
           hooks,
+          pluginDir,
           cli: hooks.cli,
           skills: hooks.skills,
+          agents: hooks.agents,
         })
-        log.info("loaded plugin", { id: pluginId, name: descriptor.name })
+        log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
       }
     }
 
@@ -231,7 +251,10 @@ export namespace Plugin {
   // ---------------------------------------------------------------------------
 
   export async function trigger<
-    Name extends Exclude<keyof Required<PluginHooks>, "auth" | "event" | "tool" | "cli" | "skills" | "dispose">,
+    Name extends Exclude<
+      keyof Required<PluginHooks>,
+      "auth" | "event" | "tool" | "cli" | "skills" | "agents" | "dispose"
+    >,
     Input = Parameters<Required<PluginHooks>[Name]>[0],
     Output = Parameters<Required<PluginHooks>[Name]>[1],
   >(name: Name, input: Input, output: Output): Promise<Output> {
@@ -285,11 +308,24 @@ export namespace Plugin {
     return result
   }
 
-  /** Return all skill registrations across plugins */
+  /** Return all skill registrations across plugins (with pluginDir for filesystem resolution) */
   export async function skillEntries() {
-    const result: PluginSkill[] = []
+    const result: Array<PluginSkill & { pluginDir: string }> = []
     for (const p of await state().then((x) => x.loaded)) {
-      if (p.skills) result.push(...p.skills)
+      if (p.skills) {
+        for (const skill of p.skills) {
+          result.push({ ...skill, pluginDir: p.pluginDir })
+        }
+      }
+    }
+    return result
+  }
+
+  /** Return all agent registrations across plugins */
+  export async function agentEntries() {
+    const result: Record<string, PluginAgent> = {}
+    for (const p of await state().then((x) => x.loaded)) {
+      if (p.agents) Object.assign(result, p.agents)
     }
     return result
   }
