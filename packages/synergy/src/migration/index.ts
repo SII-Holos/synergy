@@ -16,6 +16,7 @@ export interface Migration {
 const log = Log.create({ service: "migration" })
 
 const BAR_WIDTH = 20
+const PROGRESS_INTERVAL = 200
 
 function collect(): Migration[] {
   return [...agenda, ...config, ...engram, ...session]
@@ -26,7 +27,9 @@ function bar(ratio: number) {
 }
 
 function write(line: string, overwrite = false) {
-  process.stderr.write((overwrite ? "\r" : "") + line)
+  // \x1b[2K clears the entire line before \r returns to line start,
+  // preventing ghost characters when the new line is shorter.
+  process.stderr.write((overwrite ? "\x1b[2K\r" : "") + line)
 }
 
 let runningMigrations: Promise<void> | undefined
@@ -66,7 +69,11 @@ export async function runMigrations(): Promise<void> {
   for (const migration of pending) {
     write(`  ${bar(0)} ${migration.description}`)
     try {
+      let lastProgressTime = 0
       await migration.up((current, total) => {
+        const now = Date.now()
+        if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
+        lastProgressTime = now
         write(`  ${bar(current / total)} ${migration.description} (${current}/${total})`, true)
       })
       write(`  ${bar(1)} ${migration.description} ✓\n`, true)
