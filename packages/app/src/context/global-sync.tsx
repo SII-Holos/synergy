@@ -355,11 +355,11 @@ function createGlobalSync() {
     await Promise.all([...globalPromises, ...perScopePromises])
   }
 
-  async function loadSessions(directory: string, params?: { offset?: number; limit?: number; search?: string }) {
+  async function loadSessions(directory: string) {
     const [_, setStore] = child(directory)
     const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
     return sdk.session
-      .list({ offset: params?.offset ?? 0, limit: params?.limit ?? 20, search: params?.search })
+      .list({})
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)

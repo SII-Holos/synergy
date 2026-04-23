@@ -301,13 +301,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }, 0)
     }
 
-    async function loadSessions(
-      scope: LocalScope | undefined,
-      params?: { offset?: number; limit?: number; search?: string },
-    ) {
-      if (!scope) return
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      await Promise.all(dirs.map((dir) => globalSync.scope.loadSessions(dir, params)))
+    function childStoreForScope(scope: LocalScope | undefined) {
+      if (!scope) return undefined
+      return globalSync.child(scope.worktree)[0]
     }
 
     // Prefetch queue system
@@ -456,7 +452,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         sortSessions,
         projectSessions,
         projectSessionTotal,
-        loadSessions,
+        childStoreForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,
