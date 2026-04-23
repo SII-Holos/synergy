@@ -24,14 +24,21 @@ export const SessionRoute = new Hono()
     "/",
     describeRoute({
       summary: "List sessions",
-      description: "Get a list of all Synergy sessions, sorted by most recently updated.",
+      description: "Get a paginated list of Synergy sessions, sorted by most recently updated.",
       operationId: "session.list",
       responses: {
         200: {
-          description: "List of sessions",
+          description: "Paginated list of sessions",
           content: {
             "application/json": {
-              schema: resolver(Session.Info.array()),
+              schema: resolver(
+                z.object({
+                  data: Session.Info.array(),
+                  total: z.number(),
+                  offset: z.number(),
+                  limit: z.number(),
+                }),
+              ),
             },
           },
         },
@@ -40,25 +47,36 @@ export const SessionRoute = new Hono()
     validator(
       "query",
       z.object({
-        start: z.coerce
+        offset: z.coerce.number().default(0).meta({ description: "Number of sessions to skip" }),
+        limit: z.coerce.number().default(20).meta({ description: "Maximum number of sessions to return" }),
+        search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
+        since: z.coerce
           .number()
           .optional()
           .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
-        search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
-        limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
+        before: z.coerce
+          .number()
+          .optional()
+          .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
+        pinned: z.coerce.boolean().optional().meta({ description: "Only include pinned sessions" }),
       }),
     ),
     async (c) => {
       const query = c.req.valid("query")
-      const term = query.search?.toLowerCase()
-      const sessions: Session.Info[] = []
-      for await (const session of Session.list()) {
-        if (query.start !== undefined && session.time.updated < query.start) continue
-        if (term !== undefined && !session.title.toLowerCase().includes(term)) continue
-        sessions.push(session)
-        if (query.limit !== undefined && sessions.length >= query.limit) break
-      }
-      return c.json(sessions)
+      const result = await Session.list({
+        offset: query.offset,
+        limit: query.limit,
+        search: query.search,
+        since: query.since,
+        before: query.before,
+        pinned: query.pinned,
+      })
+      return c.json({
+        data: result.data,
+        total: result.total,
+        offset: query.offset,
+        limit: query.limit,
+      })
     },
   )
   .get(

@@ -52,6 +52,50 @@ export namespace Session {
     return result
   }
 
+  export type PageIndex = {
+    entries: Array<{
+      id: string
+      updated: number
+      created: number
+      pinned: number
+      archived: boolean
+    }>
+  }
+
+  export async function readPageIndex(scopeID: string): Promise<PageIndex> {
+    return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch(() => ({ entries: [] }))
+  }
+
+  export async function writePageIndex(scopeID: string, index: PageIndex) {
+    await Storage.write(StoragePath.sessionsPageIndex(asScopeID(scopeID)), index)
+  }
+
+  export async function upsertPageIndexEntry(scopeID: string, entry: PageIndex["entries"][number]) {
+    const index = await readPageIndex(scopeID)
+    const existing = index.entries.findIndex((e) => e.id === entry.id)
+    if (existing >= 0) index.entries.splice(existing, 1)
+    const insertAt = index.entries.findIndex((e) => e.updated <= entry.updated)
+    if (insertAt === -1) index.entries.push(entry)
+    else index.entries.splice(insertAt, 0, entry)
+    await writePageIndex(scopeID, index)
+  }
+
+  export async function removePageIndexEntry(scopeID: string, sessionID: string) {
+    const index = await readPageIndex(scopeID)
+    index.entries = index.entries.filter((e) => e.id !== sessionID)
+    await writePageIndex(scopeID, index)
+  }
+
+  function toPageIndexEntry(session: Info): PageIndex["entries"][number] {
+    return {
+      id: session.id,
+      updated: session.time.updated,
+      created: session.time.created,
+      pinned: session.pinned ?? 0,
+      archived: !!session.time.archived,
+    }
+  }
+
   async function writeEndpointIndex(session: Info) {
     if (!session.endpoint) return
 
@@ -122,6 +166,7 @@ export namespace Session {
     )
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await writeEndpointIndex(result)
+    await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
 
     if (result.agenda) {
       await Storage.write(StoragePath.agendaSession(result.agenda.itemID, result.id), {
@@ -196,6 +241,7 @@ export namespace Session {
 
     await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
+    await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined
@@ -233,33 +279,62 @@ export namespace Session {
     },
   )
 
-  async function listSessionIDs() {
-    return Storage.scan(StoragePath.sessionsRoot(asScopeID(Instance.scope.id)))
+  export type ListResult = {
+    data: Info[]
+    total: number
   }
 
-  async function readAll() {
+  export async function list(options?: {
+    offset?: number
+    limit?: number
+    search?: string
+    since?: number
+    before?: number
+    pinned?: boolean
+  }): Promise<ListResult> {
     const scopeID = asScopeID(Instance.scope.id)
-    const ids = await listSessionIDs()
+    const index = await readPageIndex(scopeID)
+    let entries = index.entries.filter((e) => !e.archived)
+
+    if (options?.pinned) entries = entries.filter((e) => e.pinned > 0)
+    if (options?.since) entries = entries.filter((e) => e.updated >= options.since!)
+    if (options?.before) entries = entries.filter((e) => e.updated < options.before!)
+
+    const total = entries.length
+    const offset = options?.offset ?? 0
+    const limit = options?.limit ?? total
+    const slice = entries.slice(offset, offset + limit)
+
+    if (slice.length === 0) return { data: [], total }
+
+    const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
+    const sessions = await Storage.readMany<Info>(keys)
+    let data = sessions.filter((s): s is Info => s != null && !!s.scope)
+
+    if (options?.search) {
+      const term = options.search.toLowerCase()
+      data = data.filter((s) => s.title.toLowerCase().includes(term))
+    }
+
+    return { data, total }
+  }
+
+  export async function* listAll() {
+    const scopeID = asScopeID(Instance.scope.id)
+    const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
     const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, asSessionID(id)))
     const sessions = await Storage.readMany<Info>(keys)
-    return sessions.filter((s): s is Info => s != null)
-  }
-
-  export async function* list() {
-    for (const sessionID of await listSessionIDs()) {
-      try {
-        const session = await get(sessionID)
-        if (!session.scope) continue
-        yield session
-      } catch (e) {
-        log.warn("skipping unreadable session", { sessionID, error: e })
-      }
+    for (const session of sessions) {
+      if (session && session.scope) yield session as Info
     }
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const sessions = await readAll()
-    return sessions.filter((s) => s.parentID === parentID)
+    const sessions: Info[] = []
+    for await (const session of listAll()) {
+      if (session.parentID === parentID) sessions.push(session)
+    }
+    return sessions
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
@@ -274,6 +349,7 @@ export namespace Session {
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
+      await removePageIndexEntry(scope.id, sessionID)
       Bus.publish(SessionEvent.Deleted, {
         info: session,
       })
@@ -281,6 +357,32 @@ export namespace Session {
       log.error(e)
     }
   })
+
+  export async function updateLastExchange(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    const scopeID = asScopeID((session.scope as Scope).id)
+    const lastExchange: NonNullable<Info["lastExchange"]> = {}
+    for await (const msg of MessageV2.stream({ sessionID })) {
+      if (!lastExchange.assistant && msg.info.role === "assistant") {
+        const text = msg.parts
+          .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
+          .map((p) => p.text)
+          .join("\n")
+        if (text) lastExchange.assistant = text.slice(0, 200)
+      }
+      if (!lastExchange.user && msg.info.role === "user") {
+        const text = msg.parts
+          .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
+          .map((p) => p.text)
+          .join("\n")
+        if (text) lastExchange.user = text.slice(0, 200)
+      }
+      if (lastExchange.user && lastExchange.assistant) break
+    }
+    await update(sessionID, (draft) => {
+      draft.lastExchange = lastExchange
+    })
+  }
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const session = await SessionManager.requireSession(msg.sessionID)

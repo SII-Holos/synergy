@@ -3,7 +3,6 @@ import { Tool } from "./tool"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
 import { SessionManager } from "../session/manager"
-import { MessageV2 } from "../session/message-v2"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
@@ -38,108 +37,58 @@ interface TimeFilter {
   beforeMs?: number
 }
 
-interface LastExchange {
-  user?: { text: string; time: number }
-  assistant?: { text: string; time: number }
-}
-
-async function getLastExchange(sessionID: string, scopeID: string): Promise<LastExchange> {
-  const exchange: LastExchange = {}
-  for await (const msg of MessageV2.stream({ scopeID, sessionID })) {
-    if (!exchange.assistant && msg.info.role === "assistant") {
-      const text = msg.parts
-        .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-        .map((p) => p.text)
-        .join("\n")
-      if (text) {
-        exchange.assistant = { text: text.slice(0, 200), time: msg.info.time.created }
-      }
-    }
-    if (!exchange.user && msg.info.role === "user") {
-      const text = msg.parts
-        .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-        .map((p) => p.text)
-        .join("\n")
-      if (text) {
-        exchange.user = { text: text.slice(0, 200), time: msg.info.time.created }
-      }
-    }
-    if (exchange.user && exchange.assistant) break
-  }
-  return exchange
-}
-
-function formatExchange(exchange: LastExchange): string {
-  const lines: string[] = []
-  if (exchange.user) {
-    lines.push(`  Last user: ${exchange.user.text}`)
-  }
-  if (exchange.assistant) {
-    lines.push(`  Last assistant: ${exchange.assistant.text}`)
-  }
-  return lines.join("\n")
-}
-
 function formatScopeLabel(scope: Scope): string {
   if (scope.type === "global") return `Home [${scope.id}]`
   const name = scope.name ?? scope.directory.split("/").pop() ?? scope.id
   return `${name} [${scope.id}] — ${scope.directory}`
 }
 
-function formatSessionEntry(session: Session.Info, exchange: LastExchange, extra?: string): string {
+function formatSessionEntry(session: Session.Info, extra?: string): string {
   const scope = session.scope as Scope
   const pinned = session.pinned ? " [pinned]" : ""
   const updated = new Date(session.time.updated).toISOString()
   const parts = [`- [${session.id}] "${session.title}"${pinned} — updated ${updated}`]
   parts.push(`  Scope: ${formatScopeLabel(scope)}`)
   if (extra) parts.push(`  ${extra}`)
-  const ex = formatExchange(exchange)
-  if (ex) parts.push(ex)
+  if (session.lastExchange?.user) parts.push(`  Last user: ${session.lastExchange.user}`)
+  if (session.lastExchange?.assistant) parts.push(`  Last assistant: ${session.lastExchange.assistant}`)
   return parts.join("\n")
-}
-
-function filterByTime(sessions: Session.Info[], filter: TimeFilter): Session.Info[] {
-  if (!filter.sinceMs && !filter.beforeMs) return sessions
-  return sessions.filter((s) => {
-    if (filter.sinceMs && s.time.updated < filter.sinceMs) return false
-    if (filter.beforeMs && s.time.updated >= filter.beforeMs) return false
-    return true
-  })
 }
 
 async function listProject(limit: number, offset: number, filter: TimeFilter) {
   const scopes = await Scope.list()
-  const allSessions: Session.Info[] = []
+  const allEntries: Array<Session.PageIndex["entries"][number] & { scopeID: Identifier.ScopeID }> = []
 
   for (const scope of scopes) {
     const scopeID = Identifier.asScopeID(scope.id)
-    const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
-    const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(id)))
-    const sessions = await Storage.readMany<Session.Info>(keys)
-    for (const s of sessions) {
-      if (s && s.scope && !s.parentID && !s.time.archived) allSessions.push(s)
+    const index = await Session.readPageIndex(scopeID)
+    for (const entry of index.entries) {
+      if (entry.archived) continue
+      if (filter.sinceMs && entry.updated < filter.sinceMs) continue
+      if (filter.beforeMs && entry.updated >= filter.beforeMs) continue
+      allEntries.push({ ...entry, scopeID })
     }
   }
 
-  const filtered = filterByTime(allSessions, filter)
-  filtered.sort((a, b) => b.time.updated - a.time.updated)
+  allEntries.sort((a, b) => b.updated - a.updated)
+  const total = allEntries.length
+  const page = allEntries.slice(offset, offset + limit)
 
-  const total = filtered.length
-  const page = filtered.slice(offset, offset + limit)
+  const keys = page.map((e) => StoragePath.sessionInfo(e.scopeID, Identifier.asSessionID(e.id)))
+  const sessions = await Storage.readMany<Session.Info>(keys)
+
   const entries: string[] = []
-  for (const session of page) {
-    const exchange = await getLastExchange(session.id, (session.scope as Scope).id)
-    entries.push(formatSessionEntry(session, exchange))
+  for (const s of sessions) {
+    if (s && s.scope && !s.parentID) entries.push(formatSessionEntry(s))
   }
-  return { entries, total, shown: page.length }
+  return { entries, total, shown: entries.length }
 }
 
 async function listHome() {
   const session = await AppChannel.session()
   const homeSession = { ...session, title: "Home" }
-  const exchange = await getLastExchange(session.id, (session.scope as Scope).id)
   return {
-    entries: [formatSessionEntry(homeSession, exchange)],
+    entries: [formatSessionEntry(homeSession)],
     total: 1,
     shown: 1,
   }
@@ -160,9 +109,12 @@ async function listContacts(limit: number, offset: number) {
     const endpoint = SessionEndpoint.holos(contact.holosId ?? contact.id)
     const session = await SessionManager.getSession(endpoint)
     if (session && session.scope && !session.time.archived) {
-      const exchange = await getLastExchange(session.id, (session.scope as Scope).id)
-      const ex = formatExchange(exchange)
-      entries.push(ex ? `${header}\n  Session: ${session.id}\n${ex}` : `${header}\n  Session: ${session.id}`)
+      const ex = session.lastExchange
+      const exLines: string[] = []
+      if (ex?.user) exLines.push(`  Last user: ${ex.user}`)
+      if (ex?.assistant) exLines.push(`  Last assistant: ${ex.assistant}`)
+      const exText = exLines.join("\n")
+      entries.push(exText ? `${header}\n  Session: ${session.id}\n${exText}` : `${header}\n  Session: ${session.id}`)
     } else {
       entries.push(`${header}\n  No conversation yet`)
     }
@@ -176,22 +128,21 @@ async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
   const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
   const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(id)))
   const all = await Storage.readMany<Session.Info>(keys)
-  const sessions = filterByTime(
-    all.filter(
+  const sessions = all
+    .filter(
       (s): s is Session.Info =>
         s != null && !!s.scope && !s.parentID && !s.time.archived && SessionEndpoint.type(s.endpoint) === "feishu",
-    ),
-    filter,
-  )
+    )
+    .filter((s) => {
+      if (filter.sinceMs && s.time.updated < filter.sinceMs) return false
+      if (filter.beforeMs && s.time.updated >= filter.beforeMs) return false
+      return true
+    })
   sessions.sort((a, b) => b.time.updated - a.time.updated)
 
   const total = sessions.length
   const page = sessions.slice(offset, offset + limit)
-  const entries: string[] = []
-  for (const session of page) {
-    const exchange = await getLastExchange(session.id, scopeID)
-    entries.push(formatSessionEntry(session, exchange))
-  }
+  const entries = page.map((s) => formatSessionEntry(s))
   return { entries, total, shown: page.length }
 }
 

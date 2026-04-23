@@ -461,6 +461,9 @@ export namespace SessionProcessor {
           }
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
+          Session.updateLastExchange(input.sessionID).catch((e) =>
+            log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
+          )
           ExperienceEncoder.onComplete(input.assistantMessage)
           await Plugin.trigger(
             "session.turn.after",

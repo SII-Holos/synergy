@@ -169,4 +169,110 @@ export const migrations: Migration[] = [
       log.info("holos message metadata normalization complete", { total: tasks.length })
     },
   },
+  {
+    id: "20260423-session-page-index-and-last-exchange",
+    description: "Build session page index per scope and backfill lastExchange on session info",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["sessions"])
+      if (scopeIDs.length === 0) return
+
+      let totalSessions = 0
+      const scopeTasks: Array<{ scopeID: string; sessionIDs: string[] }> = []
+      for (const scopeID of scopeIDs) {
+        const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
+        if (sessionIDs.length > 0) {
+          scopeTasks.push({ scopeID, sessionIDs })
+          totalSessions += sessionIDs.length
+        }
+      }
+
+      if (totalSessions === 0) return
+
+      let done = 0
+      for (const { scopeID, sessionIDs } of scopeTasks) {
+        const scope = Identifier.asScopeID(scopeID)
+
+        // Batch read all session infos
+        const keys = sessionIDs.map((id) => StoragePath.sessionInfo(scope, Identifier.asSessionID(id)))
+        const sessions = await Storage.readMany<Info>(keys)
+
+        // Build page index entries
+        const entries: Array<{
+          id: string
+          updated: number
+          created: number
+          pinned: number
+          archived: boolean
+        }> = []
+
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          if (!session) continue
+
+          entries.push({
+            id: session.id,
+            updated: session.time.updated,
+            created: session.time.created,
+            pinned: session.pinned ?? 0,
+            archived: !!session.time.archived,
+          })
+
+          // Backfill lastExchange
+          if (!session.lastExchange && !session.time.archived) {
+            const lastExchange: NonNullable<Info["lastExchange"]> = {}
+            const sID = Identifier.asSessionID(session.id)
+            const msgIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sID)).catch(() => [])
+
+            for (let mi = msgIDs.length - 1; mi >= 0; mi--) {
+              const msgInfo = await Storage.read<MessageV2.Info>(
+                StoragePath.messageInfo(scope, sID, Identifier.asMessageID(msgIDs[mi])),
+              ).catch(() => undefined)
+              if (!msgInfo) continue
+
+              const partIDs = await Storage.scan(
+                StoragePath.messageParts(scope, sID, Identifier.asMessageID(msgIDs[mi])),
+              ).catch(() => [])
+              const parts = await Storage.readMany<MessageV2.Part>(
+                partIDs.map((pid) =>
+                  StoragePath.messagePart(scope, sID, Identifier.asMessageID(msgIDs[mi]), Identifier.asPartID(pid)),
+                ),
+              )
+
+              if (!lastExchange.assistant && msgInfo.role === "assistant") {
+                const text = parts
+                  .filter((p): p is MessageV2.TextPart => p != null && p.type === "text" && !p.ignored && !p.synthetic)
+                  .map((p) => p.text)
+                  .join("\n")
+                if (text) lastExchange.assistant = text.slice(0, 200)
+              }
+              if (!lastExchange.user && msgInfo.role === "user") {
+                const text = parts
+                  .filter((p): p is MessageV2.TextPart => p != null && p.type === "text" && !p.ignored && !p.synthetic)
+                  .map((p) => p.text)
+                  .join("\n")
+                if (text) lastExchange.user = text.slice(0, 200)
+              }
+              if (lastExchange.user && lastExchange.assistant) break
+            }
+
+            if (lastExchange.user || lastExchange.assistant) {
+              await Storage.write(StoragePath.sessionInfo(scope, sID), {
+                ...session,
+                lastExchange,
+              })
+            }
+          }
+
+          done++
+          progress(done, totalSessions)
+        }
+
+        // Sort by updated desc and write page index
+        entries.sort((a, b) => b.updated - a.updated)
+        await Storage.write(StoragePath.sessionsPageIndex(scope), { entries })
+      }
+
+      log.info("session page index and lastExchange backfill complete", { totalSessions })
+    },
+  },
 ]
