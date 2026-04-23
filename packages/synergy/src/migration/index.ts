@@ -4,6 +4,7 @@ import { Log } from "../util/log"
 import { migrations as agenda } from "../agenda/migration"
 import { migrations as config } from "../config/migration"
 import { migrations as engram } from "../engram/migration"
+import { migrations as scope } from "../scope/migration"
 import { migrations as session } from "../session/migration"
 import { UI } from "../cli/ui"
 
@@ -19,7 +20,7 @@ const BAR_WIDTH = 20
 const PROGRESS_INTERVAL = 200
 
 function collect(): Migration[] {
-  return [...agenda, ...config, ...engram, ...session]
+  return [...agenda, ...config, ...engram, ...scope, ...session]
 }
 
 function bar(ratio: number) {
@@ -67,15 +68,19 @@ export async function runMigrations(): Promise<void> {
   write("\n")
 
   for (const migration of pending) {
-    write(`  ${bar(0)} ${migration.description}`)
     try {
       let lastProgressTime = 0
+      let started = false
       await migration.up((current, total) => {
+        if (!started) {
+          started = true
+        }
         const now = Date.now()
         if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
         lastProgressTime = now
         write(`  ${bar(current / total)} ${migration.description} (${current}/${total})`, true)
       })
+      if (!started) write(`  ${bar(0)} ${migration.description}`, true)
       write(`  ${bar(1)} ${migration.description} ✓\n`, true)
       logData[migration.id] = Date.now()
       await Storage.write(StoragePath.metaMigrationLog(), logData)
