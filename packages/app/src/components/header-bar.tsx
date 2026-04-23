@@ -348,7 +348,8 @@ export function HeaderBar() {
 
         <div class="flex items-center gap-0.5">
           <PanelToggle id="note" icon="notebook-pen" label="Notes" />
-          <PanelToggle id="lucid" icon="sparkles" label="Lucid" />
+          {/* TODO: Lucid panel icon — still in design, re-enable when ready */}
+          {/* <PanelToggle id="lucid" icon="sparkles" label="Lucid" /> */}
           <Show when={inDirectory()}>
             <PanelToggle id="engram" icon="brain" label="Engram" />
             <PanelToggle id="agenda" icon="clipboard-list" label="Agenda" />

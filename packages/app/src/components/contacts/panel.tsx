@@ -126,14 +126,12 @@ export function HolosPanel() {
               Hub
             </ViewTab>
             <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
-              <span class="flex items-center gap-1.5">
-                Contacts
-                <Show when={pendingIncoming().length > 0}>
-                  <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
-                    {pendingIncoming().length}
-                  </span>
-                </Show>
-              </span>
+              Contacts
+              <Show when={pendingIncoming().length > 0}>
+                <span class="ml-1 flex inline-flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
+                  {pendingIncoming().length}
+                </span>
+              </Show>
             </ViewTab>
           </div>
         </Panel.HeaderRow>
