@@ -49,14 +49,14 @@ function CompositionRow(props: { label: string; value: string; share: number; to
   const toneClasses = () =>
     props.tone === "emerald"
       ? {
-          text: "text-emerald-400",
-          dot: "bg-emerald-400",
-          bar: "from-emerald-500 to-teal-400",
+          text: "text-text-diff-add-base",
+          dot: "bg-text-diff-add-base",
+          bar: "bg-[var(--apple-light-8)]",
         }
       : {
-          text: "text-rose-400",
-          dot: "bg-rose-400",
-          bar: "from-rose-500 to-orange-400",
+          text: "text-text-diff-delete-base",
+          dot: "bg-text-diff-delete-base",
+          bar: "bg-[var(--ember-light-8)]",
         }
 
   return (
@@ -74,7 +74,7 @@ function CompositionRow(props: { label: string; value: string; share: number; to
       </div>
       <div class="mt-2 h-2 rounded-full bg-surface-inset-base/70 p-0.5">
         <div
-          class={`h-full rounded-full bg-gradient-to-r transition-[width] duration-700 ${toneClasses().bar}`}
+          class={`h-full rounded-full transition-[width] duration-700 ${toneClasses().bar}`}
           style={{ width: `${Math.max(props.share, props.share > 0 ? 8 : 0)}%` }}
         />
       </div>
@@ -110,7 +110,7 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <div class="mt-5 mb-3 px-1 text-12-medium text-text-weak">Code Changes</div>
+      <div class="mb-3 px-1 text-12-medium text-text-weak">Code Changes</div>
       <section
         class="rounded-2xl bg-surface-raised-base px-4 py-4"
         style={{ animation: "fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
@@ -154,11 +154,11 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                 <div class="mt-3 h-3 overflow-hidden rounded-full bg-surface-inset-base/72 p-0.5">
                   <div class="flex h-full gap-0.5">
                     <div
-                      class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                      class="h-full rounded-full bg-[var(--apple-light-8)]"
                       style={{ width: `${Math.max(addShare(), addShare() > 0 ? 6 : 0)}%` }}
                     />
                     <div
-                      class="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400"
+                      class="h-full rounded-full bg-[var(--ember-light-8)]"
                       style={{ width: `${Math.max(removeShare(), removeShare() > 0 ? 6 : 0)}%` }}
                     />
                   </div>

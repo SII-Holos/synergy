@@ -257,7 +257,7 @@ export function ActivityHeatmap(props: {
   return (
     <>
       <style>{HEATMAP_STYLE}</style>
-      <section class="mt-5 rounded-2xl bg-surface-raised-base px-4 py-4">
+      <section class="rounded-2xl bg-surface-raised-base px-4 py-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="text-14-semibold tracking-tight text-text-base">{totalLabel()}</h3>

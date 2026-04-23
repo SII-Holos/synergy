@@ -140,7 +140,7 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
   const toolRows = createMemo(() => buildToolRows(snapshot()))
 
   return (
-    <div class="flex flex-col gap-0 pb-5">
+    <div class="flex flex-col gap-5 pb-5">
       <OverviewCards
         metrics={overviewMetrics()}
         streak={{

@@ -252,7 +252,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
   }))
 
   return (
-    <div class="mt-5 rounded-2xl bg-surface-raised-base px-4 py-4">
+    <div class="rounded-2xl bg-surface-raised-base px-4 py-4">
       <div class="flex items-start justify-between gap-3">
         <div>
           <h3 class="text-14-semibold text-text-base">Daily Trend</h3>

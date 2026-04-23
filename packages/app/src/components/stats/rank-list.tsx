@@ -176,7 +176,7 @@ export function RankList(props: RankListProps) {
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <section class="mt-5 rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <section class="rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
         <div class="flex items-start justify-between gap-4 px-1 pb-3">
           <div class="min-w-0">
             <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Ranking</div>
