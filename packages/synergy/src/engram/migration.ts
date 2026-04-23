@@ -160,4 +160,25 @@ export const migrations: Migration[] = [
       if (removed > 0) log.info("purged invalid experiences", { removed })
     },
   },
+  {
+    id: "20260423-engram-purge-tool-hallucination-intents",
+    description: "Remove experiences whose intent is a tool-call hallucination ([Tool: ...])",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, intent FROM experience WHERE intent LIKE '[Tool:%'").all() as {
+        id: string
+        intent: string
+      }[]
+
+      progress(2, 3)
+      for (const row of rows) {
+        EngramDB.Experience.remove(row.id)
+      }
+
+      progress(3, 3)
+      if (rows.length > 0) log.info("purged tool-hallucination intents", { removed: rows.length })
+    },
+  },
 ]
