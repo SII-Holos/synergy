@@ -12,6 +12,7 @@ export interface SessionRowProps {
   hasError: boolean
   hasNotification: boolean
   notificationCount: number
+  childCount?: number
   even?: boolean
   onSelect: () => void
   onTogglePin: () => void
@@ -208,6 +209,13 @@ export function SessionRow(props: SessionRowProps) {
             </Show>
           </Show>
         </div>
+
+        {/* Child count badge */}
+        <Show when={props.childCount && props.childCount > 0}>
+          <span class="shrink-0 text-10-medium text-text-weaker bg-surface-inset-base/80 px-1.5 py-0.5 rounded-md">
+            {props.childCount}
+          </span>
+        </Show>
 
         {/* Time */}
         <span class="text-11-regular text-text-weak shrink-0">{relativeTime(updatedAt())}</span>

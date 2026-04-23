@@ -306,6 +306,42 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return globalSync.child(scope.worktree)[0]
     }
 
+    function childCountsForScope(scope: LocalScope | undefined): Record<string, number> {
+      if (!scope) return {}
+      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
+      const stores = dirs.map((dir) => globalSync.child(dir)[0])
+      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
+      const counts: Record<string, number> = {}
+      for (const session of all) {
+        if (session.parentID) {
+          counts[session.parentID] = (counts[session.parentID] ?? 0) + 1
+        }
+      }
+      return counts
+    }
+
+    function childStatusForScope(
+      scope: LocalScope | undefined,
+    ): Record<string, { total: number; running: number; completed: number; failed: number }> {
+      if (!scope) return {}
+      const store = childStoreForScope(scope)
+      if (!store) return {}
+      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
+      const stores = dirs.map((dir) => globalSync.child(dir)[0])
+      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
+      const result: Record<string, { total: number; running: number; completed: number; failed: number }> = {}
+      for (const session of all) {
+        if (!session.parentID) continue
+        if (!result[session.parentID]) result[session.parentID] = { total: 0, running: 0, completed: 0, failed: 0 }
+        const summary = result[session.parentID]
+        summary.total++
+        const status = store.session_status[session.id]
+        if (status?.type === "busy" || status?.type === "retry") summary.running++
+        else if (session.time.archived) summary.completed++
+      }
+      return result
+    }
+
     // Prefetch queue system
     type PrefetchQueue = {
       inflight: Set<string>
@@ -453,6 +489,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         projectSessions,
         projectSessionTotal,
         childStoreForScope,
+        childCountsForScope,
+        childStatusForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,

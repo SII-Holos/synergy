@@ -59,6 +59,7 @@ export namespace Session {
       created: number
       pinned: number
       archived: boolean
+      parentID?: string
     }>
   }
 
@@ -93,6 +94,7 @@ export namespace Session {
       created: session.time.created,
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
+      parentID: session.parentID,
     }
   }
 
@@ -291,11 +293,13 @@ export namespace Session {
     since?: number
     before?: number
     pinned?: boolean
+    parentOnly?: boolean
   }): Promise<ListResult> {
     const scopeID = asScopeID(Instance.scope.id)
     const index = await readPageIndex(scopeID)
     let entries = index.entries.filter((e) => !e.archived)
 
+    if (options?.parentOnly !== false) entries = entries.filter((e) => !e.parentID)
     if (options?.pinned) entries = entries.filter((e) => e.pinned > 0)
     if (options?.since) entries = entries.filter((e) => e.updated >= options.since!)
     if (options?.before) entries = entries.filter((e) => e.updated < options.before!)

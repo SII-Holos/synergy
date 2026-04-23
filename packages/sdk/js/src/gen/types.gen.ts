@@ -5048,6 +5048,10 @@ export type SessionListData = {
      * Only include pinned sessions
      */
     pinned?: boolean
+    /**
+     * Only include top-level sessions (exclude subsessions). Default: true
+     */
+    parentOnly?: boolean
   }
   url: "/session"
 }

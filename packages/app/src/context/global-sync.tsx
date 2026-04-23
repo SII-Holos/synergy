@@ -359,7 +359,7 @@ function createGlobalSync() {
     const [_, setStore] = child(directory)
     const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
     return sdk.session
-      .list({})
+      .list({ parentOnly: false })
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)

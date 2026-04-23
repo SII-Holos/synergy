@@ -59,6 +59,10 @@ export const SessionRoute = new Hono()
           .optional()
           .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
         pinned: z.coerce.boolean().optional().meta({ description: "Only include pinned sessions" }),
+        parentOnly: z.coerce
+          .boolean()
+          .default(true)
+          .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
       }),
     ),
     async (c) => {
@@ -70,6 +74,7 @@ export const SessionRoute = new Hono()
         since: query.since,
         before: query.before,
         pinned: query.pinned,
+        parentOnly: query.parentOnly,
       })
       return c.json({
         data: result.data,

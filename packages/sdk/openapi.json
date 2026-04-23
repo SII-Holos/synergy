@@ -2033,6 +2033,15 @@
               "type": "boolean"
             },
             "description": "Only include pinned sessions"
+          },
+          {
+            "in": "query",
+            "name": "parentOnly",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            },
+            "description": "Only include top-level sessions (exclude subsessions). Default: true"
           }
         ],
         "summary": "List sessions",

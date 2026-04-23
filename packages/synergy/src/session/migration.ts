@@ -271,4 +271,48 @@ export const migrations: Migration[] = [
       log.info("session page index and lastExchange backfill complete", { totalSessions })
     },
   },
+  {
+    id: "20260423-session-page-index-parentid",
+    description: "Add parentID to session page index entries",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+      let done = 0
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const indexPath = StoragePath.sessionsPageIndex(scope)
+        const index = await Storage.read<{
+          entries: Array<{
+            id: string
+            updated: number
+            created: number
+            pinned: number
+            archived: boolean
+            parentID?: string
+          }>
+        }>(indexPath).catch(() => null)
+        if (!index?.entries?.length) {
+          done++
+          progress(done, scopeIDs.length)
+          continue
+        }
+
+        let updated = false
+        for (const entry of index.entries) {
+          if (entry.parentID !== undefined) continue
+          const info = await Storage.read<Info>(StoragePath.sessionInfo(scope, Identifier.asSessionID(entry.id))).catch(
+            () => null,
+          )
+          if (info?.parentID) {
+            entry.parentID = info.parentID
+            updated = true
+          }
+        }
+
+        if (updated) await Storage.write(indexPath, index)
+        done++
+        progress(done, scopeIDs.length)
+      }
+    },
+  },
 ]

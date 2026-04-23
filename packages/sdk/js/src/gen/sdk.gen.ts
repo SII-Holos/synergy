@@ -2707,6 +2707,7 @@ export class Session extends HeyApiClient {
       since?: number
       before?: number
       pinned?: boolean
+      parentOnly?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2722,6 +2723,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "since" },
             { in: "query", key: "before" },
             { in: "query", key: "pinned" },
+            { in: "query", key: "parentOnly" },
           ],
         },
       ],

@@ -13,6 +13,7 @@ type ChildStore = {
 interface ActiveZoneProps {
   sessions: Session[]
   childStore: ChildStore
+  childStatus?: Record<string, { total: number; running: number; completed: number; failed: number }>
   notification: {
     session: { unseen: (sessionID: string) => { type: string }[] }
   }
@@ -87,6 +88,7 @@ export function ActiveZone(props: ActiveZoneProps) {
                 session={session}
                 reason={reason}
                 childStore={props.childStore}
+                childStatus={props.childStatus?.[session.id]}
                 index={index}
                 onSelect={props.onSelectSession}
               />
@@ -102,6 +104,7 @@ function ActiveCard(props: {
   session: Session
   reason: ActiveReason
   childStore: ChildStore
+  childStatus?: { total: number; running: number; completed: number; failed: number }
   index: () => number
   onSelect: (session: Session) => void
 }) {
@@ -146,6 +149,14 @@ function ActiveCard(props: {
       </div>
 
       <span class="text-12-medium text-text-base line-clamp-2">{props.session.title || "New session"}</span>
+
+      <Show when={props.childStatus && props.childStatus.total > 0}>
+        <span class="text-10-regular text-text-weaker mt-1">
+          {props.childStatus!.running > 0
+            ? `${props.childStatus!.running}/${props.childStatus!.total} tasks running`
+            : `${props.childStatus!.total} tasks`}
+        </span>
+      </Show>
 
       <div class="flex items-center justify-between mt-auto pt-2">
         <span class="text-10-regular text-text-weak">{relativeTime(updatedAt())}</span>
