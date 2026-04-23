@@ -1,5 +1,5 @@
 import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
-import { ComponentProps, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
+import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
@@ -316,23 +316,23 @@ export const Terminal = (props: TerminalProps) => {
 
   return (
     <div
-      ref={container}
       data-component="terminal"
       data-prevent-autofocus
-      style={{ "background-color": terminalColors().background }}
       classList={{
         ...(local.classList ?? {}),
         "select-text": true,
-        "size-full px-6 py-3 font-mono relative": true,
+        "size-full font-mono relative": true,
         [local.class ?? ""]: !!local.class,
       }}
+      style={{ "background-color": terminalColors().background }}
       {...others}
     >
-      {!connected() && (
+      <div ref={container} class="size-full px-6 py-3" />
+      <Show when={!connected()}>
         <div class="absolute inset-0 z-50 flex items-center justify-center bg-background/80 pointer-events-none">
           <span class="text-muted-foreground text-sm">{gone() ? "Session lost" : "Reconnecting..."}</span>
         </div>
-      )}
+      </Show>
     </div>
   )
 }
