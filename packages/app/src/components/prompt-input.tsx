@@ -1448,6 +1448,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
     }
+    if (!session && params.id) {
+      await sync.session.sync(params.id)
+      session = info()
+    }
     if (!session) return
 
     const model = {

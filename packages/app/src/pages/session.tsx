@@ -330,6 +330,12 @@ export default function Page() {
   )
 
   createEffect(() => {
+    if (!sdk.connected()) return
+    const id = params.id
+    if (id) sync.session.sync(id)
+  })
+
+  createEffect(() => {
     if (params.id) return
     if (!isGlobalScope(sdk.directory)) return
     setResolvingHome(true)
