@@ -82,7 +82,7 @@ export namespace ExperienceEncoder {
     try {
       const userInfo = userMsg.info as MessageV2.User
       const intentCtx = await buildIntentContext(sessionID, userInfo, learning)
-      const history = buildHistory(msgs, userMessageID)
+      const history = buildIntentHistory(msgs, userMessageID)
       const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
@@ -446,6 +446,36 @@ export namespace ExperienceEncoder {
 
         const lines = [`User: ${userInput}`]
         if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("\n")}`)
+        return lines.join("\n")
+      })
+      .join("\n\n")
+  }
+
+  function buildIntentHistory(msgs: MessageV2.WithParts[], currentUserMsgId: string): string | undefined {
+    const turns = Turn.collect(msgs, { skipSynthetic: true })
+    const currentIdx = turns.findIndex((t) => t.user.info.id === currentUserMsgId)
+    if (currentIdx <= 0) return undefined
+
+    return turns
+      .slice(0, currentIdx)
+      .map((turn) => {
+        const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
+
+        const assistantLines: string[] = []
+        for (const msg of turn.assistants) {
+          for (const part of msg.parts) {
+            if (part.type === "text" && !part.synthetic && part.text.trim()) {
+              assistantLines.push(part.text.trim())
+            } else if (part.type === "tool" && part.state.status === "completed") {
+              assistantLines.push(`(used ${part.tool}: ${part.state.title})`)
+            } else if (part.type === "tool" && part.state.status === "error") {
+              assistantLines.push(`(used ${part.tool}: error)`)
+            }
+          }
+        }
+
+        const lines = [`User: ${userInput}`]
+        if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("; ")}`)
         return lines.join("\n")
       })
       .join("\n\n")
