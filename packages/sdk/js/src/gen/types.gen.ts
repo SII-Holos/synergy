@@ -1914,6 +1914,10 @@ export type Session = {
   agenda?: {
     itemID: string
   }
+  lastExchange?: {
+    user?: string
+    assistant?: string
+  }
   revert?: {
     messageID: string
     partID?: string
@@ -2694,42 +2698,6 @@ export type MemoryInfo = {
   updatedAt: number
 }
 
-export type AgendaActivityAgenda = {
-  id: string
-  /**
-   * Scope that owns the agenda item
-   */
-  scopeID: string
-  title: string
-  description?: string
-  status: "pending" | "active" | "paused" | "done" | "cancelled"
-  tags?: Array<string>
-  global: boolean
-  time: {
-    created: number
-    updated: number
-  }
-}
-
-export type AgendaActivitySession = {
-  id: string
-  /**
-   * Scope that owns the session
-   */
-  scopeID: string
-  title: string
-  time: {
-    created: number
-    updated: number
-    archived?: number
-  }
-}
-
-export type AgendaSessionList = Array<{
-  sessionID: string
-  scopeID: string
-}>
-
 export type AgendaRunLog = {
   /**
    * Run identifier
@@ -2762,6 +2730,37 @@ export type AgendaRunLog = {
   }
 }
 
+export type AgendaActivityAgenda = {
+  id: string
+  /**
+   * Scope that owns the agenda item
+   */
+  scopeID: string
+  title: string
+  description?: string
+  status: "pending" | "active" | "paused" | "done" | "cancelled"
+  tags?: Array<string>
+  global: boolean
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type AgendaActivitySession = {
+  id: string
+  /**
+   * Scope that owns the session
+   */
+  scopeID: string
+  title: string
+  time: {
+    created: number
+    updated: number
+    archived?: number
+  }
+}
+
 export type AgendaActivityEntry = {
   run: AgendaRunLog
   agenda: AgendaActivityAgenda
@@ -2775,6 +2774,11 @@ export type AgendaActivityPage = {
   offset: number
   hasMore: boolean
 }
+
+export type AgendaSessionList = Array<{
+  sessionID: string
+  scopeID: string
+}>
 
 export type AgendaTriggerResult = {
   triggered: true
@@ -5017,26 +5021,43 @@ export type SessionListData = {
   query?: {
     directory?: string
     /**
-     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
+     * Number of sessions to skip
      */
-    start?: number
+    offset?: number
+    /**
+     * Maximum number of sessions to return
+     */
+    limit?: number
     /**
      * Filter sessions by title (case-insensitive)
      */
     search?: string
     /**
-     * Maximum number of sessions to return
+     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
      */
-    limit?: number
+    since?: number
+    /**
+     * Filter sessions updated before this timestamp (milliseconds since epoch)
+     */
+    before?: number
+    /**
+     * Only include pinned sessions
+     */
+    pinned?: boolean
   }
   url: "/session"
 }
 
 export type SessionListResponses = {
   /**
-   * List of sessions
+   * Paginated list of sessions
    */
-  200: Array<Session>
+  200: {
+    data: Array<Session>
+    total: number
+    offset: number
+    limit: number
+  }
 }
 
 export type SessionListResponse = SessionListResponses[keyof SessionListResponses]

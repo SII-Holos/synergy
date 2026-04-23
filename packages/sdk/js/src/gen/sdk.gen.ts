@@ -2696,14 +2696,17 @@ export class Session extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all Synergy sessions, sorted by most recently updated.
+   * Get a paginated list of Synergy sessions, sorted by most recently updated.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-      start?: number
-      search?: string
+      offset?: number
       limit?: number
+      search?: string
+      since?: number
+      before?: number
+      pinned?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2713,9 +2716,12 @@ export class Session extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
-            { in: "query", key: "start" },
-            { in: "query", key: "search" },
+            { in: "query", key: "offset" },
             { in: "query", key: "limit" },
+            { in: "query", key: "search" },
+            { in: "query", key: "since" },
+            { in: "query", key: "before" },
+            { in: "query", key: "pinned" },
           ],
         },
       ],

@@ -1986,11 +1986,21 @@
           },
           {
             "in": "query",
-            "name": "start",
+            "name": "offset",
             "schema": {
+              "default": 0,
               "type": "number"
             },
-            "description": "Filter sessions updated on or after this timestamp (milliseconds since epoch)"
+            "description": "Number of sessions to skip"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            },
+            "description": "Maximum number of sessions to return"
           },
           {
             "in": "query",
@@ -2002,25 +2012,56 @@
           },
           {
             "in": "query",
-            "name": "limit",
+            "name": "since",
             "schema": {
               "type": "number"
             },
-            "description": "Maximum number of sessions to return"
+            "description": "Filter sessions updated on or after this timestamp (milliseconds since epoch)"
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Filter sessions updated before this timestamp (milliseconds since epoch)"
+          },
+          {
+            "in": "query",
+            "name": "pinned",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only include pinned sessions"
           }
         ],
         "summary": "List sessions",
-        "description": "Get a list of all Synergy sessions, sorted by most recently updated.",
+        "description": "Get a paginated list of Synergy sessions, sorted by most recently updated.",
         "responses": {
           "200": {
-            "description": "List of sessions",
+            "description": "Paginated list of sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Session"
-                  }
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Session"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "offset": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["data", "total", "offset", "limit"]
                 }
               }
             }
@@ -6713,6 +6754,104 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/agenda/activity": {
+      "get": {
+        "operationId": "agenda.activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Limit activity to this scope (includes global items when provided)"
+          },
+          {
+            "in": "query",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Limit activity to a specific agenda item"
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional case-insensitive text search across item, run, and session metadata"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for query"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "description": "Page offset"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Page size"
+          }
+        ],
+        "summary": "Browse agenda activity",
+        "description": "Browse agenda execution activity with pagination, optional search, and agenda/session metadata.",
+        "responses": {
+          "200": {
+            "description": "Paginated agenda activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgendaActivityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.activity({\n  ...\n})"
           }
         ]
       }
@@ -14011,6 +14150,17 @@
             },
             "required": ["itemID"]
           },
+          "lastExchange": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "string"
+              },
+              "assistant": {
+                "type": "string"
+              }
+            }
+          },
           "revert": {
             "type": "object",
             "properties": {
@@ -16274,21 +16424,6 @@
         },
         "required": ["id", "title", "content", "category", "recallMode", "createdAt", "updatedAt"]
       },
-      "AgendaSessionList": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "sessionID": {
-              "type": "string"
-            },
-            "scopeID": {
-              "type": "string"
-            }
-          },
-          "required": ["sessionID", "scopeID"]
-        }
-      },
       "AgendaRunLog": {
         "type": "object",
         "properties": {
@@ -16342,6 +16477,135 @@
           }
         },
         "required": ["id", "itemID", "status", "trigger", "time"]
+      },
+      "AgendaActivityAgenda": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "description": "Scope that owns the agenda item",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "active", "paused", "done", "cancelled"]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "scopeID", "title", "status", "global", "time"]
+      },
+      "AgendaActivitySession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "description": "Scope that owns the session",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "archived": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "scopeID", "title", "time"]
+      },
+      "AgendaActivityEntry": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/AgendaRunLog"
+          },
+          "agenda": {
+            "$ref": "#/components/schemas/AgendaActivityAgenda"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AgendaActivitySession"
+          }
+        },
+        "required": ["run", "agenda"]
+      },
+      "AgendaActivityPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaActivityEntry"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "total", "limit", "offset", "hasMore"]
+      },
+      "AgendaSessionList": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sessionID": {
+              "type": "string"
+            },
+            "scopeID": {
+              "type": "string"
+            }
+          },
+          "required": ["sessionID", "scopeID"]
+        }
       },
       "AgendaTriggerResult": {
         "type": "object",
