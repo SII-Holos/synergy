@@ -74,6 +74,8 @@ export namespace ModelsDev {
 
   export type Provider = z.infer<typeof Provider>
 
+  let inFlight: Promise<void> | undefined
+
   export async function get() {
     refresh()
     const file = Bun.file(filepath)
@@ -84,8 +86,15 @@ export namespace ModelsDev {
     return JSON.parse(json) as Record<string, Provider>
   }
 
-  export async function refresh() {
+  export function refresh() {
     if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return
+    if (inFlight) return
+    inFlight = doRefresh().finally(() => {
+      inFlight = undefined
+    })
+  }
+
+  async function doRefresh() {
     const file = Bun.file(filepath)
     log.info("refreshing", {
       file,

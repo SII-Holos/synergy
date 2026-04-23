@@ -240,23 +240,63 @@ function createGlobalSync() {
     ]).then(() => undefined)
   }
 
-  async function refreshAllConfigs() {
-    const directories = Object.keys(children)
-    await Promise.all([
-      loadConfigSets(),
-      loadGlobalProviders(),
-      ...directories.map((directory) => refreshConfig(directory)),
-    ])
+  let refreshAllConfigsTimer: ReturnType<typeof setTimeout> | undefined
+  let refreshAllConfigsPromise: Promise<void> | undefined
+
+  function refreshAllConfigs() {
+    if (refreshAllConfigsTimer) clearTimeout(refreshAllConfigsTimer)
+    if (!refreshAllConfigsPromise) {
+      refreshAllConfigsPromise = new Promise<void>((resolve) => {
+        refreshAllConfigsTimer = setTimeout(() => {
+          refreshAllConfigsTimer = undefined
+          const directories = Object.keys(children)
+          Promise.all([
+            loadConfigSets(),
+            loadGlobalProviders(),
+            ...directories.map((directory) => refreshConfig(directory)),
+          ] as Promise<void>[])
+            .then(() => resolve())
+            .catch(() => resolve())
+            .finally(() => {
+              refreshAllConfigsPromise = undefined
+            })
+        }, 200)
+      })
+    }
+    return refreshAllConfigsPromise
   }
 
-  async function refreshTargeted(executed: string[]) {
-    const targets = new Set(executed)
+  let refreshTargetedTimer: ReturnType<typeof setTimeout> | undefined
+  let refreshTargetedPromise: Promise<void> | undefined
+  let pendingTargets = new Set<string>()
+
+  function refreshTargeted(executed: string[]) {
+    for (const t of executed) pendingTargets.add(t)
+    if (refreshTargetedTimer) clearTimeout(refreshTargetedTimer)
+    if (!refreshTargetedPromise) {
+      refreshTargetedPromise = new Promise<void>((resolve) => {
+        refreshTargetedTimer = setTimeout(() => {
+          refreshTargetedTimer = undefined
+          const targets = new Set(pendingTargets)
+          pendingTargets = new Set()
+          doRefreshTargeted(targets)
+            .then(() => resolve())
+            .catch(() => resolve())
+            .finally(() => {
+              refreshTargetedPromise = undefined
+            })
+        }, 200)
+      })
+    }
+    return refreshTargetedPromise
+  }
+
+  async function doRefreshTargeted(targets: Set<string>) {
     const directories = Object.keys(children)
 
     const globalPromises: Promise<unknown>[] = []
     const perScopePromises: Promise<unknown>[] = []
 
-    // Always refresh global providers and config sets when provider or config changes
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
       globalPromises.push(loadConfigSets())
