@@ -201,7 +201,7 @@ export namespace ConfigSetup {
   }
 
   export async function init() {
-    await ModelsDev.refresh().catch(() => {})
+    await ModelsDev.refresh()?.catch(() => {})
   }
 
   export async function getAvailableProviders(): Promise<ProviderInfo[]> {

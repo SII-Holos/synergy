@@ -86,12 +86,13 @@ export namespace ModelsDev {
     return JSON.parse(json) as Record<string, Provider>
   }
 
-  export function refresh() {
+  export function refresh(): Promise<void> | undefined {
     if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return
-    if (inFlight) return
+    if (inFlight) return inFlight
     inFlight = doRefresh().finally(() => {
       inFlight = undefined
     })
+    return inFlight
   }
 
   async function doRefresh() {
