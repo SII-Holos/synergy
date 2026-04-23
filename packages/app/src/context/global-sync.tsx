@@ -357,14 +357,11 @@ function createGlobalSync() {
 
   async function loadSessions(directory: string, params?: { offset?: number; limit?: number; search?: string }) {
     const [_, setStore] = child(directory)
-    const query = new URLSearchParams()
-    if (directory) query.set("directory", directory)
-    query.set("offset", String(params?.offset ?? 0))
-    query.set("limit", String(params?.limit ?? 20))
-    if (params?.search) query.set("search", params.search)
-    return fetch(`${globalSDK.url}/session?${query}`)
-      .then((res) => res.json())
-      .then((result: { data: Session[]; total: number; offset: number; limit: number }) => {
+    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+    return sdk.session
+      .list({ offset: params?.offset ?? 0, limit: params?.limit ?? 20, search: params?.search })
+      .then((x) => {
+        const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
         batch(() => {
           setStore("session", reconcile(sessions, { key: "id" }))
@@ -610,6 +607,7 @@ function createGlobalSync() {
                 draft.splice(result.index, 1)
               }),
             )
+            setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
           }
           break
         }
@@ -623,6 +621,7 @@ function createGlobalSync() {
             draft.splice(result.index, 0, info)
           }),
         )
+        setStore("sessionTotal", store.sessionTotal + 1)
         break
       }
       case "session.diff":

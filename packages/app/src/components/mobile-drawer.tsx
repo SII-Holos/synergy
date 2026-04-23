@@ -4,7 +4,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { useLayout, getAvatarColors, type LocalScope } from "@/context/layout"
+import { useLayout, getAvatarColors, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNotification } from "@/context/notification"
@@ -199,7 +199,7 @@ function SessionListDrawerView(props: {
 }) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
-  const PAGE_SIZE = 20
+  const PAGE_SIZE = SESSION_PAGE_SIZE
   const [currentPage, setCurrentPage] = createSignal(1)
   const [loading, setLoading] = createSignal(false)
 

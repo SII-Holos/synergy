@@ -300,6 +300,20 @@ export namespace Session {
     if (options?.since) entries = entries.filter((e) => e.updated >= options.since!)
     if (options?.before) entries = entries.filter((e) => e.updated < options.before!)
 
+    // When searching, we must read all matching session infos first because
+    // title-based search cannot be applied on the page index alone.
+    if (options?.search) {
+      const keys = entries.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
+      const sessions = await Storage.readMany<Info>(keys)
+      const term = options.search.toLowerCase()
+      const matched = sessions.filter((s): s is Info => s != null && !!s.scope && s.title.toLowerCase().includes(term))
+      const total = matched.length
+      const offset = options?.offset ?? 0
+      const limit = options?.limit ?? total
+      const data = matched.slice(offset, offset + limit)
+      return { data, total }
+    }
+
     const total = entries.length
     const offset = options?.offset ?? 0
     const limit = options?.limit ?? total
@@ -309,12 +323,7 @@ export namespace Session {
 
     const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
     const sessions = await Storage.readMany<Info>(keys)
-    let data = sessions.filter((s): s is Info => s != null && !!s.scope)
-
-    if (options?.search) {
-      const term = options.search.toLowerCase()
-      data = data.filter((s) => s.title.toLowerCase().includes(term))
-    }
+    const data = sessions.filter((s): s is Info => s != null && !!s.scope)
 
     return { data, total }
   }
@@ -364,22 +373,19 @@ export namespace Session {
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
     for await (const msg of MessageV2.stream({ sessionID })) {
       if (!lastExchange.assistant && msg.info.role === "assistant") {
-        const text = msg.parts
-          .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-          .map((p) => p.text)
-          .join("\n")
-        if (text) lastExchange.assistant = text.slice(0, 200)
+        const text = MessageV2.extractText(msg.parts, { maxLength: 200 })
+        if (text) lastExchange.assistant = text
       }
       if (!lastExchange.user && msg.info.role === "user") {
-        const text = msg.parts
-          .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-          .map((p) => p.text)
-          .join("\n")
-        if (text) lastExchange.user = text.slice(0, 200)
+        const text = MessageV2.extractText(msg.parts, { maxLength: 200 })
+        if (text) lastExchange.user = text
       }
       if (lastExchange.user && lastExchange.assistant) break
     }
-    await update(sessionID, (draft) => {
+    // Write lastExchange directly without bumping time.updated or republishing,
+    // since the caller (processor) already performs a proper Session.update().
+    const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
+    await Storage.update<Info>(infoPath, (draft) => {
       draft.lastExchange = lastExchange
     })
   }

@@ -43,6 +43,8 @@ export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean 
 
 export type ReviewDiffStyle = "unified" | "split"
 
+export const SESSION_PAGE_SIZE = 20
+
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
   init: () => {

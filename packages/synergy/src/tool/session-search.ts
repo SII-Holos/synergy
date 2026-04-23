@@ -77,10 +77,7 @@ async function collectSessions(scope: string, sinceMs?: number, beforeMs?: numbe
 }
 
 function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefined {
-  const text = msg.parts
-    .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-    .map((p) => p.text)
-    .join("\n")
+  const text = MessageV2.extractText(msg.parts)
 
   if (!text) return undefined
 

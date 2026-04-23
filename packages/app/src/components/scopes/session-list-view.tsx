@@ -4,7 +4,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { useLayout } from "@/context/layout"
+import { useLayout, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePanel } from "@/context/panel"
@@ -46,7 +46,7 @@ export function SessionListView(props: { worktree: string }) {
   const params = useParams()
   const panel = usePanel()
 
-  const PAGE_SIZE = 20
+  const PAGE_SIZE = SESSION_PAGE_SIZE
   const [search, setSearch] = createSignal("")
   const [currentPage, setCurrentPage] = createSignal(1)
   const [loading, setLoading] = createSignal(false)

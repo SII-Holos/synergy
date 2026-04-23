@@ -412,14 +412,19 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
-  export function extractText(parts: Part[], options?: { includeSynthetic?: boolean }): string {
+  export function extractText(
+    parts: Part[],
+    options?: { includeSynthetic?: boolean; includeIgnored?: boolean; maxLength?: number },
+  ): string {
     const texts: string[] = []
     for (const part of parts) {
       if (part.type !== "text") continue
-      if (options?.includeSynthetic === false && part.synthetic) continue
+      if (!options?.includeIgnored && part.ignored) continue
+      if (!options?.includeSynthetic && part.synthetic) continue
       texts.push(part.text)
     }
-    return texts.join("\n").trim()
+    const joined = texts.join("\n").trim()
+    return options?.maxLength ? joined.slice(0, options.maxLength) : joined
   }
 
   export function toModelMessage(input: WithParts[]): ModelMessage[] {

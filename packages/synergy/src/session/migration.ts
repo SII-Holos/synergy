@@ -232,25 +232,21 @@ export const migrations: Migration[] = [
               const partIDs = await Storage.scan(
                 StoragePath.messageParts(scope, sID, Identifier.asMessageID(msgIDs[mi])),
               ).catch(() => [])
-              const parts = await Storage.readMany<MessageV2.Part>(
-                partIDs.map((pid) =>
-                  StoragePath.messagePart(scope, sID, Identifier.asMessageID(msgIDs[mi]), Identifier.asPartID(pid)),
-                ),
-              )
+              const parts = (
+                await Storage.readMany<MessageV2.Part>(
+                  partIDs.map((pid) =>
+                    StoragePath.messagePart(scope, sID, Identifier.asMessageID(msgIDs[mi]), Identifier.asPartID(pid)),
+                  ),
+                )
+              ).filter((p): p is MessageV2.Part => p != null)
 
               if (!lastExchange.assistant && msgInfo.role === "assistant") {
-                const text = parts
-                  .filter((p): p is MessageV2.TextPart => p != null && p.type === "text" && !p.ignored && !p.synthetic)
-                  .map((p) => p.text)
-                  .join("\n")
-                if (text) lastExchange.assistant = text.slice(0, 200)
+                const text = MessageV2.extractText(parts, { maxLength: 200 })
+                if (text) lastExchange.assistant = text
               }
               if (!lastExchange.user && msgInfo.role === "user") {
-                const text = parts
-                  .filter((p): p is MessageV2.TextPart => p != null && p.type === "text" && !p.ignored && !p.synthetic)
-                  .map((p) => p.text)
-                  .join("\n")
-                if (text) lastExchange.user = text.slice(0, 200)
+                const text = MessageV2.extractText(parts, { maxLength: 200 })
+                if (text) lastExchange.user = text
               }
               if (lastExchange.user && lastExchange.assistant) break
             }

@@ -125,25 +125,28 @@ async function listContacts(limit: number, offset: number) {
 
 async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
   const scopeID = Identifier.asScopeID(Scope.global().id)
-  const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
-  const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(id)))
+  const index = await Session.readPageIndex(scopeID)
+  let entries = index.entries.filter((entry) => {
+    if (entry.archived) return false
+    if (filter.sinceMs && entry.updated < filter.sinceMs) return false
+    if (filter.beforeMs && entry.updated >= filter.beforeMs) return false
+    return true
+  })
+
+  // Need full session info to filter by endpoint type
+  const keys = entries.map((entry) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(entry.id)))
   const all = await Storage.readMany<Session.Info>(keys)
-  const sessions = all
+  const feishuSessions = all
     .filter(
       (s): s is Session.Info =>
         s != null && !!s.scope && !s.parentID && !s.time.archived && SessionEndpoint.type(s.endpoint) === "feishu",
     )
-    .filter((s) => {
-      if (filter.sinceMs && s.time.updated < filter.sinceMs) return false
-      if (filter.beforeMs && s.time.updated >= filter.beforeMs) return false
-      return true
-    })
-  sessions.sort((a, b) => b.time.updated - a.time.updated)
+    .toSorted((a, b) => b.time.updated - a.time.updated)
 
-  const total = sessions.length
-  const page = sessions.slice(offset, offset + limit)
-  const entries = page.map((s) => formatSessionEntry(s))
-  return { entries, total, shown: page.length }
+  const total = feishuSessions.length
+  const page = feishuSessions.slice(offset, offset + limit)
+  const entries_formatted = page.map((s) => formatSessionEntry(s))
+  return { entries: entries_formatted, total, shown: page.length }
 }
 
 export const SessionListTool = Tool.define("session_list", {
