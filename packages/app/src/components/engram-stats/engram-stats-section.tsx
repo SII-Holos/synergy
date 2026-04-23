@@ -1,62 +1,10 @@
 import { createSignal, Show } from "solid-js"
-import { useEngramStats } from "./use-engram-stats"
+import { useEngramStats, type EngramStatsSnapshot, EMPTY_SNAPSHOT } from "./use-engram-stats"
 import { EngramOverviewCards } from "./overview-cards"
 import { MemoryDistribution } from "./memory-distribution"
 import { QValueChart } from "./q-value-chart"
 import { RewardRadar } from "./reward-radar"
 import { RetrievalRanking } from "./retrieval-ranking"
-
-type Snapshot = {
-  overview: {
-    totalMemories: number
-    totalExperiences: number
-    memoriesEdited: number
-    experiencesEvaluated: number
-    experiencesFailed: number
-    experiencesPending: number
-    scopeCount: number
-    activeDays: number
-  }
-  memoryDistribution: {
-    byCategory: Array<{ category: string; count: number }>
-    byRecallMode: Array<{ recallMode: string; count: number }>
-    categoryRecallMatrix: Record<string, number>
-  }
-  experienceRL: {
-    rewardDimensions: Array<{ dimension: string; avg: number; median: number; p90: number }>
-    qDistribution: {
-      negative: number
-      low: number
-      neutral: number
-      medium: number
-      high: number
-      avgCompositeQ: number
-      medianCompositeQ: number
-    }
-    avgVisits: number
-    medianVisits: number
-    neverRetrieved: number
-    frequentlyRetrieved: number
-  }
-  retrieval: {
-    topExperiences: Array<{ id: string; intent: string; scopeID: string; visits: number; compositeQ: number }>
-    visitsDistribution: Array<{ range: string; count: number }>
-  }
-  scopes: {
-    scopes: Array<{ scopeID: string; memories: number; experiences: number; evaluated: number }>
-  }
-  timeSeries: {
-    days: Array<{
-      day: string
-      memoriesCreated: number
-      experiencesCreated: number
-      experiencesEvaluated: number
-      avgCompositeQ: number
-    }>
-    hourlyActivity: number[]
-  }
-  computedAt: number
-}
 
 function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
   return (
@@ -120,13 +68,13 @@ export function EngramStatsSection() {
           </div>
         }
       >
-        {(snapshot) => <EngramStatsContent snapshot={snapshot() as Snapshot} />}
+        {(snapshot) => <EngramStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} />}
       </Show>
     </div>
   )
 }
 
-function EngramStatsContent(props: { snapshot: Snapshot }) {
+function EngramStatsContent(props: { snapshot: EngramStatsSnapshot }) {
   const s = () => props.snapshot
 
   return (
