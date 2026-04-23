@@ -202,6 +202,7 @@ export function AgendaPanel() {
 
   async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
     if (activityLoading()) return
+    if (!sdk?.client?.agenda) return
     setActivityLoading(true)
     setActivityError(null)
     try {

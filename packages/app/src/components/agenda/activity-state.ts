@@ -26,13 +26,12 @@ export async function requestAgendaActivity(input: {
   append?: boolean
   state: AgendaActivityState
 }) {
-  const activityApi = (input.client.agenda as any).activity
-  if (typeof activityApi !== "function") {
+  if (!input.client?.agenda?.activity) {
     throw new Error("Agenda activity API is unavailable in the current client build")
   }
 
   const offset = input.append ? input.state.offset + input.state.items.length : 0
-  const res = await activityApi({
+  const res = await input.client.agenda.activity({
     directory: input.directory,
     scopeID: input.scopeID,
     query: input.query || undefined,
