@@ -1,6 +1,6 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
 import { ComponentProps, JSXElement, ParentProps, Show, splitProps } from "solid-js"
-import { IconButton } from "./icon-button"
+import { Icon } from "./icon"
 
 export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Kobalte>, "children"> {
   trigger: JSXElement
@@ -30,7 +30,9 @@ export function Popover(props: PopoverProps) {
           <Show when={local.title}>
             <div data-slot="popover-header">
               <Kobalte.Title data-slot="popover-title">{local.title}</Kobalte.Title>
-              <Kobalte.CloseButton data-slot="popover-close-button" as={IconButton} icon="x" variant="ghost" />
+              <Kobalte.CloseButton data-slot="popover-close-button" data-component="icon-button" data-variant="ghost">
+                <Icon name="x" size="small" />
+              </Kobalte.CloseButton>
             </div>
           </Show>
           <Show when={local.description}>

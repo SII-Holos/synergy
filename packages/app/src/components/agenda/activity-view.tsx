@@ -119,10 +119,17 @@ function ActivityGroupCard(props: {
 
   return (
     <div class="overflow-hidden rounded-[1.1rem] bg-surface-inset-base/34 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabindex={0}
         class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover/18"
         onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
       >
         <Icon
           name="chevron-right"
@@ -160,7 +167,7 @@ function ActivityGroupCard(props: {
         >
           {props.group.entries.length}
         </button>
-      </button>
+      </div>
 
       <Show when={expanded()}>
         <div class="flex flex-col gap-1.5 px-2.5 pb-2.5">
