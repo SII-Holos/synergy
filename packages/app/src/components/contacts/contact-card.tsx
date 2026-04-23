@@ -30,12 +30,12 @@ export function FriendsSection(props: {
       <div class="flex items-center gap-2 px-1">
         <span class="text-12-medium text-text-weak">Friends</span>
         <Show when={props.contacts.length > 0}>
-          <span class="inline-flex items-center justify-center rounded-full bg-surface-inset-base/70 px-2 py-0.5 text-10-medium text-text-base">
+          <span class="inline-flex items-center justify-center rounded-full bg-surface-inset-base/58 px-2 py-0.5 text-10-medium text-text-base ring-1 ring-inset ring-border-base/28">
             {props.contacts.length}
           </span>
         </Show>
         <Show when={(props.requestCount ?? 0) > 0}>
-          <span class="inline-flex items-center gap-1 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-10-medium text-text-weak">
+          <span class="inline-flex items-center gap-1 rounded-full border border-border-base/45 bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-10-medium text-text-weak">
             <Icon name="user-plus" size="small" />
             {props.requestCount} request{props.requestCount === 1 ? "" : "s"}
           </span>
@@ -60,7 +60,7 @@ export function FriendsSection(props: {
             />
           }
         >
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 gap-4">
             <For each={props.contacts}>
               {(contact, i) => (
                 <ContactCard
@@ -98,7 +98,7 @@ function ContactCard(props: {
 
   return (
     <div
-      class="group relative flex flex-col overflow-hidden rounded-[1.15rem] bg-surface-raised-base/92 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04),0_14px_30px_-24px_color-mix(in_srgb,var(--surface-brand-base)_18%,transparent)] transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04),0_18px_36px_-22px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] active:scale-[0.995]"
+      class="group relative flex flex-col overflow-hidden rounded-[1.15rem] bg-surface-raised-base/96 p-4 ring-1 ring-inset ring-border-base/42 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)] transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-surface-raised-base hover:ring-border-base/58 active:scale-[0.995]"
       style={{
         animation: "contactFadeUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
         "animation-delay": `${props.delay}ms`,
@@ -115,7 +115,7 @@ function ContactCard(props: {
         }
       }}
     >
-      <div class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-surface-brand-base/8 to-transparent" />
+      <div class="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-white/4 to-transparent dark:from-white/[0.03]" />
 
       <div class="relative flex items-start gap-3">
         <div class="relative shrink-0">
@@ -261,7 +261,7 @@ function ContactCard(props: {
             </DropdownMenu>
           </div>
 
-          <div class="mt-3 rounded-2xl bg-surface-inset-base/55 px-3 py-2.5 min-h-[4.5rem]">
+          <div class="mt-3 min-h-[4.5rem] rounded-2xl bg-surface-inset-base/34 px-3 py-2.5 ring-1 ring-inset ring-border-base/24">
             <div class="text-11-regular text-text-weak leading-5 line-clamp-3">
               {props.contact.bio || <span class="italic text-text-subtle">No bio added yet</span>}
             </div>
@@ -294,7 +294,7 @@ function ContactCard(props: {
         </div>
       </div>
 
-      <div class="relative mt-4 flex items-center justify-between gap-2 border-t border-border-base/60 pt-3 text-11-medium">
+      <div class="relative mt-4 flex items-center justify-between gap-2 border-t border-border-base/28 pt-3 text-11-medium">
         <span class="inline-flex items-center gap-1.5 text-text-weak transition-colors group-hover:text-text-base">
           <Icon name="message-circle" size="small" />
           Open conversation

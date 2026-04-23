@@ -41,37 +41,40 @@
   [data-slot="session-turn-title"] h1 {
     font-size: var(--font-size-lg, 1.125rem);
     font-weight: var(--font-weight-semibold, 600);
-    color: var(--text-base);
-    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
-    padding: 6px 12px !important;
-    border-radius: 6px !important;
+    color: var(--text-strong);
+    background: var(--session-turn-title-bg) !important;
+    border: 1px solid var(--session-turn-title-border) !important;
+    box-shadow:
+      inset 0 1px 0 var(--session-turn-title-highlight),
+      0 8px 18px -16px var(--session-turn-title-glow);
+    padding: 7px 13px !important;
+    border-radius: 12px !important;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
     display: inline-block;
+    letter-spacing: -0.01em;
   }
 
   div[data-slot="session-turn-title"] h1 {
-    background: var(--section-title-background, rgba(99, 102, 241, 0.12)) !important;
+    background: var(--session-turn-title-bg) !important;
   }
 
-  /* Light mode (default) */
   :root {
-    --section-title-background: rgba(99, 102, 241, 0.12);
+    --session-turn-title-bg: color-mix(in srgb, var(--surface-raised-base) 84%, var(--surface-brand-base) 16%);
+    --session-turn-title-border: color-mix(in srgb, var(--border-base) 55%, var(--surface-brand-base) 45%);
+    --session-turn-title-highlight: rgba(255, 255, 255, 0.28);
+    --session-turn-title-glow: color-mix(in srgb, var(--surface-brand-base) 20%, transparent);
   }
 
-  /* Dark mode */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --section-title-background: rgba(139, 92, 246, 0.25);
-    }
-  }
-
-  /* Also support explicit dark mode class if the app uses it */
+  [data-color-scheme="dark"],
   [data-theme="dark"],
   .dark {
-    --section-title-background: rgba(139, 92, 246, 0.25);
+    --session-turn-title-bg: color-mix(in srgb, var(--surface-raised-base) 78%, var(--surface-brand-base) 22%);
+    --session-turn-title-border: color-mix(in srgb, var(--border-base) 42%, var(--surface-brand-base) 58%);
+    --session-turn-title-highlight: rgba(255, 255, 255, 0.06);
+    --session-turn-title-glow: color-mix(in srgb, var(--surface-brand-base) 34%, transparent);
   }
 
   [data-slot="session-turn-title-timestamp"] {

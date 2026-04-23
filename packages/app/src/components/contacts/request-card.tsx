@@ -49,7 +49,6 @@ function StatusPill(props: { label: string; tone?: "default" | "success" | "warn
 function RequestCardShell(props: {
   request: FriendRequest
   delay: number
-  muted?: boolean
   busy?: boolean
   directionLabel: string
   statusTone?: "default" | "success" | "warning" | "danger"
@@ -57,9 +56,8 @@ function RequestCardShell(props: {
 }) {
   return (
     <div
-      class="flex items-start gap-3 rounded-[22px] border border-border-base/70 bg-background-base/86 p-3.5 shadow-[0_16px_38px_-32px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] backdrop-blur-xl transition-all"
+      class="flex items-start gap-3 rounded-[1rem] bg-surface-inset-base/36 p-3.5 ring-1 ring-inset ring-border-base/34 transition-all"
       classList={{
-        "opacity-55": props.muted && !props.busy,
         "opacity-45 pointer-events-none": props.busy,
       }}
       style={{
@@ -127,7 +125,9 @@ export function RequestsSection(props: {
               {totalCount()}
             </span>
           </div>
-          <p class="mt-1 text-11-regular text-text-weak">Review incoming invites and keep outgoing requests tidy.</p>
+          <p class="mt-1.5 text-11-regular leading-5 text-text-weak">
+            Review incoming invites and keep outgoing requests tidy.
+          </p>
         </div>
         <span class="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border-base bg-surface-raised-stronger-non-alpha text-icon-weak transition-transform duration-150">
           <Icon name={collapsed() ? "chevron-right" : "chevron-down"} size="small" />
@@ -190,10 +190,7 @@ export function RequestsSection(props: {
                 <For each={props.outgoing}>
                   {(request, i) => {
                     const busy = () => isLoading(request.id)
-                    const muted = () => request.status === "accepted" || request.status === "rejected"
                     const tone = () => {
-                      if (request.status === "accepted") return "success" as const
-                      if (request.status === "rejected") return "danger" as const
                       if (request.status === "pending_delivery") return "warning" as const
                       return "default" as const
                     }
@@ -203,7 +200,6 @@ export function RequestsSection(props: {
                         request={request}
                         delay={(i() + props.requests.length) * 40}
                         busy={busy()}
-                        muted={muted()}
                         directionLabel="Outgoing"
                         statusTone={tone()}
                         actionSlot={

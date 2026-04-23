@@ -230,7 +230,11 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
   const pendingIncoming = createMemo(() =>
     (requests() ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),
   )
-  const outgoingRequests = createMemo(() => (requests() ?? []).filter((r) => r.direction === "outgoing"))
+  const outgoingRequests = createMemo(() =>
+    (requests() ?? []).filter(
+      (r) => r.direction === "outgoing" && (r.status === "pending" || r.status === "pending_delivery"),
+    ),
+  )
   const totalRequestCount = createMemo(() => pendingIncoming().length + outgoingRequests().length)
   const onlineCount = createMemo(() => Object.values(presence() ?? {}).filter((value) => value === "online").length)
 
@@ -315,30 +319,30 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
       <div class="flex flex-col gap-4 pb-2">
         <section class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
           <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-            <div class="flex items-start justify-between gap-3">
-              <div>
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
                 <div class="inline-flex items-center gap-1.5 rounded-full border border-border-base/60 bg-surface-raised-stronger-non-alpha px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
                   <Icon name="users" size="small" />
                   Holos network
                 </div>
-                <div class="mt-2 text-14-semibold tracking-tight text-text-strong">Contacts</div>
-                <p class="mt-1 text-12-regular text-text-weak max-w-lg">
+                <div class="mt-3 text-14-semibold tracking-tight text-text-strong">Contacts</div>
+                <p class="mt-1.5 max-w-xl text-12-regular leading-5 text-text-weak">
                   Keep your active Holos relationships, pending invites, and conversation shortcuts in one place.
                 </p>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex shrink-0 items-center gap-2 self-start">
                 <button
                   type="button"
-                  class="inline-flex h-8 items-center gap-1.5 rounded-full border border-border-base/60 bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak transition-all hover:bg-surface-raised-base-hover hover:text-text-base active:scale-[0.98] disabled:opacity-60"
+                  class="inline-flex size-8 items-center justify-center rounded-full border border-border-base/60 bg-surface-raised-stronger-non-alpha text-text-weak transition-all hover:bg-surface-raised-base-hover hover:text-text-base active:scale-[0.98] disabled:opacity-60"
                   disabled={props.refreshing}
                   onClick={() => void props.onRefresh()}
+                  title={props.refreshing ? "Refreshing contacts" : "Refresh contacts"}
                 >
                   <Icon name="refresh-ccw" size="small" />
-                  {props.refreshing ? "Refreshing…" : "Refresh"}
                 </button>
                 <button
                   type="button"
-                  class="inline-flex h-8 items-center gap-1.5 rounded-full border border-border-base/60 bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak transition-all hover:bg-surface-raised-base-hover hover:text-text-base active:scale-[0.98]"
+                  class="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border-base/60 bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak transition-all hover:bg-surface-raised-base-hover hover:text-text-base active:scale-[0.98]"
                   onClick={() => setShowAddFriend((v) => !v)}
                 >
                   <Icon name={showAddFriend() ? "x" : "user-plus"} size="small" />

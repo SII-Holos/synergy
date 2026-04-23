@@ -1825,7 +1825,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
               onClick={() => layout.terminal.toggle()}
             >
-              <Icon name={layout.terminal.opened() ? "shrink" : "maximize"} size="small" />
+              <Icon name={layout.terminal.opened() ? "crosshair" : "radar"} size="small" />
             </button>
           </Tooltip>
           <QuickActions
