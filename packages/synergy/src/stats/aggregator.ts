@@ -34,8 +34,14 @@ export namespace Aggregator {
     const modelUsage: Stats.SessionDigest["modelUsage"] = {}
     const agentUsage: Stats.SessionDigest["agentUsage"] = {}
     const toolUsage: Stats.SessionDigest["toolUsage"] = {}
+    const hourlyTurns: Stats.SessionDigest["hourlyTurns"] = {}
 
     let currentTurnUser: string | null = null
+
+    function hourKey(timestamp: number) {
+      const d = new Date(timestamp)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}`
+    }
 
     for (const msg of messages) {
       messageCount++
@@ -43,6 +49,8 @@ export namespace Aggregator {
       if (msg.info.role === "user") {
         turns++
         currentTurnUser = msg.info.id
+        const key = hourKey(msg.info.time.created)
+        hourlyTurns[key] = (hourlyTurns[key] ?? 0) + 1
       }
 
       if (msg.info.role === "assistant") {
@@ -134,6 +142,7 @@ export namespace Aggregator {
       modelUsage,
       agentUsage,
       toolUsage,
+      hourlyTurns,
       additions: session.summary?.additions ?? 0,
       deletions: session.summary?.deletions ?? 0,
       files: session.summary?.files ?? 0,

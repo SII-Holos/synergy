@@ -17339,6 +17339,21 @@
                   ]
                 }
               },
+              "hours": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "hour": {
+                      "type": "string"
+                    },
+                    "turns": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["hour", "turns"]
+                }
+              },
               "hourlyActivity": {
                 "type": "array",
                 "items": {
@@ -17346,7 +17361,7 @@
                 }
               }
             },
-            "required": ["days", "hourlyActivity"]
+            "required": ["days", "hours", "hourlyActivity"]
           },
           "computedAt": {
             "type": "number"

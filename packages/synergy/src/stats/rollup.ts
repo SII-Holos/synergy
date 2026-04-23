@@ -1,21 +1,22 @@
 import type {
-  SessionDigest,
-  TokenBreakdown,
-  OverviewStats,
-  TokenCostStats,
-  ModelUsage,
-  ModelStats,
-  AgentUsage,
   AgentStats,
-  ToolUsage,
-  ToolStats,
-  CodeChangeStats,
-  SessionLifecycleStats,
-  ChannelUsage,
+  AgentUsage,
   ChannelStats,
+  ChannelUsage,
+  CodeChangeStats,
   DailyBucket,
-  TimeSeriesStats,
+  HourlyBucket,
+  ModelStats,
+  ModelUsage,
+  OverviewStats,
+  SessionDigest,
+  SessionLifecycleStats,
   StatsSnapshot,
+  TimeSeriesStats,
+  TokenBreakdown,
+  TokenCostStats,
+  ToolStats,
+  ToolUsage,
 } from "./types"
 
 export namespace Rollup {
@@ -351,6 +352,7 @@ export namespace Rollup {
 
   function computeTimeSeries(digests: SessionDigest[]): TimeSeriesStats {
     const dayMap = new Map<string, DailyBucket>()
+    const hourMap = new Map<string, number>()
     const hourlyActivity = new Array(24).fill(0) as number[]
 
     for (const d of digests) {
@@ -383,11 +385,18 @@ export namespace Rollup {
         })
       }
 
-      hourlyActivity[hourOfDay(d.created)]++
+      for (const [hour, turns] of Object.entries(d.hourlyTurns)) {
+        hourMap.set(hour, (hourMap.get(hour) ?? 0) + turns)
+        const hourNumber = Number(hour.slice(-2))
+        hourlyActivity[hourNumber] += turns
+      }
     }
 
     const days = [...dayMap.values()].sort((a, b) => a.day.localeCompare(b.day))
-    return { days, hourlyActivity }
+    const hours: HourlyBucket[] = [...hourMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([hour, turns]) => ({ hour, turns }))
+    return { days, hours, hourlyActivity }
   }
 
   // -----------------------------------------------------------------------

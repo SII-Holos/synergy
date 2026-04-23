@@ -185,9 +185,16 @@ export const DailyBucket = z.object({
 })
 export type DailyBucket = z.infer<typeof DailyBucket>
 
+export const HourlyBucket = z.object({
+  hour: z.string(),
+  turns: z.number(),
+})
+export type HourlyBucket = z.infer<typeof HourlyBucket>
+
 export const TimeSeriesStats = z.object({
   days: z.array(DailyBucket),
-  /** Hour-of-day activity: 24-element array, each = message count */
+  hours: z.array(HourlyBucket),
+  /** Hour-of-day activity: 24-element array, each = turn count */
   hourlyActivity: z.array(z.number()),
 })
 export type TimeSeriesStats = z.infer<typeof TimeSeriesStats>
@@ -274,6 +281,9 @@ export const SessionDigest = z.object({
       totalDurationMs: z.number(),
     }),
   ),
+
+  /** YYYY-MM-DDTHH → turn count */
+  hourlyTurns: z.record(z.string(), z.number()),
 
   additions: z.number(),
   deletions: z.number(),

@@ -3009,6 +3009,10 @@ export type StatsSnapshot = {
       toolCalls: number
       errors: number
     }>
+    hours: Array<{
+      hour: string
+      turns: number
+    }>
     hourlyActivity: Array<number>
   }
   computedAt: number
