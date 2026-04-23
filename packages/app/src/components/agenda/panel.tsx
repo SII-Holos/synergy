@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -229,9 +229,11 @@ export function AgendaPanel() {
     setActivityLoading(false)
   }
 
-  createEffect(() => {
-    if (tab() === "activity") void loadActivity()
-  })
+  createEffect(
+    on(tab, (t) => {
+      if (t === "activity") void loadActivity()
+    }),
+  )
 
   function navigateToSession(sessionID: string, scopeID: string) {
     const dir = scopeID === "global" ? "global" : directory()
