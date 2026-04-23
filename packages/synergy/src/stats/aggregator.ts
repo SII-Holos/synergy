@@ -1,4 +1,4 @@
-import { Session } from "@/session"
+import { MessageV2 } from "@/session/message-v2"
 import type { Info as SessionInfo } from "@/session/types"
 import type * as Stats from "@/stats/types"
 
@@ -21,7 +21,16 @@ export namespace Aggregator {
   export type DigestProgress = (current: number, total: number) => void
 
   export async function digest(session: SessionInfo): Promise<Stats.SessionDigest> {
-    const messages = await Session.messages({ sessionID: session.id })
+    // Pass scopeID directly to avoid requireSession looking up session_index,
+    // which may be missing for legacy or reclaimed sessions.
+    const scopeID = (session.scope as { id: string })?.id
+    const messages: MessageV2.WithParts[] = []
+    for await (const msg of MessageV2.stream({
+      scopeID,
+      sessionID: session.id,
+    })) {
+      messages.push(msg)
+    }
 
     const tokens = emptyTokenBreakdown()
     let cost = 0
@@ -157,14 +166,14 @@ export namespace Aggregator {
     sessions: SessionInfo[],
     onProgress?: DigestProgress,
   ): Promise<Stats.SessionDigest[]> {
-    const results: Stats.SessionDigest[] = new Array(sessions.length)
+    const results: Stats.SessionDigest[] = []
     const batchSize = 20
 
     for (let i = 0; i < sessions.length; i += batchSize) {
       const batch = sessions.slice(i, i + batchSize)
-      const batchResults = await Promise.all(batch.map((s) => digest(s)))
-      for (let j = 0; j < batchResults.length; j++) {
-        results[i + j] = batchResults[j]
+      const batchResults = await Promise.all(batch.map((s) => digest(s).catch(() => undefined)))
+      for (const r of batchResults) {
+        if (r) results.push(r)
       }
       onProgress?.(Math.min(i + batchSize, sessions.length), sessions.length)
     }
