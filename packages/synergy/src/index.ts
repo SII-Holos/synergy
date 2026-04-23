@@ -202,5 +202,6 @@ try {
 } finally {
   if (!isLongRunningCommand()) {
     await flushCliOutput()
+    process.exit()
   }
 }
