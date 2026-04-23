@@ -11,11 +11,11 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
     <div class="mb-4 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0 flex-1">
-          <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Knowledge Stats</div>
+          <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Engram Stats</div>
           <div class="mt-1 text-13-medium text-text-base">
             {props.syncing
-              ? "Computing knowledge stats…"
-              : (props.syncError ?? "Recompute knowledge stats when you want a fresh rollup.")}
+              ? "Computing engram stats…"
+              : (props.syncError ?? "Recompute engram stats when you want a fresh rollup.")}
           </div>
         </div>
 
@@ -32,7 +32,7 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
   )
 }
 
-export function EngramStatsSection() {
+export function StatsView() {
   const { data, error, loading, refresh, recompute } = useEngramStats()
   const [syncing, setSyncing] = createSignal(false)
   const [syncError, setSyncError] = createSignal<string | null>(null)
@@ -59,7 +59,7 @@ export function EngramStatsSection() {
           <div class="flex items-center justify-center py-12">
             <div class="flex max-w-sm flex-col items-center gap-2 text-center">
               <div class="text-12-medium text-text-base">
-                {loading() ? "Loading knowledge stats…" : "Knowledge stats are unavailable right now"}
+                {loading() ? "Loading engram stats…" : "Engram stats are unavailable right now"}
               </div>
               <Show when={error() && !loading()}>
                 <div class="text-11-regular text-text-weak">{error()}</div>

@@ -2,7 +2,6 @@ import { Show, For, createMemo } from "solid-js"
 import type { HolosState, HolosProfile } from "@ericsanchezok/synergy-sdk"
 import { AgentCard } from "./agent-card"
 import { StatsSection } from "@/components/stats/stats-section"
-import { EngramStatsSection } from "@/components/engram-stats/engram-stats-section"
 
 function capabilityStateMeta(status: "available" | "locked" | "degraded" | "unknown") {
   if (status === "available") {
@@ -200,10 +199,6 @@ export function HubView(props: {
 
       <div class="mt-6">
         <StatsSection />
-      </div>
-
-      <div class="mt-6">
-        <EngramStatsSection />
       </div>
     </>
   )

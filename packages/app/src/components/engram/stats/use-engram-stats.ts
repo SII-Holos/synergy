@@ -103,7 +103,7 @@ export function useEngramStats() {
   const [data, { refetch }] = createResource(async (): Promise<EngramStatsSnapshot | null> => {
     try {
       setError(null)
-      const res = await fetch(`${sdk.url}/engram/stats`)
+      const res = await fetch(`${sdk.url}/engram/stats?recompute=true`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!isValidSnapshot(json)) return null

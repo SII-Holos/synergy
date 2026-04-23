@@ -3,7 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
 
-export type View = "memory" | "experience" | "skill"
+export type View = "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"

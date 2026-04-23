@@ -6,6 +6,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { Panel } from "@/components/panel"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, ViewTab, formatBytes } from "./shared"
+import { StatsView } from "./stats/stats-view"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
@@ -14,7 +15,7 @@ export function EngramPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const params = useParams()
-  const [view, setView] = createSignal<View>("memory")
+  const [view, setView] = createSignal<View>("stats")
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
 
@@ -65,11 +66,16 @@ export function EngramPanel() {
   let refetchExperienceData = () => {}
   let refetchSkillData = () => {}
 
+  const showSearch = () => view() !== "stats"
+
   return (
     <Panel.Root>
       <Panel.Header>
         <Panel.HeaderRow>
           <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
+            <ViewTab active={view() === "stats"} onClick={() => setView("stats")}>
+              Stats
+            </ViewTab>
             <ViewTab active={view() === "memory"} onClick={() => setView("memory")}>
               Memory
               <Show when={memoryCount() > 0}>
@@ -93,17 +99,19 @@ export function EngramPanel() {
             <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
           </Panel.Actions>
         </Panel.HeaderRow>
-        <Panel.Search
-          value={search()}
-          onInput={onSearchInput}
-          placeholder={
-            view() === "memory"
-              ? "Search memories..."
-              : view() === "experience"
-                ? "Search experiences..."
-                : "Search skills..."
-          }
-        />
+        <Show when={showSearch()}>
+          <Panel.Search
+            value={search()}
+            onInput={onSearchInput}
+            placeholder={
+              view() === "memory"
+                ? "Search memories..."
+                : view() === "experience"
+                  ? "Search experiences..."
+                  : "Search skills..."
+            }
+          />
+        </Show>
         <Show when={searchError()}>
           <span class="text-11-regular text-text-diff-delete-base">
             Search unavailable — embedding API may not be configured
@@ -111,6 +119,9 @@ export function EngramPanel() {
         </Show>
       </Panel.Header>
 
+      <Show when={view() === "stats"}>
+        <StatsView />
+      </Show>
       <Show when={view() === "memory"}>
         <MemoryView
           sdk={sdk}
