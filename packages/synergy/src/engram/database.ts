@@ -467,13 +467,22 @@ export namespace EngramDB {
       return r1.changes
     }
 
+    export interface DuplicateInfo {
+      id: string
+      intentSimilarity: number
+      scriptSimilarity?: number
+      rewardStatus: string
+      compositeQ: number
+    }
+
     export function findSimilar(
       scopeID: string,
       intentVector: number[],
       intentThreshold: number,
       scriptVector?: number[],
       scriptThreshold?: number,
-    ): { id: string; intentSimilarity: number; scriptSimilarity?: number } | null {
+      rewardWeights?: Record<string, number>,
+    ): DuplicateInfo | null {
       const conn = open()
       if (!vecTablesReady()) return null
       const row = safeVecOp(
@@ -493,7 +502,15 @@ export namespace EngramDB {
       if (intentSimilarity < intentThreshold) return null
 
       if (!scriptVector || !scriptThreshold) {
-        return { id: row.experience_id, intentSimilarity }
+        const existing = get(row.experience_id)
+        return existing
+          ? {
+              id: row.experience_id,
+              intentSimilarity,
+              rewardStatus: existing.reward_status,
+              compositeQ: compositeQ(existing, rewardWeights),
+            }
+          : null
       }
 
       const scriptResults = safeVecOp(
@@ -514,7 +531,28 @@ export namespace EngramDB {
       const scriptSimilarity = 1 - scriptMatch.distance
       if (scriptSimilarity < scriptThreshold) return null
 
-      return { id: row.experience_id, intentSimilarity, scriptSimilarity }
+      const existing = get(row.experience_id)
+      return existing
+        ? {
+            id: row.experience_id,
+            intentSimilarity,
+            scriptSimilarity,
+            rewardStatus: existing.reward_status,
+            compositeQ: compositeQ(existing, rewardWeights),
+          }
+        : null
+    }
+
+    function compositeQ(row: Row, weights?: Record<string, number>): number {
+      const qv: Record<string, number> = JSON.parse(row.q_values)
+      const w = weights ?? { outcome: 0.35, intent: 0.25, execution: 0.2, orchestration: 0.1, expression: 0.1 }
+      return (
+        (qv.outcome ?? 0) * (w.outcome ?? 0.35) +
+        (qv.intent ?? 0) * (w.intent ?? 0.25) +
+        (qv.execution ?? 0) * (w.execution ?? 0.2) +
+        (qv.orchestration ?? 0) * (w.orchestration ?? 0.1) +
+        (qv.expression ?? 0) * (w.expression ?? 0.1)
+      )
     }
 
     export interface KNNResult {
@@ -787,6 +825,90 @@ export namespace EngramDB {
         )
 
       log.info("experience.insert", { id: input.id })
+    }
+
+    export function supersede(
+      existingID: string,
+      input: {
+        sessionID: string
+        scopeID: string
+        intent: string
+        sourceProviderID?: string
+        sourceModelID?: string
+        intentEmbedding: Embedding.Info
+        scriptEmbedding: Embedding.Info | undefined
+        content: ContentInput
+        metadata: object
+        retrievedExperienceIDs: string[]
+      },
+    ): boolean {
+      const conn = open()
+      const existing = get(existingID)
+      if (!existing) return false
+
+      const now = Date.now()
+      const dimensions = input.intentEmbedding.vector.length
+
+      conn
+        .prepare(
+          `UPDATE experience SET
+           intent = ?1, session_id = ?2, scope_id = ?3,
+           intent_embedding_model = ?4, script_embedding_model = ?5,
+           source_provider_id = ?6, source_model_id = ?7,
+           retrieved_experience_ids = ?8,
+           reward_status = 'pending', turns_remaining = NULL,
+           updated_at = ?9
+           WHERE id = ?10`,
+        )
+        .run(
+          input.intent,
+          input.sessionID,
+          input.scopeID,
+          input.intentEmbedding.model,
+          input.scriptEmbedding?.model ?? null,
+          input.sourceProviderID ?? null,
+          input.sourceModelID ?? null,
+          JSON.stringify(input.retrievedExperienceIDs),
+          now,
+          existingID,
+        )
+
+      ensureVecTables(dimensions)
+      safeVecOp(() => {
+        conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(existingID)
+        conn
+          .prepare(
+            `INSERT INTO vec_experience (experience_id, scope_id, reward_status, intent_embedding, script_embedding)
+           VALUES (?1, ?2, 'pending', ?3, ?4)`,
+          )
+          .run(
+            existingID,
+            input.scopeID,
+            toFloat32(input.intentEmbedding.vector),
+            input.scriptEmbedding ? toFloat32(input.scriptEmbedding.vector) : new Float32Array(dimensions),
+          )
+      }, undefined)
+
+      conn
+        .prepare(
+          `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(id) DO UPDATE SET
+           script = excluded.script, raw = excluded.raw, metadata = excluded.metadata, updated_at = excluded.updated_at`,
+        )
+        .run(
+          existingID,
+          input.sessionID,
+          input.scopeID,
+          input.content.script ?? null,
+          input.content.raw ?? null,
+          JSON.stringify(input.metadata),
+          existing.created_at,
+          now,
+        )
+
+      log.info("experience.supersede", { id: existingID })
+      return true
     }
   }
 
