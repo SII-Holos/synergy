@@ -53,7 +53,7 @@ export function OverviewCards(props: { metrics: OverviewMetric[]; streak: { curr
           <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
         </div>
         <div
-          class="mt-2.5 flex items-center justify-between rounded-2xl bg-amber-500/8 px-3.5 py-2.5"
+          class="mt-2 flex items-center justify-between rounded-xl bg-amber-500/8 px-3 py-1.5"
           style={{ animation: `overviewCardEnter 0.32s ease-out ${metrics().length * 40}ms both` }}
         >
           <StreakItem label="Current streak ·" value={props.streak.current} delay={0} />

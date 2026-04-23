@@ -149,6 +149,13 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
         }}
       />
       <DailyTrend days={snapshot().timeSeries.days} />
+      <ActivityHeatmap
+        days={snapshot().timeSeries.days}
+        hours={
+          (snapshot().timeSeries as StatsSnapshot["timeSeries"] & { hours?: Array<{ hour: string; turns: number }> })
+            .hours
+        }
+      />
       <TokenRing tokens={snapshot().tokenCost.tokens} cacheHitRate={snapshot().tokenCost.cacheHitRate} />
 
       <RankList
@@ -176,13 +183,6 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
       />
 
       <CodeSummary codeChanges={snapshot().codeChanges} />
-      <ActivityHeatmap
-        days={snapshot().timeSeries.days}
-        hours={
-          (snapshot().timeSeries as StatsSnapshot["timeSeries"] & { hours?: Array<{ hour: string; turns: number }> })
-            .hours
-        }
-      />
       <Milestones snapshot={snapshot()} />
     </div>
   )

@@ -51,12 +51,12 @@ function CompositionRow(props: { label: string; value: string; share: number; to
       ? {
           text: "text-emerald-400",
           dot: "bg-emerald-400",
-          bar: "from-emerald-500/80 to-teal-300/70",
+          bar: "from-emerald-500 to-teal-400",
         }
       : {
           text: "text-rose-400",
           dot: "bg-rose-400",
-          bar: "from-rose-500/76 to-orange-300/68",
+          bar: "from-rose-500 to-orange-400",
         }
 
   return (
@@ -154,11 +154,11 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                 <div class="mt-3 h-3 overflow-hidden rounded-full bg-surface-inset-base/72 p-0.5">
                   <div class="flex h-full gap-0.5">
                     <div
-                      class="h-full rounded-full bg-gradient-to-r from-emerald-500/82 to-teal-300/72"
+                      class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
                       style={{ width: `${Math.max(addShare(), addShare() > 0 ? 6 : 0)}%` }}
                     />
                     <div
-                      class="h-full rounded-full bg-gradient-to-r from-rose-500/78 to-orange-300/70"
+                      class="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400"
                       style={{ width: `${Math.max(removeShare(), removeShare() > 0 ? 6 : 0)}%` }}
                     />
                   </div>

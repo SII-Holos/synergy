@@ -6,6 +6,7 @@ import { useHolos } from "@/context/holos"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
 import { Panel } from "@/components/panel"
+import { ViewTab } from "@/components/engram/shared"
 import { EditProfileDialog } from "./edit-profile-dialog"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
@@ -120,23 +121,22 @@ export function HolosPanel() {
       <style>{CARD_ENTER_STYLE}</style>
       <Panel.Header>
         <Panel.HeaderRow>
-          <Panel.Title>Holos</Panel.Title>
+          <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
+            <ViewTab active={tab() === "hub"} onClick={() => setTab("hub")}>
+              Hub
+            </ViewTab>
+            <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
+              <span class="flex items-center gap-1.5">
+                Contacts
+                <Show when={pendingIncoming().length > 0}>
+                  <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
+                    {pendingIncoming().length}
+                  </span>
+                </Show>
+              </span>
+            </ViewTab>
+          </div>
         </Panel.HeaderRow>
-        <div class="flex items-center gap-1">
-          <Panel.FilterChip active={tab() === "hub"} onClick={() => setTab("hub")}>
-            Hub
-          </Panel.FilterChip>
-          <Panel.FilterChip active={tab() === "contacts"} onClick={() => setTab("contacts")}>
-            <span class="flex items-center gap-1.5">
-              Contacts
-              <Show when={pendingIncoming().length > 0}>
-                <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
-                  {pendingIncoming().length}
-                </span>
-              </Show>
-            </span>
-          </Panel.FilterChip>
-        </div>
       </Panel.Header>
       <Panel.Body>
         <Show when={holos.loaded} fallback={<Panel.Loading />}>
