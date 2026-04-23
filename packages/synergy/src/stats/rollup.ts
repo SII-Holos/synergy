@@ -385,7 +385,7 @@ export namespace Rollup {
         })
       }
 
-      for (const [hour, turns] of Object.entries(d.hourlyTurns)) {
+      for (const [hour, turns] of Object.entries(d.hourlyTurns ?? {})) {
         hourMap.set(hour, (hourMap.get(hour) ?? 0) + turns)
         const hourNumber = Number(hour.slice(-2))
         hourlyActivity[hourNumber] += turns

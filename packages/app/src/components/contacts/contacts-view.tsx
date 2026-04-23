@@ -210,7 +210,7 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
   )
 }
 
-export function ContactsView() {
+export function ContactsView(props: { onRefresh: () => void | Promise<void>; refreshing: boolean }) {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const auth = useAuth()
@@ -323,14 +323,25 @@ export function ContactsView() {
                 Keep your active Holos relationships, pending invites, and conversation shortcuts in one place.
               </p>
             </div>
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 rounded-full border border-border-base/70 bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98]"
-              onClick={() => setShowAddFriend((v) => !v)}
-            >
-              <Icon name={showAddFriend() ? "x" : "user-plus"} size="small" />
-              {showAddFriend() ? "Close" : "Add friend"}
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-full border border-border-base/70 bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98] disabled:opacity-60"
+                disabled={props.refreshing}
+                onClick={() => void props.onRefresh()}
+              >
+                <Icon name="refresh-ccw" size="small" />
+                {props.refreshing ? "Refreshing…" : "Refresh contacts"}
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-full border border-border-base/70 bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98]"
+                onClick={() => setShowAddFriend((v) => !v)}
+              >
+                <Icon name={showAddFriend() ? "x" : "user-plus"} size="small" />
+                {showAddFriend() ? "Close" : "Add friend"}
+              </button>
+            </div>
           </div>
 
           <div class="mt-4 grid grid-cols-3 gap-3">

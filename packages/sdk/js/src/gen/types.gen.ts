@@ -8031,7 +8031,7 @@ export type StatsGetData = {
   query?: {
     directory?: string
     /**
-     * Set to 'true' to force full recompute from scratch
+     * Set to 'true' to force a full recompute from scratch
      */
     recompute?: "true" | "false"
   }
@@ -8055,6 +8055,170 @@ export type StatsGetResponses = {
 }
 
 export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
+
+export type StatsProgressData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/stats/progress"
+}
+
+export type StatsProgressResponses = {
+  /**
+   * Server-sent events containing progress and final snapshot payloads
+   */
+  200: {
+    type: "progress" | "done" | "error"
+    progress?: {
+      phase: "scan" | "digest" | "bucket" | "snapshot"
+      current: number
+      total: number
+      message?: string
+    }
+    snapshot?: {
+      overview: {
+        totalSessions: number
+        activeSessions: number
+        archivedSessions: number
+        totalMessages: number
+        totalTurns: number
+        totalDays: number
+        longestStreak: number
+        currentStreak: number
+        projectCount: number
+      }
+      tokenCost: {
+        tokens: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        cost: number
+        cacheHitRate: number
+        avgCostPerTurn: number
+        avgTokensPerTurn: number
+        dailyCost: number
+        dailyTokens: number
+      }
+      models: {
+        models: Array<{
+          providerID: string
+          modelID: string
+          messages: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          avgResponseMs: number
+        }>
+      }
+      agents: {
+        agents: Array<{
+          agent: string
+          messages: number
+          sessions: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          subagentInvocations: number
+        }>
+        totalSubagentCalls: number
+      }
+      tools: {
+        tools: Array<{
+          tool: string
+          calls: number
+          successes: number
+          errors: number
+          avgDurationMs: number
+        }>
+      }
+      codeChanges: {
+        totalAdditions: number
+        totalDeletions: number
+        totalFiles: number
+        netLines: number
+        dailyAdditions: number
+        dailyDeletions: number
+      }
+      lifecycle: {
+        pinnedCount: number
+        avgTurnsPerSession: number
+        medianTurnsPerSession: number
+        compactionCount: number
+        retryCount: number
+        errorCount: number
+        errorRate: number
+        durationBuckets: {
+          short: number
+          medium: number
+          long: number
+        }
+      }
+      channels: {
+        channels: Array<{
+          channel: string
+          sessions: number
+          messages: number
+        }>
+        interactiveSessions: number
+        unattendedSessions: number
+      }
+      timeSeries: {
+        days: Array<{
+          day: string
+          sessions: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          additions: number
+          deletions: number
+          files: number
+          toolCalls: number
+          errors: number
+        }>
+        hours: Array<{
+          hour: string
+          turns: number
+        }>
+        hourlyActivity: Array<number>
+      }
+      computedAt: number
+      watermark: number
+    }
+    message?: string
+  }
+}
+
+export type StatsProgressResponse = StatsProgressResponses[keyof StatsProgressResponses]
 
 export type HolosCredentialsStatusData = {
   body?: never

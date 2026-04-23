@@ -316,11 +316,12 @@ export type StatsWatermark = z.infer<typeof StatsWatermark>
 // Progress callback
 // ---------------------------------------------------------------------------
 
-export interface ProgressEvent {
-  phase: "scan" | "digest" | "bucket" | "snapshot"
-  current: number
-  total: number
-  message?: string
-}
+export const ProgressEvent = z.object({
+  phase: z.enum(["scan", "digest", "bucket", "snapshot"]),
+  current: z.number(),
+  total: z.number(),
+  message: z.string().optional(),
+})
+export type ProgressEvent = z.infer<typeof ProgressEvent>
 
 export type ProgressCallback = (event: ProgressEvent) => void

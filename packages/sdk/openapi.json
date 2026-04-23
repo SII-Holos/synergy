@@ -8054,7 +8054,7 @@
               "type": "string",
               "enum": ["true", "false"]
             },
-            "description": "Set to 'true' to force full recompute from scratch"
+            "description": "Set to 'true' to force a full recompute from scratch"
           }
         ],
         "summary": "Get stats snapshot",
@@ -8085,6 +8085,566 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/stats/progress": {
+      "get": {
+        "operationId": "stats.progress",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Stream stats recompute progress",
+        "description": "Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.",
+        "responses": {
+          "200": {
+            "description": "Server-sent events containing progress and final snapshot payloads",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["progress", "done", "error"]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string",
+                          "enum": ["scan", "digest", "bucket", "snapshot"]
+                        },
+                        "current": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["phase", "current", "total"]
+                    },
+                    "snapshot": {
+                      "type": "object",
+                      "properties": {
+                        "overview": {
+                          "type": "object",
+                          "properties": {
+                            "totalSessions": {
+                              "type": "number"
+                            },
+                            "activeSessions": {
+                              "type": "number"
+                            },
+                            "archivedSessions": {
+                              "type": "number"
+                            },
+                            "totalMessages": {
+                              "type": "number"
+                            },
+                            "totalTurns": {
+                              "type": "number"
+                            },
+                            "totalDays": {
+                              "type": "number"
+                            },
+                            "longestStreak": {
+                              "type": "number"
+                            },
+                            "currentStreak": {
+                              "type": "number"
+                            },
+                            "projectCount": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "totalSessions",
+                            "activeSessions",
+                            "archivedSessions",
+                            "totalMessages",
+                            "totalTurns",
+                            "totalDays",
+                            "longestStreak",
+                            "currentStreak",
+                            "projectCount"
+                          ]
+                        },
+                        "tokenCost": {
+                          "type": "object",
+                          "properties": {
+                            "tokens": {
+                              "type": "object",
+                              "properties": {
+                                "input": {
+                                  "type": "number"
+                                },
+                                "output": {
+                                  "type": "number"
+                                },
+                                "reasoning": {
+                                  "type": "number"
+                                },
+                                "cache": {
+                                  "type": "object",
+                                  "properties": {
+                                    "read": {
+                                      "type": "number"
+                                    },
+                                    "write": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": ["read", "write"]
+                                }
+                              },
+                              "required": ["input", "output", "reasoning", "cache"]
+                            },
+                            "cost": {
+                              "type": "number"
+                            },
+                            "cacheHitRate": {
+                              "type": "number"
+                            },
+                            "avgCostPerTurn": {
+                              "type": "number"
+                            },
+                            "avgTokensPerTurn": {
+                              "type": "number"
+                            },
+                            "dailyCost": {
+                              "type": "number"
+                            },
+                            "dailyTokens": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "tokens",
+                            "cost",
+                            "cacheHitRate",
+                            "avgCostPerTurn",
+                            "avgTokensPerTurn",
+                            "dailyCost",
+                            "dailyTokens"
+                          ]
+                        },
+                        "models": {
+                          "type": "object",
+                          "properties": {
+                            "models": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "providerID": {
+                                    "type": "string"
+                                  },
+                                  "modelID": {
+                                    "type": "string"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "avgResponseMs": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "providerID",
+                                  "modelID",
+                                  "messages",
+                                  "turns",
+                                  "tokens",
+                                  "cost",
+                                  "avgResponseMs"
+                                ]
+                              }
+                            }
+                          },
+                          "required": ["models"]
+                        },
+                        "agents": {
+                          "type": "object",
+                          "properties": {
+                            "agents": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "agent": {
+                                    "type": "string"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "subagentInvocations": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["agent", "messages", "sessions", "tokens", "cost", "subagentInvocations"]
+                              }
+                            },
+                            "totalSubagentCalls": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["agents", "totalSubagentCalls"]
+                        },
+                        "tools": {
+                          "type": "object",
+                          "properties": {
+                            "tools": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "tool": {
+                                    "type": "string"
+                                  },
+                                  "calls": {
+                                    "type": "number"
+                                  },
+                                  "successes": {
+                                    "type": "number"
+                                  },
+                                  "errors": {
+                                    "type": "number"
+                                  },
+                                  "avgDurationMs": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["tool", "calls", "successes", "errors", "avgDurationMs"]
+                              }
+                            }
+                          },
+                          "required": ["tools"]
+                        },
+                        "codeChanges": {
+                          "type": "object",
+                          "properties": {
+                            "totalAdditions": {
+                              "type": "number"
+                            },
+                            "totalDeletions": {
+                              "type": "number"
+                            },
+                            "totalFiles": {
+                              "type": "number"
+                            },
+                            "netLines": {
+                              "type": "number"
+                            },
+                            "dailyAdditions": {
+                              "type": "number"
+                            },
+                            "dailyDeletions": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "totalAdditions",
+                            "totalDeletions",
+                            "totalFiles",
+                            "netLines",
+                            "dailyAdditions",
+                            "dailyDeletions"
+                          ]
+                        },
+                        "lifecycle": {
+                          "type": "object",
+                          "properties": {
+                            "pinnedCount": {
+                              "type": "number"
+                            },
+                            "avgTurnsPerSession": {
+                              "type": "number"
+                            },
+                            "medianTurnsPerSession": {
+                              "type": "number"
+                            },
+                            "compactionCount": {
+                              "type": "number"
+                            },
+                            "retryCount": {
+                              "type": "number"
+                            },
+                            "errorCount": {
+                              "type": "number"
+                            },
+                            "errorRate": {
+                              "type": "number"
+                            },
+                            "durationBuckets": {
+                              "type": "object",
+                              "properties": {
+                                "short": {
+                                  "type": "number"
+                                },
+                                "medium": {
+                                  "type": "number"
+                                },
+                                "long": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["short", "medium", "long"]
+                            }
+                          },
+                          "required": [
+                            "pinnedCount",
+                            "avgTurnsPerSession",
+                            "medianTurnsPerSession",
+                            "compactionCount",
+                            "retryCount",
+                            "errorCount",
+                            "errorRate",
+                            "durationBuckets"
+                          ]
+                        },
+                        "channels": {
+                          "type": "object",
+                          "properties": {
+                            "channels": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "channel": {
+                                    "type": "string"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["channel", "sessions", "messages"]
+                              }
+                            },
+                            "interactiveSessions": {
+                              "type": "number"
+                            },
+                            "unattendedSessions": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["channels", "interactiveSessions", "unattendedSessions"]
+                        },
+                        "timeSeries": {
+                          "type": "object",
+                          "properties": {
+                            "days": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "day": {
+                                    "type": "string"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "additions": {
+                                    "type": "number"
+                                  },
+                                  "deletions": {
+                                    "type": "number"
+                                  },
+                                  "files": {
+                                    "type": "number"
+                                  },
+                                  "toolCalls": {
+                                    "type": "number"
+                                  },
+                                  "errors": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "day",
+                                  "sessions",
+                                  "turns",
+                                  "tokens",
+                                  "cost",
+                                  "additions",
+                                  "deletions",
+                                  "files",
+                                  "toolCalls",
+                                  "errors"
+                                ]
+                              }
+                            },
+                            "hours": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "hour": {
+                                    "type": "string"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["hour", "turns"]
+                              }
+                            },
+                            "hourlyActivity": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "required": ["days", "hours", "hourlyActivity"]
+                        },
+                        "computedAt": {
+                          "type": "number"
+                        },
+                        "watermark": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "overview",
+                        "tokenCost",
+                        "models",
+                        "agents",
+                        "tools",
+                        "codeChanges",
+                        "lifecycle",
+                        "channels",
+                        "timeSeries",
+                        "computedAt",
+                        "watermark"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.progress({\n  ...\n})"
           }
         ]
       }

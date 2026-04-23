@@ -25,12 +25,15 @@ export function HolosPanel() {
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
+  const [refreshingContacts, setRefreshingContacts] = createSignal(false)
 
   const pendingIncoming = createMemo(() =>
     (holos.state.social.friendRequests ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),
   )
 
   async function refetchAll() {
+    if (refreshingContacts()) return
+    setRefreshingContacts(true)
     await holos.refresh()
     try {
       await globalSDK.client.holos.refreshPresence()
@@ -40,6 +43,7 @@ export function HolosPanel() {
         await new Promise((resolve) => setTimeout(resolve, 500))
         await holos.refresh()
       }
+      setRefreshingContacts(false)
     }
   }
 
@@ -117,9 +121,6 @@ export function HolosPanel() {
       <Panel.Header>
         <Panel.HeaderRow>
           <Panel.Title>Holos</Panel.Title>
-          <Panel.Actions>
-            <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
-          </Panel.Actions>
         </Panel.HeaderRow>
         <div class="flex items-center gap-1">
           <Panel.FilterChip active={tab() === "hub"} onClick={() => setTab("hub")}>
@@ -158,7 +159,7 @@ export function HolosPanel() {
             />
           </Show>
           <Show when={tab() === "contacts"}>
-            <ContactsView />
+            <ContactsView onRefresh={refetchAll} refreshing={refreshingContacts()} />
           </Show>
         </Show>
       </Panel.Body>

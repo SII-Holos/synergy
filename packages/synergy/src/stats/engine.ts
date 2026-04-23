@@ -94,9 +94,9 @@ export namespace Engine {
    */
   export async function get(onProgress?: ProgressCallback): Promise<StatsSnapshot> {
     const existing = await StatsStorage.getSnapshot()
-    if (existing && Array.isArray((existing.timeSeries as StatsSnapshot["timeSeries"] & { hours?: unknown }).hours))
-      return existing
-    return update(onProgress)
+    if (!existing) return update(onProgress)
+    if (Array.isArray((existing.timeSeries as StatsSnapshot["timeSeries"] & { hours?: unknown }).hours)) return existing
+    return recompute(onProgress)
   }
 
   /**

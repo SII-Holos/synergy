@@ -316,6 +316,7 @@ import type {
   SkillRemoveResponses,
   StatsGetErrors,
   StatsGetResponses,
+  StatsProgressResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -5220,6 +5221,25 @@ export class Stats extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<StatsGetResponses, StatsGetErrors, ThrowOnError>({
       url: "/stats",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stream stats recompute progress
+   *
+   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
+   */
+  public progress<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).sse.get<StatsProgressResponses, unknown, ThrowOnError>({
+      url: "/stats/progress",
       ...options,
       ...params,
     })
