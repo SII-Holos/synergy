@@ -881,27 +881,91 @@ function createGlobalSync() {
   })
   onCleanup(unsub)
 
+  // Track sessions that were busy at disconnect time so we can reconcile
+  // their parts on reconnect — WS events during disconnect are lost.
+  const disconnectedBusy = new Map<string, Set<string>>()
+
   let wasConnected = false
   createEffect(() => {
     const isConnected = globalSDK.connected()
+
+    if (!isConnected && wasConnected) {
+      for (const [directory, [store]] of Object.entries(children)) {
+        const busyIds = new Set<string>()
+        for (const s of store.session) {
+          const status = store.session_status[s.id]
+          if (status?.type === "busy" || status?.type === "retry") busyIds.add(s.id)
+        }
+        if (busyIds.size > 0) disconnectedBusy.set(directory, busyIds)
+      }
+    }
+
     if (isConnected && !wasConnected && globalStore.ready) {
       for (const directory of Object.keys(children)) {
-        const [store, setStore] = child(directory)
-        const activeSessions = store.session.filter((s) => {
-          const status = store.session_status[s.id]
-          return status?.type === "busy" || status?.type === "retry"
-        })
-        if (activeSessions.length > 0) {
-          loadSessions(directory)
-        }
+        const [, setStore] = child(directory)
         const scopeSdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+
+        // Refresh status first — it's the authoritative source of truth.
         scopeSdk.session
           .status()
-          .then((x) => setStore("session_status", x.data!))
-          .catch(() => {})
+          .then((x) => {
+            const fresh = x.data!
+            setStore("session_status", fresh)
+            return fresh
+          })
+          .then((fresh) => {
+            // Merge sessions that were busy at disconnect + sessions busy now.
+            const toReconcile = new Set(disconnectedBusy.get(directory))
+            for (const [id, status] of Object.entries(fresh)) {
+              if (status.type === "busy" || status.type === "retry") toReconcile.add(id)
+            }
+            disconnectedBusy.delete(directory)
+            if (toReconcile.size === 0) return
+
+            // Reconcile parts for each affected session by fetching the
+            // latest messages from the server. This closes the gap left by
+            // WS events that were lost during the disconnect.
+            for (const sessionID of toReconcile) {
+              scopeSdk.session
+                .messages({ sessionID, limit: 2 })
+                .then((result) => {
+                  const items = (result.data ?? []).filter((x) => !!x?.info?.id)
+                  const latest = items
+                    .filter((x) => x.info.role === "assistant")
+                    .sort((a, b) => b.info.id.localeCompare(a.info.id))[0]
+                  if (!latest) return
+                  batch(() => {
+                    setStore(
+                      "message",
+                      sessionID,
+                      produce((draft) => {
+                        const idx = draft.findIndex((m) => m.id === latest.info.id)
+                        if (idx === -1) draft.push(latest.info)
+                        else draft[idx] = latest.info
+                      }),
+                    )
+                    setStore(
+                      "part",
+                      latest.info.id,
+                      reconcile(
+                        latest.parts.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
+                        { key: "id" },
+                      ),
+                    )
+                  })
+                })
+                .catch(() => {})
+            }
+          })
+          .catch(() => {
+            disconnectedBusy.delete(directory)
+          })
+
+        loadSessions(directory)
       }
       loadGlobalAgenda()
     }
+
     wasConnected = isConnected
   })
 
