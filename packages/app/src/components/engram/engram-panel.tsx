@@ -96,7 +96,9 @@ export function EngramPanel() {
             <Show when={stats()}>
               <span class="text-11-regular text-text-weaker mr-0.5">{formatBytes(stats()!.dbSizeBytes)}</span>
             </Show>
-            <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
+            <Show when={view() !== "stats"}>
+              <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
+            </Show>
           </Panel.Actions>
         </Panel.HeaderRow>
         <Show when={showSearch()}>

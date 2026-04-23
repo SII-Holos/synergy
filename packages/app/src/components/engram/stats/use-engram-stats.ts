@@ -5,7 +5,7 @@ export type EngramStatsSnapshot = {
   overview: {
     totalMemories: number
     totalExperiences: number
-    memoriesEdited: number
+    evaluationRate: number
     experiencesEvaluated: number
     experiencesFailed: number
     experiencesPending: number
@@ -15,18 +15,20 @@ export type EngramStatsSnapshot = {
   memoryDistribution: {
     byCategory: Array<{ category: string; count: number }>
     byRecallMode: Array<{ recallMode: string; count: number }>
-    categoryRecallMatrix: Record<string, number>
   }
   experienceRL: {
-    rewardDimensions: Array<{ dimension: string; avg: number; median: number; p90: number }>
+    rewardDimensions: Array<{
+      dimension: string
+      avg: number
+      std: number
+      distribution: Array<{ value: number; count: number }>
+    }>
     qDistribution: {
-      negative: number
-      low: number
-      neutral: number
-      medium: number
-      high: number
+      histogram: Array<{ bin: string; count: number }>
+      trend: Array<{ period: string; medianQ: number; count: number }>
       avgCompositeQ: number
       medianCompositeQ: number
+      stdCompositeQ: number
     }
     avgVisits: number
     medianVisits: number
@@ -57,17 +59,17 @@ export const EMPTY_SNAPSHOT: EngramStatsSnapshot = {
   overview: {
     totalMemories: 0,
     totalExperiences: 0,
-    memoriesEdited: 0,
+    evaluationRate: 0,
     experiencesEvaluated: 0,
     experiencesFailed: 0,
     experiencesPending: 0,
     scopeCount: 0,
     activeDays: 0,
   },
-  memoryDistribution: { byCategory: [], byRecallMode: [], categoryRecallMatrix: {} },
+  memoryDistribution: { byCategory: [], byRecallMode: [] },
   experienceRL: {
     rewardDimensions: [],
-    qDistribution: { negative: 0, low: 0, neutral: 0, medium: 0, high: 0, avgCompositeQ: 0, medianCompositeQ: 0 },
+    qDistribution: { histogram: [], trend: [], avgCompositeQ: 0, medianCompositeQ: 0, stdCompositeQ: 0 },
     avgVisits: 0,
     medianVisits: 0,
     neverRetrieved: 0,
@@ -93,7 +95,7 @@ function isValidSnapshot(data: unknown): data is EngramStatsSnapshot {
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === "string") return error
-  return "Unable to load knowledge stats right now."
+  return "Unable to load engram stats right now."
 }
 
 export function useEngramStats() {

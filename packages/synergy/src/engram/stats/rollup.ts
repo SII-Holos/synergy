@@ -3,11 +3,11 @@ import type {
   EngramStatsSnapshot,
   EngramOverviewStats,
   MemoryDistributionStats,
-  MemoryCategoryCount,
-  MemoryRecallModeCount,
   ExperienceRLStats,
   RewardDimensionStats,
   QValueDistribution,
+  QHistogramBin,
+  QTrendPoint,
   TopExperienceItem,
   RetrievalStats,
   ScopeStats,
@@ -43,6 +43,16 @@ export namespace Rollup {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
 
+  /** ISO week key: "2026-W16" */
+  function weekKey(timestamp: number): string {
+    const d = new Date(timestamp)
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`
+  }
+
   function percentile(sorted: number[], p: number): number {
     if (sorted.length === 0) return 0
     const idx = Math.ceil((p / 100) * sorted.length) - 1
@@ -55,6 +65,12 @@ export namespace Rollup {
     return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!
   }
 
+  function stddev(values: number[], avg: number): number {
+    if (values.length < 2) return 0
+    const variance = values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / values.length
+    return Math.sqrt(variance)
+  }
+
   // -----------------------------------------------------------------------
   // Dimension 1 — Overview
   // -----------------------------------------------------------------------
@@ -65,7 +81,6 @@ export namespace Rollup {
     const evaluated = experiences.filter((e) => e.reward_status === "evaluated")
     const failed = experiences.filter((e) => e.reward_status === "encoding_failed")
     const pending = experiences.filter((e) => e.reward_status === "pending")
-    const editedMemories = memories.filter((m) => m.updated_at !== m.created_at)
 
     const scopeSet = new Set<string>()
     for (const e of experiences) scopeSet.add(e.scope_id)
@@ -78,7 +93,7 @@ export namespace Rollup {
     return {
       totalMemories: memories.length,
       totalExperiences: experiences.length,
-      memoriesEdited: editedMemories.length,
+      evaluationRate: experiences.length > 0 ? evaluated.length / experiences.length : 0,
       experiencesEvaluated: evaluated.length,
       experiencesFailed: failed.length,
       experiencesPending: pending.length,
@@ -96,29 +111,21 @@ export namespace Rollup {
 
     const categoryMap = new Map<string, number>()
     const recallModeMap = new Map<string, number>()
-    const matrixMap = new Map<string, number>()
 
     for (const m of memories) {
       categoryMap.set(m.category, (categoryMap.get(m.category) ?? 0) + 1)
       recallModeMap.set(m.recall_mode, (recallModeMap.get(m.recall_mode) ?? 0) + 1)
-      const key = `${m.category}:${m.recall_mode}`
-      matrixMap.set(key, (matrixMap.get(key) ?? 0) + 1)
     }
 
-    const byCategory: MemoryCategoryCount[] = [...categoryMap.entries()]
+    const byCategory = [...categoryMap.entries()]
       .map(([category, count]) => ({ category, count }))
       .sort((a, b) => b.count - a.count)
 
-    const byRecallMode: MemoryRecallModeCount[] = [...recallModeMap.entries()]
+    const byRecallMode = [...recallModeMap.entries()]
       .map(([recallMode, count]) => ({ recallMode, count }))
       .sort((a, b) => b.count - a.count)
 
-    const categoryRecallMatrix: Record<string, number> = {}
-    for (const [key, count] of matrixMap.entries()) {
-      categoryRecallMatrix[key] = count
-    }
-
-    return { byCategory, byRecallMode, categoryRecallMatrix }
+    return { byCategory, byRecallMode }
   }
 
   // -----------------------------------------------------------------------
@@ -129,37 +136,74 @@ export namespace Rollup {
     const experiences = EngramDB.Experience.listAll()
     const evaluated = experiences.filter((e) => e.reward_status === "evaluated")
 
-    // Per-dimension reward stats
+    // Per-dimension box-plot stats
     const rewardDimensions: RewardDimensionStats[] = REWARD_DIMS.map((dim) => {
       const values: number[] = []
       for (const e of evaluated) {
         const rewards: Record<string, number> = JSON.parse(e.rewards)
         if (rewards[dim] !== undefined) values.push(rewards[dim]!)
       }
-      values.sort((a, b) => a - b)
+      const avg = values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : 0
+
+      // Build value distribution (rewards are discrete: -1, 0, 1)
+      const countMap = new Map<number, number>()
+      for (const v of values) countMap.set(v, (countMap.get(v) ?? 0) + 1)
+      const distribution = [...countMap.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value - b.value)
+
       return {
         dimension: dim,
-        avg: values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : 0,
-        median: median(values),
-        p90: percentile(values, 90),
+        avg,
+        std: stddev(values, avg),
+        distribution,
       }
     })
 
-    // Composite Q distribution
+    // Composite Q histogram (20 bins from -1 to 1)
     const compositeQs: number[] = []
     for (const e of evaluated) {
       compositeQs.push(compositeQ(e.q_values))
     }
     compositeQs.sort((a, b) => a - b)
 
+    const BIN_COUNT = 20
+    const BIN_WIDTH = 2 / BIN_COUNT
+    const histogram: QHistogramBin[] = Array.from({ length: BIN_COUNT }, (_, i) => {
+      const lower = -1 + i * BIN_WIDTH
+      return { bin: lower.toFixed(2), count: 0 }
+    })
+    for (const q of compositeQs) {
+      const idx = Math.min(Math.floor((q + 1) / BIN_WIDTH), BIN_COUNT - 1)
+      histogram[idx]!.count++
+    }
+
+    // Q trend by week
+    const weekMap = new Map<string, { qs: number[] }>()
+    for (const e of evaluated) {
+      const week = weekKey(e.created_at)
+      const bucket = weekMap.get(week)
+      if (bucket) {
+        bucket.qs.push(compositeQ(e.q_values))
+      } else {
+        weekMap.set(week, { qs: [compositeQ(e.q_values)] })
+      }
+    }
+    const trend: QTrendPoint[] = [...weekMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, data]) => {
+        data.qs.sort((a, b) => a - b)
+        return { period, medianQ: median(data.qs), count: data.qs.length }
+      })
+
+    const avgCompositeQ = compositeQs.length > 0 ? compositeQs.reduce((s, v) => s + v, 0) / compositeQs.length : 0
+
     const qDistribution: QValueDistribution = {
-      negative: compositeQs.filter((q) => q < -0.3).length,
-      low: compositeQs.filter((q) => q >= -0.3 && q < 0).length,
-      neutral: compositeQs.filter((q) => q >= 0 && q < 0.3).length,
-      medium: compositeQs.filter((q) => q >= 0.3 && q < 0.6).length,
-      high: compositeQs.filter((q) => q >= 0.6).length,
-      avgCompositeQ: compositeQs.length > 0 ? compositeQs.reduce((s, v) => s + v, 0) / compositeQs.length : 0,
+      histogram,
+      trend,
+      avgCompositeQ,
       medianCompositeQ: median(compositeQs),
+      stdCompositeQ: stddev(compositeQs, avgCompositeQ),
     }
 
     // Visit stats
@@ -183,7 +227,6 @@ export namespace Rollup {
     const experiences = EngramDB.Experience.listAll()
     const evaluated = experiences.filter((e) => e.reward_status === "evaluated")
 
-    // Top experiences by visits
     const sorted = [...evaluated].sort((a, b) => b.q_visits - a.q_visits)
     const topExperiences: TopExperienceItem[] = sorted.slice(0, 10).map((e) => ({
       id: e.id,
@@ -193,14 +236,7 @@ export namespace Rollup {
       compositeQ: compositeQ(e.q_values),
     }))
 
-    // Visits distribution buckets
-    const buckets: Record<string, number> = {
-      "0": 0,
-      "1": 0,
-      "2-4": 0,
-      "5-9": 0,
-      "10+": 0,
-    }
+    const buckets: Record<string, number> = { "0": 0, "1": 0, "2-4": 0, "5-9": 0, "10+": 0 }
     for (const e of experiences) {
       const v = e.q_visits
       if (v === 0) buckets["0"]!++
@@ -222,7 +258,6 @@ export namespace Rollup {
     const experiences = EngramDB.Experience.listAll()
     const scopeMap = new Map<string, { memories: number; experiences: number; evaluated: number }>()
 
-    // Memories are global — attribute them to a virtual "global" scope
     const memoryCount = EngramDB.Memory.count()
     if (memoryCount > 0) {
       scopeMap.set("global", { memories: memoryCount, experiences: 0, evaluated: 0 })
@@ -305,7 +340,6 @@ export namespace Rollup {
         avgCompositeQ: b.qCount > 0 ? b.qSum / b.qCount : 0,
       }))
 
-    // Hourly activity from experience creation
     const hourlyActivity = new Array(24).fill(0) as number[]
     for (const e of experiences) {
       const hour = new Date(e.created_at).getHours()
