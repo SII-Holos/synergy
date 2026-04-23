@@ -128,4 +128,39 @@ export const migrations: Migration[] = [
       log.info("agenda flatten migration complete", { total: done })
     },
   },
+  {
+    id: "20260423-agenda-run-index",
+    description: "Build per-scope run index for activity pagination",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["agenda", "items"])
+
+      for (const scopeID of scopeIDs) {
+        const sid = Identifier.asScopeID(scopeID)
+        const existing = await Storage.read<AgendaStore.RunIndex>(StoragePath.agendaRunIndex(sid)).catch(
+          () => undefined,
+        )
+        if (existing && existing.entries.length > 0) continue
+
+        const itemIDs = await Storage.scan(StoragePath.agendaItemsRoot(sid))
+        const entries: AgendaStore.RunIndexEntry[] = []
+
+        for (const itemID of itemIDs) {
+          const runIDs = await Storage.scan(StoragePath.agendaRunsRoot(sid, itemID))
+          if (runIDs.length === 0) continue
+
+          const keys = runIDs.map((id) => StoragePath.agendaRun(sid, itemID, id))
+          const runs = await Storage.readMany<AgendaTypes.RunLog>(keys)
+          for (const run of runs) {
+            if (run) entries.push({ id: run.id, itemID, started: run.time.started })
+          }
+        }
+
+        entries.sort((a, b) => b.started - a.started)
+        await Storage.write(StoragePath.agendaRunIndex(sid), { entries })
+        progress(entries.length, entries.length)
+      }
+
+      log.info("agenda run index migration complete")
+    },
+  },
 ]

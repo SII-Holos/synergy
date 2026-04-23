@@ -28,6 +28,7 @@ export namespace StoragePath {
   ]
 
   export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
+  export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
 
   export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "sessions",
@@ -77,6 +78,8 @@ export namespace StoragePath {
     itemID,
     runID,
   ]
+
+  export const agendaRunIndex = (scopeID: ScopeID) => ["agenda", "run_index", scopeID as string]
 
   export const agendaSessionsRoot = (itemID: string) => ["agenda", "sessions", itemID]
   export const agendaSession = (itemID: string, sessionID: string) => ["agenda", "sessions", itemID, sessionID]
