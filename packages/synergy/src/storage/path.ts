@@ -111,6 +111,7 @@ export namespace StoragePath {
   export const statsRoot = () => ["stats"]
   export const statsWatermark = () => ["stats", "watermark"]
   export const statsSnapshot = () => ["stats", "snapshot"]
+  export const engramSnapshot = () => ["engram", "stats", "snapshot"]
   /** Per-session digest: stats/digests/{sessionID} */
   export const statsDigestsRoot = () => ["stats", "digests"]
   export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]
