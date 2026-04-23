@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js"
+import { createSignal, For, Show, onCleanup } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
@@ -13,11 +13,13 @@ export interface SessionRowProps {
   hasNotification: boolean
   notificationCount: number
   childCount?: number
+  childSessions?: Session[]
   even?: boolean
   onSelect: () => void
   onTogglePin: () => void
   onArchive: () => void
   onRename: (title: string) => void
+  onSelectChild?: (session: Session) => void
 }
 
 function statusBarColor(props: SessionRowProps) {
@@ -103,6 +105,63 @@ function ActionMenu(props: {
             <Icon name="archive" size="small" />
             Archive
           </button>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+function ChildSessionBadge(props: { count: number; sessions: Session[]; onSelect?: (session: Session) => void }) {
+  const [open, setOpen] = createSignal(false)
+
+  function toggle(e: MouseEvent) {
+    e.stopPropagation()
+    const next = !open()
+    setOpen(next)
+    if (next) document.addEventListener("click", close, { once: true })
+  }
+
+  function close() {
+    setOpen(false)
+  }
+
+  onCleanup(() => document.removeEventListener("click", close))
+
+  return (
+    <div class="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        class="text-10-medium text-text-weaker bg-surface-inset-base/80 hover:bg-surface-raised-base-hover hover:text-text-weak px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+        onClick={toggle}
+        title={`${props.count} subsession${props.count !== 1 ? "s" : ""}`}
+      >
+        {props.count}
+      </button>
+      <Show when={open()}>
+        <div class="absolute right-0 top-full mt-1 z-50 w-[280px] max-h-[320px] overflow-y-auto rounded-lg border border-border-base/60 bg-surface-raised-base shadow-lg py-1">
+          <div class="px-3 py-1.5 text-10-medium text-text-weaker uppercase tracking-wider border-b border-border-weaker-base/40">
+            {props.count} subsession{props.count !== 1 ? "s" : ""}
+          </div>
+          <For each={props.sessions}>
+            {(session) => (
+              <button
+                type="button"
+                class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpen(false)
+                  props.onSelect?.(session)
+                }}
+              >
+                <div class="flex-1 min-w-0">
+                  <div class="text-12-medium text-text-base line-clamp-1">{session.title || "Untitled"}</div>
+                </div>
+                <span class="text-10-regular text-text-weaker shrink-0">
+                  {relativeTime(session.time.updated ?? session.time.created)}
+                </span>
+              </button>
+            )}
+          </For>
         </div>
       </Show>
     </div>
@@ -210,11 +269,13 @@ export function SessionRow(props: SessionRowProps) {
           </Show>
         </div>
 
-        {/* Child count badge */}
+        {/* Child session badge with popover */}
         <Show when={props.childCount && props.childCount > 0}>
-          <span class="shrink-0 text-10-medium text-text-weaker bg-surface-inset-base/80 px-1.5 py-0.5 rounded-md">
-            {props.childCount}
-          </span>
+          <ChildSessionBadge
+            count={props.childCount!}
+            sessions={props.childSessions ?? []}
+            onSelect={props.onSelectChild}
+          />
         </Show>
 
         {/* Time */}

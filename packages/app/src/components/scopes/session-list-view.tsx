@@ -108,8 +108,7 @@ export function SessionListView(props: { worktree: string }) {
   // Full session list from global store — for Active Zone (SSE-maintained, not paginated)
   const allSessions = createMemo(() => layout.nav.projectSessions(scope()))
   const childStore = createMemo(() => layout.nav.childStoreForScope(scope()))
-  const childCounts = createMemo(() => layout.nav.childCountsForScope(scope()))
-  const childStatus = createMemo(() => layout.nav.childStatusForScope(scope()))
+  const childInfo = createMemo(() => layout.nav.childInfoForScope(scope()))
 
   const totalPages = createMemo(() => Math.max(1, Math.ceil(pagedTotal() / pageSize())))
 
@@ -192,7 +191,7 @@ export function SessionListView(props: { worktree: string }) {
           <ActiveZone
             sessions={allSessions()}
             childStore={store()}
-            childStatus={childStatus()}
+            childStatus={childInfo()}
             notification={notification}
             onSelectSession={navigateToSession}
           />
@@ -230,12 +229,14 @@ export function SessionListView(props: { worktree: string }) {
                   hasError={state.hasError}
                   hasNotification={state.hasNotification}
                   notificationCount={state.notificationCount}
-                  childCount={childCounts()[session.id]}
+                  childCount={childInfo()[session.id]?.count}
+                  childSessions={childInfo()[session.id]?.sessions}
                   even={index() % 2 === 0}
                   onSelect={() => navigateToSession(session)}
                   onTogglePin={() => togglePin(session)}
                   onArchive={() => archiveSession(session)}
                   onRename={(title) => renameSession(session, title)}
+                  onSelectChild={navigateToSession}
                 />
               )
             }}

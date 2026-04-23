@@ -306,38 +306,33 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return globalSync.child(scope.worktree)[0]
     }
 
-    function childCountsForScope(scope: LocalScope | undefined): Record<string, number> {
-      if (!scope) return {}
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs.map((dir) => globalSync.child(dir)[0])
-      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-      const counts: Record<string, number> = {}
-      for (const session of all) {
-        if (session.parentID) {
-          counts[session.parentID] = (counts[session.parentID] ?? 0) + 1
-        }
-      }
-      return counts
+    type ChildInfo = {
+      count: number
+      sessions: Session[]
+      running: number
     }
 
-    function childStatusForScope(
-      scope: LocalScope | undefined,
-    ): Record<string, { total: number; running: number; completed: number; failed: number }> {
+    function childInfoForScope(scope: LocalScope | undefined): Record<string, ChildInfo> {
       if (!scope) return {}
       const store = childStoreForScope(scope)
-      if (!store) return {}
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
       const stores = dirs.map((dir) => globalSync.child(dir)[0])
       const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-      const result: Record<string, { total: number; running: number; completed: number; failed: number }> = {}
+      const result: Record<string, ChildInfo> = {}
       for (const session of all) {
         if (!session.parentID) continue
-        if (!result[session.parentID]) result[session.parentID] = { total: 0, running: 0, completed: 0, failed: 0 }
-        const summary = result[session.parentID]
-        summary.total++
-        const status = store.session_status[session.id]
-        if (status?.type === "busy" || status?.type === "retry") summary.running++
-        else if (session.time.archived) summary.completed++
+        if (!result[session.parentID]) result[session.parentID] = { count: 0, sessions: [], running: 0 }
+        const info = result[session.parentID]
+        info.count++
+        info.sessions.push(session)
+        if (store) {
+          const status = store.session_status[session.id]
+          if (status?.type === "busy" || status?.type === "retry") info.running++
+        }
+      }
+      // Sort children by updated desc within each parent
+      for (const info of Object.values(result)) {
+        info.sessions.sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
       }
       return result
     }
@@ -489,8 +484,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         projectSessions,
         projectSessionTotal,
         childStoreForScope,
-        childCountsForScope,
-        childStatusForScope,
+        childInfoForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,

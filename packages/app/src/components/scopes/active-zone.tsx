@@ -13,7 +13,7 @@ type ChildStore = {
 interface ActiveZoneProps {
   sessions: Session[]
   childStore: ChildStore
-  childStatus?: Record<string, { total: number; running: number; completed: number; failed: number }>
+  childStatus?: Record<string, { count: number; running: number }>
   notification: {
     session: { unseen: (sessionID: string) => { type: string }[] }
   }
@@ -104,7 +104,7 @@ function ActiveCard(props: {
   session: Session
   reason: ActiveReason
   childStore: ChildStore
-  childStatus?: { total: number; running: number; completed: number; failed: number }
+  childStatus?: { count: number; running: number }
   index: () => number
   onSelect: (session: Session) => void
 }) {
@@ -150,11 +150,11 @@ function ActiveCard(props: {
 
       <span class="text-12-medium text-text-base line-clamp-2">{props.session.title || "New session"}</span>
 
-      <Show when={props.childStatus && props.childStatus.total > 0}>
+      <Show when={props.childStatus && props.childStatus.count > 0}>
         <span class="text-10-regular text-text-weaker mt-1">
           {props.childStatus!.running > 0
-            ? `${props.childStatus!.running}/${props.childStatus!.total} tasks running`
-            : `${props.childStatus!.total} tasks`}
+            ? `${props.childStatus!.running}/${props.childStatus!.count} tasks running`
+            : `${props.childStatus!.count} tasks`}
         </span>
       </Show>
 
