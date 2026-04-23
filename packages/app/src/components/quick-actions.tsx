@@ -17,48 +17,48 @@ interface PromptAction {
 }
 
 const COMMANDS: CommandAction[] = [
-  { icon: "undo-2", label: "Undo", commandId: "session.undo" },
-  { icon: "redo-2", label: "Redo", commandId: "session.redo" },
-  { icon: "shrink", label: "Compact", commandId: "session.compact" },
+  { icon: "rotate-cw", label: "Undo", commandId: "session.undo" },
+  { icon: "refresh-ccw", label: "Redo", commandId: "session.redo" },
+  { icon: "minimize", label: "Compact", commandId: "session.compact" },
 ]
 
 const PROMPTS: PromptAction[] = [
   {
-    icon: "notebook-pen",
+    icon: "scroll-text",
     label: "Note",
     description: "Save last response as a note",
     prompt:
-      "Save your most recent substantive response as a note. Preserve the original detail, structure, and formatting — do not summarize or compress it. If the response contains analysis, code, or explanations, keep them intact. Use the content itself to derive an appropriate note title.",
+      "Save your most recent substantive response as a note. Capture the key points, structure, and useful detail — keep it informative and well-organized, but don't feel obligated to preserve every word verbatim. Let the content guide the title.",
   },
   {
-    icon: "eye",
+    icon: "scan-eye",
     label: "Review",
     description: "Review recent changes for issues",
     prompt:
       "Review the changes you just made. Check for correctness, edge cases, potential regressions, and consistency with the existing codebase. Flag anything that looks off.",
   },
   {
-    icon: "chevrons-right",
+    icon: "rocket",
     label: "Continue",
     description: "Continue where you left off",
     prompt: "Continue where you left off.",
   },
   {
-    icon: "check",
+    icon: "git-merge",
     label: "Commit",
     description: "Create a git commit",
     prompt:
       "Create a git commit with a clear, conventional commit message that accurately describes what was done and why. Only stage and commit files that you personally modified or created during this session — do not stage, modify, delete, or touch any files or changes made by others. Never delete or overwrite code that has been modified by others. Always stage files explicitly by path (never use git add . or git add -A). If you are unsure whether a change is yours, skip it and ask the user first. Better to under-commit than over-commit.",
   },
   {
-    icon: "sparkles",
-    label: "Clean",
-    description: "Audit code for hygiene issues",
+    icon: "microscope",
+    label: "Audit",
+    description: "Audit code for readability, abstraction, and structure",
     prompt:
-      "Audit your recent changes with a focus on code hygiene. List any issues you find — do NOT fix them yet. Look for: redundant or duplicate logic that could be consolidated, dead code or unused imports left behind, workaround-style patches or band-aids layered on top of existing code instead of proper fixes, unnecessary abstractions or over-engineering, anything that smells like accumulating tech debt. Be honest and thorough — I'll review your findings before deciding what to fix.",
+      "Audit your recent changes — list issues only, do NOT fix them yet. Evaluate along three axes: (1) Readability — are names (variables, functions, files) self-explanatory? Is each unit of logic coherent and single-purpose, or does it scatter related concerns across disconnected spots? (2) Unnecessary indirection — does the code wrap logic in layers of functions, wrappers, or adapters that add callsite depth without adding clarity or reuse? Every layer must justify itself; if stripping it preserves behavior and improves navigability, flag it. (3) Structural density — are files bloated with thousands of lines mixing unrelated responsibilities? Flag files that have grown past a reasonable scope and should be decomposed. Also flag any dead code, unused imports, or patch-over-proper-fix patterns you notice. Be honest and specific — cite file names, line ranges, and concrete examples. I'll review your findings before deciding what to fix.",
   },
   {
-    icon: "square-play",
+    icon: "zap",
     label: "Start",
     description: "Implement the proposed plan",
     prompt:
