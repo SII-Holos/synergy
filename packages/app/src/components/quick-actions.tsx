@@ -17,8 +17,8 @@ interface PromptAction {
 }
 
 const COMMANDS: CommandAction[] = [
-  { icon: "rotate-cw", label: "Undo", commandId: "session.undo" },
-  { icon: "refresh-ccw", label: "Redo", commandId: "session.redo" },
+  { icon: "undo-2", label: "Undo", commandId: "session.undo" },
+  { icon: "redo-2", label: "Redo", commandId: "session.redo" },
   { icon: "minimize", label: "Compact", commandId: "session.compact" },
 ]
 
