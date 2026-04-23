@@ -14,6 +14,10 @@ export namespace DaemonPaths {
     return path.join(root(), "manifest.json")
   }
 
+  export function runtimeLock() {
+    return path.join(root(), "runtime-lock.json")
+  }
+
   export function logFile() {
     return path.join(logs(), "server.log")
   }

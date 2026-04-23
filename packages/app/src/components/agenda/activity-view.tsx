@@ -3,6 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaActivityEntry } from "@ericsanchezok/synergy-sdk/client"
+import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 
 export type AgendaActivityGroup = {
   agendaID: string
@@ -10,21 +11,6 @@ export type AgendaActivityGroup = {
   status: string
   tags?: string[]
   entries: AgendaActivityEntry[]
-}
-
-function runStatusTone(status: string) {
-  if (status === "ok") return "bg-icon-success-base"
-  if (status === "error") return "bg-text-diff-delete-base"
-  return "bg-text-weaker/40"
-}
-
-function statusPillTone(status: string) {
-  if (status === "active") return "bg-icon-success-base/12 text-icon-success-base ring-icon-success-base/15"
-  if (status === "paused") return "bg-icon-warning-base/14 text-icon-warning-base ring-icon-warning-base/15"
-  if (status === "done") return "bg-surface-inset-base/85 text-text-weak ring-border-base/40"
-  if (status === "cancelled")
-    return "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12"
-  return "bg-surface-interactive-selected-weak text-text-interactive-base ring-border-interactive-base/15"
 }
 
 export function groupAgendaActivity(items: AgendaActivityEntry[]): AgendaActivityGroup[] {
@@ -56,6 +42,7 @@ export function ActivityView(props: {
   hasMore: boolean
   loading: boolean
   query: string
+  error?: string | null
   onQueryChange: (value: string) => void
   onLoadMore: () => void
   onNavigate: (sessionID: string, scopeID: string) => void
@@ -67,16 +54,11 @@ export function ActivityView(props: {
     <div class="flex min-h-0 flex-1 flex-col px-3 pb-3">
       <div class="mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 p-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
         <div class="relative min-w-0 flex-1">
-          <Icon
-            name="search"
-            size="small"
-            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-icon-weak"
-          />
           <input
             value={props.query}
             onInput={(e) => props.onQueryChange(e.currentTarget.value)}
             placeholder="Search activity, agenda title, errors..."
-            class="h-9 w-full rounded-[0.9rem] border border-border-base/40 bg-surface-raised-base/92 pl-9 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]"
+            class="h-9 w-full rounded-[0.9rem] border border-border-base/40 bg-surface-raised-base/92 pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]"
           />
         </div>
         <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
@@ -98,7 +80,7 @@ export function ActivityView(props: {
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base/24 ring-1 ring-inset ring-border-base/35">
                 <Icon name="clock" size="large" class="text-icon-weak" />
-                <span class="text-12-regular text-text-weaker">No activity found</span>
+                <span class="text-12-regular text-text-weaker">{props.error ?? "No activity found"}</span>
               </div>
             }
           >
@@ -151,7 +133,7 @@ function ActivityGroupCard(props: {
           <div class="flex items-center gap-2 min-w-0">
             <span class="truncate text-11-medium text-text-strong">{props.group.title}</span>
             <span
-              class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium ring-1 ring-inset ${statusPillTone(props.group.status)}`}
+              class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium ${agendaStatusTone(props.group.status)}`}
             >
               {props.group.status}
             </span>
@@ -211,7 +193,7 @@ function ActivityRunRow(props: {
         if (s) props.onNavigate(s.id, s.scopeID)
       }}
     >
-      <span class={`mt-1 shrink-0 h-1.5 w-1.5 rounded-full ${runStatusTone(props.entry.run.status)}`} />
+      <span class={`mt-1 shrink-0 h-1.5 w-1.5 rounded-full ${agendaRunDotTone(props.entry.run.status)}`} />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span class="truncate text-11-regular text-text-strong">{title()}</span>
@@ -228,7 +210,7 @@ function ActivityRunRow(props: {
           <Show when={props.entry.run.duration != null}>
             <>
               <span>·</span>
-              <span>{formatDuration(props.entry.run.duration!)}</span>
+              <span>{formatAgendaDuration(props.entry.run.duration!)}</span>
             </>
           </Show>
           <Show when={session()}>
@@ -246,16 +228,4 @@ function ActivityRunRow(props: {
       </div>
     </div>
   )
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
 }

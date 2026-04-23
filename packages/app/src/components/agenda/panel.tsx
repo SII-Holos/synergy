@@ -7,45 +7,21 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { Panel } from "@/components/panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
-import type {
-  AgendaActivityEntry,
-  AgendaActivityPage,
-  AgendaItem,
-  AgendaRunLog,
-} from "@ericsanchezok/synergy-sdk/client"
+import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
 import { MiniCalendar } from "./mini-calendar"
 import { AgendaForm } from "./form"
 import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
 import { ViewTab } from "../engram/shared"
 import { ActivityView } from "./activity-view"
-
-const statusColors: Record<string, string> = {
-  active: "bg-icon-success-base/12 text-icon-success-base ring-1 ring-inset ring-icon-success-base/15",
-  paused: "bg-icon-warning-base/14 text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/15",
-  pending:
-    "bg-surface-interactive-selected-weak text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15",
-  done: "bg-surface-inset-base/85 text-text-weak ring-1 ring-inset ring-border-base/40",
-  cancelled: "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12",
-}
-
-const runStatusColors: Record<string, string> = {
-  ok: "text-icon-success-base",
-  error: "text-text-diff-delete-base",
-  skipped: "text-text-weaker",
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-}
+import {
+  defaultAgendaActivityState,
+  mergeAgendaActivityPage,
+  normalizeAgendaActivityError,
+  requestAgendaActivity,
+  type AgendaActivityState,
+} from "./activity-state"
+import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 
 function triggerSummary(triggers: AgendaItem["triggers"]): string {
   if (!triggers || triggers.length === 0) return "Manual"
@@ -76,14 +52,6 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
 type PanelView = "main" | "form"
 type PanelTab = "schedule" | "activity"
 
-type AgendaActivityState = {
-  items: AgendaActivityEntry[]
-  total: number
-  offset: number
-  limit: number
-  hasMore: boolean
-}
-
 export function AgendaPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
@@ -102,15 +70,10 @@ export function AgendaPanel() {
   const [anchor, setAnchor] = createSignal(Date.now())
   const [calendarRange, setCalendarRange] = createSignal<{ start: number; end: number }>({ start: 0, end: 0 })
 
-  const [activity, setActivity] = createSignal<AgendaActivityState>({
-    items: [],
-    total: 0,
-    offset: 0,
-    limit: 25,
-    hasMore: false,
-  })
+  const [activity, setActivity] = createSignal<AgendaActivityState>(defaultAgendaActivityState())
   const [activityLoading, setActivityLoading] = createSignal(false)
   const [activityQuery, setActivityQuery] = createSignal("")
+  const [activityError, setActivityError] = createSignal<string | null>(null)
 
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
 
@@ -240,41 +203,29 @@ export function AgendaPanel() {
   async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
     if (activityLoading()) return
     setActivityLoading(true)
+    setActivityError(null)
     try {
       const reset = options?.reset ?? false
       const append = options?.append ?? false
       const query = options?.query ?? activityQuery()
-      const currentOffset = append ? activity().offset + activity().items.length : 0
-      const scopeID = directory() === "global" ? "global" : undefined
-
-      const res = await sdk.client.agenda.activity({
+      const page = await requestAgendaActivity({
+        client: sdk.client,
         directory: directory() ?? globalSync.data.path.home,
-        scopeID,
-        query: query || undefined,
-        offset: currentOffset,
-        limit: activity().limit,
+        scopeID: directory() === "global" ? "global" : undefined,
+        query,
+        append,
+        state: activity(),
       })
 
-      const page = (res.data as AgendaActivityPage | undefined) ?? {
-        items: [],
-        total: 0,
-        offset: 0,
-        limit: activity().limit,
-        hasMore: false,
-      }
-
-      setActivity((prev) => ({
-        items: append ? [...prev.items, ...page.items] : page.items,
-        total: page.total,
-        offset: page.offset,
-        limit: page.limit,
-        hasMore: page.hasMore,
-      }))
+      setActivity((prev) => mergeAgendaActivityPage({ previous: prev, page, append }))
 
       if (reset) {
         setActivityQuery(query)
       }
-    } catch {}
+    } catch (error: unknown) {
+      setActivityError(normalizeAgendaActivityError(error))
+      setActivity(defaultAgendaActivityState(activity().limit))
+    }
     setActivityLoading(false)
   }
 
@@ -334,7 +285,7 @@ export function AgendaPanel() {
                     </span>
                   </div>
                 </div>
-                <div class="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                <div class="flex-1 min-h-0 max-h-[21rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                   <For each={todoItems()}>{(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}</For>
                 </div>
               </Show>
@@ -381,6 +332,7 @@ export function AgendaPanel() {
             hasMore={activity().hasMore}
             loading={activityLoading()}
             query={activityQuery()}
+            error={activityError()}
             onQueryChange={(value: string) => {
               setActivityQuery(value)
               void loadActivity({ reset: true, query: value })
@@ -481,9 +433,7 @@ function DetailPopover(props: {
           <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
             <div class="flex items-start gap-2">
               <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
-              <span
-                class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${statusColors[props.item.status] ?? "bg-surface-inset-base text-text-weak"}`}
-              >
+              <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
                 {props.item.status}
               </span>
             </div>
@@ -522,11 +472,11 @@ function DetailPopover(props: {
                 Last run: {absoluteDate(state()!.lastRunAt!)}
                 <Show when={state()?.lastRunStatus}>
                   {" · "}
-                  <span class={runStatusColors[state()!.lastRunStatus!] ?? ""}>{state()!.lastRunStatus}</span>
+                  <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
                 </Show>
                 <Show when={state()?.lastRunDuration}>
                   {" · "}
-                  {formatDuration(state()!.lastRunDuration!)}
+                  {formatAgendaDuration(state()!.lastRunDuration!)}
                 </Show>
               </div>
             </Show>
@@ -718,12 +668,12 @@ function ActionButton(props: {
 function RunRow(props: { run: AgendaRunLog }) {
   return (
     <div class="flex items-center gap-2 px-3 py-1.5 text-11-regular border-b border-border-weaker-base/30 last:border-b-0">
-      <span class={`shrink-0 ${runStatusColors[props.run.status] ?? "text-text-weaker"}`}>
+      <span class={`shrink-0 ${agendaRunStatusTone(props.run.status)}`}>
         {props.run.status === "ok" ? "✓" : props.run.status === "error" ? "✗" : "–"}
       </span>
       <span class="text-text-weaker shrink-0">{props.run.trigger.type}</span>
       <Show when={props.run.duration}>
-        <span class="text-text-weaker shrink-0">{formatDuration(props.run.duration!)}</span>
+        <span class="text-text-weaker shrink-0">{formatAgendaDuration(props.run.duration!)}</span>
       </Show>
       <span class="flex-1 min-w-0 text-text-weak truncate">
         <Show when={props.run.error} fallback="">

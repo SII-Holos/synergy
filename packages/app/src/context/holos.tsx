@@ -17,6 +17,20 @@ const HOLOS_EVENTS = new Set([
 
 const HOLOS_EVENT_REFRESH_DEBOUNCE_MS = 150
 
+function patchConnectionState(input: {
+  previous: HolosState
+  status: HolosState["connection"]["status"]
+  error?: string
+}): HolosState {
+  return {
+    ...input.previous,
+    connection: {
+      status: input.status,
+      ...(input.error ? { error: input.error } : {}),
+    },
+  }
+}
+
 type HolosContext = {
   state: HolosState
   loaded: boolean
@@ -116,9 +130,23 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
 
     const unsub = sdk.event.listen((e) => {
       const eventType = e.details?.type
-      if (eventType && HOLOS_EVENTS.has(eventType)) {
-        scheduleEventRefresh()
+      if (!eventType || !HOLOS_EVENTS.has(eventType)) return
+
+      if (eventType === "holos.connection.status_changed") {
+        const properties = (
+          e.details as { properties?: { status?: HolosState["connection"]["status"]; error?: string } }
+        ).properties
+        const status = properties?.status ?? "unknown"
+        const error = properties?.error
+        setState((prev) => patchConnectionState({ previous: prev, status, error }))
+
+        if (status === "connected") {
+          scheduleEventRefresh()
+        }
+        return
       }
+
+      scheduleEventRefresh()
     })
     onCleanup(() => {
       unsub()

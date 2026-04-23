@@ -97,7 +97,7 @@ export function HubView(props: {
 
         <Show when={!props.isGuest && props.profile}>
           <div class="mt-3 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-            <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <div class="grid gap-3">
               <div class="rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
@@ -113,29 +113,25 @@ export function HubView(props: {
                   </div>
                 </div>
 
-                <div class="mt-3 space-y-2">
+                <div class="mt-3 grid grid-cols-4 gap-2">
                   <For each={props.capabilityItems}>
                     {(item) => {
                       const meta = capabilityStateMeta(item.status)
                       return (
-                        <div class="flex items-start gap-3 rounded-[0.95rem] bg-surface-inset-base/48 px-3 py-2.5 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                          <div
-                            class={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ring-1 ring-inset ${meta.iconClass}`}
-                          >
-                            {meta.icon}
-                          </div>
-                          <div class="min-w-0 flex-1">
-                            <div class="flex items-start justify-between gap-3">
-                              <div class="text-12-medium text-text-strong">{item.title}</div>
-                              <div
-                                class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] ring-1 ring-inset ${meta.badgeClass}`}
-                              >
-                                {meta.label}
-                              </div>
+                        <div class="rounded-[0.95rem] bg-surface-inset-base/48 px-2.5 py-2 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <div
+                              class={`inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ring-1 ring-inset ${meta.iconClass}`}
+                            >
+                              {meta.icon}
                             </div>
-                            <div class="mt-1 text-11-regular leading-relaxed text-text-weak">{item.description}</div>
-                            <div class="mt-1 text-[10px] font-medium text-text-weaker">
-                              {capabilityStatusCopy(item)}
+                            <div class="min-w-0 flex-1">
+                              <div class="text-11-medium text-text-strong truncate">{item.title}</div>
+                            </div>
+                            <div
+                              class={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] ring-1 ring-inset ${meta.badgeClass}`}
+                            >
+                              {meta.label}
                             </div>
                           </div>
                         </div>

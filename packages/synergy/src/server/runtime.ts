@@ -10,6 +10,7 @@ import { InstanceBootstrap, ChannelBootstrap, HolosBootstrap } from "../project/
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
+import { SingleInstance } from "../daemon/single-instance"
 import { EOL } from "os"
 
 const log = Log.create({ service: "server-runtime" })
@@ -157,6 +158,7 @@ export async function run(options: RuntimeOptions) {
   }
 
   // Normal path (unchanged)
+  await SingleInstance.acquire()
   await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
