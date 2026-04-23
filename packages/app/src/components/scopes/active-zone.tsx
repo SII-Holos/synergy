@@ -123,6 +123,29 @@ function ActiveCard(props: {
   const updatedAt = () => props.session.time.updated ?? props.session.time.created
   const isPinned = () => props.session.pinned && props.session.pinned > 0
 
+  function handleDragStart(e: DragEvent) {
+    if (!e.dataTransfer) return
+    const title = props.session.title || "New session"
+    const payload = JSON.stringify({
+      id: props.session.id,
+      directory: props.session.scope.directory,
+      title,
+      updatedAt: props.session.time.updated ?? props.session.time.created,
+    })
+    e.dataTransfer.effectAllowed = "copy"
+    e.dataTransfer.setData("application/x-synergy-session", payload)
+    e.dataTransfer.setData("text/plain", title)
+    const dragImage = document.createElement("div")
+    dragImage.className =
+      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-raised-base text-12-medium text-text-base shadow-lg border border-border-base"
+    dragImage.style.position = "absolute"
+    dragImage.style.top = "-1000px"
+    dragImage.textContent = title
+    document.body.appendChild(dragImage)
+    e.dataTransfer.setDragImage(dragImage, 0, 16)
+    setTimeout(() => document.body.removeChild(dragImage), 0)
+  }
+
   return (
     <div
       class="min-w-[200px] max-w-[240px] flex flex-col rounded-[1.15rem] bg-surface-raised-base/90 p-3 border border-border-weaker-base/50 shadow-sm cursor-pointer transition-all duration-150 hover:bg-surface-raised-base-hover hover:border-border-base/60 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
@@ -130,6 +153,8 @@ function ActiveCard(props: {
         animation: "cardPopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         "animation-delay": `${props.index() * 40}ms`,
       }}
+      draggable={true}
+      onDragStart={handleDragStart}
       onClick={() => props.onSelect(props.session)}
     >
       <div class="flex items-center gap-1.5 mb-2">
