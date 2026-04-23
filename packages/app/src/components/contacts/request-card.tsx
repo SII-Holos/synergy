@@ -112,7 +112,7 @@ export function RequestsSection(props: {
   const isLoading = (id: string) => props.loadingIds?.has(id) ?? false
 
   return (
-    <section class="mt-5 rounded-[26px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_20px_50px_-36px_color-mix(in_srgb,var(--surface-brand-base)_28%,transparent)] backdrop-blur-xl">
+    <section class="mt-5 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
       <button type="button" class="flex w-full items-center gap-3 text-left" onClick={() => setCollapsed((v) => !v)}>
         <div class="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-surface-brand-base/15 text-text-strong shadow-sm ring-1 ring-border-base/60">
           <Icon name="user-plus" size="small" />
@@ -135,94 +135,96 @@ export function RequestsSection(props: {
       </button>
 
       <Show when={!collapsed()}>
-        <div class="mt-4 flex flex-col gap-4">
-          <Show when={props.requests.length > 0}>
-            <div class="flex flex-col gap-2.5">
-              <div class="flex items-center gap-2 px-1">
-                <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Incoming</span>
-                <span class="h-px flex-1 bg-border-base/40" />
+        <div class="mt-3 rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="flex flex-col gap-4">
+            <Show when={props.requests.length > 0}>
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-center gap-2 px-1">
+                  <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Incoming</span>
+                  <span class="h-px flex-1 bg-border-base/40" />
+                </div>
+                <For each={props.requests}>
+                  {(request, i) => {
+                    const busy = () => isLoading(request.id)
+                    return (
+                      <RequestCardShell
+                        request={request}
+                        delay={i() * 40}
+                        busy={busy()}
+                        directionLabel="Incoming"
+                        actionSlot={
+                          <div class="flex items-center gap-2">
+                            <button
+                              type="button"
+                              class="inline-flex items-center gap-1.5 rounded-full bg-surface-interactive-solid px-3 py-1.5 text-11-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-solid-hover disabled:opacity-40"
+                              onClick={() => props.onRespond(request.id, "accepted")}
+                              disabled={busy()}
+                            >
+                              <Icon name="check" size="small" />
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-weak transition-colors hover:bg-surface-inset-base hover:text-text-base disabled:opacity-40"
+                              onClick={() => props.onRespond(request.id, "rejected")}
+                              disabled={busy()}
+                            >
+                              <Icon name="x" size="small" />
+                              Decline
+                            </button>
+                          </div>
+                        }
+                      />
+                    )
+                  }}
+                </For>
               </div>
-              <For each={props.requests}>
-                {(request, i) => {
-                  const busy = () => isLoading(request.id)
-                  return (
-                    <RequestCardShell
-                      request={request}
-                      delay={i() * 40}
-                      busy={busy()}
-                      directionLabel="Incoming"
-                      actionSlot={
-                        <div class="flex items-center gap-2">
-                          <button
-                            type="button"
-                            class="inline-flex items-center gap-1.5 rounded-full bg-surface-interactive-solid px-3 py-1.5 text-11-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-solid-hover disabled:opacity-40"
-                            onClick={() => props.onRespond(request.id, "accepted")}
-                            disabled={busy()}
-                          >
-                            <Icon name="check" size="small" />
-                            Accept
-                          </button>
+            </Show>
+
+            <Show when={props.outgoing.length > 0}>
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-center gap-2 px-1">
+                  <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Outgoing</span>
+                  <span class="h-px flex-1 bg-border-base/40" />
+                </div>
+                <For each={props.outgoing}>
+                  {(request, i) => {
+                    const busy = () => isLoading(request.id)
+                    const muted = () => request.status === "accepted" || request.status === "rejected"
+                    const tone = () => {
+                      if (request.status === "accepted") return "success" as const
+                      if (request.status === "rejected") return "danger" as const
+                      if (request.status === "pending_delivery") return "warning" as const
+                      return "default" as const
+                    }
+
+                    return (
+                      <RequestCardShell
+                        request={request}
+                        delay={(i() + props.requests.length) * 40}
+                        busy={busy()}
+                        muted={muted()}
+                        directionLabel="Outgoing"
+                        statusTone={tone()}
+                        actionSlot={
                           <button
                             type="button"
                             class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-weak transition-colors hover:bg-surface-inset-base hover:text-text-base disabled:opacity-40"
-                            onClick={() => props.onRespond(request.id, "rejected")}
+                            onClick={() => props.onCancel(request.id)}
                             disabled={busy()}
+                            title="Cancel request"
                           >
                             <Icon name="x" size="small" />
-                            Decline
+                            Cancel
                           </button>
-                        </div>
-                      }
-                    />
-                  )
-                }}
-              </For>
-            </div>
-          </Show>
-
-          <Show when={props.outgoing.length > 0}>
-            <div class="flex flex-col gap-2.5">
-              <div class="flex items-center gap-2 px-1">
-                <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Outgoing</span>
-                <span class="h-px flex-1 bg-border-base/40" />
+                        }
+                      />
+                    )
+                  }}
+                </For>
               </div>
-              <For each={props.outgoing}>
-                {(request, i) => {
-                  const busy = () => isLoading(request.id)
-                  const muted = () => request.status === "accepted" || request.status === "rejected"
-                  const tone = () => {
-                    if (request.status === "accepted") return "success" as const
-                    if (request.status === "rejected") return "danger" as const
-                    if (request.status === "pending_delivery") return "warning" as const
-                    return "default" as const
-                  }
-
-                  return (
-                    <RequestCardShell
-                      request={request}
-                      delay={(i() + props.requests.length) * 40}
-                      busy={busy()}
-                      muted={muted()}
-                      directionLabel="Outgoing"
-                      statusTone={tone()}
-                      actionSlot={
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-weak transition-colors hover:bg-surface-inset-base hover:text-text-base disabled:opacity-40"
-                          onClick={() => props.onCancel(request.id)}
-                          disabled={busy()}
-                          title="Cancel request"
-                        >
-                          <Icon name="x" size="small" />
-                          Cancel
-                        </button>
-                      }
-                    />
-                  )
-                }}
-              </For>
-            </div>
-          </Show>
+            </Show>
+          </div>
         </div>
       </Show>
     </section>

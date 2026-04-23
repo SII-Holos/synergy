@@ -23,7 +23,6 @@ export function FriendsSection(props: {
   onNavigate: (contact: Contact) => void
   onUpdateConfig: (id: string, config: Partial<NonNullable<Contact["config"]>>) => void
   presence: () => Record<string, string>
-  onAddFriend?: () => void
   requestCount?: number
 }) {
   return (
@@ -42,21 +41,10 @@ export function FriendsSection(props: {
           </span>
         </Show>
         <div class="flex-1" />
-        <Show when={props.onAddFriend}>
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-full border border-border-base bg-background-base/86 px-3 py-1.5 text-11-medium text-text-weak shadow-sm backdrop-blur-xl transition-all hover:bg-background-base hover:text-text-base active:scale-[0.98]"
-            onClick={props.onAddFriend}
-            title="Add friend"
-          >
-            <Icon name="user-plus" size="small" />
-            Add friend
-          </button>
-        </Show>
       </div>
 
       <Show when={props.contacts.length > 3 || props.search}>
-        <div class="rounded-[24px] border border-border-base/70 bg-background-base/88 p-3 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] backdrop-blur-xl">
+        <div class="rounded-[1rem] bg-surface-raised-base/92 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
           <Panel.Search value={props.search} onInput={props.onSearch} placeholder="Search contacts..." />
         </div>
       </Show>
@@ -110,7 +98,7 @@ function ContactCard(props: {
 
   return (
     <div
-      class="group relative flex flex-col overflow-hidden rounded-[24px] border border-border-base/70 bg-background-base/88 p-4 shadow-[0_18px_44px_-34px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] backdrop-blur-xl transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-background-base hover:shadow-[0_20px_48px_-32px_color-mix(in_srgb,var(--surface-brand-base)_32%,transparent)] active:scale-[0.995]"
+      class="group relative flex flex-col overflow-hidden rounded-[1.15rem] bg-surface-raised-base/92 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04),0_14px_30px_-24px_color-mix(in_srgb,var(--surface-brand-base)_18%,transparent)] transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04),0_18px_36px_-22px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] active:scale-[0.995]"
       style={{
         animation: "contactFadeUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
         "animation-delay": `${props.delay}ms`,
