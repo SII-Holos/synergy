@@ -77,7 +77,7 @@ type State = {
   cortex: CortexTask[]
   agenda: AgendaItem[]
   vcs: VcsInfo | undefined
-  limit: number
+  sessionTotal: number
   message: {
     [sessionID: string]: Message[]
   }
@@ -135,7 +135,7 @@ function createGlobalSync() {
         cortex: [],
         agenda: [],
         vcs: undefined,
-        limit: 5,
+        sessionTotal: 0,
         message: {},
         part: {},
       })
@@ -355,25 +355,21 @@ function createGlobalSync() {
     await Promise.all([...globalPromises, ...perScopePromises])
   }
 
-  async function loadSessions(directory: string) {
-    const [store, setStore] = child(directory)
-    return globalSDK.client.session
-      .list({ directory })
-      .then((x) => {
-        const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000
-        const nonArchived = (x.data ?? [])
-          .filter((s) => !!s?.id)
-          .filter((s) => !s.time?.archived)
-          .slice()
-          .sort((a, b) => a.id.localeCompare(b.id))
-        // Include up to the limit, plus any updated in the last 4 hours
-        const sessions = nonArchived.filter((s, i) => {
-          if (i < store.limit) return true
-          if (s.pinned && s.pinned > 0) return true
-          const updated = new Date(s.time?.updated ?? s.time?.created).getTime()
-          return updated > fourHoursAgo
+  async function loadSessions(directory: string, params?: { offset?: number; limit?: number; search?: string }) {
+    const [_, setStore] = child(directory)
+    const query = new URLSearchParams()
+    if (directory) query.set("directory", directory)
+    query.set("offset", String(params?.offset ?? 0))
+    query.set("limit", String(params?.limit ?? 20))
+    if (params?.search) query.set("search", params.search)
+    return fetch(`${globalSDK.url}/session?${query}`)
+      .then((res) => res.json())
+      .then((result: { data: Session[]; total: number; offset: number; limit: number }) => {
+        const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
+        batch(() => {
+          setStore("session", reconcile(sessions, { key: "id" }))
+          setStore("sessionTotal", result.total)
         })
-        setStore("session", reconcile(sessions, { key: "id" }))
       })
       .catch((err) => {
         console.error("Failed to load sessions", err)

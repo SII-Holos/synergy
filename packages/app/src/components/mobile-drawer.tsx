@@ -199,20 +199,26 @@ function SessionListDrawerView(props: {
 }) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
-  const [loadingMore, setLoadingMore] = createSignal(false)
+  const PAGE_SIZE = 20
+  const [currentPage, setCurrentPage] = createSignal(1)
+  const [loading, setLoading] = createSignal(false)
 
   const sessions = createMemo(() => layout.nav.projectSessions(props.scope))
-  const hasMore = createMemo(() => layout.nav.projectHasMoreSessions(props.scope))
+  const sessionTotal = createMemo(() => layout.nav.projectSessionTotal(props.scope))
+  const totalPages = createMemo(() => Math.max(1, Math.ceil(sessionTotal() / PAGE_SIZE)))
 
   const scopeName = createMemo(() => getScopeLabel(props.scope))
 
-  async function loadMore() {
-    setLoadingMore(true)
-    try {
-      await layout.nav.loadMoreSessions(props.scope)
-    } finally {
-      setLoadingMore(false)
-    }
+  function fetchSessions(page: number) {
+    setLoading(true)
+    const offset = (page - 1) * PAGE_SIZE
+    layout.nav.loadSessions(props.scope, { offset, limit: PAGE_SIZE }).finally(() => setLoading(false))
+  }
+
+  function goToPage(page: number) {
+    if (page < 1 || page > totalPages()) return
+    setCurrentPage(page)
+    fetchSessions(page)
   }
 
   return (
@@ -293,15 +299,33 @@ function SessionListDrawerView(props: {
             )
           }}
         </For>
-        <Show when={hasMore()}>
-          <button
-            type="button"
-            class="w-full px-4 py-2 text-12-medium text-text-weak hover:text-text-base transition-colors text-center"
-            disabled={loadingMore()}
-            onClick={loadMore}
-          >
-            {loadingMore() ? "Loading..." : "Load more"}
-          </button>
+        <Show when={sessionTotal() > 0 || currentPage() > 1}>
+          <div class="flex items-center justify-between px-4 py-2">
+            <span class="text-11-regular text-text-weak">
+              {sessionTotal()} session{sessionTotal() !== 1 ? "s" : ""}
+            </span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 text-11-medium text-text-weak hover:text-text-base rounded-md transition-colors disabled:opacity-40 disabled:cursor-default"
+                disabled={currentPage() <= 1 || loading()}
+                onClick={() => goToPage(currentPage() - 1)}
+              >
+                Prev
+              </button>
+              <span class="text-11-regular text-text-weak">
+                {currentPage()}/{totalPages()}
+              </span>
+              <button
+                type="button"
+                class="px-2 py-1 text-11-medium text-text-weak hover:text-text-base rounded-md transition-colors disabled:opacity-40 disabled:cursor-default"
+                disabled={currentPage() >= totalPages() || loading()}
+                onClick={() => goToPage(currentPage() + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </Show>
         <Show when={sessions().length === 0}>
           <div class="px-4 py-8 text-center text-13-regular text-text-weak">No sessions yet</div>

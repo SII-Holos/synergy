@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -46,12 +46,39 @@ export function SessionListView(props: { worktree: string }) {
   const params = useParams()
   const panel = usePanel()
 
+  const PAGE_SIZE = 20
   const [search, setSearch] = createSignal("")
-  const [loadingMore, setLoadingMore] = createSignal(false)
+  const [currentPage, setCurrentPage] = createSignal(1)
+  const [loading, setLoading] = createSignal(false)
   const [expandedCard, setExpandedCard] = createSignal<string | null>(null)
+
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+  function fetchSessions(page: number, searchQuery?: string) {
+    const scope_ = scope()
+    if (!scope_) return
+    setLoading(true)
+    const offset = (page - 1) * PAGE_SIZE
+    layout.nav
+      .loadSessions(scope_, { offset, limit: PAGE_SIZE, search: searchQuery || undefined })
+      .finally(() => setLoading(false))
+  }
+
+  function handleSearch(value: string) {
+    setSearch(value)
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => {
+      setCurrentPage(1)
+      fetchSessions(1, value)
+    }, 300)
+  }
 
   onMount(() => {
     layout.scopes.open(props.worktree)
+  })
+
+  onCleanup(() => {
+    if (searchTimer) clearTimeout(searchTimer)
   })
 
   const scope = createMemo(() =>
@@ -61,26 +88,11 @@ export function SessionListView(props: { worktree: string }) {
   const scopeName = createMemo(() => getScopeLabel(scope(), props.worktree))
 
   const sessions = createMemo(() => layout.nav.projectSessions(scope()))
-  const hasMore = createMemo(() => !search() && layout.nav.projectHasMoreSessions(scope()))
-  const canLoadMore = createMemo(() => !search() && (hasMore() || sessions().length === 0))
+  const sessionTotal = createMemo(() => layout.nav.projectSessionTotal(scope()))
+  const totalPages = createMemo(() => Math.max(1, Math.ceil(sessionTotal() / PAGE_SIZE)))
 
-  const filteredSessions = createMemo(() => {
-    const q = search().toLowerCase().trim()
-    if (!q) return sessions()
-    return sessions().filter((s) => (s.title || "").toLowerCase().includes(q))
-  })
-
-  const pinnedSessions = createMemo(() => filteredSessions().filter((s) => s.pinned && s.pinned > 0))
-  const unpinnedSessions = createMemo(() => filteredSessions().filter((s) => !s.pinned || s.pinned <= 0))
-
-  async function loadMore() {
-    setLoadingMore(true)
-    try {
-      await layout.nav.loadMoreSessions(scope())
-    } finally {
-      setLoadingMore(false)
-    }
-  }
+  const pinnedSessions = createMemo(() => sessions().filter((s) => s.pinned && s.pinned > 0))
+  const unpinnedSessions = createMemo(() => sessions().filter((s) => !s.pinned || s.pinned <= 0))
 
   function navigateToSession(session: Session) {
     navigate(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
@@ -117,6 +129,12 @@ export function SessionListView(props: { worktree: string }) {
     panel.close()
   }
 
+  function goToPage(page: number) {
+    if (page < 1 || page > totalPages()) return
+    setCurrentPage(page)
+    fetchSessions(page, search())
+  }
+
   return (
     <Panel.Root>
       <Panel.Header>
@@ -132,7 +150,7 @@ export function SessionListView(props: { worktree: string }) {
           <span class="flex-1" />
           <span class="text-14-medium text-text-strong truncate">{scopeName()}</span>
         </Panel.HeaderRow>
-        <Panel.Search value={search()} onInput={setSearch} placeholder="Search sessions..." />
+        <Panel.Search value={search()} onInput={handleSearch} placeholder="Search sessions..." />
       </Panel.Header>
 
       <Panel.Body padding="tight">
@@ -145,14 +163,9 @@ export function SessionListView(props: { worktree: string }) {
           <span>New session</span>
         </button>
         <Show
-          when={filteredSessions().length > 0}
+          when={sessions().length > 0}
           fallback={
-            <Show when={!canLoadMore()}>
-              <Panel.Empty
-                icon="message-square"
-                title={search() ? `No sessions match "${search()}"` : "No sessions loaded"}
-              />
-            </Show>
+            <Panel.Empty icon="message-square" title={search() ? `No sessions match "${search()}"` : "No sessions"} />
           }
         >
           <div class="grid grid-cols-2 gap-2 pt-1">
@@ -196,15 +209,33 @@ export function SessionListView(props: { worktree: string }) {
             </For>
           </div>
         </Show>
-        <Show when={canLoadMore()}>
-          <button
-            type="button"
-            class="w-full px-3 py-1.5 mt-2.5 text-12-medium text-text-weak opacity-70 hover:opacity-100 hover:bg-surface-raised-base-hover rounded-lg transition-all duration-150 text-center"
-            disabled={loadingMore()}
-            onClick={loadMore}
-          >
-            {loadingMore() ? "Loading..." : "Load more"}
-          </button>
+        <Show when={sessionTotal() > 0 || currentPage() > 1}>
+          <div class="flex items-center justify-between mt-3 px-0.5">
+            <span class="text-11-regular text-text-weak">
+              {sessionTotal()} session{sessionTotal() !== 1 ? "s" : ""}
+            </span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 text-11-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover rounded-md transition-colors disabled:opacity-40 disabled:cursor-default"
+                disabled={currentPage() <= 1 || loading()}
+                onClick={() => goToPage(currentPage() - 1)}
+              >
+                Previous
+              </button>
+              <span class="text-11-regular text-text-weak">
+                {currentPage()} / {totalPages()}
+              </span>
+              <button
+                type="button"
+                class="px-2 py-1 text-11-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover rounded-md transition-colors disabled:opacity-40 disabled:cursor-default"
+                disabled={currentPage() >= totalPages() || loading()}
+                onClick={() => goToPage(currentPage() + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </Show>
       </Panel.Body>
     </Panel.Root>

@@ -277,17 +277,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
       if (aPinned && bPinned) return b.pinned! - a.pinned!
-
-      const now = Date.now()
-      const oneMinuteAgo = now - 60 * 1000
-      const aUpdated = a.time.updated ?? a.time.created
-      const bUpdated = b.time.updated ?? b.time.created
-      const aRecent = aUpdated > oneMinuteAgo
-      const bRecent = bUpdated > oneMinuteAgo
-      if (aRecent && bRecent) return a.id.localeCompare(b.id)
-      if (aRecent && !bRecent) return -1
-      if (!aRecent && bRecent) return 1
-      return bUpdated - aUpdated
+      return 0
     }
 
     function projectSessions(scope: LocalScope | undefined) {
@@ -300,25 +290,22 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return sessions.filter((s) => !s.parentID)
     }
 
-    function projectHasMoreSessions(scope: LocalScope | undefined) {
-      if (!scope) return false
+    function projectSessionTotal(scope: LocalScope | undefined) {
+      if (!scope) return 0
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      return dirs.some((dir) => {
+      return dirs.reduce((sum, dir) => {
         const [store] = globalSync.child(dir)
-        return store.session.length >= store.limit
-      })
+        return sum + (store.sessionTotal ?? 0)
+      }, 0)
     }
 
-    async function loadMoreSessions(scope: LocalScope | undefined) {
+    async function loadSessions(
+      scope: LocalScope | undefined,
+      params?: { offset?: number; limit?: number; search?: string },
+    ) {
       if (!scope) return
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      await Promise.all(
-        dirs.map((dir) => {
-          const [, setStore] = globalSync.child(dir)
-          setStore("limit", (x) => x + 10)
-          return globalSync.scope.loadSessions(dir)
-        }),
-      )
+      await Promise.all(dirs.map((dir) => globalSync.scope.loadSessions(dir, params)))
     }
 
     // Prefetch queue system
@@ -466,8 +453,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nav: {
         sortSessions,
         projectSessions,
-        projectHasMoreSessions,
-        loadMoreSessions,
+        projectSessionTotal,
+        loadSessions,
         prefetchSession,
         resetPrefetch,
         archiveSession,
