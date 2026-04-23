@@ -267,11 +267,11 @@ export function AgendaPanel() {
         </Panel.Header>
 
         <Show when={tab() === "schedule"}>
-          <div class="flex gap-3 px-3 py-2.5 border-b border-border-weaker-base/45 shrink-0">
-            <div class="shrink-0 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-3 py-2.5 border-b border-border-weaker-base/45 shrink-0">
+            <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
               <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
             </div>
-            <div class="flex-1 min-w-0 flex flex-col min-h-0 rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+            <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
               <Show
                 when={todoItems().length > 0}
                 fallback={
@@ -288,7 +288,7 @@ export function AgendaPanel() {
                     </span>
                   </div>
                 </div>
-                <div class="flex-1 min-h-0 max-h-[21rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                   <For each={todoItems()}>{(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}</For>
                 </div>
               </Show>

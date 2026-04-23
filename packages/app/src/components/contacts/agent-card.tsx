@@ -110,7 +110,17 @@ export function AgentCard(props: {
                 <div class="flex items-start gap-3">
                   <div class="min-w-0 flex-1">
                     <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Holos Agent</div>
-                    <div class="mt-1 text-15-semibold tracking-tight text-text-strong truncate">{profile().name}</div>
+                    <div class="mt-1 flex flex-wrap items-center gap-2">
+                      <div class="min-w-0 truncate text-15-semibold tracking-tight text-text-strong">
+                        {profile().name}
+                      </div>
+                      <Show when={props.agentId}>
+                        <div class="inline-flex max-w-full items-center rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/50">
+                          <span class="mr-1.5 text-text-weaker/70">ID</span>
+                          <span class="truncate font-mono text-text-weak">{truncateId(props.agentId ?? "")}</span>
+                        </div>
+                      </Show>
+                    </div>
                   </div>
 
                   <div class="flex shrink-0 items-start gap-2">
@@ -162,13 +172,6 @@ export function AgentCard(props: {
                 </div>
 
                 <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <Show when={props.agentId}>
-                    <div class="inline-flex max-w-full items-center rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/50">
-                      <span class="mr-1.5 text-text-weaker/70">ID</span>
-                      <span class="truncate font-mono text-text-weak">{truncateId(props.agentId ?? "")}</span>
-                    </div>
-                  </Show>
-
                   <Show when={needsLogin()}>
                     <button
                       type="button"
