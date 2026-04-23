@@ -84,7 +84,6 @@ export function TerminalPanel(props: {
                   <Terminal
                     pty={pty}
                     onCleanup={props.terminal.update}
-                    onConnectError={() => props.terminal.clone(pty.id)}
                     onGone={(ptyID) => {
                       props.terminal.close(ptyID)
                       if (props.terminal.all().length === 0) {

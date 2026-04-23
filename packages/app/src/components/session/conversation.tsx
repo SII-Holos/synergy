@@ -36,6 +36,7 @@ export function SessionConversation(props: {
   isDesktop: Accessor<boolean>
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
   anchor: (id: string) => string
+  terminalHeight: Accessor<number>
 }) {
   return (
     <ConversationViewport
@@ -54,6 +55,7 @@ export function SessionConversation(props: {
               messages={props.visibleUserMessages}
               currentMessage={props.activeMessage}
               onMessageSelect={props.scrollToMessage}
+              bottomOffset={props.terminalHeight}
             />
           </div>
         </Show>

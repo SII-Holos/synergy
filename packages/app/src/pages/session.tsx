@@ -940,6 +940,7 @@ export default function Page() {
                         isDesktop={isDesktop}
                         scrollToMessage={scrollToMessage}
                         anchor={anchor}
+                        terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
                       />
                     </Show>
                   </Show>
