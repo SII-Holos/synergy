@@ -175,6 +175,8 @@ function initialize(conn: Database) {
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_session ON experience(session_id)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_content_scope ON experience_content(scope_id)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_content_session ON experience_content(session_id)")
+  conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory(category, created_at)")
+  conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_recall_mode ON memory(recall_mode)")
 
   log.info("schema ready")
 }
@@ -431,6 +433,13 @@ export namespace EngramDB {
       return conn.prepare("SELECT * FROM experience WHERE id = ?1").get(id) as Row | null
     }
 
+    export function getMany(ids: string[]): Row[] {
+      if (ids.length === 0) return []
+      const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
+      return conn.prepare(`SELECT * FROM experience WHERE id IN (${placeholders})`).all(...ids) as Row[]
+    }
+
     export function listAll(): Row[] {
       const conn = open()
       return conn.prepare("SELECT * FROM experience ORDER BY created_at DESC").all() as Row[]
@@ -456,12 +465,7 @@ export namespace EngramDB {
       const r1 = conn.prepare("DELETE FROM experience WHERE scope_id = ?1").run(scopeID)
       conn.prepare("DELETE FROM experience_content WHERE scope_id = ?1").run(scopeID)
       safeVecOp(() => {
-        const ids = conn.prepare("SELECT experience_id FROM vec_experience WHERE scope_id = ?1").all(scopeID) as {
-          experience_id: string
-        }[]
-        for (const { experience_id } of ids) {
-          conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(experience_id)
-        }
+        conn.prepare("DELETE FROM vec_experience WHERE scope_id = ?1").run(scopeID)
       }, undefined)
       log.info("experience.removeByScope", { scopeID, deleted: r1.changes })
       return r1.changes
