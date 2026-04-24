@@ -33,7 +33,7 @@ export const DataPackCommand = cmd({
     // Step 1: Select categories
     const selectable = CATEGORIES.filter((c) => !c.required)
     const selected = await prompts.multiselect({
-      message: "What should be packed?",
+      message: "What should be packed? (Space to toggle, Enter to confirm)",
       options: selectable.map((cat) => ({
         value: cat.key,
         label: cat.label,

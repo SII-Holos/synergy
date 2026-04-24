@@ -50,9 +50,11 @@ export async function executeMove(opts: MoveOptions) {
   )
 
   // Step 1: Target directory
-  let targetPath: string
+  // User provides a base path (SYNERGY_HOME). The actual data root is basePath/.synergy
+  // because root() = path.join(SYNERGY_HOME, ".synergy").
+  let homePath: string
   if (opts.target) {
-    targetPath = path.resolve(opts.target)
+    homePath = path.resolve(opts.target)
   } else {
     const input = await prompts.text({
       message: "Where should the data be moved to?",
@@ -66,8 +68,10 @@ export async function executeMove(opts: MoveOptions) {
       prompts.cancel("Cancelled")
       return
     }
-    targetPath = path.resolve(input)
+    homePath = path.resolve(input)
   }
+
+  const targetPath = homePath.endsWith(".synergy") ? homePath : path.join(homePath, ".synergy")
 
   if (targetPath === sourceRoot) {
     prompts.log.error("Target is the same as current location")
@@ -76,7 +80,7 @@ export async function executeMove(opts: MoveOptions) {
   }
 
   // Check disk space
-  const diskOk = await checkDiskSpace(targetPath, totalSize)
+  const diskOk = await checkDiskSpace(homePath, totalSize)
   const availStr = diskOk.available != null ? formatSize(diskOk.available) : "unknown"
   if (!diskOk.ok) {
     prompts.log.error(`Insufficient disk space at target (${availStr} available, ${formatSize(totalSize)} needed)`)
@@ -101,7 +105,7 @@ export async function executeMove(opts: MoveOptions) {
   // Step 2: Select categories
   const selectable = CATEGORIES.filter((c) => !c.required)
   const selected = await prompts.multiselect({
-    message: "What should be moved?",
+    message: "What should be moved? (Space to toggle, Enter to confirm)",
     options: selectable.map((cat) => ({
       value: cat.key,
       label: cat.label,
@@ -256,21 +260,14 @@ export async function executeMove(opts: MoveOptions) {
       }
 
       const catSize = catStats.get(cat.key)?.size ?? 0
-      const catFileCount = catStats.get(cat.key)?.fileCount ?? 0
       const spinner = prompts.spinner()
       spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
 
       try {
-        const result = await copyDirSkipExisting(
-          src,
-          dst,
-          (p) => {
-            const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-            spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-          },
-          undefined,
-          catFileCount,
-        )
+        const result = await copyDirSkipExisting(src, dst, (p) => {
+          const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+          spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+        })
         const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
         spinner.stop(`Moved ${subdir}/${skippedNote}`)
       } catch (e) {
@@ -312,7 +309,7 @@ export async function executeMove(opts: MoveOptions) {
   if (!opts.removeOriginal || errors.length > 0) {
     prompts.log.info(`Original data preserved at ${shortenPath(sourceRoot)}`)
   }
-  prompts.log.info("Run `synergy data set-home <path>` to switch to the new location")
+  prompts.log.info(`Run \`synergy data set-home ${shortenPath(homePath)}\` to switch to the new location`)
   prompts.log.info("Restart any running synergy servers to use the new location")
 
   prompts.outro("Done")

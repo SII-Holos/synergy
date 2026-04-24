@@ -71,7 +71,13 @@ export namespace BunProc {
       await Bun.write(pkgjson.name!, JSON.stringify(result, null, 2))
       return result
     })
-    if (parsed.dependencies[pkg] === version) return mod
+    const existing = parsed.dependencies[pkg]
+    // For registry packages: exact version match means cached.
+    // For non-registry packages (github:, git+, etc.): if any dependency
+    // entry exists, consider it cached — Bun resolves the ref on install
+    // and we don't want to re-install on every startup.
+    if (existing === version) return mod
+    if (existing && version === "latest") return mod
 
     const proxied = !!(
       process.env.HTTP_PROXY ||
@@ -79,6 +85,14 @@ export namespace BunProc {
       process.env.http_proxy ||
       process.env.https_proxy
     )
+
+    // For non-registry protocols (github:, git+, git://, https://, etc.),
+    // appending @version is invalid — install the spec as-is.
+    const isNonRegistry =
+      /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(pkg) ||
+      /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(version)
+
+    const target = isNonRegistry ? (version && version !== "latest" ? pkg + "@" + version : pkg) : pkg + "@" + version
 
     // Build command arguments
     const args = [
@@ -89,7 +103,7 @@ export namespace BunProc {
       ...(proxied ? ["--no-cache"] : []),
       "--cwd",
       Global.Path.cache,
-      pkg + "@" + version,
+      target,
     ]
 
     // Let Bun handle registry resolution:
