@@ -28,10 +28,16 @@ function bar(ratio: number) {
 }
 
 function write(line: string, overwrite = false) {
-  // \x1b[2K clears the entire line before \r returns to line start,
-  // preventing ghost characters when the new line is shorter.
+  if (!process.stderr.isTTY) {
+    process.stderr.write(line + (overwrite ? "\n" : ""))
+    return
+  }
+  // \x1b[2K clears the entire line, \r returns to column 0.
   process.stderr.write((overwrite ? "\x1b[2K\r" : "") + line)
 }
+
+const DISABLE_WRAP = "\x1b[?7l"
+const ENABLE_WRAP = "\x1b[?7h"
 
 let runningMigrations: Promise<void> | undefined
 let migrationsCompleted = false
@@ -65,30 +71,36 @@ export async function runMigrations(): Promise<void> {
     return
   }
 
+  const isTTY = !!process.stderr.isTTY
+  if (isTTY) process.stderr.write(DISABLE_WRAP)
   write("\n")
 
-  for (const migration of pending) {
-    try {
-      let lastProgressTime = 0
-      let started = false
-      await migration.up((current, total) => {
-        if (!started) {
-          started = true
-        }
-        const now = Date.now()
-        if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
-        lastProgressTime = now
-        write(`  ${bar(current / total)} ${migration.description} (${current}/${total})`, true)
-      })
-      if (!started) write(`  ${bar(0)} ${migration.description}`, true)
-      write(`  ${bar(1)} ${migration.description} ✓\n`, true)
-      logData[migration.id] = Date.now()
-      await Storage.write(StoragePath.metaMigrationLog(), logData)
-      log.info("completed", { id: migration.id })
-    } catch (err) {
-      write(`  ${bar(0)} ${migration.description} ✗\n`, true)
-      log.error("failed", { id: migration.id, error: err instanceof Error ? err : new Error(String(err)) })
-      throw err
+  try {
+    for (const migration of pending) {
+      try {
+        let lastProgressTime = 0
+        let started = false
+        await migration.up((current, total) => {
+          if (!started) {
+            started = true
+          }
+          const now = Date.now()
+          if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
+          lastProgressTime = now
+          write(`  ${bar(current / total)} ${migration.description} (${current}/${total})`, true)
+        })
+        if (!started) write(`  ${bar(0)} ${migration.description}`, true)
+        write(`  ${bar(1)} ${migration.description} ✓\n`, true)
+        logData[migration.id] = Date.now()
+        await Storage.write(StoragePath.metaMigrationLog(), logData)
+        log.info("completed", { id: migration.id })
+      } catch (err) {
+        write(`  ${bar(0)} ${migration.description} ✗\n`, true)
+        log.error("failed", { id: migration.id, error: err instanceof Error ? err : new Error(String(err)) })
+        throw err
+      }
     }
+  } finally {
+    if (isTTY) process.stderr.write(ENABLE_WRAP)
   }
 }
