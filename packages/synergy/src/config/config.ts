@@ -1647,8 +1647,6 @@ export namespace Config {
     if (parsed.success) {
       if (!parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
-        const edits = modify(text, ["$schema"], CONFIG_SCHEMA, { formattingOptions })
-        await Bun.write(configFilepath, applyEdits(text, edits))
       }
       const data = parsed.data
       if (data.plugin) {
