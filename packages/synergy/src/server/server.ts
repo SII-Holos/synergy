@@ -78,7 +78,7 @@ export namespace Server {
     return path.resolve(import.meta.dirname, "../../../app/dist")
   })()
   let _url: URL | undefined
-  let _corsWhitelist: string[] = []
+  let _corsWhitelist = new Set<string>()
   let _appMounted = false
 
   function isLoopbackOrigin(input: string) {
@@ -198,7 +198,7 @@ export namespace Server {
               if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
                 return input
               }
-              if (_corsWhitelist.includes(input)) {
+              if (_corsWhitelist.has(input)) {
                 return input
               }
 
@@ -999,7 +999,7 @@ export namespace Server {
 
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
-    _corsWhitelist = [...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])]
+    _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
 
     const args = {
       hostname: opts.hostname,
@@ -1019,7 +1019,7 @@ export namespace Server {
 
     _url = server.url
 
-    if (isExternalHost && _corsWhitelist.length > 0) {
+    if (isExternalHost && _corsWhitelist.size > 0) {
       log.info("cors auto-detected LAN origins", { origins: _corsWhitelist })
     }
 
