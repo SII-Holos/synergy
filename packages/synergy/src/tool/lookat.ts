@@ -11,10 +11,17 @@ import DESCRIPTION from "./lookat.txt"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
 const CONCURRENCY_LIMIT = 5
+const DEFAULT_TIMEOUT_S = 120
 
 const parameters = z.object({
   file_path: z.union([z.string(), z.array(z.string())]).describe("Absolute path(s) to the file(s) to analyze"),
   goal: z.string().describe("What specific information to extract from the file(s)"),
+  timeout: z
+    .number()
+    .describe(
+      `Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes).`,
+    )
+    .optional(),
 })
 
 interface LookAtMetadata {
@@ -22,6 +29,8 @@ interface LookAtMetadata {
   mimeType?: string
   fileCount?: number
   error?: string
+  timeout?: number
+  timedOut?: boolean
 }
 
 function inferMimeType(filepath: string): string {
@@ -51,6 +60,11 @@ function inferMimeType(filepath: string): string {
   return mimeTypes[ext] || "application/octet-stream"
 }
 
+interface FileResult {
+  output: string
+  timedOut: boolean
+}
+
 export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_at", async () => {
   return {
     description: DESCRIPTION,
@@ -71,7 +85,6 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         files.push({ filepath, mimeType: inferMimeType(filepath), filename: path.basename(filepath) })
       }
 
-      // Deduplicated external directory permissions
       const externalDirs = new Set<string>()
       for (const file of files) {
         if (!Instance.contains(file.filepath)) {
@@ -104,12 +117,14 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         }
       }
 
+      const timeout = params.timeout ?? DEFAULT_TIMEOUT_S
+
       ctx.metadata({
         title: files.length === 1 ? `Analyzing: ${files[0].filename}` : `Analyzing ${files.length} files...`,
-        metadata: files.length === 1 ? { filePath: files[0].filepath } : { fileCount: files.length },
+        metadata: files.length === 1 ? { filePath: files[0].filepath, timeout } : { fileCount: files.length, timeout },
       })
 
-      const processFile = async (file: (typeof files)[number]) => {
+      const processFile = async (file: (typeof files)[number]): Promise<FileResult> => {
         const { Session } = await import("../session")
         const { SessionInvoke } = await import("../session/invoke")
         const session = await Session.create({
@@ -133,45 +148,71 @@ Provide ONLY the extracted information that matches the goal.
 Be thorough on what was requested, concise on everything else.
 If the requested information is not found, clearly state what is missing.`
 
-        const result = await SessionInvoke.invoke({
-          messageID: Identifier.ascending("message"),
-          sessionID: session.id,
-          model,
-          agent: MULTIMODAL_AGENT,
-          parts: [
-            { type: "text", text: prompt },
-            {
-              type: "file",
-              mime: file.mimeType,
-              url: pathToFileURL(file.filepath).href,
-              filename: file.filename,
-            },
-          ],
-        })
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          SessionInvoke.cancel(session.id)
+        }, timeout * 1000)
 
-        const textPart = result.parts.findLast((p: { type: string }) => p.type === "text")
-        return (textPart as { text: string } | undefined)?.text ?? "No response from multimodal agent"
+        try {
+          const result = await SessionInvoke.invoke({
+            messageID: Identifier.ascending("message"),
+            sessionID: session.id,
+            model,
+            agent: MULTIMODAL_AGENT,
+            parts: [
+              { type: "text", text: prompt },
+              {
+                type: "file",
+                mime: file.mimeType,
+                url: pathToFileURL(file.filepath).href,
+                filename: file.filename,
+              },
+            ],
+          })
+
+          const textPart = result.parts.findLast((p: { type: string }) => p.type === "text")
+          return {
+            output: (textPart as { text: string } | undefined)?.text ?? "No response from multimodal agent",
+            timedOut: false,
+          }
+        } catch (error) {
+          if (timedOut) {
+            return {
+              output: `Timed out after ${timeout}s — the file may be too large or complex. Try a shorter goal or increase the timeout.`,
+              timedOut: true,
+            }
+          }
+          throw error
+        } finally {
+          clearTimeout(timer)
+        }
       }
 
       const results = await workMap(CONCURRENCY_LIMIT, files, (file) =>
         processFile(file).catch(
-          (error) => `Error analyzing ${file.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          (error: unknown): FileResult => ({
+            output: `Error analyzing ${file.filename}: ${error instanceof Error ? error.message : String(error)}`,
+            timedOut: false,
+          }),
         ),
       )
 
+      const anyTimedOut = results.some((r) => r.timedOut)
+
       if (files.length === 1) {
         return {
-          title: `Analyzed: ${files[0].filename}`,
-          output: results[0],
-          metadata: { filePath: files[0].filepath, mimeType: files[0].mimeType },
+          title: anyTimedOut ? "Analysis timed out" : `Analyzed: ${files[0].filename}`,
+          output: results[0].output,
+          metadata: { filePath: files[0].filepath, mimeType: files[0].mimeType, timeout, timedOut: anyTimedOut },
         }
       }
 
-      const output = files.map((file, i) => `## ${file.filename}\n${results[i]}`).join("\n\n")
+      const output = files.map((file, i) => `## ${file.filename}\n${results[i].output}`).join("\n\n")
       return {
-        title: `Analyzed ${files.length} files`,
+        title: anyTimedOut ? "Some analyses timed out" : `Analyzed ${files.length} files`,
         output,
-        metadata: { fileCount: files.length },
+        metadata: { fileCount: files.length, timeout, timedOut: anyTimedOut },
       }
     },
   }

@@ -1,10 +1,20 @@
-# Synergy
+# Synergy <a href="https://www.sii.edu.cn" target="_blank" rel="noopener noreferrer"><img src=".github/assets/sii-logo.png" height="28" alt="Shanghai Innovation Institute" /></a>
 
 Synergy is an AI agent platform for software work, built by the [Holos](https://github.com/SII-Holos) team at SII.
 
 It combines a stateless server, browser-based and CLI workflows, configurable agents, persistent sessions, scheduled automation, and a growing set of knowledge and collaboration features. Synergy is not just a coding bot: it powers server runtime, Web, `send`, session workflows, agent orchestration, channel integrations, MCP connectivity, and product-facing automation — all from a single platform.
 
 Synergy is open source under the [MIT License](LICENSE). Contributions, bug reports, and feature ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+
+---
+
+### About Shanghai Innovation Institute
+
+**Shanghai Innovation Institute (SII / 上海创智学院)** is a research institute dedicated to AI and large model innovation, based in Shanghai. The Holos team at SII builds Synergy as part of its open-source AI platform work.
+
+🌐 [https://www.sii.edu.cn](https://www.sii.edu.cn)
+
+---
 
 ## What Synergy Includes
 
@@ -21,6 +31,22 @@ Synergy currently spans several product surfaces and workflows:
 - Identity, login, notes, memory/engram, agenda, and community-facing capabilities
 
 ## Quick Start
+
+### Install
+
+Install the latest bundled release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 1.2.2
+```
+
+The installer places the runtime binary together with the bundled Web UI, Config UI, and schema assets under `~/.synergy/`, so `synergy web` and `synergy config ui` work without requiring a local source checkout.
 
 ### If you already have the CLI installed
 
@@ -223,11 +249,32 @@ This repository is a Bun monorepo.
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
 - `packages/config-ui` — dedicated configuration UI package
-- `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
+- `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI components
 - `packages/util` — shared utilities and common helpers
 - `packages/script` — build and release utilities
+- `packages/meta-synergy` — companion CLI for connecting to remote Synergy hosts (see below)
+
+## MetaSynergy (Experimental)
+
+MetaSynergy is a lightweight companion CLI that connects to a remote Synergy host — useful when you want to use Synergy as a backend service without running the full local runtime.
+
+> ⚠️ MetaSynergy is experimental. The API, behavior, and release artifacts may change without notice.
+
+### Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash -s -- --version 1.1.26
+```
+
+The installer places the binary under `~/.meta-synergy/bin/` and optionally adds it to your `PATH`.
 
 ## Development
 

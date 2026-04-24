@@ -21,6 +21,8 @@ import {
   TextPart,
   ToolPart,
   ToolStateCompleted,
+  ToolStateError,
+  ToolStateGenerating,
   UserMessage,
   Todo,
 } from "@ericsanchezok/synergy-sdk"
@@ -29,7 +31,7 @@ import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { BasicTool } from "./basic-tool"
-import { GenericTool } from "./basic-tool"
+import { GenericTool, SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { Icon } from "./icon"
 import { Checkbox } from "./checkbox"
@@ -41,7 +43,7 @@ import { FileIcon } from "./file-icon"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createTypewriter } from "../hooks"
+import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 
 interface Diagnostic {
   range: {
@@ -144,6 +146,21 @@ function relativizeProjectPaths(text: string, directory?: string) {
   return text.split(directory).join("")
 }
 
+function isRenderableTextPartCompleted(
+  messageParts: PartType[] | undefined,
+  message: AssistantMessage,
+  part: TextPart | ReasoningPart,
+  sessionStatus: { type: string } | undefined,
+) {
+  if (part.time?.end) return true
+  if (message.time.completed) return true
+  if (sessionStatus?.type !== "busy") return true
+  if (!messageParts?.length) return false
+
+  const index = messageParts.findIndex((item) => item?.id === part.id)
+  return index >= 0 && index < messageParts.length - 1
+}
+
 export function getDirectory(path: string | undefined) {
   const data = useData()
   return relativizeProjectPaths(_getDirectory(path), data.directory)
@@ -173,7 +190,182 @@ export type ToolInfo = {
   subtitle?: string
 }
 
-export function getToolInfo(tool: string, input: any = {}): ToolInfo {
+export type ToolTriggerInfo = ToolInfo & {
+  args?: string[]
+}
+
+function shortToken(value: unknown, max = 16) {
+  if (typeof value !== "string" || !value) return undefined
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
+}
+
+function pushArg(args: string[], value: unknown) {
+  if (!value) return
+  args.push(String(value))
+}
+
+function qzScopeLabel(input: any = {}) {
+  return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
+}
+
+// TODO: legacy qzcli tool info — remove when qzcli MCP integration is fully replaced by native inspire tools
+export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}): ToolTriggerInfo | undefined {
+  switch (tool) {
+    case "qzcli_qz_auth_login": {
+      const args: string[] = []
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "key-round",
+        title: "QZ Login",
+        subtitle: input.username,
+        args,
+      }
+    }
+    case "qzcli_qz_set_cookie": {
+      const args: string[] = []
+      pushArg(args, input.test === false ? "save only" : "validate")
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "fingerprint",
+        title: "Set Cookie",
+        subtitle: input.workspace_id || "Local auth",
+        args,
+      }
+    }
+    case "qzcli_qz_list_workspaces":
+      return {
+        icon: "building-2",
+        title: "Workspaces",
+        subtitle: input.refresh === false ? "Cached" : "Refresh",
+      }
+    case "qzcli_qz_refresh_resources": {
+      const args: string[] = []
+      pushArg(args, input.all_workspaces ? "all" : undefined)
+      return {
+        icon: "refresh-ccw",
+        title: "Refresh Resources",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_get_availability": {
+      const args: string[] = []
+      pushArg(args, input.required_nodes ? `${input.required_nodes}+ nodes` : undefined)
+      pushArg(args, input.include_low_priority ? "low priority" : undefined)
+      return {
+        icon: "signal",
+        title: "Availability",
+        subtitle: input.group || qzScopeLabel(input) || "Default target",
+        args,
+      }
+    }
+    case "qzcli_qz_list_jobs": {
+      const args: string[] = []
+      pushArg(args, input.running_only ? "running" : undefined)
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      return {
+        icon: "boxes",
+        title: "Jobs",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_get_job_detail":
+      return {
+        icon: "scan",
+        title: "Job Detail",
+        subtitle: shortToken(input.job_id, 20),
+      }
+    case "qzcli_qz_stop_job":
+      return {
+        icon: "circle-stop",
+        title: "Stop Job",
+        subtitle: shortToken(input.job_id, 20),
+      }
+    case "qzcli_qz_get_usage":
+      return {
+        icon: "gauge",
+        title: "GPU Usage",
+        subtitle: qzScopeLabel(input) || "All workspaces",
+      }
+    case "qzcli_qz_inspect_status_catalog": {
+      const args: string[] = []
+      pushArg(args, input.limit_per_workspace ? `limit ${input.limit_per_workspace}` : undefined)
+      pushArg(args, input.sample_limit ? `sample ${input.sample_limit}` : undefined)
+      return {
+        icon: "table",
+        title: "Status Catalog",
+        subtitle: qzScopeLabel(input) || "Default workspace",
+        args,
+      }
+    }
+    case "qzcli_qz_track_job": {
+      const args: string[] = []
+      pushArg(args, input.source)
+      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
+      return {
+        icon: "pin",
+        title: "Track Job",
+        subtitle: input.name || shortToken(input.job_id, 20),
+        args,
+      }
+    }
+    case "qzcli_qz_list_tracked_jobs": {
+      const args: string[] = []
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      pushArg(args, input.refresh === false ? "cached" : "refresh")
+      return {
+        icon: "binoculars",
+        title: "Tracked Jobs",
+        subtitle: input.running_only ? "Running only" : "All tracked",
+        args,
+      }
+    }
+    case "qzcli_qz_create_job": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.instances ? `${input.instances}x` : undefined)
+      return {
+        icon: "rocket",
+        title: "Submit Job",
+        subtitle: input.name,
+        args,
+      }
+    }
+    case "qzcli_qz_create_hpc_job": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.instances ? `${input.instances} node${input.instances === 1 ? "" : "s"}` : undefined)
+      pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
+      return {
+        icon: "cpu",
+        title: "Submit HPC Job",
+        subtitle: input.name,
+        args,
+      }
+    }
+    case "qzcli_qz_get_hpc_usage": {
+      const args: string[] = []
+      pushArg(args, input.compute_group)
+      pushArg(args, input.verbose ? `top ${input.top || 30}` : undefined)
+      return {
+        icon: "server",
+        title: "HPC Usage",
+        subtitle: qzScopeLabel(input) || "All workspaces",
+        args,
+      }
+    }
+    default:
+      return undefined
+  }
+}
+
+export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
+  const qz = getQzToolInfo(tool, input, metadata)
+  if (qz) return qz
+
   switch (tool) {
     case "read":
       return {
@@ -189,13 +381,13 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "glob":
       return {
-        icon: "search",
+        icon: "funnel",
         title: "Glob",
         subtitle: input.pattern,
       }
     case "grep":
       return {
-        icon: "search",
+        icon: "regex",
         title: "Grep",
         subtitle: input.pattern,
       }
@@ -231,38 +423,38 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "patch":
       return {
-        icon: "text-select",
+        icon: "diff",
         title: "Patch",
       }
     case "write":
       return {
-        icon: "text-select",
+        icon: "file-pen",
         title: "Write",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "todowrite":
       return {
-        icon: "list-checks",
+        icon: "clipboard-check",
         title: "To-dos",
       }
     case "todoread":
       return {
-        icon: "list-checks",
+        icon: "list-filter",
         title: "Read to-dos",
       }
     case "dagwrite":
       return {
-        icon: "git-branch",
+        icon: "route",
         title: "DAG",
       }
     case "dagread":
       return {
-        icon: "git-branch",
+        icon: "spline",
         title: "Read DAG",
       }
     case "dagpatch":
       return {
-        icon: "git-branch",
+        icon: "git-merge",
         title: "DAG",
       }
     case "question":
@@ -278,7 +470,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "look_at":
       return {
-        icon: "eye",
+        icon: "scan-eye",
         title: "Look at",
         subtitle: input.file_path
           ? getFilename(Array.isArray(input.file_path) ? input.file_path[0] : input.file_path)
@@ -286,19 +478,13 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "ast_grep":
       return {
-        icon: "code",
+        icon: "braces",
         title: "AST Search",
         subtitle: input.pattern,
       }
-    case "codesearch":
-      return {
-        icon: "code",
-        title: "Code Search",
-        subtitle: input.query,
-      }
     case "lsp":
       return {
-        icon: "server",
+        icon: "circuit-board",
         title: "LSP",
         subtitle: input.operation,
       }
@@ -310,19 +496,19 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "arxiv_search":
       return {
-        icon: "file-text",
+        icon: "book-open",
         title: "arXiv Search",
         subtitle: input.query,
       }
     case "arxiv_download":
       return {
-        icon: "download",
+        icon: "book-down",
         title: "arXiv Download",
         subtitle: input.arxivId,
       }
     case "process":
       return {
-        icon: "terminal",
+        icon: "activity",
         title: "Process",
         subtitle: input.action,
       }
@@ -380,7 +566,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "task_cancel":
       return {
-        icon: "x",
+        icon: "circle-x",
         title: "Task Cancel",
         subtitle: input.task_id,
       }
@@ -392,7 +578,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "context7_query-docs":
       return {
-        icon: "glasses",
+        icon: "scroll-text",
         title: "Query Docs",
         subtitle: input.query,
       }
@@ -420,15 +606,68 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: "Send Message",
         subtitle: input.target,
       }
+    case "session_control": {
+      const action = input.action as string | undefined
+      switch (action) {
+        case "status":
+          return {
+            icon: "radar",
+            title: "Session Status",
+            subtitle: input.target,
+          }
+        case "compact":
+          return {
+            icon: "layers",
+            title: "Compact Session",
+            subtitle: input.target,
+          }
+        case "abort":
+          return {
+            icon: "circle-stop",
+            title: "Abort Session",
+            subtitle: input.target,
+          }
+        case "question_reply":
+          return {
+            icon: "message-circle",
+            title: "Answer Question",
+            subtitle: input.target,
+          }
+        case "question_reject":
+          return {
+            icon: "circle-x",
+            title: "Dismiss Question",
+            subtitle: input.target,
+          }
+        case "permission_reply":
+          return {
+            icon: input.reply === "reject" ? "shield-alert" : "shield-check",
+            title: input.reply === "reject" ? "Deny Permission" : "Approve Permission",
+            subtitle: input.target,
+          }
+        case "set_allow_all":
+          return {
+            icon: input.enabled ? "shield-check" : "shield-alert",
+            title: input.enabled ? "Enable Allow All" : "Disable Allow All",
+            subtitle: input.target,
+          }
+        default:
+          return {
+            icon: "radar",
+            title: "Control Session",
+            subtitle: input.target,
+          }
+      }
+    }
     case "profile_get":
       return {
-        icon: "user",
+        icon: "scan",
         title: "Profile",
         subtitle: input.name,
       }
     case "profile_update":
       return {
-        icon: "user",
+        icon: "user-round-pen",
         title: "Update Profile",
         subtitle: input.name,
       }
@@ -446,7 +685,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "agenda_update":
       return {
-        icon: "refresh-ccw",
+        icon: "pencil",
         title: "Update Agenda",
         subtitle: input.id,
       }
@@ -470,45 +709,51 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "agora_search":
       return {
-        icon: "users",
+        icon: "compass",
         title: "Agora Search",
         subtitle: input.keyword,
       }
     case "agora_read":
       return {
-        icon: "users",
+        icon: "compass",
         title: "Agora Read",
         subtitle: input.post_id,
       }
     case "agora_post":
       return {
-        icon: "users",
+        icon: "megaphone",
         title: "Agora Post",
         subtitle: input.title,
       }
-    case "agora_respond":
+    case "agora_join":
       return {
-        icon: "users",
-        title: "Agora Respond",
-        subtitle: input.type,
-      }
-    case "agora_clone":
-      return {
-        icon: "git-branch",
-        title: "Agora Clone",
-        subtitle: input.answer_id,
-      }
-    case "agora_repo":
-      return {
-        icon: "folder",
-        title: "Agora Repo",
+        icon: "log-in",
+        title: "Agora Join",
         subtitle: input.post_id,
       }
-    case "agora_git":
+    case "agora_sync":
       return {
-        icon: "git-branch",
-        title: "Agora Git",
+        icon: "arrow-down-to-line",
+        title: "Agora Sync",
+        subtitle: input.directory,
+      }
+    case "agora_submit":
+      return {
+        icon: "upload",
+        title: "Agora Submit",
+        subtitle: input.comment,
+      }
+    case "agora_accept":
+      return {
+        icon: "git-merge",
+        title: "Agora Accept",
         subtitle: input.answer_id,
+      }
+    case "agora_comment":
+      return {
+        icon: "compass",
+        title: "Agora Comment",
+        subtitle: input.post_id,
       }
     case "memory_search":
       return {
@@ -546,7 +791,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
           : `${input.target.length} targets`
         : input.target
       return {
-        icon: "refresh-ccw",
+        icon: "rotate-cw",
         title: "Runtime Reload",
         subtitle: target || input.reason,
       }
@@ -557,6 +802,235 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: "Connect",
         subtitle: input.envID,
       }
+    // TODO: legacy qzcli — remove when replaced by native inspire tools
+    case "qzcli_qz_auth_login":
+      return {
+        icon: "key-round",
+        title: "QZ Login",
+        subtitle: input.username,
+      }
+    case "qzcli_qz_set_cookie":
+      return {
+        icon: "fingerprint",
+        title: "Set Cookie",
+      }
+    case "qzcli_qz_list_workspaces":
+      return {
+        icon: "building-2",
+        title: "Workspaces",
+      }
+    case "qzcli_qz_refresh_resources":
+      return {
+        icon: "refresh-ccw",
+        title: "Refresh Resources",
+        subtitle: input.workspace || (input.all_workspaces ? "All" : undefined),
+      }
+    case "qzcli_qz_get_availability":
+      return {
+        icon: "signal",
+        title: "Availability",
+        subtitle: input.group || input.workspace,
+      }
+    case "qzcli_qz_list_jobs":
+      return {
+        icon: "boxes",
+        title: "Jobs",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_get_job_detail":
+      return {
+        icon: "scan",
+        title: "Job Detail",
+        subtitle: input.job_id,
+      }
+    case "qzcli_qz_stop_job":
+      return {
+        icon: "circle-stop",
+        title: "Stop Job",
+        subtitle: input.job_id,
+      }
+    case "qzcli_qz_get_usage":
+      return {
+        icon: "gauge",
+        title: "GPU Usage",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_inspect_status_catalog":
+      return {
+        icon: "stethoscope",
+        title: "Status Catalog",
+        subtitle: input.workspace,
+      }
+    case "qzcli_qz_track_job":
+      return {
+        icon: "crosshair",
+        title: "Track Job",
+        subtitle: input.name || input.job_id,
+      }
+    case "qzcli_qz_list_tracked_jobs":
+      return {
+        icon: "binoculars",
+        title: "Tracked Jobs",
+      }
+    case "qzcli_qz_create_job":
+      return {
+        icon: "rocket",
+        title: "Submit Job",
+        subtitle: input.name,
+      }
+    case "qzcli_qz_create_hpc_job":
+      return {
+        icon: "cpu",
+        title: "Submit HPC Job",
+        subtitle: input.name,
+      }
+    case "qzcli_qz_get_hpc_usage":
+      return {
+        icon: "hard-drive",
+        title: "HPC Usage",
+        subtitle: input.workspace,
+      }
+    // inspire — SII 启智平台 (native tools)
+    case "inspire_status": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.refresh ? "refresh" : undefined)
+      return {
+        icon: "satellite",
+        title: "Platform Status",
+        subtitle: input.project || metadata?.project_names?.[0] || "All",
+        args,
+      }
+    }
+    case "inspire_config": {
+      const args: string[] = []
+      pushArg(args, input.action === "set" && input.value !== undefined ? String(input.value) : undefined)
+      return {
+        icon: "sliders-horizontal",
+        title: input.action === "set" ? "Set Default" : "SII Defaults",
+        subtitle: input.key,
+        args,
+      }
+    }
+    case "inspire_images": {
+      const args: string[] = []
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      return {
+        icon: "disc",
+        title: input.repo ? "Image Detail" : "Search Images",
+        subtitle: input.repo || input.search || "Recent",
+        args,
+      }
+    }
+    case "inspire_image_push": {
+      const args: string[] = []
+      pushArg(args, input.name)
+      pushArg(args, input.tag)
+      return { icon: "archive", title: "Push Image", subtitle: input.image, args }
+    }
+    case "inspire_submit": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.compute_group)
+      pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
+      pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
+      return { icon: "gpu", title: "Submit GPU Job", subtitle: input.name, args }
+    }
+    case "inspire_submit_hpc": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
+      return { icon: "cpu", title: "Submit HPC Job", subtitle: input.name, args }
+    }
+    case "inspire_stop": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.status && input.status !== "running" ? input.status : undefined)
+      return {
+        icon: "circle-stop",
+        title: input.job_id ? "Stop Job" : "Batch Stop",
+        subtitle: input.job_id ? shortToken(input.job_id, 20) : input.workspace,
+        args,
+      }
+    }
+    case "inspire_jobs": {
+      const args: string[] = []
+      pushArg(args, input.workspace)
+      pushArg(args, input.status && input.status !== "all" ? input.status : undefined)
+      pushArg(args, input.type && input.type !== "all" ? input.type : undefined)
+      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
+      return {
+        icon: "list-filter",
+        title: "Jobs",
+        subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
+        args,
+      }
+    }
+    case "inspire_job_detail":
+      return { icon: "scan-search", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
+    case "inspire_logs": {
+      const args: string[] = []
+      pushArg(args, input.keyword)
+      pushArg(args, input.download ? "download" : undefined)
+      return {
+        icon: "file-terminal",
+        title: input.download ? "Download Logs" : "Job Logs",
+        subtitle: shortToken(input.job_id, 20),
+        args,
+      }
+    }
+    case "inspire_metrics":
+      return { icon: "heart-pulse", title: "Job Metrics", subtitle: shortToken(input.job_id, 20) }
+    case "inspire_inference":
+      return {
+        icon: "square-play",
+        title:
+          input.action === "create"
+            ? "Deploy Inference"
+            : input.action === "stop"
+              ? "Stop Inference"
+              : "Inference Detail",
+        subtitle: input.name || input.serving_id,
+      }
+    case "inspire_models": {
+      const args: string[] = []
+      pushArg(args, input.keyword)
+      pushArg(args, input.model_source_path ? "registered" : undefined)
+      return {
+        icon: "boxes",
+        title:
+          input.action === "detail"
+            ? "Model Detail"
+            : input.action === "create"
+              ? "Register Model"
+              : input.action === "delete"
+                ? "Delete Model"
+                : "Models",
+        subtitle: input.keyword || input.name || input.model_id,
+        args,
+      }
+    }
+    case "inspire_notebook": {
+      const args: string[] = []
+      pushArg(args, input.compute_group)
+      pushArg(args, input.gpu_count ? `${input.gpu_count}× GPU` : undefined)
+      pushArg(args, input.priority)
+      return {
+        icon: "code",
+        title:
+          input.action === "start"
+            ? "Start Notebook"
+            : input.action === "stop"
+              ? "Stop Notebook"
+              : input.action === "create"
+                ? "Create Notebook"
+                : input.action === "detail"
+                  ? "Notebook Detail"
+                  : "Notebooks",
+        subtitle: input.name || input.notebook_id,
+        args,
+      }
+    }
     default:
       return {
         icon: "settings",
@@ -783,6 +1257,8 @@ export interface ToolProps {
   tool: string
   output?: string
   status?: string
+  raw?: string
+  charsReceived?: number
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
@@ -846,21 +1322,19 @@ function ToolAttachments(props: { attachments: FilePart[] }) {
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
-  const part = props.part as ToolPart
+  const part = () => props.part as ToolPart
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]
     if (!next || !next.tool) return undefined
-    if (next.tool!.callID !== part.callID) return undefined
+    if (next.tool!.callID !== part().callID) return undefined
     return next
   })
 
-  const emptyInput: Record<string, any> = {}
-  const emptyMetadata: Record<string, any> = {}
-
-  const throttledRaw = createThrottledValue(() =>
-    part.state.status === "pending" ? ((part.state as any).raw ?? "") : "",
-  )
+  const throttledRaw = createThrottledValue(() => {
+    const s = part().state
+    return s.status === "pending" ? s.raw : s.status === "generating" ? s.raw : ""
+  })
   const [streamInput, setStreamInput] = createStore<Record<string, any>>({})
   createEffect(() => {
     const raw = throttledRaw()
@@ -872,17 +1346,38 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const input = () => {
     const raw = throttledRaw()
     if (raw) return streamInput
-    return part.state?.input ?? emptyInput
+    return part().state?.input ?? {}
   }
-  // @ts-expect-error
-  const metadata = () => part.state?.metadata ?? emptyMetadata
+  // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
+  const metadata = () => part().state?.metadata ?? {}
 
-  const render = ToolRegistry.render(part.tool) ?? GenericTool
+  const render = createMemo(() => ToolRegistry.render(part().tool))
+
+  // Smoothly animate charsReceived so tool cards don't jump
+  const charsAnimated = createAnimatedNumber(() => {
+    const s = part().state
+    return s.status === "generating" ? (s as ToolStateGenerating).charsReceived : 0
+  })
+
+  // For unregistered tools (external agents, MCP, etc.), use SmartTool
+  // which classifies by semantic category for appropriate icon/title/subtitle
+  const fallbackRender = (p: any) => (
+    <SmartTool
+      tool={p.tool}
+      input={p.input}
+      output={p.output}
+      status={p.status}
+      metadata={p.metadata}
+      hideDetails={p.hideDetails}
+    />
+  )
+
+  const component = createMemo(() => render() ?? fallbackRender ?? GenericTool)
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
       <Switch>
-        <Match when={part.state.status === "error" && part.state.error}>
+        <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
           {(error) => {
             const cleaned = error().replace("Error: ", "")
             const [title, ...rest] = cleaned.split(": ")
@@ -908,13 +1403,15 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
         </Match>
         <Match when={true}>
           <Dynamic
-            component={render}
+            component={component()}
             input={input()}
-            tool={part.tool}
+            tool={part().tool}
             metadata={metadata()}
-            // @ts-expect-error
-            output={part.state.output}
-            status={part.state.status}
+            // @ts-expect-error — output exists on completed state
+            output={part().state.output}
+            status={part().state.status}
+            raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
+            charsReceived={charsAnimated()}
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}
           />
@@ -922,12 +1419,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       </Switch>
       <Show
         when={
-          part.tool !== "attach" &&
-          part.state.status === "completed" &&
-          (part.state as ToolStateCompleted).attachments?.length
+          part().tool !== "attach" &&
+          part().state.status === "completed" &&
+          (part().state as ToolStateCompleted).attachments?.length
         }
       >
-        <ToolAttachments attachments={(part.state as ToolStateCompleted).attachments!} />
+        <ToolAttachments attachments={(part().state as ToolStateCompleted).attachments!} />
       </Show>
     </div>
   )
@@ -937,13 +1434,22 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
   const part = props.part as TextPart
   const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
+  const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
   const isStreaming = () => sessionStatus()?.type === "busy"
+  const isCompleted = () =>
+    isRenderableTextPartCompleted(
+      messageParts(),
+      props.message as AssistantMessage,
+      part,
+      sessionStatus() as { type: string } | undefined,
+    )
 
   const typedText = createTypewriter({
     source: displayText,
     streaming: isStreaming,
+    completed: isCompleted,
   })
 
   return (
@@ -959,13 +1465,22 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
   const part = props.part as ReasoningPart
   const text = () => part.text.trim()
+  const messageParts = () => data.store.part[props.message.id]
 
   const sessionStatus = () => data.store.session_status[props.message.sessionID]
   const isStreaming = () => sessionStatus()?.type === "busy"
+  const isCompleted = () =>
+    isRenderableTextPartCompleted(
+      messageParts(),
+      props.message as AssistantMessage,
+      part,
+      sessionStatus() as { type: string } | undefined,
+    )
 
   const typedText = createTypewriter({
     source: text,
     streaming: isStreaming,
+    completed: isCompleted,
   })
 
   return (

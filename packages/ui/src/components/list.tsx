@@ -1,5 +1,5 @@
 import { type FilteredListProps, useFilteredList } from "../hooks"
-import { createEffect, createSignal, For, onCleanup, type JSX, on, Show } from "solid-js"
+import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon, type IconProps, type IconName } from "./icon"
 import { IconButton } from "./icon-button"
@@ -36,6 +36,25 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const { filter, grouped, flat, active, setActive, onKeyDown, onInput } = useFilteredList<T>(props)
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
+  let searchContainerRef: HTMLDivElement | undefined
+
+  onMount(() => {
+    if (searchProps().autofocus && searchContainerRef) {
+      const input = searchContainerRef.querySelector("input")
+      input?.focus({ preventScroll: true })
+    }
+  })
+
+  /** Scroll an element into view within the list's own scroll container only.
+   *  Unlike native scrollIntoView, this never cascades to ancestor scrollables. */
+  function scrollToItem(element: Element | null | undefined, behavior: ScrollBehavior = "auto") {
+    const container = scrollRef()
+    if (!element || !container) return
+    const containerRect = container.getBoundingClientRect()
+    const elementRect = element.getBoundingClientRect()
+    const offset = elementRect.top - containerRect.top - containerRect.height / 2 + elementRect.height / 2
+    container.scrollTo({ top: container.scrollTop + offset, behavior })
+  }
 
   createEffect(() => {
     if (props.filter !== undefined) {
@@ -67,8 +86,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     if (!props.current) return
     const key = props.key(props.current)
     requestAnimationFrame(() => {
-      const element = scrollRef()!.querySelector(`[data-key="${key}"]`)
-      element?.scrollIntoView({ block: "center" })
+      scrollToItem(scrollRef()!.querySelector(`[data-key="${key}"]`))
     })
   })
 
@@ -79,8 +97,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
       scrollRef()?.scrollTo(0, 0)
       return
     }
-    const element = scrollRef()?.querySelector(`[data-key="${active()}"]`)
-    element?.scrollIntoView({ block: "center", behavior: "smooth" })
+    scrollToItem(scrollRef()?.querySelector(`[data-key="${active()}"]`), "smooth")
   })
 
   createEffect(() => {
@@ -146,11 +163,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   return (
     <div data-component="list" classList={{ [props.class ?? ""]: !!props.class }}>
       <Show when={!!props.search}>
-        <div data-slot="list-search">
+        <div data-slot="list-search" ref={(el) => (searchContainerRef = el)}>
           <div data-slot="list-search-container">
             <Icon name="search" />
             <TextField
-              autofocus={searchProps().autofocus}
               variant="ghost"
               data-slot="list-search-input"
               type="text"

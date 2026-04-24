@@ -86,6 +86,11 @@ type EmailSettings = {
   smtpSecure: boolean
   smtpUsername: string
   smtpPassword: string
+  imapHost: string
+  imapPort: string
+  imapSecure: boolean
+  imapUsername: string
+  imapPassword: string
 }
 
 type AccountToggle = {
@@ -156,9 +161,8 @@ export function DialogSettings(props: DialogSettingsProps) {
     },
   )
 
-  const [providerModels] = createResource(async () => {
-    const res = await globalSDK.client.provider.list()
-    const data = res.data!
+  const providerModels = createMemo(() => {
+    const data = globalSync.data.provider
     const list: ProviderModel[] = []
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
@@ -226,11 +230,18 @@ export function DialogSettings(props: DialogSettingsProps) {
   const [identity, setIdentity] = createStore({
     evolution: "" as string,
     autonomy: "" as string,
+    memorySimThreshold: "" as string,
+    memoryTopK: "" as string,
+    experienceSimThreshold: "" as string,
+    experienceTopK: "" as string,
+    experienceEpsilon: "" as string,
   })
 
   const [advanced, setAdvanced] = createStore({
     compaction_auto: "" as string,
+    compaction_overflow_threshold: "" as string,
     permission: "" as string,
+    question_timeout: "" as string,
   })
 
   const [email, setEmail] = createStore<EmailSettings>({
@@ -242,6 +253,11 @@ export function DialogSettings(props: DialogSettingsProps) {
     smtpSecure: true,
     smtpUsername: "",
     smtpPassword: "",
+    imapHost: "",
+    imapPort: "",
+    imapSecure: true,
+    imapUsername: "",
+    imapPassword: "",
   })
 
   const [channels, setChannels] = createStore<ChannelSettings>({
@@ -313,12 +329,15 @@ export function DialogSettings(props: DialogSettingsProps) {
 
     setAdvanced({
       compaction_auto: cfg.compaction?.auto === undefined ? "" : cfg.compaction.auto ? "true" : "false",
+      compaction_overflow_threshold:
+        cfg.compaction?.overflowThreshold === undefined ? "" : String(cfg.compaction.overflowThreshold),
       permission: (() => {
         const permission = cfg.permission
         if (!permission) return ""
         if (typeof permission === "string") return permission
         return ""
       })(),
+      question_timeout: cfg.question?.timeout === undefined ? "" : String(cfg.question.timeout),
     })
 
     setEmail({
@@ -330,6 +349,11 @@ export function DialogSettings(props: DialogSettingsProps) {
       smtpSecure: cfg.email?.smtp?.secure ?? true,
       smtpUsername: cfg.email?.smtp?.username ?? "",
       smtpPassword: cfg.email?.smtp?.password ?? "",
+      imapHost: cfg.email?.imap?.host ?? "",
+      imapPort: cfg.email?.imap?.port === undefined ? "" : String(cfg.email.imap.port),
+      imapSecure: cfg.email?.imap?.secure ?? true,
+      imapUsername: cfg.email?.imap?.username ?? "",
+      imapPassword: cfg.email?.imap?.password ?? "",
     })
 
     const feishuAccounts = cfg.channel?.feishu?.accounts
@@ -343,9 +367,9 @@ export function DialogSettings(props: DialogSettingsProps) {
     })
 
     const ident = cfg.identity
+    const evolution = ident?.evolution
     setIdentity({
       evolution: (() => {
-        const evolution = ident?.evolution
         if (evolution === undefined) return ""
         if (typeof evolution === "boolean") return evolution ? "true" : "false"
         const passive = evolution.passive
@@ -354,6 +378,44 @@ export function DialogSettings(props: DialogSettingsProps) {
         return "true"
       })(),
       autonomy: ident?.autonomy === undefined ? "" : ident.autonomy ? "true" : "false",
+      memorySimThreshold: (() => {
+        const retrieve =
+          typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
+            ? evolution.active.retrieve
+            : undefined
+        return typeof retrieve === "object" && retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+      })(),
+      memoryTopK: (() => {
+        const retrieve =
+          typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
+            ? evolution.active.retrieve
+            : undefined
+        return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+      })(),
+      experienceSimThreshold: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+      })(),
+      experienceTopK: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+      })(),
+      experienceEpsilon: (() => {
+        const passive =
+          typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
+            ? evolution.passive
+            : undefined
+        const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+        return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : ""
+      })(),
     })
 
     initializedForSet = setName
@@ -479,10 +541,18 @@ export function DialogSettings(props: DialogSettingsProps) {
 
     const origCompaction = cfg.compaction
     const origAutoStr = origCompaction?.auto === undefined ? "" : origCompaction.auto ? "true" : "false"
-    if (advanced.compaction_auto !== origAutoStr) {
+    const origThresholdStr =
+      origCompaction?.overflowThreshold === undefined ? "" : String(origCompaction.overflowThreshold)
+    const compactionChanged =
+      advanced.compaction_auto !== origAutoStr || advanced.compaction_overflow_threshold !== origThresholdStr
+    if (compactionChanged) {
       const newCompaction: Record<string, unknown> = {}
       if (advanced.compaction_auto === "true") newCompaction.auto = true
       else if (advanced.compaction_auto === "false") newCompaction.auto = false
+      if (advanced.compaction_overflow_threshold !== "") {
+        const val = Number(advanced.compaction_overflow_threshold)
+        if (!isNaN(val) && val >= 0.5 && val <= 1) newCompaction.overflowThreshold = val
+      }
       patch.compaction = Object.keys(newCompaction).length > 0 ? newCompaction : undefined
     }
 
@@ -496,6 +566,15 @@ export function DialogSettings(props: DialogSettingsProps) {
       patch.permission = advanced.permission || undefined
     }
 
+    const origQuestionTimeout = cfg.question?.timeout === undefined ? "" : String(cfg.question.timeout)
+    if (advanced.question_timeout !== origQuestionTimeout) {
+      if (advanced.question_timeout === "") {
+        patch.question = undefined
+      } else {
+        patch.question = { timeout: Number(advanced.question_timeout) }
+      }
+    }
+
     const origEmail = JSON.stringify(cfg.email ?? {})
     const hasEmailFrom = email.fromAddress.trim() || email.fromName.trim()
     const hasEmailSmtp =
@@ -504,7 +583,14 @@ export function DialogSettings(props: DialogSettingsProps) {
       email.smtpUsername.trim() ||
       email.smtpPassword.trim() ||
       email.smtpSecure !== true
-    const shouldMaterializeEmail = hasEmailFrom || hasEmailSmtp || email.enabled !== true || cfg.email !== undefined
+    const hasEmailImap =
+      email.imapHost.trim() ||
+      email.imapPort.trim() ||
+      email.imapUsername.trim() ||
+      email.imapPassword.trim() ||
+      email.imapSecure !== true
+    const shouldMaterializeEmail =
+      hasEmailFrom || hasEmailSmtp || hasEmailImap || email.enabled !== true || cfg.email !== undefined
     const newEmail: Record<string, unknown> = {}
     if (shouldMaterializeEmail) {
       if (email.enabled !== true || cfg.email?.enabled !== undefined) {
@@ -523,6 +609,15 @@ export function DialogSettings(props: DialogSettingsProps) {
           secure: email.smtpSecure,
           ...(email.smtpUsername.trim() ? { username: email.smtpUsername.trim() } : {}),
           ...(email.smtpPassword.trim() ? { password: email.smtpPassword.trim() } : {}),
+        }
+      }
+      if (hasEmailImap) {
+        newEmail.imap = {
+          ...(email.imapHost.trim() ? { host: email.imapHost.trim() } : {}),
+          ...(email.imapPort.trim() ? { port: Number(email.imapPort) } : {}),
+          secure: email.imapSecure,
+          ...(email.imapUsername.trim() ? { username: email.imapUsername.trim() } : {}),
+          ...(email.imapPassword.trim() ? { password: email.imapPassword.trim() } : {}),
         }
       }
     }
@@ -553,14 +648,119 @@ export function DialogSettings(props: DialogSettingsProps) {
       return "true"
     })()
     const origAutonomyStr = origIdent?.autonomy === undefined ? "" : origIdent.autonomy ? "true" : "false"
-    if (identity.evolution !== origEvoStr || identity.autonomy !== origAutonomyStr) {
+
+    const origMemorySimThreshold = (() => {
+      const retrieve =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.active &&
+        typeof origIdent.evolution.active === "object"
+          ? origIdent.evolution.active.retrieve
+          : undefined
+      return typeof retrieve === "object" && retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+    })()
+    const origMemoryTopK = (() => {
+      const retrieve =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.active &&
+        typeof origIdent.evolution.active === "object"
+          ? origIdent.evolution.active.retrieve
+          : undefined
+      return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+    })()
+    const origExperienceSimThreshold = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : ""
+    })()
+    const origExperienceTopK = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.topK !== undefined ? String(retrieve.topK) : ""
+    })()
+    const origExperienceEpsilon = (() => {
+      const passive =
+        typeof origIdent?.evolution === "object" &&
+        origIdent.evolution?.passive &&
+        typeof origIdent.evolution.passive === "object"
+          ? origIdent.evolution.passive
+          : undefined
+      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : ""
+    })()
+
+    const identityChanged =
+      identity.evolution !== origEvoStr ||
+      identity.autonomy !== origAutonomyStr ||
+      identity.memorySimThreshold !== origMemorySimThreshold ||
+      identity.memoryTopK !== origMemoryTopK ||
+      identity.experienceSimThreshold !== origExperienceSimThreshold ||
+      identity.experienceTopK !== origExperienceTopK ||
+      identity.experienceEpsilon !== origExperienceEpsilon
+
+    if (identityChanged) {
       const newIdent: Record<string, unknown> = {}
       if (origIdent?.embedding) newIdent.embedding = origIdent.embedding
       if (origIdent?.rerank) newIdent.rerank = origIdent.rerank
 
       const evoVal = identity.evolution !== origEvoStr ? identity.evolution : origEvoStr
-      if (evoVal === "true") newIdent.evolution = true
-      else if (evoVal === "false") newIdent.evolution = false
+      if (evoVal === "true" || evoVal === "false") {
+        const evoBool = evoVal === "true"
+
+        const memoryRetrieve: Record<string, unknown> = {}
+        const memSim =
+          identity.memorySimThreshold !== origMemorySimThreshold ? identity.memorySimThreshold : origMemorySimThreshold
+        if (memSim !== "") {
+          const n = Number(memSim)
+          if (!isNaN(n)) memoryRetrieve.simThreshold = n
+        }
+        const memTopK = identity.memoryTopK !== origMemoryTopK ? identity.memoryTopK : origMemoryTopK
+        if (memTopK !== "") {
+          const n = Number(memTopK)
+          if (!isNaN(n) && n >= 1) memoryRetrieve.topK = n
+        }
+
+        const experienceRetrieve: Record<string, unknown> = {}
+        const expSim =
+          identity.experienceSimThreshold !== origExperienceSimThreshold
+            ? identity.experienceSimThreshold
+            : origExperienceSimThreshold
+        if (expSim !== "") {
+          const n = Number(expSim)
+          if (!isNaN(n)) experienceRetrieve.simThreshold = n
+        }
+        const expTopK = identity.experienceTopK !== origExperienceTopK ? identity.experienceTopK : origExperienceTopK
+        if (expTopK !== "") {
+          const n = Number(expTopK)
+          if (!isNaN(n) && n >= 1) experienceRetrieve.topK = n
+        }
+        const expEps =
+          identity.experienceEpsilon !== origExperienceEpsilon ? identity.experienceEpsilon : origExperienceEpsilon
+        if (expEps !== "") {
+          const n = Number(expEps)
+          if (!isNaN(n)) experienceRetrieve.epsilon = n
+        }
+
+        if (Object.keys(memoryRetrieve).length > 0 || Object.keys(experienceRetrieve).length > 0) {
+          const evoObj: Record<string, unknown> = {}
+          if (Object.keys(memoryRetrieve).length > 0) evoObj.active = { retrieve: memoryRetrieve }
+          if (Object.keys(experienceRetrieve).length > 0) evoObj.passive = { retrieve: experienceRetrieve }
+          newIdent.evolution = evoObj
+        } else {
+          newIdent.evolution = evoBool
+        }
+      } else {
+        newIdent.evolution = undefined
+      }
 
       const autoVal = identity.autonomy !== origAutonomyStr ? identity.autonomy : origAutonomyStr
       if (autoVal === "true") newIdent.autonomy = true
@@ -989,10 +1189,10 @@ export function DialogSettings(props: DialogSettingsProps) {
                   </div>
                 </div>
                 <Show
-                  when={providerModels()}
+                  when={providerModels().length > 0}
                   fallback={
                     <div class="ds-empty-state">
-                      <span>Loading models...</span>
+                      <span>No connected models found</span>
                     </div>
                   }
                 >
@@ -1002,7 +1202,7 @@ export function DialogSettings(props: DialogSettingsProps) {
                         label={role.label}
                         description={role.description}
                         value={models[role.key]}
-                        providers={groupByProvider(providerModels()!)}
+                        providers={groupByProvider(providerModels())}
                         onChange={(value: string) => setModels(role.key, value)}
                       />
                     )}
@@ -1123,6 +1323,26 @@ export function DialogSettings(props: DialogSettingsProps) {
                   }
                 />
 
+                <SectionLabel title="Question" />
+                <SettingRow
+                  title="Response Timeout"
+                  description="Auto-expire unanswered questions (0 = no timeout, default 30min)"
+                  trailing={
+                    <SegmentPill
+                      value={advanced.question_timeout}
+                      options={[
+                        { value: "", label: "Default" },
+                        { value: "0", label: "Never" },
+                        { value: "300", label: "5min" },
+                        { value: "600", label: "10min" },
+                        { value: "1800", label: "30min" },
+                        { value: "3600", label: "60min" },
+                      ]}
+                      onChange={(value) => setAdvanced("question_timeout", value)}
+                    />
+                  }
+                />
+
                 <SectionLabel title="Compaction" />
                 <SettingRow
                   title="Auto Compact"
@@ -1139,6 +1359,24 @@ export function DialogSettings(props: DialogSettingsProps) {
                     />
                   }
                 />
+                <SettingRow
+                  title="Overflow Threshold"
+                  description="Context usage fraction that triggers auto-compaction (0.5–1.0, default 0.85)"
+                  trailing={
+                    <SegmentPill
+                      value={advanced.compaction_overflow_threshold}
+                      options={[
+                        { value: "", label: "Default" },
+                        { value: "0.70", label: "70%" },
+                        { value: "0.80", label: "80%" },
+                        { value: "0.85", label: "85%" },
+                        { value: "0.90", label: "90%" },
+                        { value: "0.95", label: "95%" },
+                      ]}
+                      onChange={(value) => setAdvanced("compaction_overflow_threshold", value)}
+                    />
+                  }
+                />
 
                 <SectionLabel title="Email" />
                 <div class="ds-panel-card">
@@ -1146,14 +1384,14 @@ export function DialogSettings(props: DialogSettingsProps) {
                     <div>
                       <span class="text-13-medium text-text-base">Outgoing email</span>
                       <p class="text-12-regular text-text-weak mt-0.5">
-                        Configure SMTP here. If you need advanced or provider-specific fields, switch to the JSON
-                        editor.
+                        Configure SMTP for sending emails. If you need advanced or provider-specific fields, switch to
+                        the JSON editor.
                       </p>
                     </div>
                   </div>
                   <SettingRow
                     title="Enabled"
-                    description="Allow email sending for tools"
+                    description="Allow email sending and reading for tools"
                     trailing={<Switch checked={email.enabled} onChange={(value) => setEmail("enabled", value)} />}
                   />
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1200,6 +1438,47 @@ export function DialogSettings(props: DialogSettingsProps) {
                     trailing={<Switch checked={email.smtpSecure} onChange={(value) => setEmail("smtpSecure", value)} />}
                   />
                 </div>
+                <div class="ds-panel-card">
+                  <div class="ds-panel-card-header">
+                    <div>
+                      <span class="text-13-medium text-text-base">Incoming email</span>
+                      <p class="text-12-regular text-text-weak mt-0.5">
+                        Configure IMAP for reading emails. Leave empty to disable email reading.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <TextField
+                      label="IMAP Host"
+                      type="text"
+                      value={email.imapHost}
+                      onChange={(value) => setEmail("imapHost", value)}
+                    />
+                    <TextField
+                      label="IMAP Port"
+                      type="text"
+                      value={email.imapPort}
+                      onChange={(value) => setEmail("imapPort", value)}
+                    />
+                    <TextField
+                      label="IMAP Username"
+                      type="text"
+                      value={email.imapUsername}
+                      onChange={(value) => setEmail("imapUsername", value)}
+                    />
+                    <TextField
+                      label="IMAP Password"
+                      type="password"
+                      value={email.imapPassword}
+                      onChange={(value) => setEmail("imapPassword", value)}
+                    />
+                  </div>
+                  <SettingRow
+                    title="Use TLS/SSL"
+                    description="Controls the IMAP secure flag"
+                    trailing={<Switch checked={email.imapSecure} onChange={(value) => setEmail("imapSecure", value)} />}
+                  />
+                </div>
 
                 <SectionLabel title="Channels" />
                 <AccountToggleCard
@@ -1226,6 +1505,108 @@ export function DialogSettings(props: DialogSettingsProps) {
                     />
                   }
                 />
+                <Show when={identity.evolution === "true"}>
+                  <div class="ds-panel-card">
+                    <div class="ds-panel-card-header">
+                      <div>
+                        <span class="text-13-medium text-text-base">Recall Tuning</span>
+                        <p class="text-12-regular text-text-weak mt-0.5">
+                          Control how memories and experiences are injected into conversations
+                        </p>
+                      </div>
+                    </div>
+                    <SettingRow
+                      title="Memory Similarity"
+                      description="Minimum cosine similarity for contextual memory (default 0.7)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.memorySimThreshold}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0.5", label: "0.5" },
+                            { value: "0.6", label: "0.6" },
+                            { value: "0.7", label: "0.7" },
+                            { value: "0.8", label: "0.8" },
+                            { value: "0.9", label: "0.9" },
+                          ]}
+                          onChange={(value) => setIdentity("memorySimThreshold", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Memory per Category"
+                      description="Max contextual memories per category (default 3)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.memoryTopK}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "1", label: "1" },
+                            { value: "2", label: "2" },
+                            { value: "3", label: "3" },
+                            { value: "5", label: "5" },
+                            { value: "8", label: "8" },
+                          ]}
+                          onChange={(value) => setIdentity("memoryTopK", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Experience Similarity"
+                      description="Minimum cosine similarity for experience retrieval (default 0.7)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceSimThreshold}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0.5", label: "0.5" },
+                            { value: "0.6", label: "0.6" },
+                            { value: "0.7", label: "0.7" },
+                            { value: "0.8", label: "0.8" },
+                            { value: "0.9", label: "0.9" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceSimThreshold", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Experience Count"
+                      description="Number of past experiences to retrieve (default 8)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceTopK}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "3", label: "3" },
+                            { value: "5", label: "5" },
+                            { value: "8", label: "8" },
+                            { value: "10", label: "10" },
+                            { value: "15", label: "15" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceTopK", value)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      title="Exploration Rate"
+                      description="ε-greedy probability for experience exploration (default 0.1)"
+                      trailing={
+                        <SegmentPill
+                          value={identity.experienceEpsilon}
+                          options={[
+                            { value: "", label: "Default" },
+                            { value: "0", label: "0" },
+                            { value: "0.05", label: "0.05" },
+                            { value: "0.1", label: "0.1" },
+                            { value: "0.2", label: "0.2" },
+                            { value: "0.3", label: "0.3" },
+                          ]}
+                          onChange={(value) => setIdentity("experienceEpsilon", value)}
+                        />
+                      }
+                    />
+                  </div>
+                </Show>
                 <SettingRow
                   title="Autonomy"
                   description="Autonomous background routines like daily self-reflection and agenda planning"

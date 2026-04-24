@@ -35,6 +35,18 @@ export const StartCommand = cmd({
       return
     }
 
+    if (status.runtime === "unknown") {
+      UI.error("Another Synergy process is already active on the configured address")
+      UI.println(`  URL:       ${status.url}`)
+      if (status.detail) UI.println(`  Detail:    ${status.detail}`)
+      UI.println()
+      UI.println("  Next:")
+      UI.println("    Stop the other Synergy instance before starting the background service")
+      UI.println("    synergy status")
+      UI.println("    synergy stop")
+      process.exit(1)
+    }
+
     const interactive = !args.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
     // TODO: redesign CLI Holos login flow so it does not duplicate the Web UI Holos onboarding.

@@ -11,6 +11,7 @@ import { StickyAccordionHeader } from "@ericsanchezok/synergy-ui/sticky-accordio
 import { Code } from "@ericsanchezok/synergy-ui/code"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import type { AssistantMessage, Message, Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 interface SessionContextTabProps {
   messages: () => Message[]
@@ -26,28 +27,29 @@ export function SessionContextTab(props: SessionContextTabProps) {
   const ctx = createMemo(() => {
     const last = props.messages().findLast((x) => {
       if (x.role !== "assistant") return false
-      const total = x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
-      return total > 0
+      const input = ModelLimit.actualInput(x.tokens)
+      return input + x.tokens.output + x.tokens.reasoning > 0
     }) as AssistantMessage
     if (!last) return
 
     const provider = sync.data.provider.all.find((x) => x.id === last.providerID)
     const model = provider?.models[last.modelID]
-    const limit = model?.limit.context
+    const modelLimit = model?.limit
 
-    const input = last.tokens.input
+    const input = ModelLimit.actualInput(last.tokens)
     const output = last.tokens.output
     const reasoning = last.tokens.reasoning
     const cacheRead = last.tokens.cache.read
     const cacheWrite = last.tokens.cache.write
-    const total = input + output + reasoning + cacheRead + cacheWrite
-    const usage = limit ? Math.round((total / limit) * 100) : null
+    const total = input + output + reasoning
+    const usable = ModelLimit.usableInput(modelLimit)
+    const usage = usable > 0 ? Math.round((total / usable) * 100) : null
 
     return {
       message: last,
       provider,
       model,
-      limit,
+      limit: modelLimit?.context,
       input,
       output,
       reasoning,
@@ -137,21 +139,22 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
           if (msg.role === "user") {
             for (const part of parts) {
-              if (part.type === "text") out.user += part.text.length
-              if (part.type === "file") out.user += part.source?.text.value.length ?? 0
+              if (part.type === "text") out.user += part.text?.length ?? 0
+              if (part.type === "file") out.user += part.source?.text?.value?.length ?? 0
             }
             continue
           }
 
           if (msg.role === "assistant") {
             for (const part of parts) {
-              if (part.type === "text") out.assistant += part.text.length
-              if (part.type === "reasoning") out.assistant += part.text.length
+              if (part.type === "text") out.assistant += part.text?.length ?? 0
+              if (part.type === "reasoning") out.assistant += part.text?.length ?? 0
               if (part.type === "tool") {
-                out.tool += Object.keys(part.state.input).length * 16
-                if (part.state.status === "pending") out.tool += part.state.raw.length
-                if (part.state.status === "completed") out.tool += part.state.output.length
-                if (part.state.status === "error") out.tool += part.state.error.length
+                out.tool += Object.keys(part.state.input ?? {}).length * 16
+                if (part.state.status === "pending") out.tool += part.state.raw?.length ?? 0
+                if (part.state.status === "generating") out.tool += (part.state as { raw?: string }).raw?.length ?? 0
+                if (part.state.status === "completed") out.tool += part.state.output?.length ?? 0
+                if (part.state.status === "error") out.tool += part.state.error?.length ?? 0
               }
             }
           }

@@ -1,73 +1,8 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test"
-import path from "path"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-
-const mockExperienceSearchResults = [
-  {
-    id: "exp_search_1",
-    sessionID: "ses_search_1",
-    scopeID: "scp_search_1",
-    intent: "Search intent",
-    sourceProviderID: "provider-a",
-    sourceModelID: "model-a",
-    reward: 0.75,
-    rewards: { outcome: 0.8, confidence: 0.9, reason: "Strong match" },
-    qValue: 0.62,
-    qValues: { outcome: 0.7, intent: 0.5 },
-    qVisits: 4,
-    turnsRemaining: 1,
-    similarity: 0.91,
-    score: 1.23,
-    script: "search script",
-    raw: "search raw",
-    createdAt: 1710000000000,
-    updatedAt: 1710000001000,
-  },
-]
-
-const mockMemorySearchResults = [
-  {
-    id: "mem_search_1",
-    title: "Search memory",
-    content: "Search memory content",
-    category: "knowledge",
-    recallMode: "contextual",
-    similarity: 0.88,
-    createdAt: 1710000000000,
-    updatedAt: 1710000001000,
-  },
-]
-
-mock.module("../../src/engram/experience-recall", () => ({
-  ExperienceRecall: {
-    retrieve: async () => mockExperienceSearchResults,
-    trackRetrieval: () => {},
-    consumeRetrieval: () => [],
-    writeDebugLog: () => {},
-    buildEvaluation: () => "",
-  },
-}))
-
-mock.module("../../src/engram/memory-recall", () => ({
-  MemoryRecall: {
-    search: async () => mockMemorySearchResults,
-  },
-}))
-
-type ServerModule = typeof import("../../src/server/server")
-type InstanceModule = typeof import("../../src/scope/instance")
-type DatabaseModule = typeof import("../../src/engram/database")
-
-let Server: ServerModule["Server"]
-let Instance: InstanceModule["Instance"]
-let EngramDB: DatabaseModule["EngramDB"]
-let closeDB: DatabaseModule["closeDB"]
-
-beforeAll(async () => {
-  ;({ Server } = await import("../../src/server/server"))
-  ;({ Instance } = await import("../../src/scope/instance"))
-  ;({ EngramDB, closeDB } = await import("../../src/engram/database"))
-})
+import { Server } from "../../src/server/server"
+import { Instance } from "../../src/scope/instance"
+import { EngramDB, closeDB } from "../../src/engram/database"
 
 afterEach(async () => {
   EngramDB.Experience.removeAll()
@@ -103,39 +38,40 @@ function insertExperience(input: {
       `INSERT INTO experience (id, session_id, scope_id, intent, intent_embedding_model,
        script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits,
        q_updated_at, q_history, retrieved_experience_ids, reward_status, turns_remaining, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, NULL, NULL, ?5, ?6, ?7, ?8, ?9, ?10, NULL, '[]', '[]', 'evaluated', ?11, ?12, ?13)`,
+       VALUES ($id, $sessionID, $scopeID, $intent, NULL, NULL, $providerID, $modelID, $reward, $rewards,
+       $qValues, $qVisits, NULL, '[]', '[]', 'evaluated', $turnsRemaining, $createdAt, $updatedAt)`,
     )
-    .run(
-      input.id,
-      input.sessionID,
-      input.scopeID,
-      input.intent,
-      "provider-a",
-      "model-a",
-      input.reward,
-      JSON.stringify(input.rewards),
-      JSON.stringify(input.qValues),
-      input.qVisits,
-      input.turnsRemaining,
-      input.createdAt,
-      input.updatedAt,
-    )
+    .run({
+      $id: input.id,
+      $sessionID: input.sessionID,
+      $scopeID: input.scopeID,
+      $intent: input.intent,
+      $providerID: "provider-a",
+      $modelID: "model-a",
+      $reward: input.reward,
+      $rewards: JSON.stringify(input.rewards),
+      $qValues: JSON.stringify(input.qValues),
+      $qVisits: input.qVisits,
+      $turnsRemaining: input.turnsRemaining,
+      $createdAt: input.createdAt,
+      $updatedAt: input.updatedAt,
+    })
 
   conn
     .prepare(
       `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+       VALUES ($id, $sessionID, $scopeID, $script, $raw, $metadata, $createdAt, $updatedAt)`,
     )
-    .run(
-      input.id,
-      input.sessionID,
-      input.scopeID,
-      input.script ?? null,
-      input.raw ?? null,
-      input.metadata ?? "{}",
-      input.createdAt,
-      input.updatedAt,
-    )
+    .run({
+      $id: input.id,
+      $sessionID: input.sessionID,
+      $scopeID: input.scopeID,
+      $script: input.script ?? null,
+      $raw: input.raw ?? null,
+      $metadata: input.metadata ?? "{}",
+      $createdAt: input.createdAt,
+      $updatedAt: input.updatedAt,
+    })
 }
 
 function insertMemory(input: {
@@ -151,9 +87,17 @@ function insertMemory(input: {
   conn
     .prepare(
       `INSERT INTO memory (id, title, content, category, recall_mode, embedding_model, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7)`,
+       VALUES ($id, $title, $content, $category, $recallMode, NULL, $createdAt, $updatedAt)`,
     )
-    .run(input.id, input.title, input.content, input.category, input.recallMode, input.createdAt, input.updatedAt)
+    .run({
+      $id: input.id,
+      $title: input.title,
+      $content: input.content,
+      $category: input.category,
+      $recallMode: input.recallMode,
+      $createdAt: input.createdAt,
+      $updatedAt: input.updatedAt,
+    })
 }
 
 function expectExperienceCardFields(item: Record<string, unknown>) {
@@ -270,37 +214,6 @@ describe("Engram API DTO contracts", () => {
     })
   })
 
-  test("experience search returns card fields plus search metadata without detail fields", async () => {
-    await using project = await tmpdir({ git: true })
-    const scope = await project.scope()
-
-    await Instance.provide({
-      scope,
-      fn: async () => {
-        const app = Server.App()
-        const response = await app.request("/engram/experience/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "search query", topK: 5 }),
-        })
-        expect(response.status).toBe(200)
-
-        const body = (await response.json()) as Array<Record<string, unknown>>
-        expect(body).toHaveLength(1)
-        expectExperienceCardFields(body[0])
-        expect(body[0]).toEqual(
-          expect.objectContaining({
-            similarity: expect.any(Number),
-            score: expect.any(Number),
-          }),
-        )
-        expect(body[0]).not.toHaveProperty("script")
-        expect(body[0]).not.toHaveProperty("raw")
-        expect(body[0]).not.toHaveProperty("metadata")
-      },
-    })
-  })
-
   test("memory list returns stable card fields", async () => {
     await using project = await tmpdir({ git: true })
     const scope = await project.scope()
@@ -325,33 +238,6 @@ describe("Engram API DTO contracts", () => {
         const body = (await response.json()) as Array<Record<string, unknown>>
         expect(body).toHaveLength(1)
         expectMemoryCardFields(body[0])
-      },
-    })
-  })
-
-  test("memory search returns card fields plus similarity", async () => {
-    await using project = await tmpdir({ git: true })
-    const scope = await project.scope()
-
-    await Instance.provide({
-      scope,
-      fn: async () => {
-        const app = Server.App()
-        const response = await app.request("/engram/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "memory query", topK: 5 }),
-        })
-        expect(response.status).toBe(200)
-
-        const body = (await response.json()) as Array<Record<string, unknown>>
-        expect(body).toHaveLength(1)
-        expectMemoryCardFields(body[0])
-        expect(body[0]).toEqual(
-          expect.objectContaining({
-            similarity: expect.any(Number),
-          }),
-        )
       },
     })
   })

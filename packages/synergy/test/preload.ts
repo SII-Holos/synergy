@@ -22,6 +22,9 @@ process.env["SYNERGY_TEST_HOME"] = testHome
 const cacheDir = path.join(testHome, ".synergy", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "15")
+// Pre-create node_modules in global config dir so Config.installDependencies skips the await
+const globalConfigDir = path.join(testHome, ".synergy", "config")
+await fs.mkdir(path.join(globalConfigDir, "node_modules"), { recursive: true })
 const modelsCachePath = path.join(cacheDir, "models.json")
 try {
   const response = await fetch("https://models.dev/api.json", {
@@ -36,6 +39,11 @@ try {
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
+// Disable plugins and LSP download to avoid hangs in CI
+process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
+process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
+// Disable file watcher to avoid native module / inotify hangs in CI
+process.env["SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

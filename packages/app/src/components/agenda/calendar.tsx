@@ -120,17 +120,19 @@ function eventHeight(): number {
 }
 
 const TIME_EVENT_COLORS: Record<string, string> = {
-  active: "bg-surface-interactive-base/80 border-l-icon-interactive-base",
-  paused: "bg-icon-warning-base/20 border-l-icon-warning-base",
-  pending: "bg-surface-interactive-base/30 border-l-surface-interactive-base",
-  done: "bg-surface-inset-base border-l-text-weaker",
-  cancelled: "bg-text-diff-delete-base/15 border-l-text-diff-delete-base",
+  active:
+    "bg-surface-interactive-selected border border-border-interactive-base/20 border-l-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
+  paused: "bg-icon-warning-base/18 border border-icon-warning-base/15 border-l-icon-warning-base",
+  pending:
+    "bg-surface-interactive-selected-weak border border-border-interactive-base/12 border-l-border-interactive-base",
+  done: "bg-surface-inset-base/88 border border-border-base/35 border-l-text-weaker",
+  cancelled: "bg-text-diff-delete-base/12 border border-text-diff-delete-base/10 border-l-text-diff-delete-base",
 }
 
 const MONTH_DOT_COLORS: Record<string, string> = {
   active: "bg-icon-success-base",
   paused: "bg-icon-warning-base",
-  pending: "bg-surface-interactive-base",
+  pending: "bg-surface-interactive-solid",
   done: "bg-text-weaker",
   cancelled: "bg-text-diff-delete-base",
 }
@@ -271,37 +273,38 @@ function NavBar(props: {
   const labels: Record<ViewMode, string> = { day: "Day", week: "Week", month: "Month" }
 
   return (
-    <div class="flex items-center gap-1.5 px-3 py-2 border-b border-border-weaker-base/50 shrink-0">
+    <div class="flex items-center gap-2 px-3.5 py-3 rounded-[1.15rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] shrink-0">
       <button
         type="button"
-        class="px-2 py-0.5 rounded-md text-10-medium text-text-interactive-base bg-surface-interactive-base/10 hover:bg-surface-interactive-base/20 transition-colors"
+        class="px-2.5 py-1 rounded-full text-10-medium text-text-interactive-base bg-surface-interactive-selected ring-1 ring-inset ring-border-interactive-base/30 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-colors"
         onClick={props.onToday}
       >
         Today
       </button>
       <button
         type="button"
-        class="px-1 py-0.5 rounded text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+        class="size-7 flex items-center justify-center rounded-full text-text-weak hover:bg-surface-raised-base-hover transition-colors"
         onClick={props.onPrev}
       >
         ‹
       </button>
       <button
         type="button"
-        class="px-1 py-0.5 rounded text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+        class="size-7 flex items-center justify-center rounded-full text-text-weak hover:bg-surface-raised-base-hover transition-colors"
         onClick={props.onNext}
       >
         ›
       </button>
       <span class="text-11-medium text-text-strong flex-1 min-w-0 truncate">{props.title}</span>
-      <div class="flex items-center rounded-md bg-surface-inset-base overflow-hidden">
+      <div class="flex items-center rounded-[0.95rem] bg-surface-raised-base/92 p-0.75 ring-1 ring-inset ring-border-base/45 overflow-hidden shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
         <For each={modes}>
           {(mode) => (
             <button
               type="button"
               classList={{
-                "px-2 py-0.5 text-10-medium transition-colors": true,
-                "bg-surface-interactive-base/15 text-text-interactive-base": props.viewMode === mode,
+                "px-2.5 py-1 rounded-[0.8rem] text-10-medium transition-all": true,
+                "bg-surface-interactive-selected text-text-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
+                  props.viewMode === mode,
                 "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
               }}
               onClick={() => props.onViewModeChange?.(mode)}
@@ -327,10 +330,10 @@ function TimeGrid(props: {
   const colTemplate = () => `${TIME_COL}px repeat(${props.columns.length}, 1fr)`
 
   return (
-    <>
+    <div class="flex flex-1 min-h-0 flex-col overflow-hidden rounded-[1.15rem] bg-surface-raised-base/92 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
       <Show when={props.columns.length > 1}>
         <div
-          class="grid shrink-0 border-b border-border-weaker-base/50"
+          class="grid shrink-0 border-b border-border-weaker-base/45 bg-surface-inset-base/34"
           style={{ "grid-template-columns": colTemplate() }}
         >
           <div />
@@ -346,7 +349,8 @@ function TimeGrid(props: {
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-surface-interactive-base text-text-on-interactive-base": col.isToday,
+                    "bg-surface-interactive-solid text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(56,88,182,0.16)]":
+                      col.isToday,
                     "text-text-strong": !col.isToday,
                   }}
                 >
@@ -358,8 +362,11 @@ function TimeGrid(props: {
         </div>
       </Show>
 
-      <div ref={props.ref} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        <div class="grid relative" style={{ "grid-template-columns": colTemplate(), height: `${24 * HOUR_HEIGHT}px` }}>
+      <div ref={props.ref} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-b-[1.15rem]">
+        <div
+          class="grid relative bg-background-base/52"
+          style={{ "grid-template-columns": colTemplate(), height: `${24 * HOUR_HEIGHT}px` }}
+        >
           <div class="relative">
             <For each={HOURS}>
               {(h) => (
@@ -377,7 +384,7 @@ function TimeGrid(props: {
             {(col) => {
               const laid = createMemo(() => layoutOverlapping(props.eventsByDay.get(col.ts) ?? []))
               return (
-                <div class="relative border-l border-border-weaker-base/30">
+                <div class="relative border-l border-border-weaker-base/24 first:border-l-0">
                   <For each={HOURS}>
                     {(h) => (
                       <div
@@ -396,7 +403,7 @@ function TimeGrid(props: {
                       const leftPct = le.col * widthPct
                       return (
                         <div
-                          class={`absolute rounded-sm border-l-2 px-1 py-0.5 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${colors}`}
+                          class={`absolute rounded-[0.7rem] border-l-2 px-1.5 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${colors}`}
                           style={{
                             top: `${top}px`,
                             height: `${Math.max(height, 18)}px`,
@@ -439,7 +446,7 @@ function TimeGrid(props: {
           </Show>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -475,13 +482,13 @@ function MonthGrid(props: {
   })
 
   return (
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <div class="grid grid-cols-7 border-b border-border-weaker-base/50">
+    <div class="flex-1 min-h-0 overflow-y-auto rounded-[1.15rem] bg-surface-raised-base/92 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <div class="grid grid-cols-7 border-b border-border-weaker-base/45 bg-surface-inset-base/34">
         <For each={DAY_LABELS_SHORT}>
-          {(label) => <div class="py-1.5 text-center text-10-medium text-text-weaker">{label}</div>}
+          {(label) => <div class="py-2 text-center text-10-medium text-text-weaker">{label}</div>}
         </For>
       </div>
-      <div class="grid grid-cols-7">
+      <div class="grid grid-cols-7 bg-background-base/42">
         <For each={weeks()}>
           {(week) => (
             <For each={week}>
@@ -491,13 +498,13 @@ function MonthGrid(props: {
                 const overflow = createMemo(() => Math.max(0, events().length - MONTH_MAX_EVENTS))
                 return (
                   <div
-                    class="min-h-[72px] border-b border-r border-border-weaker-base/20 px-1 py-0.5 cursor-pointer hover:bg-surface-raised-base-hover/30 transition-colors"
+                    class="min-h-[78px] border-b border-r border-border-weaker-base/20 px-1.5 py-1 cursor-pointer hover:bg-surface-raised-base-hover/20 transition-colors"
                     onClick={() => props.onDateClick?.(cell.ts)}
                   >
                     <span
                       classList={{
                         "inline-flex items-center justify-center text-11-medium w-5 h-5 rounded-full mb-0.5": true,
-                        "bg-surface-interactive-base text-text-on-interactive-base": cell.isToday,
+                        "bg-surface-interactive-solid text-text-on-interactive-base": cell.isToday,
                         "text-text-strong": !cell.isToday && cell.isCurrentMonth,
                         "text-text-weaker/40": !cell.isToday && !cell.isCurrentMonth,
                       }}
@@ -508,7 +515,7 @@ function MonthGrid(props: {
                       <For each={visible()}>
                         {(event) => (
                           <div
-                            class="flex items-center gap-1 min-w-0 rounded px-0.5 hover:bg-surface-interactive-base/10 transition-colors"
+                            class="flex items-center gap-1 min-w-0 rounded-[0.45rem] px-1 py-0.5 hover:bg-surface-interactive-selected-weak transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
                               props.onEventClick?.(event)

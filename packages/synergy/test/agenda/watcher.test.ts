@@ -73,7 +73,11 @@ function makeItem(id: string, triggers: AgendaTypes.Trigger[], scopeID = "scope-
     id,
     status: "active",
     title: `Test item ${id}`,
+    global: false,
     triggers,
+    prompt: "test",
+    wake: true,
+    silent: false,
     origin: {
       scope: {
         type: "project",
@@ -101,12 +105,12 @@ function noop() {
 describe("register / unregister / active", () => {
   test("register with a poll trigger shows polls: 1, files: 0", () => {
     AgendaWatcher.register("item-1", "scope-1", [makePollTrigger({ command: "echo hi" })])
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 0, tools: 0 })
   })
 
   test("register with a file trigger shows polls: 0, files: 1", () => {
     AgendaWatcher.register("item-2", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 1 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 1, tools: 0 })
   })
 
   test("register with mixed triggers shows polls: 1, files: 1", () => {
@@ -114,7 +118,7 @@ describe("register / unregister / active", () => {
       makePollTrigger({ command: "echo hi" }),
       makeFileTrigger({ glob: "*.ts" }),
     ])
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1, tools: 0 })
   })
 
   test("register with non-watch triggers is ignored", () => {
@@ -123,7 +127,7 @@ describe("register / unregister / active", () => {
       { type: "every", interval: "30m" },
     ]
     AgendaWatcher.register("item-4", "scope-1", triggers)
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0, tools: 0 })
   })
 
   test("unregister removes all watches for an item", () => {
@@ -131,10 +135,10 @@ describe("register / unregister / active", () => {
       makePollTrigger({ command: "echo hi" }),
       makeFileTrigger({ glob: "*.ts" }),
     ])
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1, tools: 0 })
 
     AgendaWatcher.unregister("item-5")
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0, tools: 0 })
   })
 })
 
@@ -149,31 +153,31 @@ describe("start / stop lifecycle", () => {
       makeItem("item-b", [makeFileTrigger({ glob: "**/*.json" })]),
     ]
     AgendaWatcher.start(noop, items)
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1, tools: 0 })
   })
 
   test("start with items that have no watch triggers gives 0, 0", () => {
     const items = [makeItem("item-c", [{ type: "cron", expr: "0 9 * * *" }])]
     AgendaWatcher.start(noop, items)
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0, tools: 0 })
   })
 
   test("stop clears everything", () => {
     AgendaWatcher.start(noop, [makeItem("item-d", [makePollTrigger({ command: "echo d" })])])
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 0, tools: 0 })
 
     AgendaWatcher.stop()
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0, tools: 0 })
   })
 
   test("stop after start + manual registers clears all", () => {
     AgendaWatcher.start(noop, [])
     AgendaWatcher.register("item-e", "scope-1", [makePollTrigger({ command: "echo e" })])
     AgendaWatcher.register("item-f", "scope-1", [makeFileTrigger({ glob: "*.md" })])
-    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 1, files: 1, tools: 0 })
 
     AgendaWatcher.stop()
-    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0 })
+    expect(AgendaWatcher.active()).toEqual({ polls: 0, files: 0, tools: 0 })
   })
 })
 

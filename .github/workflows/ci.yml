@@ -27,6 +27,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -38,8 +39,13 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@synergy.dev"
+          git config --global user.name "CI Runner"
+
       - name: Run tests
-        run: bun test
+        run: bun test --timeout 30000
         working-directory: packages/synergy
 
   format:
@@ -77,7 +83,7 @@ jobs:
 
       - name: Start server and check health
         run: |
-          bun run packages/synergy/src/cli/index.ts server --port 4800 &
+          bun run packages/synergy/src/index.ts server --port 4800 &
           SERVER_PID=$!
 
           # Wait for server to be ready (max 30 seconds)

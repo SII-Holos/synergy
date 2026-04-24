@@ -5,6 +5,7 @@ import { Instance } from "../../src/scope/instance"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 import { Config } from "../../src/config/config"
+import { RuntimeReload } from "../../src/runtime/reload"
 
 // Helper to evaluate permission for a tool with wildcard pattern
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {
@@ -393,7 +394,7 @@ test("explore agent model follows mid_model after config reload", async () => {
         }),
       )
 
-      await Config.reload("project")
+      await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "test" })
 
       const after = await Agent.get("explore")
       expect(after?.model).toEqual({ providerID: "openai", modelID: "gpt-5-mini" })
@@ -409,6 +410,22 @@ test("default permission includes doom_loop allow and external_directory ask", a
       const master = await Agent.get("master")
       expect(evalPerm(master, "doom_loop")).toBe("allow")
       expect(evalPerm(master, "external_directory")).toBe("ask")
+    },
+  })
+})
+
+test("openclaw external agent is registered without model switching claims", async () => {
+  if (!Bun.which("openclaw")) {
+    console.log("Skipping: openclaw binary not available")
+    return
+  }
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const openclaw = await Agent.get("openclaw")
+      expect(openclaw?.external?.adapter).toBe("openclaw")
+      expect(openclaw?.external?.config?.modelSwitch).toBeUndefined()
     },
   })
 })

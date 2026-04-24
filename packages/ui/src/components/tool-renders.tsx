@@ -17,7 +17,29 @@ import { DiagramRenderer } from "./diagram"
 import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { ToolTextOutput } from "./tool-output-text"
-import { ToolRegistry, getToolInfo, getDirectory, getDiagnostics, DiagnosticsDisplay } from "./message-part"
+import {
+  ToolRegistry,
+  getToolInfo,
+  getQzToolInfo,
+  getDirectory,
+  getDiagnostics,
+  DiagnosticsDisplay,
+  type ToolProps,
+} from "./message-part"
+
+function generatingTrigger(
+  title: string,
+  input: Record<string, any>,
+  charsReceived?: number,
+): { title: string; subtitle: string; args: string[] } {
+  const filePath = input.filePath as string | undefined
+  const chars = charsReceived ? `${charsReceived.toLocaleString()} chars` : ""
+  return {
+    title,
+    subtitle: filePath ? getDirectory(filePath) + getFilename(filePath) : `Generating ${title.toLowerCase()}…`,
+    args: chars ? [chars] : [],
+  }
+}
 
 ToolRegistry.register({
   name: "read",
@@ -36,13 +58,13 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="glasses"
-        trigger={{
+        trigger={() => ({
           title: "Read",
           subtitle: props.input.filePath
             ? getDirectory(props.input.filePath) + getFilename(props.input.filePath)
             : undefined,
           args: rangeLabel() ? [rangeLabel()!] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -63,10 +85,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="folder"
-        trigger={{
+        trigger={() => ({
           title: "List",
           subtitle: props.input.path ? getDirectory(props.input.path) + getFilename(props.input.path) : undefined,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -88,11 +110,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="list"
-        trigger={{
+        trigger={() => ({
           title: "Sessions",
           subtitle: props.input.scope || "",
           args: count() != null ? [`${count()} session${count() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -113,10 +135,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="message-square"
-        trigger={{
+        trigger={() => ({
           title: "Read Session",
           subtitle: props.input.target || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -137,11 +159,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="quote"
-        trigger={{
+        trigger={() => ({
           title: "Search Sessions",
           subtitle: props.input.pattern || "",
           args: props.input.scope ? [props.input.scope] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -162,12 +184,38 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="share"
-        trigger={{
+        trigger={() => ({
           title: "Send Message",
           subtitle: props.input.target || "",
           args: props.input.role ? [props.input.role] : [],
-        }}
+        })}
       />
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "session_control",
+  render(props) {
+    const info = createMemo(() => getToolInfo("session_control", props.input, props.metadata))
+    return (
+      <BasicTool
+        {...props}
+        icon={info().icon}
+        trigger={() => ({
+          title: info().title,
+          subtitle: info().subtitle || "",
+          args: props.input.action ? [props.input.action] : [],
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -179,9 +227,9 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="user"
-        trigger={{
+        trigger={() => ({
           title: "Profile",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -202,10 +250,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="user"
-        trigger={{
+        trigger={() => ({
           title: "Update Profile",
           subtitle: props.input.name || "",
-        }}
+        })}
       />
     )
   },
@@ -218,12 +266,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
-        trigger={{
+        icon="compass"
+        trigger={() => ({
           title: "Agora Search",
           subtitle: props.input.keyword || "",
           args: count() != null ? [`${count()} post${count() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -243,11 +291,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
-        trigger={{
+        icon="glasses"
+        trigger={() => ({
           title: "Agora Read",
           subtitle: props.input.post_id || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -267,11 +315,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="users"
-        trigger={{
+        icon="megaphone"
+        trigger={() => ({
           title: "Agora Post",
           subtitle: props.input.title || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -286,65 +334,16 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agora_respond",
+  name: "agora_join",
   render(props) {
     return (
       <BasicTool
         {...props}
-        icon="users"
-        trigger={{
-          title: "Agora Respond",
-          subtitle: props.input.type || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "agora_clone",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="git-branch"
-        trigger={{
-          title: "Agora Clone",
-          subtitle: props.input.answer_id || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "agora_repo",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="folder"
-        trigger={{
-          title: "Agora Repo",
+        icon="log-in"
+        trigger={() => ({
+          title: "Agora Join",
           subtitle: props.input.post_id || "",
-          args: props.input.action ? [props.input.action] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -359,17 +358,88 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agora_git",
+  name: "agora_sync",
   render(props) {
     return (
       <BasicTool
         {...props}
-        icon="git-branch"
-        trigger={{
-          title: "Agora Git",
+        icon="arrow-down-to-line"
+        trigger={() => ({
+          title: "Agora Sync",
+          subtitle: props.input.directory || "",
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_submit",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="upload"
+        trigger={() => ({
+          title: "Agora Submit",
+          subtitle: props.input.comment || "",
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_accept",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="git-merge"
+        trigger={() => ({
+          title: "Agora Accept",
           subtitle: props.input.answer_id || "",
-          args: props.input.action ? [props.input.action] : [],
-        }}
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agora_comment",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="message-circle"
+        trigger={() => ({
+          title: "Agora Comment",
+          subtitle: props.input.post_id || "",
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -386,18 +456,18 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "grep",
   render(props) {
-    const args: string[] = []
-    if (props.input.pattern) args.push("pattern=" + props.input.pattern)
-    if (props.input.include) args.push("include=" + props.input.include)
     return (
       <BasicTool
         {...props}
         icon="search"
-        trigger={{
+        trigger={() => ({
           title: "Grep",
           subtitle: getDirectory(props.input.path || "/"),
-          args,
-        }}
+          args: [
+            ...(props.input.pattern ? ["pattern=" + props.input.pattern] : []),
+            ...(props.input.include ? ["include=" + props.input.include] : []),
+          ],
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -418,10 +488,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="search"
-        trigger={{
+        trigger={() => ({
           title: "Glob",
           subtitle: (props.input.pattern || "") as string,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -442,7 +512,8 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="mouse-pointer-2"
-        trigger={{
+        countdown={props.input.timeout ?? 30}
+        trigger={() => ({
           title: "Webfetch",
           subtitle: props.input.url || "",
           args: props.input.format ? ["format=" + props.input.format] : [],
@@ -451,7 +522,7 @@ ToolRegistry.register({
               <Icon name="arrow-up-right" size="small" />
             </div>
           ),
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -499,12 +570,12 @@ ToolRegistry.register({
           icon="list-todo"
           defaultOpen={true}
           hideDetails={summary().length === 0}
-          trigger={{
+          trigger={() => ({
             title: `${props.input.subagent_type || props.tool} Agent`,
             titleClass: "capitalize",
             subtitle: props.input.description,
             args: isBackground() ? ["background"] : [],
-          }}
+          })}
           onSubtitleClick={handleSubtitleClick}
         >
           <div
@@ -544,15 +615,22 @@ ToolRegistry.register({
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
+    const countdown = () => {
+      if (props.input.background) return undefined
+      const timeout = props.input.timeout ?? 120
+      const yieldS = props.input.yieldSeconds
+      return yieldS != null ? Math.min(timeout, yieldS) : timeout
+    }
     return (
       <BasicTool
         {...props}
         icon="terminal"
-        trigger={{
+        countdown={countdown()}
+        trigger={() => ({
           title: "Shell",
           subtitle: props.input.description,
           args: cmd() ? [cmd()!] : [],
-        }}
+        })}
       >
         <div data-component="tool-output" data-scrollable>
           <ToolTextOutput
@@ -576,25 +654,29 @@ ToolRegistry.register({
         {...props}
         icon="pen-line"
         trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Edit</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+          props.status === "generating" ? (
+            () => generatingTrigger("Edit", props.input, props.charsReceived)
+          ) : (
+            <div data-component="edit-trigger">
+              <div data-slot="message-part-title-area">
+                <div data-slot="message-part-title">Edit</div>
+                <div data-slot="message-part-path">
+                  <Show when={props.input.filePath?.includes("/")}>
+                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                  </Show>
+                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+                </div>
+              </div>
+              <div data-slot="message-part-actions">
+                <Show when={props.metadata.filediff}>
+                  <DiffChanges changes={props.metadata.filediff} />
                 </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
             </div>
-            <div data-slot="message-part-actions">
-              <Show when={props.metadata.filediff}>
-                <DiffChanges changes={props.metadata.filediff} />
-              </Show>
-            </div>
-          </div>
+          )
         }
       >
-        <Show when={props.metadata.filediff?.path || props.input.filePath}>
+        <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
           <div data-component="edit-content">
             <Dynamic
               component={diffComponent}
@@ -627,21 +709,25 @@ ToolRegistry.register({
         {...props}
         icon="text-select"
         trigger={
-          <div data-component="write-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Write</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+          props.status === "generating" ? (
+            () => generatingTrigger("Write", props.input, props.charsReceived)
+          ) : (
+            <div data-component="write-trigger">
+              <div data-slot="message-part-title-area">
+                <div data-slot="message-part-title">Write</div>
+                <div data-slot="message-part-path">
+                  <Show when={props.input.filePath?.includes("/")}>
+                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                  </Show>
+                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+                </div>
               </div>
+              <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
             </div>
-            <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
-          </div>
+          )
         }
       >
-        <Show when={props.input.content || props.input.filePath}>
+        <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
           <div data-component="write-content">
             <Dynamic
               component={codeComponent}
@@ -681,11 +767,11 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         icon="list-checks"
-        trigger={{
+        trigger={() => ({
           title: "To-dos",
           subtitle: firstTodo() || "",
           args: ratio() ? [ratio()] : [],
-        }}
+        })}
       >
         <Show when={props.input.todos?.length}>
           <div data-component="todos">
@@ -712,9 +798,9 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="list-checks"
-        trigger={{
+        trigger={() => ({
           title: "Read to-dos",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -732,7 +818,7 @@ ToolRegistry.register({
   name: "dagwrite",
   render(props) {
     const nodes = () =>
-      (props.metadata?.nodes ?? props.input.nodes ?? []) as {
+      (props.metadata?.nodes ?? props.input?.nodes ?? []) as {
         id: string
         content: string
         status: string
@@ -764,13 +850,13 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         icon="git-branch"
-        trigger={{
+        trigger={() => ({
           title: "DAG",
           subtitle: firstReady() || "",
           args: ratio() ? [ratio()] : [],
-        }}
+        })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>
@@ -798,13 +884,13 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         icon="git-branch"
-        trigger={{
+        trigger={() => ({
           title: "DAG",
           subtitle: "updated",
           args: ratio() ? [ratio()] : [],
-        }}
+        })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>
@@ -832,12 +918,12 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         icon="git-branch"
-        trigger={{
+        trigger={() => ({
           title: "Read DAG",
           args: ratio() ? [ratio()] : [],
-        }}
+        })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>
@@ -873,11 +959,11 @@ ToolRegistry.register({
         defaultOpen
         forceOpen
         icon="layout-grid"
-        trigger={{
+        trigger={() => ({
           title: "Diagram",
           subtitle: props.input.title || "",
           args: statsLabel() ? [statsLabel()] : [],
-        }}
+        })}
       >
         <Show
           when={doc()}
@@ -903,14 +989,20 @@ ToolRegistry.register({
   render(props) {
     const count = () => props.input.questions?.length ?? 0
     const answers = () => props.metadata?.answers as string[][] | undefined
+    const timedOut = () => props.metadata?.timedOut as boolean | undefined
+    const countdown = () => {
+      if (timedOut()) return undefined
+      return (props.metadata?.timeout ?? 1800) as number
+    }
     return (
       <BasicTool
         {...props}
         icon="message-circle"
-        trigger={{
-          title: "Questions",
-          subtitle: `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
-        }}
+        countdown={countdown()}
+        trigger={() => ({
+          title: timedOut() ? "Question Timed Out" : "Questions",
+          subtitle: timedOut() ? "No response received" : `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
+        })}
       >
         <Show when={props.input.questions?.length}>
           <div data-component="tool-output">
@@ -945,11 +1037,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="globe"
-        trigger={{
+        trigger={() => ({
           title: "Web Search",
           subtitle: props.input.query || "",
           args,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -978,15 +1070,20 @@ ToolRegistry.register({
       if (paths.length <= 3) return paths.map(getFilename).join(", ")
       return `${paths.length} files`
     }
+    const countdown = () => {
+      if (props.metadata?.timedOut) return undefined
+      return props.input.timeout ?? 120
+    }
     return (
       <BasicTool
         {...props}
         icon="eye"
-        trigger={{
-          title: "Look at",
+        countdown={countdown()}
+        trigger={() => ({
+          title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
           subtitle: props.input.goal || "",
           args: subtitle() ? [subtitle()] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1009,35 +1106,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="code"
-        trigger={{
+        trigger={() => ({
           title: "AST Search",
           subtitle: props.input.pattern || "",
           args,
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "codesearch",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        icon="code"
-        trigger={{
-          title: "Code Search",
-          subtitle: props.input.query || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1060,20 +1133,24 @@ ToolRegistry.register({
         {...props}
         icon="pen-line"
         trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Multi Edit</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+          props.status === "generating" ? (
+            () => generatingTrigger("Multi Edit", props.input, props.charsReceived)
+          ) : (
+            <div data-component="edit-trigger">
+              <div data-slot="message-part-title-area">
+                <div data-slot="message-part-title">Multi Edit</div>
+                <div data-slot="message-part-path">
+                  <Show when={props.input.filePath?.includes("/")}>
+                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                  </Show>
+                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )
         }
       >
-        <Show when={props.metadata.results}>
+        <Show when={props.status !== "generating" && props.metadata.results}>
           {(results) => {
             const lastResult = () => {
               const r = results()
@@ -1113,10 +1190,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="text-select"
-        trigger={{
+        trigger={() => ({
           title: "Patch",
-          subtitle: props.metadata.diff ? "Applied" : "",
-        }}
+          subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
+          args: props.status === "generating" && props.charsReceived ? [`${props.charsReceived} chunks`] : [],
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1140,11 +1218,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="server"
-        trigger={{
+        trigger={() => ({
           title: "LSP",
           subtitle: props.input.operation || "",
           args,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1165,10 +1243,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="sparkles"
-        trigger={{
+        trigger={() => ({
           title: "Skill",
           subtitle: props.input.name || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1189,10 +1267,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="file-text"
-        trigger={{
+        trigger={() => ({
           title: "arXiv Search",
           subtitle: props.input.query || "",
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1213,11 +1291,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="download"
-        trigger={{
+        trigger={() => ({
           title: "arXiv Download",
           subtitle: props.input.arxivId || "",
           args: props.input.outputPath ? [getFilename(props.input.outputPath)] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1251,15 +1329,20 @@ ToolRegistry.register({
       if (props.input.processId) result.push(shortId())
       return result
     }
+    const countdown = () => {
+      if (props.input.action !== "poll" || !props.input.block) return undefined
+      return props.input.timeout ?? 30
+    }
     return (
       <BasicTool
         {...props}
         icon="terminal"
-        trigger={{
+        countdown={countdown()}
+        trigger={() => ({
           title: "Process",
           subtitle: props.input.action || "",
           args: args(),
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1281,11 +1364,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="list-todo"
-        trigger={{
+        trigger={() => ({
           title: "Task List",
           subtitle: "Visible background tasks",
           args: count() != null ? [`${count()} task${count() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       />
     )
   },
@@ -1295,26 +1378,24 @@ ToolRegistry.register({
   name: "task_output",
   render(props) {
     const description = () => props.metadata.description as string | undefined
-    const timeout = () => props.metadata.timeout as number | undefined
     const shortId = () => {
       const id = props.input.task_id || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
-    const args = () => {
-      const parts: string[] = []
-      if (description()) parts.push(shortId())
-      if (timeout()) parts.push(`timeout: ${timeout()}s`)
-      return parts
+    const countdown = () => {
+      if (!props.input.block) return undefined
+      return props.input.timeout ?? 60
     }
     return (
       <BasicTool
         {...props}
         icon="list-todo"
-        trigger={{
+        countdown={countdown()}
+        trigger={() => ({
           title: "Task Output",
           subtitle: description() || shortId(),
-          args: args(),
-        }}
+          args: description() ? [shortId()] : [],
+        })}
       />
     )
   },
@@ -1332,11 +1413,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="x"
-        trigger={{
+        trigger={() => ({
           title: "Task Cancel",
           subtitle: description() || shortId(),
           args: description() ? [shortId()] : [],
-        }}
+        })}
       />
     )
   },
@@ -1350,11 +1431,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="brain"
-        trigger={{
+        trigger={() => ({
           title: "Memory Search",
           subtitle: props.input.query || "",
           args: count() != null ? [`${count()} result${count() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1382,11 +1463,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="brain"
-        trigger={{
+        trigger={() => ({
           title: "Memory Get",
           subtitle: idList(),
           args: count() != null ? [`${count()} found`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1413,11 +1494,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="brain"
-        trigger={{
+        trigger={() => ({
           title: "Memory Write",
           subtitle: props.input.title || props.metadata?.title || "",
           args: status() ? [status()!] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1439,11 +1520,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="brain"
-        trigger={{
+        trigger={() => ({
           title: "Memory Edit",
           subtitle: props.input.title || props.metadata?.title || "",
           args: edited() ? ["Updated"] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1466,11 +1547,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="notebook-pen"
-        trigger={{
+        trigger={() => ({
           title: "Notes",
           subtitle: scope(),
           args: total() != null ? [`${total()} note${total() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1502,10 +1583,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="notebook-pen"
-        trigger={{
+        trigger={() => ({
           title: "Read Note",
           subtitle: subtitle(),
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1537,11 +1618,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="notebook-pen"
-        trigger={{
+        trigger={() => ({
           title: "Note Search",
           subtitle: props.input.pattern || "",
           args: args(),
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1576,11 +1657,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="notebook-pen"
-        trigger={{
+        trigger={() => ({
           title: "Write Note",
           subtitle: noteTitle(),
           args: actionLabel() ? [actionLabel()] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1601,11 +1682,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="calendar-days"
-        trigger={{
+        trigger={() => ({
           title: "Create Agenda",
           subtitle: (props.metadata?.title || props.input.title || "") as string,
           args: props.metadata?.status ? [props.metadata.status as string] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1627,11 +1708,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="clipboard-list"
-        trigger={{
+        trigger={() => ({
           title: "Agenda",
           subtitle: props.input.status || "",
           args: count() != null ? [`${count()} item${count() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1652,11 +1733,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="refresh-ccw"
-        trigger={{
+        trigger={() => ({
           title: "Update Agenda",
           subtitle: (props.metadata?.title || props.input.id || "") as string,
           args: props.metadata?.status ? [props.metadata.status as string] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1677,10 +1758,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="trash-2"
-        trigger={{
+        trigger={() => ({
           title: "Delete Agenda",
           subtitle: (props.input.id || "") as string,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1701,10 +1782,10 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="zap"
-        trigger={{
+        trigger={() => ({
           title: "Trigger Agenda",
           subtitle: (props.input.id || "") as string,
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1726,11 +1807,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="clock"
-        trigger={{
+        trigger={() => ({
           title: "Agenda Logs",
           subtitle: (props.input.id || "") as string,
           args: total() != null ? [`${total()} run${total() === 1 ? "" : "s"}`] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1767,11 +1848,11 @@ ToolRegistry.register({
         {...props}
         icon="paperclip"
         defaultOpen
-        trigger={{
+        trigger={() => ({
           title: "Attach",
           subtitle: subtitle(),
           args: files().length ? [totalSize()] : [],
-        }}
+        })}
       >
         <Show when={props.status === "completed" && files().length}>
           <div data-component="tool-attachments">
@@ -1809,11 +1890,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="mail"
-        trigger={{
+        trigger={() => ({
           title: "Email",
           subtitle: recipients(),
           args: props.input.subject && recipients() ? [props.input.subject as string] : [],
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1854,11 +1935,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="cable"
-        trigger={{
+        trigger={() => ({
           title: "Connect",
           subtitle: props.input.envID || "",
           args: [statusLabel() || actionLabel()].filter(Boolean),
-        }}
+        })}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1908,11 +1989,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="refresh-ccw"
-        trigger={{
+        trigger={() => ({
           title: "Runtime Reload",
           subtitle: targetLabel() || (props.input.reason as string) || "",
           args: props.input.scope ? [props.input.scope as string] : [],
-        }}
+        })}
       >
         <div data-component="tool-output" data-scrollable>
           <Show
@@ -1928,3 +2009,96 @@ ToolRegistry.register({
     )
   },
 })
+
+// TODO: legacy qzcli tool registrations — remove when replaced by native inspire tools
+const qzToolNames = [
+  "qzcli_qz_auth_login",
+  "qzcli_qz_set_cookie",
+  "qzcli_qz_list_workspaces",
+  "qzcli_qz_refresh_resources",
+  "qzcli_qz_get_availability",
+  "qzcli_qz_list_jobs",
+  "qzcli_qz_get_job_detail",
+  "qzcli_qz_stop_job",
+  "qzcli_qz_get_usage",
+  "qzcli_qz_inspect_status_catalog",
+  "qzcli_qz_track_job",
+  "qzcli_qz_list_tracked_jobs",
+  "qzcli_qz_create_job",
+  "qzcli_qz_create_hpc_job",
+  "qzcli_qz_get_hpc_usage",
+] as const
+
+for (const name of qzToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getQzToolInfo(name, props.input, props.metadata)
+      if (!info) return undefined as any
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={() => ({
+            title: info.title,
+            subtitle: info.subtitle || "",
+            args: info.args || [],
+          })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}
+
+const inspireToolNames = [
+  "inspire_status",
+  "inspire_config",
+  "inspire_images",
+  "inspire_image_push",
+  "inspire_submit",
+  "inspire_submit_hpc",
+  "inspire_stop",
+  "inspire_jobs",
+  "inspire_job_detail",
+  "inspire_logs",
+  "inspire_metrics",
+  "inspire_inference",
+  "inspire_models",
+  "inspire_notebook",
+] as const
+
+for (const name of inspireToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getToolInfo(name, props.input, props.metadata)
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={() => ({
+            title: info.title,
+            subtitle: info.subtitle || "",
+            args: info.args || [],
+          })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}

@@ -67,21 +67,21 @@ export namespace Agenda {
     return item
   }
 
-  export async function update(itemID: string, patch: Parameters<typeof AgendaStore.update>[2]) {
-    const { scopeID } = await AgendaStore.find(itemID)
-    const item = await AgendaStore.update(scopeID, itemID, patch)
+  export async function update(itemID: string, patch: Parameters<typeof AgendaStore.update>[2], scopeID?: string) {
+    const resolved = scopeID ? await AgendaStore.findInScope(scopeID, itemID) : await AgendaStore.find(itemID)
+    const item = await AgendaStore.update(resolved.scopeID, itemID, patch)
     if (item.status === "active") {
-      syncItem(scopeID, item)
+      syncItem(resolved.scopeID, item)
     } else {
       teardownItem(item.id)
     }
     return item
   }
 
-  export async function remove(itemID: string) {
-    const { scopeID } = await AgendaStore.find(itemID)
+  export async function remove(itemID: string, scopeID?: string) {
+    const resolved = scopeID ? await AgendaStore.findInScope(scopeID, itemID) : await AgendaStore.find(itemID)
     teardownItem(itemID)
-    await AgendaStore.remove(scopeID, itemID)
+    await AgendaStore.remove(resolved.scopeID, itemID)
   }
 
   export async function trigger(itemID: string) {
@@ -102,9 +102,10 @@ export namespace Agenda {
     inflight.add(itemID)
     AgendaReactor.execute(signal, scopeID)
       .then((result) => {
-        if (result.nextRunAt !== undefined) {
-          AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
-        }
+        // Always rearm — even if nextRunAt is undefined, the clock entry
+        // should be cleared. For recurring triggers the reactor already
+        // computes a valid nextRunAt.
+        AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
       })
       .catch((err) => {
         log.error("manual trigger failed", { itemID, error: err instanceof Error ? err : new Error(String(err)) })

@@ -1,13 +1,14 @@
 import { AgendaTypes } from "./types"
 
 export namespace AgendaPrompt {
-  export function build(item: AgendaTypes.Item, signal: AgendaTypes.FiredSignal): string {
-    const prompt = item.task?.prompt ?? ""
-    const mode = item.task?.contextMode ?? "full"
+  export function build(
+    item: AgendaTypes.Item,
+    signal: AgendaTypes.FiredSignal,
+    contextMode: "full" | "signal",
+  ): string {
+    const prompt = item.prompt
 
-    if (mode === "none") return prompt
-
-    if (mode === "signal") {
+    if (contextMode === "signal") {
       const payload = formatSignalPayload(signal)
       return payload ? `${payload}\n${prompt}` : prompt
     }
@@ -20,7 +21,7 @@ export namespace AgendaPrompt {
       formatSignalPayload(signal),
       `<run number="${item.state.runCount + 1}" />`,
       formatLastRun(item.state),
-      formatSessionRefs(item.task?.sessionRefs),
+      formatSessionRefs(item.sessionRefs),
       "</agenda-context>",
       "",
       "<task>",
@@ -53,16 +54,28 @@ export namespace AgendaPrompt {
         case "delay":
           parts.push(`delay ${trigger.delay}`)
           break
-        case "watch":
-          if (trigger.watch.kind === "poll") {
-            const mode = trigger.watch.trigger === "match" ? `match /${trigger.watch.match}/` : "change"
-            parts.push(`poll "${trigger.watch.command}" every ${trigger.watch.interval ?? "1m"} (${mode})`)
-          } else {
-            const filter = trigger.watch.event ? ` on ${trigger.watch.event}` : ""
-            const debounce = trigger.watch.debounce ? ` (debounce ${trigger.watch.debounce})` : ""
-            parts.push(`file watch "${trigger.watch.glob}"${filter}${debounce}`)
+        case "watch": {
+          const w = trigger.watch
+          switch (w.kind) {
+            case "poll": {
+              const mode = w.trigger === "match" ? `match /${w.match}/` : "change"
+              parts.push(`poll "${w.command}" every ${w.interval ?? "1m"} (${mode})`)
+              break
+            }
+            case "file": {
+              const filter = w.event ? ` on ${w.event}` : ""
+              const debounce = w.debounce ? ` (debounce ${w.debounce})` : ""
+              parts.push(`file watch "${w.glob}"${filter}${debounce}`)
+              break
+            }
+            case "tool": {
+              const mode = w.trigger === "match" ? `match /${w.match}/` : "change"
+              parts.push(`tool "${w.tool}" every ${w.interval ?? "5m"} (${mode})`)
+              break
+            }
           }
           break
+        }
         case "webhook":
           parts.push("webhook")
           break

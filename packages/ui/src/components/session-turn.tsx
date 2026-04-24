@@ -17,6 +17,7 @@ import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, Pare
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
+import "./session-turn.css"
 import "./tool-renders"
 import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
@@ -43,6 +44,14 @@ function getInjectedContext(message: UserMessage | undefined): InjectedContext |
   if (!ctx) return undefined
   if (!ctx.memory && !ctx.experience) return undefined
   return ctx
+}
+
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  const seconds = date.getSeconds().toString().padStart(2, "0")
+  return `${hours}:${minutes}:${seconds}`
 }
 
 function same<T>(a: readonly T[], b: readonly T[]) {
@@ -351,7 +360,6 @@ export function SessionTurn(
     const msg = lastAssistantMessage()
     return titlecaseStatusLabel(msg?.agent ?? "Synergy")
   })
-
   const workingPhrase = createMemo(() =>
     computeWorkingPhrase({
       agentName: agentName(),
@@ -486,6 +494,9 @@ export function SessionTurn(
                             <h1>{msg().summary?.title}</h1>
                           </Match>
                         </Switch>
+                        <Show when={msg().time?.created}>
+                          <span data-slot="session-turn-title-timestamp">{formatTimestamp(msg().time.created)}</span>
+                        </Show>
                       </div>
                     </Show>
                     {/* Mailbox source annotation */}
@@ -668,8 +679,8 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    {/* Error (when steps collapsed) */}
-                    <Show when={error() && !props.stepsExpanded}>
+                    {/* Error (when expanded steps section is not showing it) */}
+                    <Show when={error() && !(working() || (props.stepsExpanded && hasSteps()))}>
                       <Card variant="error" class="error-card">
                         {error()?.data?.message as string}
                       </Card>

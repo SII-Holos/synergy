@@ -11,7 +11,6 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { Instance } from "../scope/instance"
-import { Flag } from "../flag/flag"
 import { SYNERGY_REFERER } from "../holos/constants"
 import { iife } from "@/util/iife"
 
@@ -473,6 +472,7 @@ export namespace Provider {
       }),
       limit: z.object({
         context: z.number(),
+        input: z.number().optional(),
         output: z.number(),
       }),
       status: z.enum(["alpha", "beta", "deprecated", "active"]),
@@ -535,6 +535,7 @@ export namespace Provider {
       },
       limit: {
         context: model.limit.context,
+        input: model.limit.input,
         output: model.limit.output,
       },
       capabilities: {
@@ -697,6 +698,7 @@ export namespace Provider {
           options: mergeDeep(existingModel?.options ?? {}, model.options ?? {}),
           limit: {
             context: model.limit?.context ?? existingModel?.limit?.context ?? 0,
+            input: model.limit?.input ?? existingModel?.limit?.input,
             output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
           },
           headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
@@ -827,7 +829,6 @@ export namespace Provider {
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]
-        if (model.status === "alpha" && !Flag.SYNERGY_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
         if (model.status === "deprecated") delete provider.models[modelID]
         if (
           (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
@@ -864,7 +865,7 @@ export namespace Provider {
 
   export async function reload() {
     log.info("reloading provider state")
-    await state.reset()
+    await state.resetAll()
     log.info("provider state reloaded")
   }
 
@@ -933,26 +934,97 @@ export namespace Provider {
 
       const customFetch = options["fetch"]
 
+      const DEFAULT_TIMEOUT_MS = 900_000
+
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        // Preserve custom fetch if it exists, wrap it with timeout logic
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
-        if (options["timeout"] !== undefined && options["timeout"] !== null) {
+        const timeoutMs = options["timeout"] === false ? false : (options["timeout"] ?? DEFAULT_TIMEOUT_MS)
+
+        let idleController: AbortController | null = null
+        let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+        if (timeoutMs !== false) {
+          idleController = new AbortController()
+          const resetIdle = () => {
+            if (idleTimer) clearTimeout(idleTimer)
+            idleTimer = setTimeout(() => {
+              idleController!.abort(
+                new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
+              )
+            }, timeoutMs as number)
+          }
+          resetIdle()
+
           const signals: AbortSignal[] = []
           if (opts.signal) signals.push(opts.signal)
-          if (options["timeout"] !== false) signals.push(AbortSignal.timeout(options["timeout"]))
+          signals.push(idleController.signal)
+          opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
 
-          const combined = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
-
-          opts.signal = combined
+          // Reset idle timer when the outer signal aborts (e.g. user cancel)
+          opts.signal?.addEventListener(
+            "abort",
+            () => {
+              if (idleTimer) clearTimeout(idleTimer)
+            },
+            { once: true },
+          )
         }
 
-        return fetchFn(input, {
+        const response = await fetchFn(input, {
           ...opts,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
         })
+
+        // For streaming responses, wrap the body to reset idle timer on each chunk
+        if (idleController && response.body) {
+          const originalBody = response.body
+          const resetIdle = () => {
+            if (idleTimer) clearTimeout(idleTimer)
+            idleTimer = setTimeout(() => {
+              idleController!.abort(
+                new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
+              )
+            }, timeoutMs as number)
+          }
+
+          const wrappedStream = new ReadableStream({
+            async start(controller) {
+              const reader = originalBody.getReader()
+              try {
+                while (true) {
+                  const { done, value } = await reader.read()
+                  if (done) {
+                    if (idleTimer) clearTimeout(idleTimer)
+                    controller.close()
+                    break
+                  }
+                  resetIdle()
+                  controller.enqueue(value)
+                }
+              } catch (err) {
+                if (idleTimer) clearTimeout(idleTimer)
+                controller.error(err)
+              } finally {
+                reader.releaseLock()
+              }
+            },
+            cancel() {
+              if (idleTimer) clearTimeout(idleTimer)
+              return originalBody.cancel()
+            },
+          })
+
+          return new Response(wrappedStream, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        return response
       }
 
       // Special case: google-vertex-anthropic uses a subpath import

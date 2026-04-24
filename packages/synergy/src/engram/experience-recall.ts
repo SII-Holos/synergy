@@ -4,6 +4,7 @@ import { Global } from "../global"
 import { Embedding } from "./embedding"
 import { EngramDB } from "./database"
 import { Config } from "../config/config"
+import { Intent } from "./intent"
 
 const log = Log.create({ service: "engram.experience-recall" })
 
@@ -88,9 +89,10 @@ export namespace ExperienceRecall {
       return []
     }
 
+    const knnRows = new Map(EngramDB.Experience.getMany(knnResults.map((k) => k.id)).map((r) => [r.id, r]))
     const candidates: Array<{ row: EngramDB.Experience.Row; similarity: number }> = []
     for (const knn of knnResults) {
-      const row = EngramDB.Experience.get(knn.id)
+      const row = knnRows.get(knn.id)
       if (!row) continue
       const similarity = 1 - knn.distance
       if (similarity < simThreshold) continue
@@ -126,9 +128,10 @@ export namespace ExperienceRecall {
     })
 
     const selected = epsilonGreedy(scored, topK, epsilon)
+    const valid = selected.filter((item) => Intent.isValid(item.row.intent))
 
     const results: Result[] = []
-    for (const item of selected) {
+    for (const item of valid) {
       const contentRow = EngramDB.Experience.getContent(item.row.id)
       const qv: Record<string, number> = JSON.parse(item.row.q_values)
       results.push({
@@ -153,7 +156,7 @@ export namespace ExperienceRecall {
       })
     }
 
-    log.info("phase B", { selected: results.length, topK, epsilon })
+    log.info("phase B", { selected: valid.length, topK, epsilon })
     return results
   }
 
@@ -213,10 +216,8 @@ export namespace ExperienceRecall {
     }
     const line = JSON.stringify(entry) + "\n"
     ;(async () => {
-      const prev = await Bun.file(DEBUG_LOG)
-        .text()
-        .catch(() => "")
-      await Bun.write(DEBUG_LOG, prev + line)
+      const { appendFile } = await import("fs/promises")
+      await appendFile(DEBUG_LOG, line)
     })().catch(() => {})
   }
 

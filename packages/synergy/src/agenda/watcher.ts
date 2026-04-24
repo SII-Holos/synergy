@@ -10,13 +10,16 @@ export namespace AgendaWatcher {
 
   type Handler = (signal: AgendaTypes.FiredSignal, scopeID: string) => Promise<void>
 
-  interface PollEntry {
+  interface ChangeDetector {
+    trigger: "change" | "match"
+    matchRegex?: RegExp
+    lastOutput?: string
+  }
+
+  interface PollEntry extends ChangeDetector {
     scopeID: string
     itemID: string
     command: string
-    trigger: "change" | "match"
-    match?: string
-    lastOutput?: string
     timer: Timer
   }
 
@@ -28,8 +31,17 @@ export namespace AgendaWatcher {
     debounceMs: number
   }
 
+  interface ToolEntry extends ChangeDetector {
+    scopeID: string
+    itemID: string
+    tool: string
+    args?: Record<string, unknown>
+    timer: Timer
+  }
+
   const polls = new Map<string, PollEntry[]>()
   const files = new Map<string, FileEntry[]>()
+  const tools = new Map<string, ToolEntry[]>()
   const debounceTimers = new Map<string, Timer>()
   let handler: Handler | null = null
   let globalBusHandler: ((event: { directory?: string; payload: unknown }) => void) | null = null
@@ -55,15 +67,19 @@ export namespace AgendaWatcher {
     GlobalBus.on("event", globalBusHandler)
 
     started = true
-    log.info("started", { polls: countPolls(), files: countFiles() })
+    log.info("started", { polls: countPolls(), files: countFiles(), tools: countTools() })
   }
 
   export function stop(): void {
     for (const entries of polls.values()) {
       for (const entry of entries) clearInterval(entry.timer)
     }
+    for (const entries of tools.values()) {
+      for (const entry of entries) clearInterval(entry.timer)
+    }
     polls.clear()
     files.clear()
+    tools.clear()
 
     for (const timer of debounceTimers.values()) clearTimeout(timer)
     debounceTimers.clear()
@@ -82,6 +98,7 @@ export namespace AgendaWatcher {
 
     const newPolls: PollEntry[] = []
     const newFiles: FileEntry[] = []
+    const newTools: ToolEntry[] = []
 
     for (const trigger of triggers) {
       if (trigger.type !== "watch") continue
@@ -94,7 +111,7 @@ export namespace AgendaWatcher {
           itemID,
           command: watch.command,
           trigger: watch.trigger,
-          match: watch.match,
+          matchRegex: watch.match ? new RegExp(watch.match) : undefined,
           lastOutput: undefined,
           timer: setInterval(() => executePoll(entry), intervalMs),
         }
@@ -108,11 +125,25 @@ export namespace AgendaWatcher {
           event: watch.event,
           debounceMs,
         })
+      } else if (watch.kind === "tool") {
+        const intervalMs = AgendaStore.parseDuration(watch.interval ?? "5m")
+        const entry: ToolEntry = {
+          scopeID,
+          itemID,
+          tool: watch.tool,
+          args: watch.args,
+          trigger: watch.trigger,
+          matchRegex: watch.match ? new RegExp(watch.match) : undefined,
+          lastOutput: undefined,
+          timer: setInterval(() => executeToolPoll(entry), intervalMs),
+        }
+        newTools.push(entry)
       }
     }
 
     if (newPolls.length > 0) polls.set(itemID, newPolls)
     if (newFiles.length > 0) files.set(itemID, newFiles)
+    if (newTools.length > 0) tools.set(itemID, newTools)
   }
 
   export function unregister(itemID: string): void {
@@ -120,6 +151,11 @@ export namespace AgendaWatcher {
     if (itemPolls) {
       for (const entry of itemPolls) clearInterval(entry.timer)
       polls.delete(itemID)
+    }
+    const itemTools = tools.get(itemID)
+    if (itemTools) {
+      for (const entry of itemTools) clearInterval(entry.timer)
+      tools.delete(itemID)
     }
     files.delete(itemID)
 
@@ -130,8 +166,8 @@ export namespace AgendaWatcher {
     }
   }
 
-  export function active(): { polls: number; files: number } {
-    return { polls: countPolls(), files: countFiles() }
+  export function active(): { polls: number; files: number; tools: number } {
+    return { polls: countPolls(), files: countFiles(), tools: countTools() }
   }
 
   function countPolls(): number {
@@ -143,6 +179,12 @@ export namespace AgendaWatcher {
   function countFiles(): number {
     let n = 0
     for (const entries of files.values()) n += entries.length
+    return n
+  }
+
+  function countTools(): number {
+    let n = 0
+    for (const entries of tools.values()) n += entries.length
     return n
   }
 
@@ -181,6 +223,19 @@ export namespace AgendaWatcher {
     debounceTimers.set(entry.itemID, timer)
   }
 
+  function shouldFire(entry: ChangeDetector, output: string): boolean {
+    if (entry.trigger === "change") {
+      const changed = entry.lastOutput !== undefined && entry.lastOutput !== output
+      entry.lastOutput = output
+      return changed
+    }
+    if (entry.trigger === "match") {
+      if (!entry.matchRegex) return false
+      return entry.matchRegex.test(output)
+    }
+    return false
+  }
+
   async function executePoll(entry: PollEntry): Promise<void> {
     if (!started || !handler) return
 
@@ -191,15 +246,7 @@ export namespace AgendaWatcher {
       clearTimeout(timeout)
       const trimmed = output.trim()
 
-      if (entry.trigger === "change") {
-        const changed = entry.lastOutput !== undefined && entry.lastOutput !== trimmed
-        entry.lastOutput = trimmed
-        if (!changed) return
-      } else if (entry.trigger === "match") {
-        if (!entry.match) return
-        const regex = new RegExp(entry.match)
-        if (!regex.test(trimmed)) return
-      }
+      if (!shouldFire(entry, trimmed)) return
 
       const signal: AgendaTypes.FiredSignal = {
         type: "watch",
@@ -211,6 +258,45 @@ export namespace AgendaWatcher {
     } catch (err) {
       log.error("poll execution failed", {
         itemID: entry.itemID,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+    }
+  }
+
+  async function executeToolPoll(entry: ToolEntry): Promise<void> {
+    if (!started || !handler) return
+
+    try {
+      const { ToolRegistry } = await import("../tool/registry")
+      const tool = await ToolRegistry.find(entry.tool)
+      if (!tool) {
+        log.error("tool not found for watch", { itemID: entry.itemID, tool: entry.tool })
+        return
+      }
+      const result = await tool.execute(entry.args ?? {}, {
+        sessionID: "",
+        messageID: "",
+        agent: "system",
+        abort: AbortSignal.timeout(30_000),
+        metadata: () => {},
+        ask: () => Promise.resolve(),
+      })
+      const output = typeof result === "string" ? result : JSON.stringify(result)
+      const trimmed = output.trim()
+
+      if (!shouldFire(entry, trimmed)) return
+
+      const signal: AgendaTypes.FiredSignal = {
+        type: "watch",
+        source: entry.itemID,
+        payload: { output: trimmed, tool: entry.tool },
+        timestamp: Date.now(),
+      }
+      await handler(signal, entry.scopeID)
+    } catch (err) {
+      log.error("tool poll execution failed", {
+        itemID: entry.itemID,
+        tool: entry.tool,
         error: err instanceof Error ? err : new Error(String(err)),
       })
     }

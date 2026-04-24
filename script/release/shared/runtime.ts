@@ -49,8 +49,8 @@ export function releaseEnv() {
   return { GH_TOKEN: process.env.SYNERGY_RELEASE_TOKEN || process.env.GITHUB_TOKEN || process.env.RELEASE_TOKEN || "" }
 }
 
-export function npmAuthFlag() {
-  return process.env.NPM_TOKEN ? `--//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}` : ""
+export function npmAuthArgs() {
+  return process.env.NPM_TOKEN ? [`--//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`] : []
 }
 
 export async function configureNpmAuth() {

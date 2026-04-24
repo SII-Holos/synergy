@@ -459,6 +459,18 @@ export namespace Config {
     .meta({ ref: "EmailSmtpConfig" })
   export type EmailSmtp = z.infer<typeof EmailSmtp>
 
+  export const EmailImap = z
+    .object({
+      host: z.string().optional().describe("IMAP server hostname"),
+      port: z.number().int().positive().optional().describe("IMAP server port"),
+      secure: z.boolean().optional().describe("Use TLS/SSL for the IMAP connection"),
+      username: z.string().optional().describe("IMAP username"),
+      password: z.string().optional().describe("IMAP password or app token"),
+    })
+    .strict()
+    .meta({ ref: "EmailImapConfig" })
+  export type EmailImap = z.infer<typeof EmailImap>
+
   export const EmailFrom = z
     .object({
       address: z.string().optional().describe("Sender email address"),
@@ -470,9 +482,10 @@ export namespace Config {
 
   export const Email = z
     .object({
-      enabled: z.boolean().optional().describe("Enable outgoing email features"),
+      enabled: z.boolean().optional().describe("Enable email features"),
       from: EmailFrom.optional().describe("Sender identity for outgoing emails"),
       smtp: EmailSmtp.optional().describe("SMTP transport settings for outgoing emails"),
+      imap: EmailImap.optional().describe("IMAP settings for reading emails"),
     })
     .strict()
     .meta({ ref: "EmailConfig" })
@@ -534,7 +547,6 @@ export namespace Config {
           question: PermissionAction.optional(),
           webfetch: PermissionAction.optional(),
           websearch: PermissionAction.optional(),
-          codesearch: PermissionAction.optional(),
           download: PermissionAction.optional(),
           lsp: PermissionRule.optional(),
           doom_loop: PermissionAction.optional(),
@@ -637,6 +649,19 @@ export namespace Config {
       ref: "AgentConfig",
     })
   export type Agent = z.infer<typeof Agent>
+
+  export const ExternalAgentConfig = z
+    .object({
+      disabled: z.boolean().optional().describe("Disable this external agent"),
+      path: z.string().optional().describe("Override path to the external agent binary"),
+      model: z.string().optional().describe("Default model for this external agent"),
+      auto_discover: z.boolean().optional().describe("Whether to auto-discover this agent on startup (default: true)"),
+    })
+    .catchall(z.unknown())
+    .meta({
+      ref: "ExternalAgentConfig",
+    })
+  export type ExternalAgentConfig = z.infer<typeof ExternalAgentConfig>
 
   export const Keybinds = z
     .object({
@@ -902,8 +927,8 @@ export namespace Config {
         .min(0)
         .max(1)
         .optional()
-        .describe("Minimum cosine similarity for retrieval candidates (default: 0.5)"),
-      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 5)"),
+        .describe("Minimum cosine similarity for retrieval candidates (default: 0.7)"),
+      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 8)"),
       epsilon: z.number().min(0).max(1).optional().describe("ε-greedy exploration probability (default: 0.1)"),
       wSim: z.number().min(0).max(1).optional().describe("Weight for similarity in hybrid score (default: 0.5)"),
       wQ: z.number().min(0).max(1).optional().describe("Weight for Q-value in hybrid score (default: 0.5)"),
@@ -942,8 +967,8 @@ export namespace Config {
   } as const satisfies Required<Learning>
 
   export const PASSIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.5,
-    topK: 5,
+    simThreshold: 0.7,
+    topK: 8,
     epsilon: 0.1,
     wSim: 0.5,
     wQ: 0.5,
@@ -998,11 +1023,11 @@ export namespace Config {
               simThreshold: z
                 .number()
                 .optional()
-                .describe("Default minimum similarity for auto-injection (default: 0.5)"),
+                .describe("Default minimum similarity for auto-injection (default: 0.7)"),
               topK: z
                 .number()
                 .optional()
-                .describe("Default maximum entries per category to contextually retrieve (default: 5)"),
+                .describe("Default maximum entries per category to contextually retrieve (default: 3)"),
               categories: z
                 .record(z.enum(MEMORY_CATEGORIES), CategoryRetrieveConfig)
                 .optional()
@@ -1042,8 +1067,8 @@ export namespace Config {
     .describe("Dual-mode evolution system: passive experience learning + active memory curation (default: true)")
 
   export const ACTIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.5,
-    topK: 5,
+    simThreshold: 0.7,
+    topK: 3,
   } as const
 
   export interface CategoryRetrieval {
@@ -1242,13 +1267,13 @@ export namespace Config {
                 .int()
                 .positive()
                 .describe(
-                  "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                  "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                 ),
               z.literal(false).describe("Disable timeout for this provider entirely."),
             ])
             .optional()
             .describe(
-              "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+              "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
             ),
         })
         .catchall(z.any())
@@ -1363,6 +1388,10 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration"),
+      external_agent: z
+        .record(z.string(), ExternalAgentConfig)
+        .optional()
+        .describe("External agent configurations (e.g. codex, claude-code)"),
       provider: z
         .record(z.string(), Provider)
         .optional()
@@ -1459,38 +1488,29 @@ export namespace Config {
 
         .optional()
         .describe("Agora Q&A platform configuration"),
+      question: z
+        .object({
+          timeout: z
+            .number()
+            .min(0)
+            .optional()
+            .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)"),
+        })
+        .optional(),
       compaction: z
         .object({
           auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),
           prune: z.boolean().optional().describe("Enable pruning of old tool outputs (default: true)"),
+          overflowThreshold: z
+            .number()
+            .min(0.5)
+            .max(1)
+            .optional()
+            .describe("Fraction of usable context that triggers auto-compaction (default: 0.85)"),
         })
         .optional(),
       experimental: z
         .object({
-          hook: z
-            .object({
-              file_edited: z
-                .record(
-                  z.string(),
-                  z
-                    .object({
-                      command: z.string().array(),
-                      environment: z.record(z.string(), z.string()).optional(),
-                    })
-                    .array(),
-                )
-                .optional(),
-              session_completed: z
-                .object({
-                  command: z.string().array(),
-                  environment: z.record(z.string(), z.string()).optional(),
-                })
-                .array()
-                .optional(),
-            })
-            .optional(),
-          chatMaxRetries: z.number().optional().describe("Number of retries for chat completions on failure"),
-          disable_paste_summary: z.boolean().optional(),
           batch_tool: z.boolean().optional().describe("Enable the batch tool"),
           openTelemetry: z
             .boolean()
@@ -1509,6 +1529,10 @@ export namespace Config {
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
         })
         .optional(),
+      pluginConfig: z
+        .record(z.string(), z.record(z.string(), z.any()))
+        .optional()
+        .describe("Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config."),
       category: z
         .record(z.string(), CategoryConfig)
         .optional()
@@ -1626,8 +1650,6 @@ export namespace Config {
     if (parsed.success) {
       if (!parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
-        const edits = modify(text, ["$schema"], CONFIG_SCHEMA, { formattingOptions })
-        await Bun.write(configFilepath, applyEdits(text, edits))
       }
       const data = parsed.data
       if (data.plugin) {
@@ -1715,107 +1737,22 @@ export namespace Config {
       .catch(() => ({}) as Info)
 
     global.reset()
-    await state.reset()
+    if (scope === "global") {
+      await state.resetAll()
+    } else {
+      await state.reset()
+    }
 
     const newConfig = await state().then((x) => x.config)
     const changedFields = diff(oldConfig, newConfig)
 
     if (changedFields.length > 0) {
       log.info("config reloaded", { scope, changedFields })
-
-      const fields = new Set(changedFields)
-
-      const providerChanged =
-        fields.has("provider") || fields.has("disabled_providers") || fields.has("enabled_providers")
-      if (providerChanged) {
-        const { Provider } = await import("../provider/provider")
-        await Provider.reload()
-      }
-
-      const roleModelChanged = [
-        "model",
-        "nano_model",
-        "mini_model",
-        "mid_model",
-        "thinking_model",
-        "long_context_model",
-        "creative_model",
-        "holos_friend_reply_model",
-        "vision_model",
-      ].some((field) => fields.has(field))
-      const agentChanged =
-        fields.has("agent") || fields.has("permission") || fields.has("identity") || roleModelChanged || providerChanged
-      if (agentChanged) {
-        const { Agent } = await import("../agent/agent")
-        await Agent.reload()
-      }
-
-      if (fields.has("identity")) {
-        const oldAutonomy = oldConfig.identity?.autonomy !== false
-        const newAutonomy = newConfig.identity?.autonomy !== false
-        if (oldAutonomy !== newAutonomy) {
-          const { AgendaBootstrap } = await import("../agenda/bootstrap")
-          await AgendaBootstrap.syncAnima(newAutonomy)
-        }
-      }
-
-      if (fields.has("plugin")) {
-        const { Plugin } = await import("../plugin")
-        await Plugin.reload()
-      }
-
-      if (fields.has("mcp")) {
-        const { MCP } = await import("../mcp")
-        await MCP.reload()
-      }
-
-      if (fields.has("lsp")) {
-        const { LSP } = await import("../lsp")
-        await LSP.reload()
-      }
-
-      if (fields.has("formatter")) {
-        const { Format } = await import("../file/format")
-        await Format.reload()
-      }
-
-      if (fields.has("watcher")) {
-        const { FileWatcher } = await import("../file/watcher")
-        await FileWatcher.reload()
-      }
-
-      if (fields.has("channel")) {
-        const { Channel } = await import("../channel")
-        await Channel.reload()
-      }
-
-      if (fields.has("holos")) {
-        const { HolosRuntime } = await import("../holos/runtime")
-        await HolosRuntime.reload()
-      }
-
-      if (fields.has("command") || fields.has("mcp")) {
-        const { Command } = await import("../skill/command")
-        await Command.reload()
-      }
-
-      if (fields.has("plugin") || fields.has("experimental")) {
-        const { ToolRegistry } = await import("../tool/registry")
-        await ToolRegistry.reload()
-      }
-
-      GlobalBus.emit("event", {
-        directory: Instance.directory,
-        payload: {
-          type: Event.Updated.type,
-          properties: { scope, changedFields },
-        },
-      })
     } else {
       log.info("config reloaded, no changes detected")
     }
 
-    return { config: newConfig, changedFields }
+    return { config: newConfig, changedFields, oldConfig }
   }
 
   async function patchFile(filepath: string, config: Info) {

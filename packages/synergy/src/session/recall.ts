@@ -15,6 +15,24 @@ export interface InjectionInfo {
 
 export const RECALL_TIMEOUT_MS = 15_000
 
+// ---------------------------------------------------------------------------
+// Session-level recall cache
+// ---------------------------------------------------------------------------
+
+const recallCache = new Map<string, { context: string; injection: InjectionInfo }>()
+
+export function cacheResult(sessionID: string, result: { context: string; injection: InjectionInfo }) {
+  recallCache.set(sessionID, result)
+}
+
+export function getCachedResult(sessionID: string): { context: string; injection: InjectionInfo } | undefined {
+  return recallCache.get(sessionID)
+}
+
+export function evictRecallCache(sessionID: string) {
+  recallCache.delete(sessionID)
+}
+
 export async function buildMemoryContext(
   sessionID: string,
   scopeID: string,
@@ -88,6 +106,52 @@ function formatRetrievedMemoryEntry(entry: MemoryRecall.Result): string {
   return `<entry title="${entry.title}" similarity="${entry.similarity.toFixed(3)}">\n${entry.content}\n</entry>`
 }
 
+function renderMemoryBlock(groupedEntries: Map<EngramDB.Memory.Category, string[]>): string | undefined {
+  const sections = [...groupedEntries.entries()]
+    .filter(([, entries]) => entries.length > 0)
+    .map(([category, entries]) => formatCategorySection(category, entries))
+  if (sections.length === 0) return undefined
+  return ["<active-memory>", ...sections, "</active-memory>"].join("\n")
+}
+
+function groupAlwaysRows(): Map<EngramDB.Memory.Category, string[]> {
+  const grouped = new Map<EngramDB.Memory.Category, string[]>()
+  for (const row of EngramDB.Memory.list({ recallModes: ["always"] })) {
+    const items = grouped.get(row.category) ?? []
+    items.push(formatStoredMemoryEntry(row))
+    grouped.set(row.category, items)
+  }
+  return grouped
+}
+
+const MEMORY_USAGE_HINT = [
+  "## Long-Term Memory",
+  "",
+  "Only memories marked `always` are injected every session, and only `contextual` memories are auto-retrieved semantically. Memories marked `search_only` are never auto-injected. Use `memory_search` when you need more context:",
+  "",
+  "- `memory_search`: Search for relevant memories by semantic similarity across long-term memory. Returns matching memory IDs and titles.",
+  "- `memory_get`: Retrieve the full content of specific memories by ID.",
+  "",
+  "When to search memory:",
+  "- Before making architectural or workflow decisions — check for established patterns or prior decisions",
+  "- When entering an unfamiliar coding or writing context — past sessions may contain relevant conventions",
+  "- When debugging or investigating recurring issues — similar situations may already be documented",
+  "- When you need to recall assets, knowledge, or personal context that was not auto-injected",
+  "",
+  "Be selective — don't search memory for every trivial task. Use it when past context would genuinely improve your response.",
+].join("\n")
+
+// ---------------------------------------------------------------------------
+// Always-only memory context — lightweight injection for child sessions
+// ---------------------------------------------------------------------------
+
+export function buildAlwaysOnlyMemoryContext(): string | undefined {
+  const grouped = groupAlwaysRows()
+  const block = renderMemoryBlock(grouped)
+  if (!block) return undefined
+  return [block, MEMORY_USAGE_HINT].join("\n\n")
+}
+
 async function buildActiveMemoryContext(
   userText: string | undefined,
   activeRetrieval: Config.ActiveRetrieval,
@@ -95,17 +159,12 @@ async function buildActiveMemoryContext(
 ): Promise<{ context: string; memoryBlock?: string }> {
   const parts: string[] = []
   const categories = Object.keys(activeRetrieval.categories) as EngramDB.Memory.Category[]
-  const groupedEntries = new Map<EngramDB.Memory.Category, string[]>()
+  const groupedEntries = groupAlwaysRows()
 
   const appendEntry = (category: EngramDB.Memory.Category, entry: string) => {
     const items = groupedEntries.get(category) ?? []
     items.push(entry)
     groupedEntries.set(category, items)
-  }
-
-  const alwaysRows = EngramDB.Memory.list({ recallModes: ["always"] })
-  for (const row of alwaysRows) {
-    appendEntry(row.category, formatStoredMemoryEntry(row))
   }
 
   if (activeRetrieval.enabled && userText) {
@@ -121,7 +180,12 @@ async function buildActiveMemoryContext(
             categories: [category],
             recallModes: ["contextual"],
           })
-          return results.filter((result) => result.similarity >= config.simThreshold)
+          const filtered = results.filter((result) => result.similarity >= config.simThreshold)
+          if (filtered.length > 0) {
+            const maxSim = Math.max(...filtered.map((r) => r.similarity))
+            if (maxSim < 0.5) return []
+          }
+          return filtered
         }),
       )
 
@@ -133,36 +197,10 @@ async function buildActiveMemoryContext(
     }
   }
 
-  const memorySections = categories.flatMap((category) => {
-    const entries = groupedEntries.get(category)
-    if (!entries || entries.length === 0) return []
-    return [formatCategorySection(category, entries)]
-  })
+  const memoryBlock = renderMemoryBlock(groupedEntries)
+  if (memoryBlock) parts.push(memoryBlock)
 
-  let memoryBlock: string | undefined
-  if (memorySections.length > 0) {
-    memoryBlock = ["<active-memory>", ...memorySections, "</active-memory>"].join("\n")
-    parts.push(memoryBlock)
-  }
-
-  parts.push(
-    [
-      "## Long-Term Memory",
-      "",
-      "Only memories marked `always` are injected every session, and only `contextual` memories are auto-retrieved semantically. Memories marked `search_only` are never auto-injected. Use `memory_search` when you need more context:",
-      "",
-      "- `memory_search`: Search for relevant memories by semantic similarity across long-term memory. Returns matching memory IDs and titles.",
-      "- `memory_get`: Retrieve the full content of specific memories by ID.",
-      "",
-      "When to search memory:",
-      "- Before making architectural or workflow decisions — check for established patterns or prior decisions",
-      "- When entering an unfamiliar coding or writing context — past sessions may contain relevant conventions",
-      "- When debugging or investigating recurring issues — similar situations may already be documented",
-      "- When you need to recall assets, knowledge, or personal context that was not auto-injected",
-      "",
-      "Be selective — don't search memory for every trivial task. Use it when past context would genuinely improve your response.",
-    ].join("\n"),
-  )
+  parts.push(MEMORY_USAGE_HINT)
 
   return { context: parts.join("\n\n"), memoryBlock }
 }

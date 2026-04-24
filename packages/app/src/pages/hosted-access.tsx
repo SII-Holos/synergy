@@ -381,9 +381,7 @@ function HostedAccessGate() {
     "h-[46px] w-full flex items-center justify-center rounded-xl bg-text-strong text-background-base font-sans text-[14px] font-medium shadow-sm transition-all hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
   return (
     <Switch>
-      <Match when={access()}>
-        {(resolvedAccess) => <AppWithAccess access={resolvedAccess()} />}
-      </Match>
+      <Match when={access()}>{(resolvedAccess) => <AppWithAccess access={resolvedAccess()} />}</Match>
       <Match when={view() === "error"}>
         <HostedShell title="Unable to continue" subtitle="Your workspace could not be prepared just yet.">
           <div class="flex flex-col gap-4">

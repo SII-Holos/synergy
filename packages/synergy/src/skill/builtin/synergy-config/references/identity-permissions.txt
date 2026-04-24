@@ -141,7 +141,6 @@ Permissions control tool access: allow, deny, or require approval.
     "webfetch": "allow",
     "websearch": "allow",
     "external_directory": "deny",
-    "codesearch": "allow",
     "download": "allow",
     "lsp": "allow",
     "doom_loop": "allow",
@@ -206,6 +205,46 @@ Top-level shorthand for all tools:
 ```
 
 Equivalent to setting all tools to `"allow"`.
+
+### Common permission patterns
+
+**Read-only agent** — can read and search but never modify:
+
+```jsonc
+{ "permission": { "edit": "deny", "write": "deny", "bash": "deny" } }
+```
+
+**Sandboxed execution** — bash allowed only for specific safe commands:
+
+```jsonc
+{ "permission": { "bash": { "*": "ask", "git status": "allow", "npm test": "allow", "bun test": "allow" } } }
+```
+
+**Protect sensitive files** — read everything except secrets:
+
+```jsonc
+{ "permission": { "read": { "*": "allow", ".env*": "deny", "*credentials*": "deny", "*.pem": "deny" } } }
+```
+
+**Full trust** — allow everything without asking:
+
+```jsonc
+{ "permission": "allow" }
+```
+
+**Source code only** — only edit source files, not config:
+
+```jsonc
+{ "permission": { "edit": { "*": "ask", "src/**": "allow", "test/**": "allow" }, "write": { "*": "ask", "src/**": "allow" } } }
+```
+
+### Troubleshooting
+
+- **Agent getting "permission denied"** — check both top-level and agent-level permissions; agent-level overrides top-level; check path-scoped rules (more specific patterns override `*`)
+- **Permission change not taking effect** — reload with `runtime_reload(target: "config")`; permission changes cascade to agent reload automatically
+- **"ask" prompts too frequent** — consider path-scoped rules to auto-allow safe patterns; use `*` as default with specific overrides
+- **Evolution/memory not working** — check `identity.autonomy` is not `false`; check `identity.evolution` is not `false`; for active evolution, ensure memory tools are not denied in permission
+- **Embedding/rerank errors** — verify API key and baseURL in `identity` section; check the model name matches what the provider expects; embedding failures are logged at startup
 
 ## Reload
 

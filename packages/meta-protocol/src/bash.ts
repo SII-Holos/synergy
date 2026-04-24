@@ -9,7 +9,7 @@ export namespace MetaProtocolBash {
     timeout: z.number().optional(),
     workdir: z.string().optional(),
     background: z.boolean().optional(),
-    yieldMs: z.number().optional(),
+    yieldSeconds: z.number().optional(),
   })
   export type ExecutePayload = z.infer<typeof ExecutePayload>
 

@@ -9,6 +9,8 @@ import PROMPT_REVIEW from "./command-template/review.txt"
 import PROMPT_COMMIT from "./command-template/commit.txt"
 import PROMPT_RMSLOP from "./command-template/rmslop.txt"
 import { MCP } from "../mcp"
+import { Skill } from "./skill"
+import { ConfigMarkdown } from "../config/markdown"
 import { Log } from "@/util/log"
 
 export namespace Command {
@@ -32,6 +34,7 @@ export namespace Command {
       agent: z.string().optional(),
       model: z.string().optional(),
       mcp: z.boolean().optional(),
+      source: z.enum(["command", "mcp", "skill"]).optional(),
       // workaround for zod not supporting async functions natively so we use getters
       // https://zod.dev/v4/changelog?id=zfunction
       template: z.promise(z.string()).or(z.string()),
@@ -143,6 +146,7 @@ export namespace Command {
       result[name] = {
         name,
         mcp: true,
+        source: "mcp",
         description: prompt.description,
         get template() {
           // since a getter can't be async we need to manually return a promise here
@@ -166,13 +170,29 @@ export namespace Command {
       }
     }
 
+    for (const skill of await Skill.all()) {
+      if (result[skill.name]) continue
+      result[skill.name] = {
+        name: skill.name,
+        description: skill.description,
+        source: "skill",
+        get template() {
+          if (skill.content) return skill.content
+          if (!skill.entryFile) return ""
+          // Lazy-load SKILL.md content for file-based skills
+          return ConfigMarkdown.parse(skill.entryFile).then((md) => md?.content ?? "")
+        },
+        hints: [],
+      }
+    }
+
     return result
   })
 
   export async function reload() {
     registerMcpSubscriptions()
     log.info("reloading command state")
-    await state.reset()
+    await state.resetAll()
     log.info("command state reloaded")
   }
 

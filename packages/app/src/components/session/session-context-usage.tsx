@@ -4,6 +4,7 @@ import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useParams } from "@solidjs/router"
 import { AssistantMessage } from "@ericsanchezok/synergy-sdk/client"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
@@ -33,16 +34,18 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const context = createMemo(() => {
     const last = messages().findLast((x) => {
       if (x.role !== "assistant") return false
-      const total = x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
-      return total > 0
+      const input = ModelLimit.actualInput(x.tokens)
+      return input + x.tokens.output + x.tokens.reasoning > 0
     }) as AssistantMessage
     if (!last) return
-    const total =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
+    const limit = model?.limit
+    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    const usable = ModelLimit.usableInput(limit)
     return {
       tokens: total.toLocaleString(),
-      percentage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
+      percentage: Math.round((total / usable) * 100),
     }
   })
 

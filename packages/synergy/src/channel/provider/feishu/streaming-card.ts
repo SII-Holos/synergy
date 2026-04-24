@@ -92,6 +92,10 @@ function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress
     return "✅ 已完成"
   }
 
+  if (state.toolProgress.some((item) => item.status === "generating")) {
+    return "📝 正在生成工具参数…"
+  }
+
   if (state.toolProgress.some((item) => item.status === "running" || item.status === "pending")) {
     return "🔧 正在使用工具…"
   }

@@ -6,6 +6,7 @@ interface SessionTimelineProps {
   messages: () => UserMessage[]
   currentMessage?: () => UserMessage | undefined
   onMessageSelect: (message: UserMessage) => void
+  bottomOffset?: () => number
 }
 
 const ITEM_HEIGHT = 28
@@ -15,7 +16,7 @@ export function SessionTimeline(props: SessionTimelineProps) {
   const [containerEl, setContainerEl] = createSignal<HTMLDivElement>()
 
   const messages = createMemo(() => props.messages())
-  const total = createMemo(() => messages().length)
+  const total = createMemo(() => messages()?.length ?? 0)
 
   const activeIndex = createMemo(() => {
     const activeId = props.currentMessage?.()?.id
@@ -88,10 +89,22 @@ export function SessionTimeline(props: SessionTimelineProps) {
     }
   }
 
+  const bottomOffset = createMemo(() => props.bottomOffset?.() ?? 0)
+
   return (
     <Show when={total() > 1}>
-      <div data-component="session-timeline" onWheel={handleWheel}>
-        <div ref={setContainerEl} data-slot="timeline-viewport">
+      <div
+        data-component="session-timeline"
+        onWheel={handleWheel}
+        style={{
+          top: bottomOffset() > 0 ? `calc(50% - ${bottomOffset() / 2}px)` : undefined,
+        }}
+      >
+        <div
+          ref={setContainerEl}
+          data-slot="timeline-viewport"
+          style={bottomOffset() > 0 ? { height: `calc(66vh - ${bottomOffset()}px)` } : undefined}
+        >
           <div ref={setTrackEl} data-slot="timeline-track">
             <div
               data-slot="timeline-rail"

@@ -39,12 +39,12 @@ export namespace AgendaBootstrap {
         const item = await AgendaStore.create(
           {
             title: "Anima daily wake",
+            prompt: "你醒了。",
             triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
-            task: {
-              prompt: "你醒了。",
-              agent: "anima",
-            },
-            delivery: { target: "silent" },
+            agent: "anima",
+            silent: true,
+            wake: false,
+            global: true,
             tags: ["system"],
             createdBy: "user",
           },
@@ -73,7 +73,7 @@ export namespace AgendaBootstrap {
    */
   export async function syncAnima(enabled: boolean): Promise<void> {
     const items = await AgendaStore.listAll()
-    const animaItems = items.filter((item) => item.task?.agent === "anima")
+    const animaItems = items.filter((item) => item.agent === "anima")
     if (animaItems.length === 0) return
 
     const { Agenda } = await import("./index")
@@ -91,7 +91,7 @@ export namespace AgendaBootstrap {
   async function enforceAnimaDisabled(): Promise<void> {
     const items = await AgendaStore.listAll()
     for (const item of items) {
-      if (item.task?.agent === "anima" && item.status === "active") {
+      if (item.agent === "anima" && item.status === "active") {
         await AgendaStore.update(item.origin.scope.id, item.id, { status: "paused" })
         AgendaClock.unload(item.id)
         AgendaWatcher.unregister(item.id)

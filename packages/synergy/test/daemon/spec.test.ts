@@ -4,6 +4,8 @@ import os from "os"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { DaemonSpec } from "../../src/daemon/spec"
+import { resetMigrations } from "../../src/migration"
+import { parse as parseJsonc } from "jsonc-parser"
 
 const originalEnv = { ...process.env }
 const originalArgv = [...process.argv]
@@ -17,6 +19,7 @@ describe("daemon.spec", () => {
     process.argv = [...originalArgv]
     await fs.mkdir(path.join(home, ".synergy", "config"), { recursive: true })
     Config.global.reset()
+    resetMigrations()
   })
 
   afterEach(async () => {
@@ -89,6 +92,90 @@ describe("daemon.spec", () => {
     expect(network.url).toBe("http://127.0.0.1:4500")
     expect(network.mdns).toBe(true)
     expect(network.cors).toEqual(["https://config.example", "https://argv.example"])
+  })
+
+  test("resolveNetwork migrates legacy channel holos config before reading config", async () => {
+    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "server": {
+    "hostname": "0.0.0.0",
+    "port": 4321
+  }
+}`,
+    )
+    Config.global.reset()
+
+    const network = await DaemonSpec.resolveNetwork()
+    expect(network.hostname).toBe("0.0.0.0")
+    expect(network.port).toBe(4321)
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.holos).toEqual({
+      enabled: true,
+      apiUrl: "https://www.holosai.io",
+      wsUrl: "wss://www.holosai.io",
+      portalUrl: "https://www.holosai.io",
+    })
+    expect(migrated.channel).toBeUndefined()
+  })
+
+  test("resolveNetwork removes legacy channel holos config when top-level holos already exists", async () => {
+    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "holos": {
+    "enabled": true,
+    "apiUrl": "https://api.holosai.io",
+    "wsUrl": "wss://api.holosai.io",
+    "portalUrl": "https://www.holosai.io"
+  },
+  "server": {
+    "port": 4321
+  }
+}`,
+    )
+    Config.global.reset()
+
+    const network = await DaemonSpec.resolveNetwork()
+    expect(network.port).toBe(4321)
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.holos).toEqual({
+      enabled: true,
+      apiUrl: "https://api.holosai.io",
+      wsUrl: "wss://api.holosai.io",
+      portalUrl: "https://www.holosai.io",
+    })
+    expect(migrated.channel).toBeUndefined()
   })
 
   test("inherits provider credentials without requiring config env declarations", async () => {

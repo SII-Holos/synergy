@@ -1,8 +1,13 @@
 import { sortBy, pipe } from "remeda"
 
 export namespace Wildcard {
-  export function match(str: string, pattern: string) {
-    const regex = new RegExp(
+  const regexCache = new Map<string, RegExp>()
+  const MAX_CACHE = 500
+
+  function getCachedRegex(pattern: string): RegExp {
+    let regex = regexCache.get(pattern)
+    if (regex) return regex
+    regex = new RegExp(
       "^" +
         pattern
           .replace(/[.+^${}()|[\]\\]/g, "\\$&") // escape special regex chars
@@ -11,7 +16,16 @@ export namespace Wildcard {
         "$",
       "s", // s flag enables multiline matching
     )
-    return regex.test(str)
+    if (regexCache.size >= MAX_CACHE) {
+      const first = regexCache.keys().next().value!
+      regexCache.delete(first)
+    }
+    regexCache.set(pattern, regex)
+    return regex
+  }
+
+  export function match(str: string, pattern: string) {
+    return getCachedRegex(pattern).test(str)
   }
 
   export function all(input: string, patterns: Record<string, any>) {

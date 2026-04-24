@@ -6,7 +6,7 @@ export namespace CortexConcurrency {
   const counts: Map<string, number> = new Map()
   const queues: Map<string, Array<() => void>> = new Map()
 
-  const DEFAULT_LIMIT = 5
+  const DEFAULT_LIMIT = 8
 
   export function getLimit(_key: string): number {
     return DEFAULT_LIMIT

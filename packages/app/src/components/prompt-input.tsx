@@ -39,7 +39,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { ToolbarSelectorPopover, ToolbarSelectorTrigger } from "@/components/toolbar-selector"
+import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { getAgentVisual } from "@/components/agent-visual"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { ModelSelectorPopover, DialogSelectModelUnpaid } from "@/components/dialog"
@@ -355,6 +356,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
+  })
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+  const currentAgent = createMemo(() => local.agent.current())
+  const currentAgentVisual = createMemo(() => getAgentVisual(currentAgent()))
+  const isCurrentAgentExternal = createMemo(() => !!currentAgent()?.external)
+  const isCurrentExternalModelLocked = createMemo(() => {
+    const external = currentAgent()?.external
+    if (!external) return false
+    if (!sessionHasMessages()) return false
+    return external.adapter === "codex"
   })
   const cortexRunning = createMemo(() => {
     const id = params.id
@@ -1434,6 +1448,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
     }
+    if (!session && params.id) {
+      await sync.session.sync(params.id)
+      session = info()
+    }
     if (!session) return
 
     const model = {
@@ -1763,6 +1781,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearInput()
     addOptimisticMessage()
 
+    const wsConnected = sdk.connected()
+
     client.session
       .promptAsync({
         sessionID: session.id,
@@ -1771,6 +1791,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         messageID,
         parts: requestParts,
         variant,
+      })
+      .then(() => {
+        if (!wsConnected) {
+          showToast({
+            title: "Message sent",
+            description: "Response will appear after reconnection",
+          })
+        }
       })
       .catch((err) => {
         showToast({
@@ -1785,7 +1813,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
-        <QuickActions onSend={sendQuickAction} onCommand={(id) => command.trigger(id)} disabled={working()} />
+        <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+          <Tooltip placement="top" value={layout.terminal.opened() ? "Hide terminal" : "Open terminal"}>
+            <button
+              type="button"
+              classList={{
+                "flex items-center justify-center size-6 rounded-full border active:scale-90 transition-all shadow-xs": true,
+                "bg-surface-raised-stronger-non-alpha border-border-base text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover":
+                  !layout.terminal.opened(),
+                "bg-surface-raised-base-hover border-border-weak-base text-icon-base": layout.terminal.opened(),
+              }}
+              onClick={() => layout.terminal.toggle()}
+            >
+              <Icon name={layout.terminal.opened() ? "crosshair" : "radar"} size="small" />
+            </button>
+          </Tooltip>
+          <QuickActions
+            class="relative"
+            onSend={sendQuickAction}
+            onCommand={(id) => command.trigger(id)}
+            disabled={working()}
+          />
+        </div>
       </Show>
       <Show when={store.popover}>
         <div
@@ -2076,58 +2125,109 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <TooltipKeybind placement="top" title="Cycle agent" keybind={command.keybind("agent.cycle")}>
                       <ToolbarSelectorPopover
                         trigger={
-                          <ToolbarSelectorTrigger
-                            icon="bot"
-                            label={(local.agent.current()?.name ?? "Agent").replace(/^./, (c) => c.toUpperCase())}
-                          />
+                          <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                          >
+                            <span>{currentAgentVisual().label}</span>
+                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                          </button>
                         }
                         title="Select agent"
+                        contentClass="w-52 max-h-80"
                       >
                         {(close) => (
                           <List
                             class="p-1"
-                            items={local.agent.list().filter((a) => !a.hidden && a.mode !== "primary")}
-                            current={local.agent.current()}
+                            items={local.agent.list().filter((a) => !a.hidden)}
                             key={(x) => x.name}
                             filterKeys={["name"]}
                             onSelect={(x) => {
-                              if (x) local.agent.set(x.name)
+                              if (!x) return
+                              if (sessionHasMessages() && x.external) return
+                              local.agent.set(x.name)
                               close()
                             }}
                           >
-                            {(agent) => <span class="text-13-regular capitalize">{agent.name}</span>}
+                            {(agent) => {
+                              const visual = getAgentVisual(agent)
+                              return (
+                                <Tooltip
+                                  placement="right"
+                                  value={
+                                    sessionHasMessages() && agent.external
+                                      ? "Create a new session to use this external agent"
+                                      : undefined
+                                  }
+                                >
+                                  <div
+                                    classList={{
+                                      "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                      "opacity-45": sessionHasMessages() && !!agent.external,
+                                    }}
+                                  >
+                                    <div class="min-w-0">
+                                      <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                    </div>
+                                  </div>
+                                </Tooltip>
+                              )
+                            }}
                           </List>
                         )}
                       </ToolbarSelectorPopover>
                     </TooltipKeybind>
                     <Show
-                      when={providers.paid().length > 0}
+                      when={!isCurrentExternalModelLocked()}
                       fallback={
-                        <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
+                        <Tooltip
+                          placement="top"
+                          value="Model is locked for this external agent after the session starts"
+                        >
                           <button
                             type="button"
-                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
-                            onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base transition-colors text-12-medium text-text-subtle cursor-default opacity-60"
                           >
-                            <Icon name="sparkles" size="small" class="text-icon-base" />
-                            <span>{local.model.current()?.name ?? "Select model"}</span>
-                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            <span>{local.model.current()?.name ?? "Model locked"}</span>
                           </button>
-                        </TooltipKeybind>
+                        </Tooltip>
                       }
                     >
-                      <ModelSelectorPopover>
-                        <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                      <Show
+                        when={providers.paid().length > 0}
+                        fallback={
+                          <TooltipKeybind
+                            placement="top"
+                            title="Choose model"
+                            keybind={command.keybind("model.choose")}
                           >
-                            <Icon name="sparkles" size="small" class="text-icon-base" />
-                            <span>{local.model.current()?.name ?? "Select model"}</span>
-                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
-                          </button>
-                        </TooltipKeybind>
-                      </ModelSelectorPopover>
+                            <button
+                              type="button"
+                              class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                              onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                            >
+                              <span>{local.model.current()?.name ?? "Select model"}</span>
+                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            </button>
+                          </TooltipKeybind>
+                        }
+                      >
+                        <ModelSelectorPopover>
+                          <TooltipKeybind
+                            placement="top"
+                            title="Choose model"
+                            keybind={command.keybind("model.choose")}
+                          >
+                            <button
+                              type="button"
+                              class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                            >
+                              <span>{local.model.current()?.name ?? "Select model"}</span>
+                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                            </button>
+                          </TooltipKeybind>
+                        </ModelSelectorPopover>
+                      </Show>
                     </Show>
                     <Show when={local.model.variant.list().length > 0}>
                       <TooltipKeybind
@@ -2205,6 +2305,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   e.currentTarget.value = ""
                 }}
               />
+              <Show when={!sdk.connected()}>
+                <Tooltip placement="top" value="Connection lost — responses may be delayed">
+                  <div class="flex items-center justify-center size-5">
+                    <Icon name="signal" size="small" class="text-icon-warning-base animate-pulse" />
+                  </div>
+                </Tooltip>
+              </Show>
               <Tooltip
                 placement="top"
                 inactive={!prompt.dirty() && !working()}

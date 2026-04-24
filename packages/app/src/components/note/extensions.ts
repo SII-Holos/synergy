@@ -1,4 +1,6 @@
-import { type CommandProps, type Editor, Node, mergeAttributes } from "@tiptap/core"
+import { type CommandProps, type Editor, Extension, Node, mergeAttributes } from "@tiptap/core"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
+import { CellSelection, tableEditingKey } from "@tiptap/pm/tables"
 import { FileHandler } from "@tiptap/extension-file-handler"
 import mermaid from "mermaid"
 
@@ -14,6 +16,75 @@ declare module "@tiptap/core" {
 }
 
 mermaid.initialize({ startOnLoad: false, theme: "neutral" })
+
+const crossCellSelectionKey = new PluginKey("crossCellSelection")
+
+/**
+ * Fixes cross-cell drag selection in tables.
+ *
+ * When the user drags a text selection across table cells, ProseMirror initially
+ * creates a TextSelection spanning the drag range. prosemirror-tables' normalizeSelection
+ * (in tableEditing's appendTransaction) detects this and compresses it back to the first
+ * cell via `TextSelection.create(doc, $from.start(), $from.end())`.
+ *
+ * This extension uses filterTransaction to block that specific compression. With the
+ * compression blocked, the native TextSelection persists momentarily, and
+ * handleMouseDown$1's mousemove handler (also in prosemirror-tables) then converts
+ * it to a proper CellSelection once the mouse enters a different cell.
+ */
+export const CrossCellSelection = Extension.create({
+  name: "crossCellSelection",
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: crossCellSelectionKey,
+        filterTransaction(tr, state) {
+          // Only intercept transactions from tableEditing's appendTransaction
+          // (identified by the selectingCells meta key)
+          if (tr.getMeta(tableEditingKey) == null) return true
+          // Never block transactions that fix document structure
+          if (tr.docChanged) return true
+
+          const prevSel = state.selection
+          const nextSel = tr.selection
+
+          // Allow CellSelection changes
+          if (nextSel instanceof CellSelection) return true
+          // Allow if previous selection was already empty
+          if (prevSel.empty) return true
+          // Allow if selection wasn't changed by this transaction
+          if (prevSel.eq(nextSel)) return true
+
+          // normalizeSelection compresses cross-cell TextSelection:
+          //   isTextSelectionAcrossCells → TextSelection.create(doc, $from.start(), $from.end())
+          // This means: the new selection is entirely within the first cell.
+          // Detect this pattern and block it.
+          const { $from: prevFrom } = prevSel
+          let fromCellDepth = -1
+          for (let d = prevFrom.depth; d > 0; d--) {
+            const role = prevFrom.node(d).type.spec.tableRole
+            if (role === "cell" || role === "header_cell") {
+              fromCellDepth = d
+              break
+            }
+          }
+          if (fromCellDepth < 0) return true
+
+          const cellStart = prevFrom.start(fromCellDepth)
+          const cellEnd = prevFrom.end(fromCellDepth)
+          if (nextSel.from === cellStart && nextSel.to === cellEnd) {
+            // Block the compression — handleMouseDown$1's mousemove will
+            // create a proper CellSelection on the next mouse move
+            return false
+          }
+
+          return true
+        },
+      }),
+    ]
+  },
+})
 
 let mermaidCounter = 0
 

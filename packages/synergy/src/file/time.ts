@@ -31,7 +31,11 @@ export namespace FileTime {
     return state().read[sessionID]?.[file]
   }
 
-  export async function withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
+  export async function withLock<T>(
+    filepath: string,
+    fn: () => Promise<T>,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> {
     const current = state()
     const currentLock = current.locks.get(filepath) ?? Promise.resolve()
     let release: () => void = () => {}
@@ -40,7 +44,29 @@ export namespace FileTime {
     })
     const chained = currentLock.then(() => nextLock)
     current.locks.set(filepath, chained)
-    await currentLock
+
+    // Wait for the previous lock, but abort if signal fires.
+    // On abort, remove our chained entry so subsequent callers don't deadlock.
+    if (options?.signal?.aborted) {
+      if (current.locks.get(filepath) === chained) current.locks.delete(filepath)
+      throw new DOMException("Aborted", "AbortError")
+    }
+    const abortPromise = options?.signal
+      ? new Promise<never>((_, reject) => {
+          const onAbort = () => {
+            if (current.locks.get(filepath) === chained) current.locks.delete(filepath)
+            reject(new DOMException("Aborted", "AbortError"))
+          }
+          options.signal!.addEventListener("abort", onAbort, { once: true })
+        })
+      : null
+    try {
+      await (abortPromise ? Promise.race([currentLock, abortPromise]) : currentLock)
+    } catch (error) {
+      release()
+      throw error
+    }
+
     try {
       return await fn()
     } finally {

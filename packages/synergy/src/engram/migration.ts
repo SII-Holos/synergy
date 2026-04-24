@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import type { Migration } from "../migration"
 import { EngramDB } from "./database"
+import { Intent } from "./intent"
 import { Log } from "../util/log"
 
 type SqliteConn = Database
@@ -131,6 +132,81 @@ export const migrations: Migration[] = [
       migrateMemoryRows(conn)
 
       progress(3, 3)
+    },
+  },
+  {
+    id: "20260415-engram-purge-invalid-experiences",
+    description: "Remove experiences with empty, junk, or malformed intents",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, intent, reward_status FROM experience").all() as {
+        id: string
+        intent: string
+        reward_status: string
+      }[]
+
+      progress(2, 3)
+      let removed = 0
+      for (const row of rows) {
+        if (!Intent.isValid(row.intent)) {
+          EngramDB.Experience.remove(row.id)
+          removed++
+        }
+      }
+
+      progress(3, 3)
+      if (removed > 0) log.info("purged invalid experiences", { removed })
+    },
+  },
+  {
+    id: "20260423-engram-purge-tool-hallucination-intents",
+    description: "Remove experiences whose intent is a tool-call hallucination ([Tool: ...])",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, intent FROM experience WHERE intent LIKE '[Tool:%'").all() as {
+        id: string
+        intent: string
+      }[]
+
+      progress(2, 3)
+      for (const row of rows) {
+        EngramDB.Experience.remove(row.id)
+      }
+
+      progress(3, 3)
+      if (rows.length > 0) log.info("purged tool-hallucination intents", { removed: rows.length })
+    },
+  },
+  {
+    id: "20260424-engram-q-updated-at-integer",
+    description: "Convert q_updated_at from ISO text to epoch milliseconds integer",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, q_updated_at FROM experience WHERE q_updated_at IS NOT NULL").all() as {
+        id: string
+        q_updated_at: string
+      }[]
+
+      progress(2, 3)
+      const stmt = conn.prepare("UPDATE experience SET q_updated_at = ?1 WHERE id = ?2")
+      for (const row of rows) {
+        const ms = new Date(row.q_updated_at).getTime()
+        if (Number.isNaN(ms)) {
+          log.warn("unparseable q_updated_at, setting to NULL", { id: row.id, value: row.q_updated_at })
+          stmt.run(null, row.id)
+        } else {
+          stmt.run(ms, row.id)
+        }
+      }
+
+      progress(3, 3)
+      if (rows.length > 0) log.info("migrated q_updated_at to integer", { count: rows.length })
     },
   },
 ]

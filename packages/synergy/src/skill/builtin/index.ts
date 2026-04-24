@@ -11,6 +11,7 @@ export interface BuiltinSkill {
   builtin: true
   references?: Record<string, string>
   scripts?: Record<string, string>
+  condition?: () => Promise<boolean> | boolean
 }
 
 export const BUILTIN_SKILLS: BuiltinSkill[] = [skillCreator, gitGuide, frontendDesign, agentBrowser, synergyConfig]

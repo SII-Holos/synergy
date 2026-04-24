@@ -1,6 +1,7 @@
 import { resolveNetworkArgv } from "../cli/network"
 import { Config } from "../config/config"
 import { Server } from "../server/server"
+import { ensureMigrations } from "../migration"
 import type { DaemonService } from "./service"
 import { DaemonCommand } from "./command"
 
@@ -24,6 +25,7 @@ export namespace DaemonSpec {
   }
 
   export async function resolveNetwork(input?: { argv?: string[]; config?: GlobalConfig }): Promise<Network> {
+    await ensureMigrations()
     const config = input?.config ?? (await Config.global())
     const network = await resolveNetworkArgv({
       argv: input?.argv,

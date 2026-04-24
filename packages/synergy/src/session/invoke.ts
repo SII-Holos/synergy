@@ -6,7 +6,9 @@ import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
-import "./compaction"
+import { SessionCompaction } from "./compaction"
+import { Token } from "@/util/token"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
@@ -21,13 +23,25 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { ExternalAgentProcessor } from "@/external-agent/processor"
+import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
 import { ToolResolver } from "./tool-resolver"
+import { PromptBudgeter } from "./prompt-budgeter"
+import { PermissionNext } from "@/permission/next"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
-import { buildMemoryContext, RECALL_TIMEOUT_MS } from "./recall"
+import {
+  buildMemoryContext,
+  buildAlwaysOnlyMemoryContext,
+  cacheResult,
+  getCachedResult,
+  evictRecallCache,
+  RECALL_TIMEOUT_MS,
+  type InjectionInfo,
+} from "./recall"
 import "./title"
 
 import { LLM } from "./llm"
@@ -46,7 +60,6 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
-  export const OUTPUT_TOKEN_MAX = LLM.OUTPUT_TOKEN_MAX
 
   SessionManager.onMailboxReady(async (sessionID) => {
     await processMailbox(sessionID)
@@ -55,6 +68,7 @@ export namespace SessionInvoke {
   export const assertIdle = SessionManager.assertIdle
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
+    evictRecallCache(sessionID)
     SessionManager.release(sessionID).catch((err) => {
       log.error("release failed", { sessionID, error: err })
     })
@@ -117,6 +131,43 @@ export namespace SessionInvoke {
     }
   }
 
+  async function recallMemory(
+    step: number,
+    sessionID: string,
+    scopeID: string,
+    sessionMessages: MessageV2.WithParts[],
+    isTopSession: boolean,
+    isGenesis: boolean,
+  ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
+    if (step === 1 && isTopSession && !isGenesis) {
+      SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
+      const cfg = await Config.get()
+      return withTimeout(
+        buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
+        RECALL_TIMEOUT_MS,
+      ).catch((err: any) => {
+        log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
+        return undefined
+      })
+    }
+    // Keep the recalled memory/experience in the system prompt for every step
+    // so the prefix stays stable (maximizing cache hits) and the agent retains
+    // its knowledge context across the entire trajectory, including after
+    // compaction boundaries.
+    if (step > 1 && isTopSession) {
+      return getCachedResult(sessionID)
+    }
+    if (step === 1 && !isTopSession) {
+      const cfg = await Config.get()
+      const evo = Config.resolveEvolution(cfg.identity?.evolution)
+      if (evo.active) {
+        const alwaysContext = buildAlwaysOnlyMemoryContext()
+        return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
+      }
+    }
+    return undefined
+  }
+
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
     SessionManager.registerRuntime(sessionID)
     const abort = SessionManager.acquire(sessionID)
@@ -131,6 +182,7 @@ export namespace SessionInvoke {
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
+    let emergencyCompactionTriggered = false
     const session = await Session.get(sessionID)
     const scopeID = (session.scope as Scope).id
 
@@ -187,6 +239,15 @@ export namespace SessionInvoke {
           lastFinishedParts,
           lastAssistant,
           abort,
+          compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
+          compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
+          modelID: lastUser.model.modelID,
+          modelLimits: await Promise.all([
+            Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+              .then((m) => m.limit)
+              .catch(() => undefined),
+            Token.warmup(lastUser.model.modelID),
+          ]).then(([limits]) => limits),
         }
         const firedSignals = await LoopJob.detectSignals(jobCtx)
 
@@ -221,6 +282,74 @@ export namespace SessionInvoke {
         let agentName = lastUser.agent
 
         const agent = await Agent.get(agentName)
+
+        log.info("resolved agent", {
+          name: agentName,
+          hasExternal: !!agent.external,
+          adapter: agent.external?.adapter,
+        })
+
+        if (agent.external) {
+          const allowAll = await PermissionNext.isAllowingAll(sessionID)
+          const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
+          if (!adapter) {
+            log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
+            break
+          }
+
+          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
+          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
+          if (override && adapter.capabilities.modelSwitch) {
+            applyModelOverride(runConfig, adapter.name, override)
+          }
+
+          const env: Record<string, string> | undefined =
+            override?.apiKey && adapter.name === "codex" ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined
+
+          if (!adapter.started) {
+            await adapter.start({
+              cwd: Instance.directory,
+              config: runConfig,
+              env,
+            })
+          } else {
+            const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
+            if (cfg) {
+              Object.assign(cfg, runConfig)
+            }
+            if (env) {
+              const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
+              if (adapterEnv) Object.assign(adapterEnv, env)
+            }
+          }
+
+          const [instructionParts, taskContext] = await Promise.all([
+            SystemPrompt.custom(),
+            buildCortexExecutionContext(sessionID),
+          ])
+
+          const context: ExternalAgent.TurnContext = {
+            sessionID,
+            prompt: MessageV2.extractText(lastUserParts!),
+            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            taskContext: taskContext ?? undefined,
+          }
+
+          const approvalDelegate: ExternalAgent.ApprovalDelegate = async () => false
+
+          await ExternalAgentProcessor.process({
+            sessionID,
+            agent: agent.name,
+            adapter,
+            parentID: lastUser.id,
+            model: lastUser.model,
+            context,
+            approvalDelegate,
+            abort,
+          })
+          break
+        }
+
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 
@@ -254,16 +383,6 @@ export namespace SessionInvoke {
           abort,
         })
 
-        const tools = await ToolResolver.resolve({
-          agent,
-          model,
-          sessionID,
-          processor,
-          session,
-          userTools: lastUser.tools,
-          includeMCP: true,
-        })
-
         // Shallow structural copy: duplicates message/part references but shares
         // the heavy string payloads (tool outputs, text content) to avoid the
         // memory cost of a full deep clone while still isolating msgs from
@@ -294,15 +413,33 @@ export namespace SessionInvoke {
 
         await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
-        const systemParts = [
-          ...(await SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session })),
-          ...(await SystemPrompt.custom()),
-        ]
+        // Launch independent async work in parallel: tool resolution, system
+        // prompt assembly, cortex context, and memory recall (flashback) all
+        // run concurrently to minimise time-to-first-token.
+        const isTopSession = !session.parentID
+        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
-        const cortexExecutionContext = await buildCortexExecutionContext(sessionID)
+        const [toolDefinitions, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
+          await Promise.all([
+            ToolResolver.definitions({
+              agent,
+              model,
+              sessionID,
+              session,
+              userTools: lastUser.tools,
+              includeMCP: true,
+            }),
+            Promise.all([
+              SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+              SystemPrompt.custom(),
+            ]).then(([env, custom]) => [env, custom] as const),
+            buildCortexExecutionContext(sessionID),
+            buildCortexReminder(sessionID),
+            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+          ])
+
+        const systemParts = [...envParts, ...customParts]
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
-
-        const cortexReminder = await buildCortexReminder(sessionID)
         if (cortexReminder) systemParts.push(cortexReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
@@ -314,29 +451,74 @@ export namespace SessionInvoke {
           }
         }
 
-        if (step === 1 && !session.parentID && SessionEndpoint.type(session.endpoint) !== "genesis") {
-          SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
-          const config = await Config.get()
-          const evo = Config.resolveEvolution(config.identity?.evolution)
-          const memoryResult = await withTimeout(
-            buildMemoryContext(sessionID, scopeID, sessionMessages, evo),
-            RECALL_TIMEOUT_MS,
-          ).catch((err: any) => {
-            log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
-            return undefined
-          })
-          if (memoryResult) {
-            systemParts.push(memoryResult.context)
-            const { injection } = memoryResult
-            if (injection.memory || injection.experience) {
-              const updated: MessageV2.User = {
-                ...lastUser,
-                metadata: { ...lastUser.metadata, injectedContext: injection },
-              }
-              await Session.updateMessage(updated)
+        if (memoryResult) {
+          systemParts.push(memoryResult.context)
+          if (step === 1) cacheResult(sessionID, memoryResult)
+          const { injection } = memoryResult
+          if ((injection.memory || injection.experience) && !lastUser.metadata?.injectedContext) {
+            const updated: MessageV2.User = {
+              ...lastUser,
+              metadata: { ...lastUser.metadata, injectedContext: injection },
             }
+            await Session.updateMessage(updated)
           }
         }
+
+        const preparedMessages = [
+          ...MessageV2.toModelMessage(sessionMessages),
+          ...(isLastStep
+            ? [
+                {
+                  role: "assistant" as const,
+                  content: MAX_STEPS,
+                },
+              ]
+            : []),
+        ]
+
+        const promptPlan = await PromptBudgeter.buildPlan({
+          model,
+          system: systemParts,
+          messages: preparedMessages,
+          toolDefinitions,
+        })
+
+        const calibration = buildCalibration(msgs)
+        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+          overflowThreshold: jobCtx.compactionOverflowThreshold,
+          calibration,
+        })
+
+        if (
+          !jobCtx.compactionAutoDisabled &&
+          !jobCtx.lastUserParts.some((part) => part.type === "compaction") &&
+          promptDecision.shouldCompact
+        ) {
+          log.info("prompt budget exceeded, injecting compaction", {
+            sessionID,
+            total: promptDecision.measure.total,
+            soft: promptDecision.budget.soft,
+            usable: promptDecision.budget.usable,
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: lastUser.id,
+            sessionID,
+            type: "compaction",
+            auto: true,
+          })
+          continue
+        }
+
+        const tools = await ToolResolver.resolve({
+          agent,
+          model,
+          sessionID,
+          processor,
+          session,
+          userTools: lastUser.tools,
+          includeMCP: true,
+        })
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
         const result = await processor.process({
@@ -344,18 +526,8 @@ export namespace SessionInvoke {
           agent,
           abort,
           sessionID,
-          system: systemParts,
-          messages: [
-            ...MessageV2.toModelMessage(sessionMessages),
-            ...(isLastStep
-              ? [
-                  {
-                    role: "assistant" as const,
-                    content: MAX_STEPS,
-                  },
-                ]
-              : []),
-          ],
+          system: promptPlan.system,
+          messages: promptPlan.messages,
           tools,
           model,
         })
@@ -368,6 +540,35 @@ export namespace SessionInvoke {
         }
 
         if (result === "stop") {
+          // If the failure was caused by exceeding context limits, inject a
+          // compaction signal and re-enter the loop. The next iteration will
+          // detect the signal, run compaction (which now has its own input
+          // trimming and mechanical fallback), and then retry the user's request.
+          if (
+            !emergencyCompactionTriggered &&
+            processor.message.error &&
+            SessionCompaction.isContextExceeded(processor.message.error)
+          ) {
+            log.warn("context exceeded, injecting emergency compaction", { sessionID })
+            emergencyCompactionTriggered = true
+            const emergencyUser = await Session.updateMessage({
+              id: Identifier.ascending("message"),
+              role: "user",
+              sessionID,
+              time: { created: Date.now() },
+              agent: lastUser.agent,
+              model: lastUser.model,
+              summary: { title: "Emergency compaction", diffs: [] },
+            })
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: emergencyUser.id,
+              sessionID,
+              type: "compaction" as const,
+              auto: true,
+            })
+            continue
+          }
           break
         }
         continue
@@ -400,6 +601,8 @@ export namespace SessionInvoke {
     for (const mail of assistantMails) {
       await writeAssistantMail(sessionID, mail)
     }
+
+    evictRecallCache(sessionID)
 
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
     if (!resultMessage) {
@@ -470,6 +673,18 @@ export namespace SessionInvoke {
       sessionID,
     })) as MessageV2.Assistant
     ExperienceEncoder.onComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
     return {
       info: assistantMessage,
       parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),
@@ -517,6 +732,18 @@ export namespace SessionInvoke {
 
     await Session.updateMessage(assistantMessage)
     ExperienceEncoder.onComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
 
     log.info("assistant mail written", {
       sessionID,
@@ -554,7 +781,9 @@ export namespace SessionInvoke {
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
+    const mod = await import("../cortex/manager")
+    const Cortex = mod.Cortex
+    if (!Cortex || typeof Cortex.getRunningTasks !== "function") return undefined
     const running = Cortex.getRunningTasks().filter((t) => t.parentSessionID === sessionID)
     if (running.length === 0) return undefined
 
@@ -583,6 +812,90 @@ export namespace SessionInvoke {
     const remainingHours = hours % 24
     if (remainingHours === 0) return `${days} day${days !== 1 ? "s" : ""}`
     return `${days} day${days !== 1 ? "s" : ""} ${remainingHours} hour${remainingHours !== 1 ? "s" : ""}`
+  }
+
+  interface ExternalModelInfo {
+    model: string
+    providerID?: string
+    baseURL?: string
+    apiKey?: string
+  }
+
+  export function applyExternalPermissionMode(
+    config: Record<string, unknown>,
+    adapterName: string,
+    allowAll: boolean,
+  ): Record<string, unknown> {
+    config.allowAll = allowAll
+
+    if (adapterName === "claude-code") {
+      delete config.skipPermissions
+      config.permissionMode = allowAll ? "bypassPermissions" : "default"
+      return config
+    }
+
+    return config
+  }
+
+  function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
+    switch (adapterName) {
+      case "codex":
+        config.model = override.model
+        if (override.providerID) config.providerID = override.providerID
+        if (override.baseURL) config.baseURL = override.baseURL
+        break
+      case "claude-code":
+        config.model = override.model
+        break
+      default:
+        break
+    }
+  }
+
+  async function resolveExternalModelOverride(
+    userModel: { providerID: string; modelID: string },
+    adapterName: string,
+  ): Promise<ExternalModelInfo | undefined> {
+    try {
+      const provider = await Provider.getProvider(userModel.providerID)
+      const model = await Provider.getModel(userModel.providerID, userModel.modelID)
+      if (!provider || !model) return undefined
+
+      const npm = model.api.npm ?? ""
+      if (!isModelCompatibleWithAdapter(npm, adapterName)) {
+        log.info("skipping model override — incompatible provider for adapter", {
+          adapterName,
+          npm,
+          modelID: model.api.id,
+        })
+        return undefined
+      }
+
+      const options: Record<string, any> = { ...provider.options, ...model.options }
+      const baseURL = (options["baseURL"] as string) || model.api.url
+      const apiKey = (options["apiKey"] as string) || provider.key
+
+      return {
+        model: model.api.id,
+        providerID: userModel.providerID,
+        baseURL: baseURL || undefined,
+        apiKey: apiKey || undefined,
+      }
+    } catch (e) {
+      log.warn("resolveExternalModelOverride failed, falling back", { error: String(e) })
+      return undefined
+    }
+  }
+
+  function isModelCompatibleWithAdapter(npm: string, adapterName: string): boolean {
+    switch (adapterName) {
+      case "codex":
+        return npm.includes("openai") || npm.includes("openrouter")
+      case "claude-code":
+        return npm.includes("anthropic")
+      default:
+        return false
+    }
   }
 
   export const CommandInput = z.object({
@@ -755,5 +1068,56 @@ export namespace SessionInvoke {
 
       SessionManager.run(sessionID, () => loop(sessionID)).catch(() => {})
     }
+  }
+
+  /**
+   * Build calibration data from the most recent assistant message that has
+   * real API-reported token counts. This lets PromptBudgeter use the model's
+   * native token count as a baseline and only estimate the small delta of
+   * new messages, rather than re-tokenizing the entire conversation through
+   * a mismatched tokenizer (o200k_base can overestimate by ~2x for Claude).
+   */
+  function buildCalibration(msgs: MessageV2.WithParts[]): PromptBudgeter.Calibration | undefined {
+    let calibrationIdx = -1
+    let calibrationTokens: MessageV2.Assistant["tokens"] | undefined
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const info = msgs[i].info
+      if (info.role !== "assistant") continue
+      const assistant = info as MessageV2.Assistant
+      if (assistant.summary) continue
+      const tokens = assistant.tokens
+      if (ModelLimit.actualInput(tokens) > 0) {
+        calibrationIdx = i
+        calibrationTokens = tokens
+        break
+      }
+    }
+    if (calibrationIdx < 0 || !calibrationTokens) return undefined
+
+    const actualInput = ModelLimit.actualInput(calibrationTokens)
+    const outputTokens = calibrationTokens.output + calibrationTokens.reasoning
+
+    let deltaChars = 0
+    for (let i = calibrationIdx + 1; i < msgs.length; i++) {
+      for (const part of msgs[i].parts) {
+        switch (part.type) {
+          case "text":
+            deltaChars += part.text?.length ?? 0
+            break
+          case "tool":
+            if (part.state.status === "completed") {
+              deltaChars += part.state.time.compacted ? 40 : (part.state.output?.length ?? 0)
+              deltaChars += JSON.stringify(part.state.input).length
+            }
+            break
+          case "file":
+            deltaChars += 200
+            break
+        }
+      }
+    }
+    const deltaTokens = Math.ceil(deltaChars / 4)
+
+    return { actualInput, outputTokens, deltaTokens }
   }
 }

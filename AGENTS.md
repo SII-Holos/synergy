@@ -304,15 +304,34 @@ At minimum, check whether `README.md` and `AGENTS.md` need updates.
 The repo uses a two-branch model:
 
 - `dev` for ongoing development
-- `main` for releases
+- `main` for releases (only updated via GitHub Actions during release)
 
 Do not push directly to `main`.
+
+### Collaboration flow
+
+- **Internal team members**: create branches directly in the repo, open PRs against `dev`.
+- **External contributors**: fork the repo, create branches in the fork, open PRs against `dev`.
+- **All PRs target `dev`**, never `main`.
 
 ### Release process
 
 Releases are triggered through GitHub Actions. Keep versioning and release docs aligned with the actual scripts and workflow in the repo.
 
 If you change release behavior, update the internal documentation in the same task.
+
+## Project Documentation Index
+
+Key documents in the repo that agents should be aware of:
+
+- `README.md` — project overview, development setup, architecture, and full command reference
+- `CONTRIBUTING.md` — contribution guide: setup, PR process, code style, commit guidelines
+- `CODE_OF_CONDUCT.md` — community code of conduct
+- `.github/SECURITY.md` — security vulnerability reporting process (never open public issues for security bugs)
+- `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
+- `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
+- `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
+- `packages/app/AGENTS.md` — agent guidelines specific to the web app package
 
 ## Practical Working Rules for Agents
 

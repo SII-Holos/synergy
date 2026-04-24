@@ -356,7 +356,9 @@ export default function Layout(props: ParentProps) {
     }
 
     if (!hosted) {
-      commands.splice(1, 0,
+      commands.splice(
+        1,
+        0,
         {
           id: "provider.connect",
           title: "Connect provider",

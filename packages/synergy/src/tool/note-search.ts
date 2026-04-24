@@ -2,8 +2,10 @@ import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
+import { NoteTypes } from "../note"
 import { Instance } from "../scope/instance"
 import DESCRIPTION from "./note-search.txt"
+import { Plugin } from "../plugin"
 
 const parameters = z.object({
   pattern: z.string().describe("Regex pattern to search for in note titles and content."),
@@ -51,35 +53,50 @@ export const NoteSearchTool = Tool.define("note_search", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
+    const currentScopeID = Instance.scope.id
+    const search = await Plugin.trigger(
+      "note.search.before",
+      {
+        scopeID: currentScopeID,
+      },
+      {
+        pattern: params.pattern,
+        scope: params.scope,
+        since: params.since,
+        before: params.before,
+        tags: params.tags,
+        pinned: params.pinned,
+      },
+    )
+
     let regex: RegExp
     try {
-      regex = new RegExp(params.pattern, "gi")
+      regex = new RegExp(search.pattern, "gi")
     } catch (err: any) {
       return {
-        title: params.pattern,
+        title: search.pattern,
         output: `Invalid regex pattern: ${err?.message ?? String(err)}`,
-        metadata: { matchCount: 0, noteCount: 0, pattern: params.pattern } as Record<string, any>,
+        metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
       }
     }
 
-    const currentScopeID = Instance.scope.id
     const allNotes =
-      params.scope === "all"
+      search.scope === "all"
         ? await NoteStore.listMetaAll()
-        : params.scope === "global"
+        : search.scope === "global"
           ? await NoteStore.listMeta("global")
           : await NoteStore.listMeta(currentScopeID)
 
-    const sinceMs = params.since ? new Date(params.since).getTime() : undefined
-    const beforeMs = params.before ? new Date(params.before).getTime() : undefined
+    const sinceMs = search.since ? new Date(search.since).getTime() : undefined
+    const beforeMs = search.before ? new Date(search.before).getTime() : undefined
 
     const filtered = allNotes.filter((note) => {
       if (sinceMs && note.time.updated < sinceMs) return false
       if (beforeMs && note.time.updated >= beforeMs) return false
-      if (params.tags && params.tags.length > 0) {
-        if (!params.tags.every((tag) => note.tags.includes(tag))) return false
+      if (search.tags && search.tags.length > 0) {
+        if (!search.tags.every((tag) => note.tags.includes(tag))) return false
       }
-      if (params.pinned !== undefined && note.pinned !== params.pinned) return false
+      if (search.pinned !== undefined && note.pinned !== search.pinned) return false
       return true
     })
 
@@ -95,6 +112,7 @@ export const NoteSearchTool = Tool.define("note_search", {
     const sections: string[] = []
     let totalMatches = 0
     let matchedNotes = 0
+    const matched: NoteTypes.Info[] = []
 
     for (const meta of candidates) {
       if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break
@@ -116,6 +134,7 @@ export const NoteSearchTool = Tool.define("note_search", {
 
       if (!titleMatch && matchingLineIndices.length === 0) continue
 
+      matched.push(full)
       matchedNotes++
       const contentMatchCount = Math.min(matchingLineIndices.length, MAX_MATCHES - totalMatches)
       totalMatches += contentMatchCount
@@ -147,21 +166,86 @@ export const NoteSearchTool = Tool.define("note_search", {
       sections.push(sectionLines.join("\n"))
     }
 
-    if (sections.length === 0) {
+    const result = await Plugin.trigger(
+      "note.search.after",
+      {
+        scopeID: currentScopeID,
+        pattern: search.pattern,
+      },
+      {
+        notes: matched,
+      },
+    )
+
+    const resultSections: string[] = []
+    totalMatches = 0
+    matchedNotes = 0
+
+    for (const note of result.notes) {
+      if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break
+
+      const markdown = NoteMarkdown.toMarkdown(note.content)
+      const lines = markdown.split("\n")
+
+      regex.lastIndex = 0
+      const titleMatch = regex.test(note.title)
+
+      const matchingLineIndices: number[] = []
+      for (let i = 0; i < lines.length; i++) {
+        regex.lastIndex = 0
+        if (regex.test(lines[i])) {
+          matchingLineIndices.push(i)
+        }
+      }
+
+      if (!titleMatch && matchingLineIndices.length === 0) continue
+
+      matchedNotes++
+      const contentMatchCount = Math.min(matchingLineIndices.length, MAX_MATCHES - totalMatches)
+      totalMatches += contentMatchCount
+
+      const header: string[] = [`[${note.id}] "${note.title}"`]
+      if (note.pinned) header.push("[pinned]")
+      if (note.global) header.push("[global]")
+
+      const sectionLines: string[] = [header.join(" ")]
+
+      if (matchingLineIndices.length === 0) {
+        sectionLines.push("  (title match)")
+      } else {
+        const cappedIndices = matchingLineIndices.slice(0, contentMatchCount)
+        const ranges: MatchRange[] = cappedIndices.map((idx) => ({
+          start: Math.max(0, idx - CONTEXT_LINES),
+          end: Math.min(lines.length - 1, idx + CONTEXT_LINES),
+        }))
+        const merged = mergeRanges(ranges, lines.length)
+
+        for (const range of merged) {
+          for (let i = range.start; i <= range.end; i++) {
+            const lineNum = (i + 1).toString()
+            sectionLines.push(`  ${lineNum}: ${lines[i]}`)
+          }
+        }
+      }
+
+      resultSections.push(sectionLines.join("\n"))
+    }
+
+    if (resultSections.length === 0) {
       return {
-        title: params.pattern,
+        title: search.pattern,
         output: "No notes match the pattern.",
-        metadata: { matchCount: 0, noteCount: 0, pattern: params.pattern } as Record<string, any>,
+        metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
       }
     }
 
     const header = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${matchedNotes} note${matchedNotes === 1 ? "" : "s"}:`
-    const output = header + "\n\n" + sections.join("\n\n")
+    const output = header + "\n\n" + resultSections.join("\n\n")
 
     return {
-      title: params.pattern,
+      title: search.pattern,
       output,
-      metadata: { matchCount: totalMatches, noteCount: matchedNotes, pattern: params.pattern } as Record<string, any>,
+      metadata: { matchCount: totalMatches, noteCount: matchedNotes, pattern: search.pattern } as Record<string, any>,
     }
   },
 })

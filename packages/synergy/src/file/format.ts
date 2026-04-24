@@ -65,7 +65,7 @@ export namespace Format {
 
   export async function reload() {
     log.info("reloading formatter state")
-    await state.reset()
+    await state.resetAll()
     log.info("formatter state reloaded")
   }
 

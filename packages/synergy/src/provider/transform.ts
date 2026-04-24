@@ -116,24 +116,20 @@ export namespace ProviderTransform {
           // Filter out reasoning parts from content
           const filteredContent = msg.content.filter((part: any) => part.type !== "reasoning")
 
-          // Include reasoning_content directly on the message for all assistant messages
-          if (reasoningText) {
-            return {
-              ...msg,
-              content: filteredContent,
-              providerOptions: {
-                ...msg.providerOptions,
-                openaiCompatible: {
-                  ...(msg.providerOptions as any)?.openaiCompatible,
-                  reasoning_content: reasoningText,
-                },
-              },
-            }
-          }
-
+          // DeepSeek requires reasoning_content on ALL assistant messages in
+          // thinking mode when tool calls are present in the conversation — even
+          // if the current message produced no reasoning. Omitting it triggers:
+          // "The reasoning_content in the thinking mode must be passed back to the API."
           return {
             ...msg,
             content: filteredContent,
+            providerOptions: {
+              ...msg.providerOptions,
+              openaiCompatible: {
+                ...(msg.providerOptions as any)?.openaiCompatible,
+                reasoning_content: reasoningText || "",
+              },
+            },
           }
         }
 

@@ -4,12 +4,25 @@ import { MetaSynergyCLIBackend, type MetaSynergyTrustSubject } from "./cli-backe
 import type { MetaSynergyApprovalMode } from "./state/store"
 import { MetaSynergyRuntime } from "./runtime"
 import { MetaSynergyService } from "./service"
+import { MetaSynergyHolosLogin } from "./holos/login"
+import { MetaSynergyDisplay } from "./display"
 
 interface CLIContext {
   json: boolean
   printLogs: boolean
   invocationEntry?: string
   launcherPath: string
+}
+
+interface GlobalFlags {
+  help: boolean
+  json: boolean
+  printLogs: boolean
+}
+
+interface MetaSynergyLoginOptions {
+  agentID?: string
+  agentSecret?: string
 }
 
 interface CommandSuccess {
@@ -246,9 +259,52 @@ async function showLogs(args: string[], context: CLIContext): Promise<CommandRes
 }
 
 async function login(args: string[]): Promise<CommandResult> {
-  if (args.length > 0) {
-    return invalidUsage("Usage: meta-synergy login")
+  const parsed = parseLoginArgs(args)
+  if (!parsed.ok) {
+    return invalidUsage(parsed.usage)
   }
+
+  if (parsed.options.agentID || parsed.options.agentSecret) {
+    if (!parsed.options.agentID || !parsed.options.agentSecret) {
+      return {
+        ok: false,
+        message: "`--agent-id` and `--agent-secret` must be provided together.",
+        usage: loginUsage(),
+      }
+    }
+
+    const result = await MetaSynergyCLIBackend.login({
+      agentID: parsed.options.agentID,
+      agentSecret: parsed.options.agentSecret,
+    })
+    return {
+      ok: true,
+      message: `Logged in as ${result.agentID}.`,
+      data: result,
+    }
+  }
+
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const mode = await MetaSynergyHolosLogin.promptLoginMode()
+    if (mode === "existing") {
+      const credentials = await MetaSynergyHolosLogin.promptForExistingCredentials()
+      if (!credentials) {
+        return {
+          ok: false,
+          message: "Login cancelled.",
+          exitCode: 1,
+        }
+      }
+
+      const result = await MetaSynergyCLIBackend.login(credentials)
+      return {
+        ok: true,
+        message: `Logged in as ${result.agentID}.`,
+        data: result,
+      }
+    }
+  }
+
   const result = await MetaSynergyCLIBackend.login()
   return {
     ok: true,
@@ -307,10 +363,10 @@ async function doctor(args: string[]): Promise<CommandResult> {
 async function handleMode(args: string[]): Promise<CommandResult> {
   const [action, ...rest] = args
   if (!action || action === "help") {
-    return invalidUsage("Usage: meta-synergy mode <status|managed>")
+    return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
   }
   if (rest.length > 0) {
-    return invalidUsage("Usage: meta-synergy mode <status|managed>")
+    return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
   }
   if (action === "status") {
     return {
@@ -325,7 +381,14 @@ async function handleMode(args: string[]): Promise<CommandResult> {
       data: await MetaSynergyCLIBackend.enterManagedMode(),
     }
   }
-  return invalidUsage("Usage: meta-synergy mode <status|managed>")
+  if (action === "standalone") {
+    return {
+      ok: true,
+      message: "Standalone mode enabled.",
+      data: await MetaSynergyCLIBackend.enterStandaloneMode(),
+    }
+  }
+  return invalidUsage("Usage: meta-synergy mode <status|managed|standalone>")
 }
 
 async function handleCollaboration(args: string[]): Promise<CommandResult> {
@@ -535,7 +598,7 @@ function parseArgv(
       continue
     }
     if (token.startsWith("-")) {
-      if (command[0] === "logs") {
+      if (command[0] === "logs" || command[0] === "login") {
         command.push(token)
         continue
       }
@@ -631,8 +694,8 @@ function rootUsage() {
     "Commands:",
     "  server [--print-logs]",
     "  start | stop | restart | status | logs",
-    "  login | logout | whoami | reconnect | doctor",
-    "  mode <status|managed>",
+    "  login [--agent-id ID --agent-secret SECRET] | logout | whoami | reconnect | doctor",
+    "  mode <status|managed|standalone>",
     "  collaboration <enable|disable|status>",
     "  requests <list|show|approve|deny>",
     "  session <status|kick|block>",
@@ -654,12 +717,12 @@ function usageMap(): Record<string, string> {
     restart: "Usage: meta-synergy restart",
     status: "Usage: meta-synergy status",
     logs: "Usage: meta-synergy logs [-f] [--tail N] [--since DURATION]",
-    login: "Usage: meta-synergy login",
+    login: loginUsage(),
     logout: "Usage: meta-synergy logout",
     whoami: "Usage: meta-synergy whoami",
     reconnect: "Usage: meta-synergy reconnect",
     doctor: "Usage: meta-synergy doctor",
-    mode: "Usage: meta-synergy mode <status|managed>",
+    mode: "Usage: meta-synergy mode <status|managed|standalone>",
     collaboration: "Usage: meta-synergy collaboration <enable|disable|status>",
     requests: "Usage: meta-synergy requests <list|show|approve|deny> [request-id]",
     session: "Usage: meta-synergy session <status|kick|block>",
@@ -751,6 +814,7 @@ function isWhoamiResult(value: unknown): value is {
   auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
   mode?: string
   ownership?: { local?: { activeOwnerID?: string | null; owned?: boolean } }
+  envID?: string | null
   label: string | null
   service: { running: boolean }
 } {
@@ -812,13 +876,17 @@ function formatStatus(value: { auth: unknown; state: Record<string, unknown>; se
   const currentSession = isObject(state.currentSession) ? state.currentSession : null
   const ownerRegistry = isObject(state.ownerRegistry) ? state.ownerRegistry : undefined
   const localOwnership = ownerRegistry && isObject(ownerRegistry.local) ? ownerRegistry.local : undefined
+  const sessionSummary = currentSession
+    ? `${MetaSynergyDisplay.maybeIdentifier(currentSession.remoteAgentID, { unknown: "unknown" })} (${MetaSynergyDisplay.maybeIdentifier(currentSession.sessionID, { unknown: "unknown", hiddenReason: "policy" })})`
+    : "idle"
+
   return [
     `Mode: ${typeof state.runtimeMode === "string" ? state.runtimeMode : typeof (value as { mode?: unknown }).mode === "string" ? String((value as { mode?: unknown }).mode) : "unknown"}`,
-    `Local owner: ${typeof localOwnership?.activeOwnerID === "string" ? localOwnership.activeOwnerID : "none"}`,
+    `Local owner: ${MetaSynergyDisplay.maybeIdentifier(localOwnership?.activeOwnerID, { hiddenReason: "policy" })}`,
     `Logged in: ${auth.loggedIn === true ? "yes" : "no"}`,
-    `Agent ID: ${typeof auth.agentID === "string" ? auth.agentID : "none"}`,
+    `Agent ID: ${MetaSynergyDisplay.maybeIdentifier(auth.agentID)}`,
     `Auth source: ${typeof auth.source === "string" ? auth.source : "none"}`,
-    `Env ID: ${typeof state.envID === "string" ? state.envID : "none"}`,
+    `Env ID: ${MetaSynergyDisplay.maybeIdentifier(state.envID, { hiddenReason: "policy" })}`,
     `Label: ${typeof state.label === "string" ? state.label : "none"}`,
     `Service: ${service.running === true ? "running" : "stopped"}`,
     `PID: ${typeof service.pid === "number" ? String(service.pid) : "none"}`,
@@ -826,7 +894,7 @@ function formatStatus(value: { auth: unknown; state: Record<string, unknown>; se
     `Collaboration: ${state.collaborationEnabled === true ? "enabled" : "disabled"}`,
     `Approval: ${typeof state.approvalMode === "string" ? state.approvalMode : "unknown"}`,
     `Pending requests: ${Array.isArray(state.pendingRequests) ? state.pendingRequests.filter((request) => isObject(request) && request.status === "pending").length : 0}`,
-    `Session: ${currentSession ? `${String(currentSession.remoteAgentID ?? "unknown")} (${String(currentSession.sessionID ?? "unknown")})` : "idle"}`,
+    `Session: ${sessionSummary}`,
   ].join("\n")
 }
 
@@ -834,14 +902,16 @@ function formatWhoami(value: {
   auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
   mode?: string
   ownership?: { local?: { activeOwnerID?: string | null } }
+  envID?: string | null
   label: string | null
   service: { running: boolean }
 }) {
   return [
     `Mode: ${value.mode ?? "unknown"}`,
-    `Local owner: ${value.ownership?.local?.activeOwnerID ?? "none"}`,
+    `Local owner: ${MetaSynergyDisplay.maybeIdentifier(value.ownership?.local?.activeOwnerID, { hiddenReason: "policy" })}`,
     `Logged in: ${value.auth.loggedIn ? "yes" : "no"}`,
-    `Agent ID: ${value.auth.agentID ?? "none"}`,
+    `Agent ID: ${MetaSynergyDisplay.maybeIdentifier(value.auth.agentID)}`,
+    `Env ID: ${MetaSynergyDisplay.maybeIdentifier(value.envID)}`,
     `Auth source: ${value.auth.source ?? "none"}`,
     `Label: ${value.label ?? "none"}`,
     `Service: ${value.service.running ? "running" : "stopped"}`,
@@ -855,9 +925,9 @@ function formatRequests(requests: Array<Record<string, unknown>>) {
 
 function formatRequest(request: Record<string, unknown>) {
   return [
-    `Request ID: ${String(request.id ?? "unknown")}`,
-    `Caller: ${String(request.callerAgentID ?? "unknown")}`,
-    `Owner User: ${String(request.callerOwnerUserID ?? "unknown")}`,
+    `Request ID: ${MetaSynergyDisplay.maybeIdentifier(request.id, { unknown: "unknown", hiddenReason: "policy" })}`,
+    `Caller: ${MetaSynergyDisplay.maybeIdentifier(request.callerAgentID, { unknown: "unknown", hiddenReason: "policy" })}`,
+    `Owner User: ${request.callerOwnerUserID == null ? "none" : String(request.callerOwnerUserID)}`,
     `Label: ${typeof request.label === "string" ? request.label : "none"}`,
     `Status: ${String(request.status ?? "unknown")}`,
     `Count: ${String(request.requestCount ?? 1)}`,
@@ -866,9 +936,9 @@ function formatRequest(request: Record<string, unknown>) {
 
 function formatTrust(value: { agents: string[]; users: number[]; blockedAgents?: string[] }) {
   return [
-    `Trusted agents: ${value.agents.length > 0 ? value.agents.join(", ") : "none"}`,
+    `Trusted agents: ${MetaSynergyDisplay.identifierList(value.agents, { hiddenReason: "policy" })}`,
     `Trusted users: ${value.users.length > 0 ? value.users.join(", ") : "none"}`,
-    `Blocked agents: ${value.blockedAgents && value.blockedAgents.length > 0 ? value.blockedAgents.join(", ") : "none"}`,
+    `Blocked agents: ${MetaSynergyDisplay.identifierList(value.blockedAgents, { hiddenReason: "policy" })}`,
   ].join("\n")
 }
 
@@ -878,9 +948,9 @@ function formatSessionStatus(value: {
   service: Record<string, unknown>
 }) {
   return [
-    `Session: ${value.session ? String(value.session.sessionID ?? "unknown") : "idle"}`,
-    `Remote agent: ${value.session ? String(value.session.remoteAgentID ?? "unknown") : "none"}`,
-    `Blocked agents: ${value.blockedAgentIDs.length > 0 ? value.blockedAgentIDs.join(", ") : "none"}`,
+    `Session: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.sessionID, { unknown: "unknown", hiddenReason: "policy" }) : "idle"}`,
+    `Remote agent: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.remoteAgentID, { unknown: "unknown", hiddenReason: "policy" }) : "none"}`,
+    `Blocked agents: ${MetaSynergyDisplay.identifierList(value.blockedAgentIDs, { hiddenReason: "policy" })}`,
     `Service: ${value.service.running === true ? "running" : "stopped"}`,
   ].join("\n")
 }
@@ -895,7 +965,7 @@ function formatCollaborationStatus(value: {
     `Enabled: ${value.enabled ? "yes" : "no"}`,
     `Approval: ${value.approvalMode}`,
     `Pending requests: ${value.pendingRequestCount}`,
-    `Session: ${value.session ? String(value.session.remoteAgentID ?? value.session.sessionID ?? "busy") : "idle"}`,
+    `Session: ${value.session ? MetaSynergyDisplay.maybeIdentifier(value.session.remoteAgentID ?? value.session.sessionID, { unknown: "busy", hiddenReason: "policy" }) : "idle"}`,
   ].join("\n")
 }
 
@@ -904,6 +974,43 @@ function formatDoctor(value: { ok: boolean; checks: Array<{ name: string; ok: bo
     `Overall: ${value.ok ? "ok" : "issues found"}`,
     ...value.checks.map((check) => `${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`),
   ].join("\n")
+}
+
+function loginUsage() {
+  return [
+    "Usage: meta-synergy login [--agent-id ID --agent-secret SECRET]",
+    "",
+    "Without flags, interactive TTY sessions let you choose browser login or importing existing credentials.",
+  ].join("\n")
+}
+
+function parseLoginArgs(args: string[]): { ok: true; options: MetaSynergyLoginOptions } | { ok: false; usage: string } {
+  const options: MetaSynergyLoginOptions = {}
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]
+    if (token === "--agent-id") {
+      const next = args[index + 1]
+      if (!next || next.startsWith("-")) {
+        return { ok: false, usage: loginUsage() }
+      }
+      options.agentID = next
+      index += 1
+      continue
+    }
+    if (token === "--agent-secret") {
+      const next = args[index + 1]
+      if (!next || next.startsWith("-")) {
+        return { ok: false, usage: loginUsage() }
+      }
+      options.agentSecret = next
+      index += 1
+      continue
+    }
+    return { ok: false, usage: loginUsage() }
+  }
+
+  return { ok: true, options }
 }
 
 function parseLogsArgs(

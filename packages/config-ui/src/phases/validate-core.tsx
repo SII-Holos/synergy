@@ -84,6 +84,7 @@ export const ValidateCorePhase: Component = () => {
                 const tone = () => {
                   if (entry.skipped) return "neutral" as const
                   if (!field()) return undefined
+                  if (field()!.failedRecommended) return "warning" as const
                   return field()!.valid ? "success" : "critical"
                 }
 

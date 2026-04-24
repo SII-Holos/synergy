@@ -75,7 +75,7 @@ export namespace Chronicler {
     type: "chronicle",
     phase: "pre",
     blocking: false,
-    signals: ["overflow", "compact"],
+    signals: ["compact"],
     collect() {
       return []
     },

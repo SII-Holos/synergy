@@ -1,5 +1,5 @@
 import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
-import { ComponentProps, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
+import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
@@ -10,7 +10,10 @@ export interface TerminalProps extends ComponentProps<"div"> {
   onSubmit?: () => void
   onCleanup?: (pty: LocalPTY) => void
   onConnectError?: (error: unknown) => void
+  onGone?: (ptyID: string) => void
 }
+
+const MAX_RECONNECT_ATTEMPTS = 5
 
 type TerminalColors = {
   background: string
@@ -38,7 +41,7 @@ export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
   const theme = useTheme()
   let container!: HTMLDivElement
-  const [local, others] = splitProps(props, ["pty", "class", "classList", "onConnectError"])
+  const [local, others] = splitProps(props, ["pty", "class", "classList", "onConnectError", "onGone"])
   let ws: WebSocket | undefined
   let term: Term | undefined
   let ghostty: Ghostty
@@ -49,6 +52,10 @@ export const Terminal = (props: TerminalProps) => {
   let handleTextareaBlur: () => void
   let reconnect: number | undefined
   let disposed = false
+  let reconnectDelay = 1000
+  let reconnectAttempts = 0
+  const [connected, setConnected] = createSignal(false)
+  const [gone, setGone] = createSignal(false)
 
   const getTerminalColors = (): TerminalColors => {
     const mode = theme.mode()
@@ -100,11 +107,6 @@ export const Terminal = (props: TerminalProps) => {
     const mod = await import("ghostty-web")
     ghostty = await mod.Ghostty.load()
 
-    const socket = new WebSocket(
-      sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
-    )
-    ws = socket
-
     const t = new mod.Terminal({
       cursorBlink: true,
       cursorStyle: "bar",
@@ -112,7 +114,7 @@ export const Terminal = (props: TerminalProps) => {
       fontFamily: "IBM Plex Mono, monospace",
       allowTransparency: true,
       theme: terminalColors(),
-      scrollback: 10_000,
+      scrollback: 2_000,
       ghostty,
     })
     term = t
@@ -202,7 +204,7 @@ export const Terminal = (props: TerminalProps) => {
     handleResize = () => fitAddon.fit()
     window.addEventListener("resize", handleResize)
     t.onResize(async (size) => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         await sdk.client.pty
           .update({
             ptyID: local.pty.id,
@@ -215,8 +217,8 @@ export const Terminal = (props: TerminalProps) => {
       }
     })
     t.onData((data) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(data)
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(data)
       }
     })
     t.onKey((key) => {
@@ -224,28 +226,71 @@ export const Terminal = (props: TerminalProps) => {
         props.onSubmit?.()
       }
     })
-    socket.addEventListener("open", () => {
-      sdk.client.pty
-        .update({
-          ptyID: local.pty.id,
-          size: {
-            cols: t.cols,
-            rows: t.rows,
-          },
-        })
-        .catch(() => {})
-    })
-    socket.addEventListener("message", (event) => {
-      t.write(event.data)
-    })
-    socket.addEventListener("error", (error) => {
-      console.error("WebSocket error:", error)
-      props.onConnectError?.(error)
-    })
-    socket.addEventListener("close", () => {})
+
+    const connect = () => {
+      const socket = new WebSocket(
+        sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
+      )
+      ws = socket
+
+      socket.addEventListener("open", () => {
+        setConnected(true)
+        reconnectDelay = 1000
+        reconnectAttempts = 0
+        sdk.client.pty
+          .update({
+            ptyID: local.pty.id,
+            size: {
+              cols: t.cols,
+              rows: t.rows,
+            },
+          })
+          .catch(() => {})
+      })
+      socket.addEventListener("message", (event) => {
+        t.write(event.data)
+      })
+      socket.addEventListener("error", (error) => {
+        console.error("WebSocket error:", error)
+        props.onConnectError?.(error)
+      })
+      socket.addEventListener("close", () => {
+        setConnected(false)
+        if (disposed) return
+        reconnectAttempts++
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+          setGone(true)
+          local.onGone?.(local.pty.id)
+          return
+        }
+        reconnect = window.setTimeout(async () => {
+          if (disposed) return
+          try {
+            const res = await sdk.client.pty.get({ ptyID: local.pty.id })
+            if (!res.data?.id) {
+              setGone(true)
+              local.onGone?.(local.pty.id)
+              return
+            }
+          } catch {
+            setGone(true)
+            local.onGone?.(local.pty.id)
+            return
+          }
+          reconnectDelay = Math.min(reconnectDelay * 2, 10_000)
+          connect()
+        }, reconnectDelay)
+      })
+    }
+
+    connect()
   })
 
   onCleanup(() => {
+    disposed = true
+    if (reconnect) {
+      clearTimeout(reconnect)
+    }
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
@@ -271,17 +316,23 @@ export const Terminal = (props: TerminalProps) => {
 
   return (
     <div
-      ref={container}
       data-component="terminal"
       data-prevent-autofocus
-      style={{ "background-color": terminalColors().background }}
       classList={{
         ...(local.classList ?? {}),
         "select-text": true,
-        "size-full px-6 py-3 font-mono": true,
+        "size-full font-mono relative": true,
         [local.class ?? ""]: !!local.class,
       }}
+      style={{ "background-color": terminalColors().background }}
       {...others}
-    />
+    >
+      <div ref={container} class="size-full px-6 py-3" />
+      <Show when={!connected()}>
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-background/80 pointer-events-none">
+          <span class="text-muted-foreground text-sm">{gone() ? "Session lost" : "Reconnecting..."}</span>
+        </div>
+      </Show>
+    </div>
   )
 }

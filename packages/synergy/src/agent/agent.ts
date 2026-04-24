@@ -29,7 +29,9 @@ import PROMPT_ANIMA from "./prompt/anima.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Log } from "@/util/log"
-import { read } from "node:fs"
+import { ExternalAgent } from "@/external-agent/bridge"
+import { ExternalAgentDiscovery } from "@/external-agent/discovery"
+import { Plugin } from "../plugin"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -54,6 +56,7 @@ export namespace Agent {
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
+      external: ExternalAgent.Info.optional(),
     })
     .meta({
       ref: "Agent",
@@ -206,7 +209,6 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
-            codesearch: "allow",
             runtime_reload: "deny",
             skill: {
               "agent-browser": "allow",
@@ -530,6 +532,30 @@ export namespace Agent {
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
     }
 
+    // Merge plugin-contributed agents (lower priority than config agents)
+    const pluginAgents = await Plugin.agentEntries()
+    for (const [key, agent] of Object.entries(pluginAgents)) {
+      if (result[key]) {
+        log.info("plugin agent skipped, name already exists", { name: key })
+        continue
+      }
+      result[key] = {
+        name: agent.name,
+        description: agent.description,
+        prompt: agent.prompt,
+        mode: agent.mode ?? "all",
+        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
+        options: {},
+        native: false,
+        ...(agent.model ? { model: Provider.parseModel(agent.model) } : {}),
+        temperature: agent.temperature,
+        topP: agent.topP,
+        steps: agent.steps,
+        hidden: agent.hidden,
+        color: agent.color,
+      }
+    }
+
     for (const item of Object.values(result)) {
       if (item.mode === "primary" && item.hidden !== true) {
         item.permission = PermissionNext.merge(
@@ -568,12 +594,70 @@ export namespace Agent {
       result.synergy.prompt = buildSynergyPrompt(agentInfos)
     }
 
+    // Discover and register external agents
+    const externalConfig = cfg.external_agent ?? {}
+    const externalDescriptions: Record<string, string> = {
+      codex:
+        "OpenAI Codex agent. Strong at autonomous multi-step coding: implementing features, debugging, refactoring, and running shell commands. Best when the task is well-scoped and implementation-focused.",
+      "claude-code":
+        "Anthropic Claude Code agent. Excels at complex reasoning, nuanced code review, large-scale refactoring, and tasks requiring deep understanding of codebases. Supports extended thinking for hard problems.",
+      openclaw:
+        "OpenClaw multi-model agent platform. Versatile generalist with 39+ built-in tools including web search, browser, image generation, and multi-provider model routing. Good for tasks that need diverse tool access beyond pure coding.",
+    }
+    try {
+      await import("@/external-agent/adapter/codex")
+      await import("@/external-agent/adapter/claude-code")
+      await import("@/external-agent/adapter/openclaw")
+    } catch (e) {
+      log.warn("failed to import external agent adapters", { error: String(e) })
+    }
+    const discovered = await ExternalAgentDiscovery.discover()
+    log.info("external agent discovery results", {
+      discovered: [...discovered.keys()],
+    })
+    for (const [name, info] of discovered) {
+      const overrides = externalConfig[name]
+      if (overrides?.disabled) {
+        log.info("external agent disabled by config", { name })
+        continue
+      }
+      if (overrides?.auto_discover === false) {
+        log.info("external agent auto_discover disabled", { name })
+        continue
+      }
+      const { disabled: _, path, model, auto_discover: __, ...adapterConfig } = overrides ?? {}
+      const externalField = {
+        adapter: info.adapter,
+        path: path ?? info.path,
+        version: info.version,
+        config: {
+          ...(model ? { model } : {}),
+          ...adapterConfig,
+        },
+      }
+      if (result[name]) {
+        // Merge external info into existing agent entry
+        log.info("merging external agent into existing agent", { name })
+        result[name].external = externalField
+      } else {
+        result[name] = {
+          name,
+          description: externalDescriptions[name] ?? `External agent: ${name}`,
+          mode: "all",
+          native: false,
+          permission: PermissionNext.merge(defaults, user),
+          options: {},
+          external: externalField,
+        }
+      }
+    }
+
     return result
   })
 
   export async function reload() {
     log.info("reloading agent state")
-    await state.reset()
+    await state.resetAll()
     log.info("agent state reloaded")
   }
 

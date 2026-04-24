@@ -1,7 +1,6 @@
 import { Select as Kobalte } from "@kobalte/core/select"
 import { createMemo, splitProps, type ComponentProps, type JSX } from "solid-js"
 import { pipe, groupBy, entries, map } from "remeda"
-import { Button, ButtonProps } from "./button"
 import { Icon } from "./icon"
 
 export type SelectProps<T> = Omit<ComponentProps<typeof Kobalte<T>>, "value" | "onSelect" | "children"> & {
@@ -15,9 +14,11 @@ export type SelectProps<T> = Omit<ComponentProps<typeof Kobalte<T>>, "value" | "
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
   children?: (item: T | undefined) => JSX.Element
+  size?: "small" | "normal" | "large"
+  variant?: "primary" | "secondary" | "ghost"
 }
 
-export function Select<T>(props: SelectProps<T> & ButtonProps) {
+export function Select<T>(props: SelectProps<T>) {
   const [local, others] = splitProps(props, [
     "class",
     "classList",
@@ -84,9 +85,9 @@ export function Select<T>(props: SelectProps<T> & ButtonProps) {
       <Kobalte.Trigger
         disabled={props.disabled}
         data-slot="select-select-trigger"
-        as={Button}
-        size={props.size}
-        variant={props.variant}
+        data-component="button"
+        data-size={props.size || "normal"}
+        data-variant={props.variant || "secondary"}
         classList={{
           ...(local.classList ?? {}),
           [local.class ?? ""]: !!local.class,

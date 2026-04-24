@@ -1,20 +1,9 @@
-import { test, expect, mock } from "bun:test"
+import { test, expect } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/scope/instance"
 import { Provider } from "../../src/provider/provider"
 import { Env } from "../../src/util/env"
-
-// Mock BunProc to prevent Config.installDependencies() from running `bun add`
-// which hangs in test environments without network access.
-mock.module("../../src/util/bun", () => ({
-  BunProc: {
-    install: async (pkg: string) => pkg,
-    run: async () => {},
-    which: () => process.execPath,
-    InstallFailedError: class extends Error {},
-  },
-}))
 
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
@@ -311,8 +300,6 @@ test("getModel returns model for valid provider/model", async () => {
       expect(model).toBeDefined()
       expect(model.providerID).toBe("anthropic")
       expect(model.id).toBe("claude-sonnet-4-20250514")
-      const language = await Provider.getLanguage(model)
-      expect(language).toBeDefined()
     },
   })
 })

@@ -23,6 +23,7 @@ import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
+import { SessionControlTool } from "./session-control"
 import { AgendaCreateTool } from "./agenda-create"
 import { AgendaListTool } from "./agenda-list"
 import { AgendaUpdateTool } from "./agenda-update"
@@ -52,7 +53,6 @@ import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { WebSearchTool } from "./websearch"
-import { CodeSearchTool } from "./codesearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
@@ -62,6 +62,7 @@ import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 import { DiagramTool } from "./diagram"
 import { EmailTool } from "./email"
+import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
 
 export namespace ToolRegistry {
@@ -98,7 +99,7 @@ export namespace ToolRegistry {
 
   export async function reload() {
     log.info("reloading tool registry state")
-    await state.reset()
+    await state.resetAll()
     log.info("tool registry state reloaded")
   }
 
@@ -109,11 +110,33 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const result = await def.execute(args as any, ctx)
-          const out = await Truncate.output(result, {}, initCtx?.agent)
+          const pluginCtx = {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            abort: ctx.abort,
+            ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
+              ctx.ask({ ...input, metadata: input.metadata ?? {} }),
+          }
+          const raw = await def.execute(args as any, pluginCtx)
+          if (typeof raw === "object" && raw !== null && "output" in raw) {
+            const structured = raw as { title?: string; output: string; metadata?: Record<string, any> }
+            const out = await Truncate.output(structured.output, {}, initCtx?.agent)
+            return {
+              title: structured.title ?? "",
+              output: out.truncated ? out.content : structured.output,
+              metadata: {
+                ...structured.metadata,
+                truncated: out.truncated,
+                outputPath: out.truncated ? out.outputPath : undefined,
+              },
+            }
+          }
+          const text = raw as string
+          const out = await Truncate.output(text, {}, initCtx?.agent)
           return {
             title: "",
-            output: out.truncated ? out.content : result,
+            output: out.truncated ? out.content : text,
             metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
           }
         },
@@ -157,7 +180,6 @@ export namespace ToolRegistry {
       DagReadTool,
       DagPatchTool,
       WebSearchTool,
-      CodeSearchTool,
       ArxivSearchTool,
       ArxivDownloadTool,
       SkillTool,
@@ -177,6 +199,7 @@ export namespace ToolRegistry {
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
+      SessionControlTool,
       AgendaCreateTool,
       AgendaListTool,
       AgendaUpdateTool,
@@ -194,6 +217,7 @@ export namespace ToolRegistry {
       AttachTool,
       DiagramTool,
       EmailTool,
+      EmailReadTool,
       RuntimeReloadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
@@ -205,19 +229,26 @@ export namespace ToolRegistry {
     return all().then((x) => x.map((t) => t.id))
   }
 
+  const findCache = new Map<string, { id: string; description: string; parameters: any; execute: Function }>()
+
+  export async function find(id: string) {
+    const cached = findCache.get(id)
+    if (cached) return cached
+
+    const tools = await all()
+    const tool = tools.find((t) => t.id === id)
+    if (!tool) return undefined
+    const def = await tool.init()
+    const result = { id: tool.id, ...def }
+    findCache.set(id, result)
+    return result
+  }
+
   export async function tools(providerID: string, agent?: Agent.Info) {
     const tools = await all()
-    const filtered = tools.filter((t) => {
-      if (t.id === "codesearch") {
-        return Flag.SYNERGY_ENABLE_EXA
-      }
-      // websearch is always enabled (uses SearXNG)
-      return true
-    })
-
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
-      filtered.map(async (t) => {
+      tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
         return { id: t.id, ...def }
@@ -230,7 +261,7 @@ export namespace ToolRegistry {
       if (item.status === "fulfilled") {
         result.push(item.value)
       } else {
-        log.warn("tool skipped due to init failure", { tool: filtered[i]?.id, error: String(item.reason) })
+        log.warn("tool skipped due to init failure", { tool: tools[i]?.id, error: String(item.reason) })
       }
     }
     return result

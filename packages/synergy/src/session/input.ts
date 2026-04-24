@@ -234,7 +234,7 @@ export async function createUserMessage(input: InvokeInput) {
         })()
         switch (protocol) {
           case "data:":
-            if (part.mime === "text/plain") {
+            if (Attachment.isText(part.mime)) {
               return [
                 {
                   id: Identifier.ascending("part"),
@@ -320,7 +320,7 @@ export async function createUserMessage(input: InvokeInput) {
               part.mime = "application/x-directory"
             }
 
-            if (part.mime === "text/plain") {
+            if (Attachment.isText(part.mime)) {
               let offset: number | undefined = undefined
               let limit: number | undefined = undefined
               const range = {

@@ -1,7 +1,7 @@
 import { $ } from "bun"
 import path from "path"
 import { NPM_REGISTRY, SYNERGY_DIST_DIR } from "../shared/packages"
-import { npmAuthFlag, npmEnsureDistTag, npmVersionExists, retry } from "../shared/runtime"
+import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry } from "../shared/runtime"
 
 export async function publishSynergyCandidate(version: string, channel: string) {
   console.log("\n=== publish synergy candidate ===\n")
@@ -9,7 +9,7 @@ export async function publishSynergyCandidate(version: string, channel: string) 
   const mainPackagePath = path.join(SYNERGY_DIST_DIR, "synergy")
   const entries = await Array.fromAsync(new Bun.Glob("synergy-*").scan({ cwd: SYNERGY_DIST_DIR, onlyFiles: false }))
   const platformNames = entries.filter((entry) => entry !== "synergy")
-  const authFlag = npmAuthFlag()
+  const authArgs = npmAuthArgs()
 
   for (let index = 0; index < platformNames.length; index += 3) {
     const batch = platformNames.slice(index, index + 3)
@@ -24,7 +24,7 @@ export async function publishSynergyCandidate(version: string, channel: string) 
           await $`rm -f *.tgz`.cwd(cwd).nothrow()
           await $`bun pm pack`.cwd(cwd)
           await retry(
-            () => $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authFlag}`.cwd(cwd),
+            () => $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authArgs}`.cwd(cwd),
             {
               attempts: 3,
               delay: 15_000,
@@ -42,7 +42,7 @@ export async function publishSynergyCandidate(version: string, channel: string) 
     await $`bun pm pack`.cwd(mainPackagePath)
     await retry(
       () =>
-        $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authFlag}`.cwd(
+        $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authArgs}`.cwd(
           mainPackagePath,
         ),
       {

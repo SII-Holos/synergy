@@ -63,7 +63,7 @@ export namespace Log {
 
   export async function init(options: Options) {
     if (options.level) level = options.level
-    cleanup(Global.Path.log)
+    cleanup(Global.Path.log).catch(() => {})
     if (options.print) return
     logpath = path.join(
       Global.Path.log,
@@ -78,13 +78,22 @@ export namespace Log {
         currentWriter.writer.end()
       } catch {}
     }
-    await fs.truncate(filePath).catch(() => {})
-    const logfile = Bun.file(filePath)
-    const writer = logfile.writer()
-    currentWriter = { writer, path: filePath }
-    write = (msg: string) => {
-      writer.write(msg)
-      writer.flush()
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      await fs.truncate(filePath).catch(() => {})
+      const logfile = Bun.file(filePath)
+      const writer = logfile.writer()
+      currentWriter = { writer, path: filePath }
+      write = (msg: string) => {
+        try {
+          writer.write(msg)
+          writer.flush()
+        } catch {}
+      }
+    } catch {
+      write = (msg: string) => {
+        process.stderr.write(msg)
+      }
     }
   }
 

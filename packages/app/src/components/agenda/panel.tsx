@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -7,38 +7,21 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { Panel } from "@/components/panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
-import type { AgendaItem, AgendaRunLog, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
 import { MiniCalendar } from "./mini-calendar"
 import { AgendaForm } from "./form"
 import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
 import { ViewTab } from "../engram/shared"
-
-const statusColors: Record<string, string> = {
-  active: "bg-icon-success-base/15 text-icon-success-base",
-  paused: "bg-icon-warning-base/15 text-icon-warning-base",
-  pending: "bg-surface-interactive-base/10 text-text-interactive-base",
-  done: "bg-surface-inset-base text-text-weak",
-  cancelled: "bg-text-diff-delete-base/15 text-text-diff-delete-base",
-}
-
-const runStatusColors: Record<string, string> = {
-  ok: "text-icon-success-base",
-  error: "text-text-diff-delete-base",
-  skipped: "text-text-weaker",
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-}
+import { ActivityView } from "./activity-view"
+import {
+  defaultAgendaActivityState,
+  mergeAgendaActivityPage,
+  normalizeAgendaActivityError,
+  requestAgendaActivity,
+  type AgendaActivityState,
+} from "./activity-state"
+import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 
 function triggerSummary(triggers: AgendaItem["triggers"]): string {
   if (!triggers || triggers.length === 0) return "Manual"
@@ -53,8 +36,12 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
           return `at ${new Date(t.at).toLocaleString()}`
         case "delay":
           return `delay ${t.delay}`
-        case "watch":
-          return t.watch.kind === "poll" ? `poll: ${t.watch.command}` : `watch: ${t.watch.glob}`
+        case "watch": {
+          const w = t.watch
+          if (w.kind === "poll") return `poll: ${w.command}`
+          if (w.kind === "tool") return `tool: ${w.tool}`
+          return `watch: ${w.glob}`
+        }
         default:
           return "unknown"
       }
@@ -64,14 +51,6 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
 
 type PanelView = "main" | "form"
 type PanelTab = "schedule" | "activity"
-
-type ActivitySession = {
-  sessionID: string
-  itemID: string
-  itemTitle: string
-  session?: Session
-  loading: boolean
-}
 
 export function AgendaPanel() {
   const sdk = useGlobalSDK()
@@ -91,9 +70,10 @@ export function AgendaPanel() {
   const [anchor, setAnchor] = createSignal(Date.now())
   const [calendarRange, setCalendarRange] = createSignal<{ start: number; end: number }>({ start: 0, end: 0 })
 
-  const [activitySessions, setActivitySessions] = createSignal<ActivitySession[]>([])
+  const [activity, setActivity] = createSignal<AgendaActivityState>(defaultAgendaActivityState())
   const [activityLoading, setActivityLoading] = createSignal(false)
-  const [activityLoaded, setActivityLoaded] = createSignal(false)
+  const [activityQuery, setActivityQuery] = createSignal("")
+  const [activityError, setActivityError] = createSignal<string | null>(null)
 
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
 
@@ -187,7 +167,7 @@ export function AgendaPanel() {
       })
       loadRuns(pi.id)
     }
-    if (tab() === "activity") loadActivity(true)
+    if (tab() === "activity") void loadActivity({ reset: true })
   }
 
   function formDirectory(): string {
@@ -220,73 +200,46 @@ export function AgendaPanel() {
     setAnchor(ts)
   }
 
-  async function loadActivity(force = false) {
-    if (activityLoaded() && !force) return
+  async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
+    if (activityLoading()) return
+    if (!sdk?.client?.agenda) return
     setActivityLoading(true)
+    setActivityError(null)
     try {
-      const allItems = items()
-      const sessionRefs: { sessionID: string; itemID: string; itemTitle: string }[] = []
+      const reset = options?.reset ?? false
+      const append = options?.append ?? false
+      const query = options?.query ?? activityQuery()
+      const page = await requestAgendaActivity({
+        client: sdk.client,
+        directory: directory() ?? globalSync.data.path.home,
+        scopeID: directory() === "global" ? "global" : undefined,
+        query,
+        append,
+        state: activity(),
+      })
 
-      const results = await Promise.allSettled(
-        allItems.map(async (item) => {
-          const dir = directoryForItem(item)
-          if (!dir) return []
-          const res = await sdk.client.agenda.sessions({ id: item.id, directory: dir })
-          return ((res.data as { sessionID: string; scopeID: string }[]) ?? []).map((s) => ({
-            sessionID: s.sessionID,
-            itemID: item.id,
-            itemTitle: item.title,
-          }))
-        }),
-      )
+      setActivity((prev) => mergeAgendaActivityPage({ previous: prev, page, append }))
 
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) sessionRefs.push(...r.value)
+      if (reset) {
+        setActivityQuery(query)
       }
-
-      sessionRefs.sort((a, b) => b.sessionID.localeCompare(a.sessionID))
-
-      const initial: ActivitySession[] = sessionRefs.slice(0, 50).map((ref) => ({
-        ...ref,
-        loading: true,
-      }))
-      setActivitySessions(initial)
-      setActivityLoaded(true)
-
-      const enriched = await Promise.allSettled(
-        initial.map(async (entry) => {
-          const res = await sdk.client.session.get({ sessionID: entry.sessionID })
-          return { sessionID: entry.sessionID, session: res.data as Session | undefined }
-        }),
-      )
-
-      setActivitySessions((prev) =>
-        prev
-          .map((entry) => {
-            const match = enriched.find((r) => r.status === "fulfilled" && r.value.sessionID === entry.sessionID)
-            if (match && match.status === "fulfilled" && match.value.session) {
-              return { ...entry, session: match.value.session, loading: false }
-            }
-            return { ...entry, loading: false }
-          })
-          .sort((a, b) => {
-            const ta = a.session?.time.created ?? 0
-            const tb = b.session?.time.created ?? 0
-            return tb - ta
-          }),
-      )
-    } catch {}
+    } catch (error: unknown) {
+      setActivityError(normalizeAgendaActivityError(error))
+      setActivity(defaultAgendaActivityState(activity().limit))
+    }
     setActivityLoading(false)
   }
 
-  createEffect(() => {
-    if (tab() === "activity") loadActivity()
-  })
+  createEffect(
+    on(tab, (t) => {
+      if (t === "activity") void loadActivity()
+    }),
+  )
 
-  function navigateToSession(session: Session) {
-    const dir = session.scope.type === "global" ? "global" : session.scope.directory
+  function navigateToSession(sessionID: string, scopeID: string) {
+    const dir = scopeID === "global" ? "global" : directory()
     if (!dir) return
-    navigate(`/${base64Encode(dir)}/session/${session.id}`)
+    navigate(`/${base64Encode(dir)}/session/${sessionID}`)
   }
 
   return (
@@ -298,7 +251,7 @@ export function AgendaPanel() {
       <Show when={view() === "main"}>
         <Panel.Header>
           <Panel.HeaderRow>
-            <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
+            <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-[1rem] bg-surface-inset-base/42 p-0.75 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
               <ViewTab active={tab() === "schedule"} onClick={() => setTab("schedule")}>
                 Schedule
               </ViewTab>
@@ -314,31 +267,35 @@ export function AgendaPanel() {
         </Panel.Header>
 
         <Show when={tab() === "schedule"}>
-          <div class="flex gap-3 px-3 py-2.5 border-b border-border-weaker-base/50 shrink-0">
-            <div class="shrink-0">
+          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-3 py-2.5 border-b border-border-weaker-base/45 shrink-0">
+            <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
               <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
             </div>
-            <div class="flex-1 min-w-0 flex flex-col min-h-0">
+            <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
               <Show
                 when={todoItems().length > 0}
                 fallback={
-                  <div class="flex-1 flex items-center justify-center">
-                    <span class="text-10-medium text-text-weaker/50">No todo items</span>
+                  <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                    <span class="text-10-medium text-text-weaker/60">No todo items</span>
                   </div>
                 }
               >
-                <div class="flex items-center gap-1 mb-1.5">
-                  <span class="text-10-medium text-text-weaker">Todo</span>
-                  <span class="text-10-medium text-text-weaker/50">{todoItems().length}</span>
+                <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                    <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
+                      {todoItems().length}
+                    </span>
+                  </div>
                 </div>
-                <div class="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1">
+                <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                   <For each={todoItems()}>{(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}</For>
                 </div>
               </Show>
             </div>
           </div>
 
-          <div class="flex flex-col flex-1 min-h-0 relative">
+          <div class="flex flex-col flex-1 min-h-0 relative px-3 pb-3 pt-2.5">
             <CalendarGrid
               viewMode={viewMode()}
               anchor={anchor()}
@@ -373,8 +330,17 @@ export function AgendaPanel() {
 
         <Show when={tab() === "activity"}>
           <ActivityView
-            sessions={activitySessions()}
+            items={activity().items}
+            total={activity().total}
+            hasMore={activity().hasMore}
             loading={activityLoading()}
+            query={activityQuery()}
+            error={activityError()}
+            onQueryChange={(value: string) => {
+              setActivityQuery(value)
+              void loadActivity({ reset: true, query: value })
+            }}
+            onLoadMore={() => void loadActivity({ append: true })}
             onNavigate={navigateToSession}
             onItemClick={(itemId) => {
               const item = itemById(itemId)
@@ -387,140 +353,19 @@ export function AgendaPanel() {
   )
 }
 
-function ActivityView(props: {
-  sessions: ActivitySession[]
-  loading: boolean
-  onNavigate: (session: Session) => void
-  onItemClick: (itemId: string) => void
-}) {
-  const grouped = createMemo(() => {
-    const map = new Map<string, { itemID: string; itemTitle: string; sessions: ActivitySession[] }>()
-    for (const s of props.sessions) {
-      const existing = map.get(s.itemID)
-      if (existing) {
-        existing.sessions.push(s)
-      } else {
-        map.set(s.itemID, { itemID: s.itemID, itemTitle: s.itemTitle, sessions: [s] })
-      }
-    }
-    return [...map.values()]
-  })
-
-  return (
-    <div class="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <Show
-        when={!props.loading || props.sessions.length > 0}
-        fallback={
-          <div class="flex items-center justify-center py-16">
-            <Spinner class="size-4" />
-          </div>
-        }
-      >
-        <Show
-          when={grouped().length > 0}
-          fallback={
-            <div class="flex flex-col items-center justify-center py-16 gap-2">
-              <Icon name="clock" size="large" class="text-icon-weak" />
-              <span class="text-12-regular text-text-weaker">No activity yet</span>
-            </div>
-          }
-        >
-          <div class="flex flex-col">
-            <For each={grouped()}>
-              {(group) => <ActivityGroup group={group} onNavigate={props.onNavigate} onItemClick={props.onItemClick} />}
-            </For>
-          </div>
-        </Show>
-      </Show>
-    </div>
-  )
-}
-
-function ActivityGroup(props: {
-  group: { itemID: string; itemTitle: string; sessions: ActivitySession[] }
-  onNavigate: (session: Session) => void
-  onItemClick: (itemId: string) => void
-}) {
-  const [expanded, setExpanded] = createSignal(true)
-
-  return (
-    <div class="border-b border-border-weaker-base/30">
-      <button
-        type="button"
-        class="flex items-center gap-1 w-full px-4 py-2 text-left hover:bg-surface-raised-base-hover/30 transition-colors"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <Icon
-          name="chevron-right"
-          size="small"
-          class={`shrink-0 text-icon-weak transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
-        />
-        <span class="text-11-medium text-text-weak flex-1 min-w-0 truncate">{props.group.itemTitle}</span>
-        <span class="text-10-medium text-text-weaker shrink-0">{props.group.sessions.length}</span>
-      </button>
-      <Show when={expanded()}>
-        <div class="flex flex-col">
-          <For each={props.group.sessions}>
-            {(entry) => <ActivitySessionRow entry={entry} onNavigate={props.onNavigate} />}
-          </For>
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function ActivitySessionRow(props: { entry: ActivitySession; onNavigate: (session: Session) => void }) {
-  const session = () => props.entry.session
-  const status = () => {
-    const s = session()
-    if (!s) return undefined
-    return s.time.updated > Date.now() - 60_000 ? "recent" : undefined
-  }
-
-  return (
-    <div
-      classList={{
-        "flex items-center gap-2.5 px-4 pl-6 py-1.5 cursor-pointer hover:bg-surface-raised-base-hover/40 transition-colors": true,
-        "opacity-50": !session() && !props.entry.loading,
-      }}
-      onClick={() => {
-        const s = session()
-        if (s) props.onNavigate(s)
-      }}
-    >
-      <Show when={props.entry.loading}>
-        <Spinner class="size-3 shrink-0" />
-      </Show>
-      <Show when={!props.entry.loading}>
-        <span
-          classList={{
-            "shrink-0 w-1.5 h-1.5 rounded-full": true,
-            "bg-icon-success-base": status() === "recent",
-            "bg-text-weaker/40": status() !== "recent",
-          }}
-        />
-      </Show>
-      <span class="text-11-regular text-text-base flex-1 min-w-0 truncate">
-        {session()?.title ?? props.entry.sessionID.slice(0, 12)}
-      </span>
-      <Show when={session()}>
-        {(s) => <span class="text-10-regular text-text-weaker shrink-0">{relativeTime(s().time.created)}</span>}
-      </Show>
-    </div>
-  )
-}
-
 function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
   return (
     <div
-      class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-raised-base-hover/20 hover:bg-surface-raised-base-hover/40 cursor-pointer transition-colors"
+      class="flex items-center gap-2.5 rounded-[0.9rem] bg-surface-raised-base/92 px-2.5 py-2 ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base transition-colors cursor-pointer shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]"
       onClick={props.onClick}
     >
       <span
-        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-surface-interactive-base"}`}
+        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-interactive-base"}`}
       />
       <span class="text-11-regular text-text-strong flex-1 min-w-0 truncate">{props.item.title}</span>
-      <span class="text-[9px] text-text-weaker shrink-0">{triggerSummary(props.item.triggers)}</span>
+      <span class="inline-flex items-center rounded-full bg-surface-inset-base/72 px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35 shrink-0">
+        {triggerSummary(props.item.triggers)}
+      </span>
     </div>
   )
 }
@@ -556,9 +401,9 @@ function DetailPopover(props: {
     <div class="absolute inset-0 z-20 flex items-start justify-center pt-8 px-4 pointer-events-none">
       <div
         ref={cardRef}
-        class="pointer-events-auto bg-surface-base border border-border-weaker-base rounded-2xl shadow-xl w-full max-w-sm max-h-[calc(100%-16px)] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+        class="pointer-events-auto w-full max-w-sm max-h-[calc(100%-16px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
       >
-        <div class="shrink-0 flex items-center gap-1 px-3 pt-2.5 pb-1.5">
+        <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
           <button
             type="button"
             class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
@@ -587,13 +432,11 @@ function DetailPopover(props: {
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex flex-col gap-2.5">
+        <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
             <div class="flex items-start gap-2">
               <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
-              <span
-                class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${statusColors[props.item.status] ?? "bg-surface-inset-base text-text-weak"}`}
-              >
+              <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
                 {props.item.status}
               </span>
             </div>
@@ -603,21 +446,21 @@ function DetailPopover(props: {
             </Show>
 
             <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+              <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                 {triggerSummary(props.item.triggers)}
               </span>
               <Show when={state()?.runCount}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+                <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   {state()!.runCount} runs
                 </span>
               </Show>
               <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-                <span class="px-1.5 py-0.5 rounded-md bg-text-diff-delete-base/15 text-10-medium text-text-diff-delete-base">
+                <span class="px-2 py-0.5 rounded-full bg-text-diff-delete-base/12 text-10-medium text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12">
                   {state()!.consecutiveErrors} errors
                 </span>
               </Show>
               <Show when={props.item.createdBy === "agent"}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-interactive-base/10 text-10-medium text-text-interactive-base">
+                <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
                   agent
                 </span>
               </Show>
@@ -632,26 +475,26 @@ function DetailPopover(props: {
                 Last run: {absoluteDate(state()!.lastRunAt!)}
                 <Show when={state()?.lastRunStatus}>
                   {" · "}
-                  <span class={runStatusColors[state()!.lastRunStatus!] ?? ""}>{state()!.lastRunStatus}</span>
+                  <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
                 </Show>
                 <Show when={state()?.lastRunDuration}>
                   {" · "}
-                  {formatDuration(state()!.lastRunDuration!)}
+                  {formatAgendaDuration(state()!.lastRunDuration!)}
                 </Show>
               </div>
             </Show>
 
             <Show when={state()?.lastRunError}>
-              <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/5 rounded-lg px-2.5 py-1.5 line-clamp-3">
+              <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
                 {state()!.lastRunError}
               </div>
             </Show>
 
             <Show when={props.item.tags && props.item.tags.length > 0}>
-              <div class="flex items-center gap-1 flex-wrap">
+              <div class="flex items-center gap-1.5 flex-wrap">
                 <For each={props.item.tags}>
                   {(tag) => (
-                    <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+                    <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                       #{tag}
                     </span>
                   )}
@@ -659,15 +502,17 @@ function DetailPopover(props: {
               </div>
             </Show>
 
-            <Show when={props.item.task?.prompt}>
-              <div class="rounded-lg border border-border-weaker-base/50 overflow-hidden">
-                <div class="px-3 py-1.5 text-11-medium text-text-weak border-b border-border-weaker-base/50">Task</div>
-                <div class="px-3 py-2">
+            <Show when={props.item.prompt}>
+              <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
+                  Task
+                </div>
+                <div class="px-3 py-2.5">
                   <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
-                    {props.item.task!.prompt}
+                    {props.item.prompt}
                   </p>
-                  <Show when={props.item.task!.agent}>
-                    <span class="text-10-medium text-text-weaker mt-1 block">Agent: {props.item.task!.agent}</span>
+                  <Show when={props.item.agent}>
+                    <span class="text-10-medium text-text-weaker mt-1.5 block">Agent: {props.item.agent}</span>
                   </Show>
                 </div>
               </div>
@@ -678,8 +523,8 @@ function DetailPopover(props: {
             <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
               {(runs) => (
                 <Show when={runs().length > 0}>
-                  <div class="rounded-lg border border-border-weaker-base/50 overflow-hidden">
-                    <div class="px-3 py-1.5 text-11-medium text-text-weak border-b border-border-weaker-base/50">
+                  <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                    <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
                       Recent runs
                     </div>
                     <div>
@@ -802,13 +647,13 @@ function ActionButton(props: {
     <button
       type="button"
       classList={{
-        "px-2.5 py-1 rounded-lg text-11-medium border transition-colors": true,
-        "border-icon-success-base/30 text-icon-success-base": done(),
-        "border-surface-interactive-base/30 text-text-interactive-base hover:bg-surface-interactive-base/10":
+        "px-2.5 py-1 rounded-full text-11-medium border transition-colors": true,
+        "border-icon-success-base/25 bg-icon-success-base/8 text-icon-success-base": done(),
+        "border-border-interactive-base/25 bg-surface-interactive-selected-weak text-text-interactive-base hover:bg-surface-interactive-selected":
           variant() === "primary" && !props.loading && !done(),
-        "border-text-diff-delete-base/30 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
+        "border-text-diff-delete-base/25 bg-text-diff-delete-base/6 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           variant() === "danger" && !props.loading && !done(),
-        "border-border-weaker-base text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+        "border-border-base/45 bg-surface-raised-base/88 text-text-weak hover:text-text-base hover:bg-surface-raised-base":
           variant() === "default" && !props.loading && !done(),
         "opacity-50 pointer-events-none": props.loading || done(),
       }}
@@ -826,12 +671,12 @@ function ActionButton(props: {
 function RunRow(props: { run: AgendaRunLog }) {
   return (
     <div class="flex items-center gap-2 px-3 py-1.5 text-11-regular border-b border-border-weaker-base/30 last:border-b-0">
-      <span class={`shrink-0 ${runStatusColors[props.run.status] ?? "text-text-weaker"}`}>
+      <span class={`shrink-0 ${agendaRunStatusTone(props.run.status)}`}>
         {props.run.status === "ok" ? "✓" : props.run.status === "error" ? "✗" : "–"}
       </span>
       <span class="text-text-weaker shrink-0">{props.run.trigger.type}</span>
       <Show when={props.run.duration}>
-        <span class="text-text-weaker shrink-0">{formatDuration(props.run.duration!)}</span>
+        <span class="text-text-weaker shrink-0">{formatAgendaDuration(props.run.duration!)}</span>
       </Show>
       <span class="flex-1 min-w-0 text-text-weak truncate">
         <Show when={props.run.error} fallback="">

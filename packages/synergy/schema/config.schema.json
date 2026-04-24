@@ -15,12 +15,7 @@
       "description": "Log level",
       "ref": "LogLevel",
       "type": "string",
-      "enum": [
-        "DEBUG",
-        "INFO",
-        "WARN",
-        "ERROR"
-      ]
+      "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
     },
     "server": {
       "description": "Server configuration for synergy serve and web commands",
@@ -73,9 +68,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "template"
-        ],
+        "required": ["template"],
         "additionalProperties": false
       }
     },
@@ -197,6 +190,36 @@
         "ref": "AgentConfig"
       }
     },
+    "external_agent": {
+      "description": "External agent configurations (e.g. codex, claude-code)",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "ref": "ExternalAgentConfig",
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "description": "Disable this external agent",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Override path to the external agent binary",
+            "type": "string"
+          },
+          "model": {
+            "description": "Default model for this external agent",
+            "type": "string"
+          },
+          "auto_discover": {
+            "description": "Whether to auto-discover this agent on startup (default: true)",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
     "provider": {
       "description": "Custom provider configurations and model overrides",
       "type": "object",
@@ -268,15 +291,10 @@
                       "properties": {
                         "field": {
                           "type": "string",
-                          "enum": [
-                            "reasoning_content",
-                            "reasoning_details"
-                          ]
+                          "enum": ["reasoning_content", "reasoning_details"]
                         }
                       },
-                      "required": [
-                        "field"
-                      ],
+                      "required": ["field"],
                       "additionalProperties": false
                     }
                   ]
@@ -312,17 +330,11 @@
                           "type": "number"
                         }
                       },
-                      "required": [
-                        "input",
-                        "output"
-                      ],
+                      "required": ["input", "output"],
                       "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
+                  "required": ["input", "output"],
                   "additionalProperties": false
                 },
                 "limit": {
@@ -331,14 +343,14 @@
                     "context": {
                       "type": "number"
                     },
+                    "input": {
+                      "type": "number"
+                    },
                     "output": {
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "context",
-                    "output"
-                  ],
+                  "required": ["context", "output"],
                   "additionalProperties": false
                 },
                 "modalities": {
@@ -348,45 +360,23 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": [
-                          "text",
-                          "audio",
-                          "image",
-                          "video",
-                          "pdf"
-                        ]
+                        "enum": ["text", "audio", "image", "video", "pdf"]
                       }
                     },
                     "output": {
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": [
-                          "text",
-                          "audio",
-                          "image",
-                          "video",
-                          "pdf"
-                        ]
+                        "enum": ["text", "audio", "image", "video", "pdf"]
                       }
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
+                  "required": ["input", "output"],
                   "additionalProperties": false
-                },
-                "experimental": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "alpha",
-                    "beta",
-                    "deprecated"
-                  ]
+                  "enum": ["alpha", "beta", "deprecated"]
                 },
                 "options": {
                   "type": "object",
@@ -411,9 +401,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "npm"
-                  ],
+                  "required": ["npm"],
                   "additionalProperties": false
                 },
                 "variants": {
@@ -567,13 +555,13 @@
                               "type": "object",
                               "properties": {
                                 "simThreshold": {
-                                  "description": "Minimum cosine similarity for retrieval candidates (default: 0.5)",
+                                  "description": "Minimum cosine similarity for retrieval candidates (default: 0.7)",
                                   "type": "number",
                                   "minimum": 0,
                                   "maximum": 1
                                 },
                                 "topK": {
-                                  "description": "Number of experiences to retrieve (default: 5)",
+                                  "description": "Number of experiences to retrieve (default: 8)",
                                   "type": "integer",
                                   "minimum": 1,
                                   "maximum": 9007199254740991
@@ -736,11 +724,11 @@
                               "type": "object",
                               "properties": {
                                 "simThreshold": {
-                                  "description": "Default minimum similarity for auto-injection (default: 0.5)",
+                                  "description": "Default minimum similarity for auto-injection (default: 0.7)",
                                   "type": "number"
                                 },
                                 "topK": {
-                                  "description": "Default maximum entries per category to contextually retrieve (default: 5)",
+                                  "description": "Default maximum entries per category to contextually retrieve (default: 3)",
                                   "type": "number"
                                 },
                                 "categories": {
@@ -853,10 +841,7 @@
                     "maximum": 9007199254740991
                   }
                 },
-                "required": [
-                  "type",
-                  "command"
-                ],
+                "required": ["type", "command"],
                 "additionalProperties": false
               },
               {
@@ -921,10 +906,7 @@
                     "maximum": 9007199254740991
                   }
                 },
-                "required": [
-                  "type",
-                  "url"
-                ],
+                "required": ["type", "url"],
                 "additionalProperties": false
               }
             ]
@@ -936,9 +918,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "enabled"
-            ],
+            "required": ["enabled"],
             "additionalProperties": false
           }
         ]
@@ -984,10 +964,7 @@
                     "domain": {
                       "description": "Feishu domain (feishu for China, lark for international)",
                       "type": "string",
-                      "enum": [
-                        "feishu",
-                        "lark"
-                      ]
+                      "enum": ["feishu", "lark"]
                     },
                     "allowDM": {
                       "description": "Allow direct messages",
@@ -1024,12 +1001,7 @@
                       "description": "Session scoping strategy for group chats",
                       "default": "group",
                       "type": "string",
-                      "enum": [
-                        "group",
-                        "group_sender",
-                        "group_topic",
-                        "group_topic_sender"
-                      ]
+                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender"]
                     },
                     "inboundDebounceMs": {
                       "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
@@ -1069,10 +1041,7 @@
               "domain": {
                 "description": "Default domain for all accounts",
                 "type": "string",
-                "enum": [
-                  "feishu",
-                  "lark"
-                ]
+                "enum": ["feishu", "lark"]
               },
               "streaming": {
                 "description": "Default streaming setting for all accounts",
@@ -1080,11 +1049,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "type",
-              "accounts",
-              "streaming"
-            ],
+            "required": ["type", "accounts", "streaming"],
             "additionalProperties": false
           }
         ]
@@ -1116,12 +1081,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "enabled",
-        "apiUrl",
-        "wsUrl",
-        "portalUrl"
-      ],
+      "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
       "additionalProperties": false
     },
     "email": {
@@ -1130,7 +1090,7 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Enable outgoing email features",
+          "description": "Enable email features",
           "type": "boolean"
         },
         "from": {
@@ -1174,6 +1134,36 @@
             },
             "password": {
               "description": "SMTP password or app token",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "imap": {
+          "description": "IMAP settings for reading emails",
+          "ref": "EmailImapConfig",
+          "type": "object",
+          "properties": {
+            "host": {
+              "description": "IMAP server hostname",
+              "type": "string"
+            },
+            "port": {
+              "description": "IMAP server port",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "secure": {
+              "description": "Use TLS/SSL for the IMAP connection",
+              "type": "boolean"
+            },
+            "username": {
+              "description": "IMAP username",
+              "type": "string"
+            },
+            "password": {
+              "description": "IMAP password or app token",
               "type": "string"
             }
           },
@@ -1247,9 +1237,7 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "disabled"
-                ],
+                "required": ["disabled"],
                 "additionalProperties": false
               },
               {
@@ -1287,9 +1275,7 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": [
-                  "command"
-                ],
+                "required": ["command"],
                 "additionalProperties": false
               }
             ]
@@ -1308,10 +1294,7 @@
       "description": "@deprecated Always uses stretch layout.",
       "ref": "LayoutConfig",
       "type": "string",
-      "enum": [
-        "auto",
-        "stretch"
-      ]
+      "enum": ["auto", "stretch"]
     },
     "permission": {
       "ref": "PermissionConfig"
@@ -1354,6 +1337,17 @@
       },
       "additionalProperties": false
     },
+    "question": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "compaction": {
       "type": "object",
       "properties": {
@@ -1364,9 +1358,29 @@
         "prune": {
           "description": "Enable pruning of old tool outputs (default: true)",
           "type": "boolean"
+        },
+        "overflowThreshold": {
+          "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1
         }
       },
       "additionalProperties": false
+    },
+    "pluginConfig": {
+      "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
     },
     "category": {
       "description": "Custom category configurations for background tasks. Categories define model and prompt presets.",

@@ -3,8 +3,8 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 ## Actions
 
 - **list**: List all running and recently finished background processes
-- **poll**: Check if a process is still running and get recent output. Use `block: true` to wait for the process to exit (with optional `timeout` in seconds, default 30s)
-- **log**: Get full output from a process (supports offset/limit for pagination)
+- **poll**: Check if a process is still running and get recent output. Non-blocking by default — returns immediately with current status and tail output. Use `block: true` to wait for the process to exit (with optional `timeout` in seconds, default 30s). Note: `block: true` holds the agent turn until the process exits — the agent cannot respond or act during this time. Prefer non-blocking `poll` or `log` first, then `block: true` only when you have nothing else to do before the process finishes.
+- **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far.
 - **write**: Write raw data to a process's stdin
 - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
 - **kill**: Terminate a running process
@@ -22,20 +22,20 @@ After launching a background bash command:
 bash(command: "npm run dev", background: true) → { processId: "proc_xxx" }
 ```
 
-Check status:
+Get current output (non-blocking, recommended first step):
+```
+process(action: "log", processId: "proc_xxx")
+```
+
+Check status (non-blocking by default):
 ```
 process(action: "poll", processId: "proc_xxx")
 ```
 
-Wait for completion (blocks up to 30s by default):
+Wait for completion (BLOCKS — agent cannot act until process exits):
 ```
 process(action: "poll", processId: "proc_xxx", block: true)
 process(action: "poll", processId: "proc_xxx", block: true, timeout: 60)
-```
-
-Get full output:
-```
-process(action: "log", processId: "proc_xxx")
 ```
 
 Send input:

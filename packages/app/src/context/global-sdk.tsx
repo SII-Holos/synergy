@@ -1,9 +1,13 @@
 import { createSynergyClient, type Event } from "@ericsanchezok/synergy-sdk/client"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { batch, onCleanup } from "solid-js"
+import { batch, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
+
+const PING_INTERVAL = 15_000
+const PONG_TIMEOUT = 5_000
+const MAX_MISSED_PONGS = 2
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
@@ -57,6 +61,37 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let ws: WebSocket | undefined
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let reconnectDelay = 1000
+    let pingTimer: ReturnType<typeof setInterval> | undefined
+    let pongTimer: ReturnType<typeof setTimeout> | undefined
+    let missedPongs = 0
+    const [connected, setConnected] = createSignal(false)
+
+    const clearPingTimers = () => {
+      if (pingTimer) clearInterval(pingTimer)
+      if (pongTimer) clearTimeout(pongTimer)
+      pingTimer = undefined
+      pongTimer = undefined
+      missedPongs = 0
+    }
+
+    const startPing = () => {
+      clearPingTimers()
+      pingTimer = setInterval(() => {
+        const socket = ws
+        if (!socket || socket.readyState !== WebSocket.OPEN) return
+        try {
+          socket.send(JSON.stringify({ payload: { type: "client.ping", properties: {} } }))
+        } catch {
+          return
+        }
+        pongTimer = setTimeout(() => {
+          missedPongs++
+          if (missedPongs >= MAX_MISSED_PONGS) {
+            socket.close()
+          }
+        }, PONG_TIMEOUT)
+      }, PING_INTERVAL)
+    }
 
     function connect() {
       if (disposed) return
@@ -66,6 +101,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
       socket.onopen = () => {
         reconnectDelay = 1000
+        missedPongs = 0
+        setConnected(true)
+        startPing()
       }
 
       socket.onmessage = (msg) => {
@@ -77,6 +115,16 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
         const payload = parsed.payload
         if (!payload) return
+
+        const type = payload.type as string
+        if (type === "server.pong") {
+          if (pongTimer) clearTimeout(pongTimer)
+          pongTimer = undefined
+          missedPongs = 0
+          return
+        }
+
+        if (type === "server.heartbeat") return
 
         const directory = parsed.directory ?? "global"
         const k = key(directory, payload)
@@ -92,6 +140,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       }
 
       socket.onclose = () => {
+        clearPingTimers()
+        setConnected(false)
         if (disposed) return
         reconnectTimer = setTimeout(() => {
           reconnectDelay = Math.min(reconnectDelay * 2, 30000)
@@ -108,6 +158,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     onCleanup(() => {
       disposed = true
+      clearPingTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()
       flush()
@@ -120,6 +171,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       throwOnError: true,
     })
 
-    return { url: server.url, client: sdk, event: emitter }
+    return { url: server.url, client: sdk, event: emitter, connected }
   },
 })

@@ -1,0 +1,10 @@
+Read emails from an IMAP inbox. Use this tool when the user asks to check email, read mail, view inbox, or search for specific emails.
+
+Usage notes:
+- The `folder` parameter defaults to "INBOX" if not specified
+- Use `search` to filter emails by criteria such as subject, sender, date range, or read/unread status
+- Use `uids` to fetch specific emails by their UID (obtained from a previous search or summary)
+- Use `summaries` to get a list of emails with basic info (subject, from, date, seen status) without full body content
+- Use `markSeen` to mark emails as read after fetching them
+- The `limit` parameter controls how many results to return (default 20, max 100)
+- For date-based searches, use ISO 8601 date strings (e.g., "2024-01-01")

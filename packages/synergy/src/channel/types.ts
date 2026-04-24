@@ -119,7 +119,7 @@ export type StreamingToolProgress = {
   id: string
   tool: string
   title?: string
-  status: "pending" | "running" | "completed" | "error"
+  status: "pending" | "generating" | "running" | "completed" | "error"
 }
 
 export interface StreamingSession {

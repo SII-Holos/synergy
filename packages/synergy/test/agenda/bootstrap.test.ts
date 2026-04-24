@@ -34,9 +34,12 @@ function withAnima(autonomy: boolean, fn: () => Promise<void>) {
         await AgendaStore.create(
           {
             title: "Anima daily wake",
+            prompt: "你醒了。",
             triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
-            task: { prompt: "你醒了。", agent: "anima" },
-            delivery: { target: "silent" },
+            agent: "anima",
+            silent: true,
+            wake: false,
+            global: true,
             tags: ["system"],
             createdBy: "user",
           },
@@ -59,7 +62,7 @@ test("seed creates anima item on startup when missing", async () => {
   const created = await AgendaStore.get("global", "anima-daily")
   expect(created.id).toBe("anima-daily")
   expect(created.status).toBe("active")
-  expect(created.task?.agent).toBe("anima")
+  expect(created.agent).toBe("anima")
 })
 
 test(

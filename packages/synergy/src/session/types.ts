@@ -64,6 +64,12 @@ export const Info = z
           itemID: z.string(),
         })
         .optional(),
+      lastExchange: z
+        .object({
+          user: z.string().optional(),
+          assistant: z.string().optional(),
+        })
+        .optional(),
       revert: z
         .object({
           messageID: z.string(),

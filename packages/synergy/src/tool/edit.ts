@@ -59,10 +59,39 @@ export const EditTool = Tool.define("edit", {
     let contentOld = ""
     let contentNew = ""
 
-    await FileTime.withLock(filePath, async () => {
-      if (params.oldString === "") {
-        contentNew = params.newString
-        diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+    await FileTime.withLock(
+      filePath,
+      async () => {
+        if (params.oldString === "") {
+          contentNew = params.newString
+          diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+          await ctx.ask({
+            permission: "edit",
+            patterns: [displayPath],
+            metadata: {
+              filepath: filePath,
+              diff,
+            },
+          })
+          await Bun.write(filePath, params.newString)
+          await Bus.publish(File.Event.Edited, {
+            file: filePath,
+          })
+          FileTime.read(ctx.sessionID, filePath)
+          return
+        }
+
+        const file = Bun.file(filePath)
+        const stats = await file.stat().catch(() => {})
+        if (!stats) throw new Error(`File ${filePath} not found`)
+        if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+        await FileTime.assert(ctx.sessionID, filePath)
+        contentOld = await file.text()
+        contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
+
+        diff = trimDiff(
+          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+        )
         await ctx.ask({
           permission: "edit",
           patterns: [displayPath],
@@ -71,44 +100,19 @@ export const EditTool = Tool.define("edit", {
             diff,
           },
         })
-        await Bun.write(filePath, params.newString)
+
+        await file.write(contentNew)
         await Bus.publish(File.Event.Edited, {
           file: filePath,
         })
+        contentNew = await file.text()
+        diff = trimDiff(
+          createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+        )
         FileTime.read(ctx.sessionID, filePath)
-        return
-      }
-
-      const file = Bun.file(filePath)
-      const stats = await file.stat().catch(() => {})
-      if (!stats) throw new Error(`File ${filePath} not found`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
-      contentOld = await file.text()
-      contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
-
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      await ctx.ask({
-        permission: "edit",
-        patterns: [displayPath],
-        metadata: {
-          filepath: filePath,
-          diff,
-        },
-      })
-
-      await file.write(contentNew)
-      await Bus.publish(File.Event.Edited, {
-        file: filePath,
-      })
-      contentNew = await file.text()
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      FileTime.read(ctx.sessionID, filePath)
-    })
+      },
+      { signal: ctx.abort },
+    )
 
     const filediff: Snapshot.FileDiff = {
       file: filePath,
@@ -179,8 +183,14 @@ export const EditTool = Tool.define("edit", {
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 
 // Similarity thresholds for block anchor fallback matching
-const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.0
+const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.3
 const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD = 0.3
+
+// Minimum similarity ratio for findSimilarLines to emit a hint
+const SIMILAR_LINES_THRESHOLD = 0.3
+
+// Max file lines before skipping similar-lines search (performance guard)
+const SIMILAR_LINES_MAX_FILE_LINES = 5000
 
 /**
  * Levenshtein distance algorithm implementation
@@ -201,6 +211,124 @@ function levenshtein(a: string, b: string): number {
     }
   }
   return matrix[a.length][b.length]
+}
+
+/**
+ * Find the most similar block of lines in content to the search string,
+ * returning a formatted hint with line numbers. Used to guide the agent
+ * when all Replers fail to match.
+ */
+function findSimilarLines(content: string, search: string): string {
+  const contentLines = content.split("\n")
+  if (contentLines.length > SIMILAR_LINES_MAX_FILE_LINES) return ""
+
+  const searchLines = search.split("\n")
+  if (searchLines[searchLines.length - 1] === "") searchLines.pop()
+  const searchLen = searchLines.length
+  if (searchLen === 0) return ""
+
+  let bestStart = -1
+  let bestSimilarity = -1
+
+  for (let i = 0; i <= contentLines.length - searchLen; i++) {
+    let similarity = 0
+    for (let j = 0; j < searchLen; j++) {
+      const a = contentLines[i + j].trim()
+      const b = searchLines[j].trim()
+      if (a === "" && b === "") {
+        similarity += 1
+      } else if (a.length > 0 || b.length > 0) {
+        const maxLen = Math.max(a.length, b.length)
+        if (maxLen > 0) similarity += 1 - levenshtein(a, b) / maxLen
+      }
+    }
+    similarity /= searchLen
+
+    if (similarity > bestSimilarity) {
+      bestSimilarity = similarity
+      bestStart = i
+    }
+  }
+
+  if (bestStart === -1 || bestSimilarity < SIMILAR_LINES_THRESHOLD) return ""
+
+  const contextPad = 2
+  const startLine = Math.max(0, bestStart - contextPad)
+  const endLine = Math.min(contentLines.length, bestStart + searchLen + contextPad)
+  const padLen = String(endLine).length
+
+  const lines: string[] = []
+  for (let i = startLine; i < endLine; i++) {
+    const marker = i >= bestStart && i < bestStart + searchLen ? ">" : " "
+    const lineNum = String(i + 1).padStart(padLen, " ")
+    lines.push(` ${marker} ${lineNum} | ${contentLines[i]}`)
+  }
+  return lines.join("\n")
+}
+
+/**
+ * List all line locations where oldString appears exactly in content.
+ * Used when "Found multiple matches" to show the agent every occurrence.
+ */
+function findMatchLocations(content: string, oldString: string): string {
+  const locations: string[] = []
+  let fromIndex = 0
+  while (true) {
+    const found = content.indexOf(oldString, fromIndex)
+    if (found === -1) break
+    const lineNum = content.substring(0, found).split("\n").length
+    const lineContent = content.split("\n")[lineNum - 1]?.trim() ?? ""
+    locations.push(`  line ${lineNum}: ${lineContent}`)
+    fromIndex = found + 1
+  }
+  return locations.join("\n")
+}
+
+/**
+ * Check whether two strings differ only in leading whitespace per line.
+ * Used to decide if newString indentation should be adjusted to match
+ * the file's actual indentation level.
+ */
+function differsOnlyByIndentation(a: string, b: string): boolean {
+  const aLines = a.split("\n")
+  const bLines = b.split("\n")
+  if (aLines.length !== bLines.length) return false
+  return aLines.every((aLine, i) => aLine.trimStart() === bLines[i].trimStart())
+}
+
+/**
+ * Adjust newString indentation so it aligns with the file's actual
+ * indentation at the match location, based on the offset between
+ * oldString and the actual matched text.
+ */
+function adjustIndentation(oldString: string, newString: string, actualMatch: string): string {
+  const oldLines = oldString.split("\n")
+  const actualLines = actualMatch.split("\n")
+
+  // Compute offset from the first non-empty line
+  let offset = 0
+  for (let i = 0; i < oldLines.length; i++) {
+    if (oldLines[i].trim().length > 0) {
+      const oldIndent = oldLines[i].match(/^(\s*)/)?.[1].length ?? 0
+      const actualIndent = actualLines[i]?.match(/^(\s*)/)?.[1].length ?? 0
+      offset = actualIndent - oldIndent
+      break
+    }
+  }
+
+  if (offset === 0) return newString
+
+  const prefix = offset > 0 ? " ".repeat(offset) : ""
+  return newString
+    .split("\n")
+    .map((line) => {
+      if (line.trim().length === 0) return line
+      if (offset > 0) return prefix + line
+      // Negative offset: strip up to |offset| leading spaces
+      const currentIndent = line.match(/^(\s*)/)?.[1].length ?? 0
+      return line.slice(Math.min(-offset, currentIndent))
+    })
+    .join("\n")
 }
 
 export const SimpleReplacer: Replacer = function* (_content, find) {
@@ -290,7 +418,7 @@ export const BlockAnchorReplacer: Replacer = function* (content, find) {
     const actualBlockSize = endLine - startLine + 1
 
     let similarity = 0
-    let linesToCheck = Math.min(searchBlockSize - 2, actualBlockSize - 2) // Middle lines only
+    const linesToCheck = Math.min(searchBlockSize - 2, actualBlockSize - 2) // Middle lines only
 
     if (linesToCheck > 0) {
       for (let j = 1; j < searchBlockSize - 1 && j < actualBlockSize - 1; j++) {
@@ -302,11 +430,6 @@ export const BlockAnchorReplacer: Replacer = function* (content, find) {
         }
         const distance = levenshtein(originalLine, searchLine)
         similarity += (1 - distance / maxLen) / linesToCheck
-
-        // Exit early when threshold is reached
-        if (similarity >= SINGLE_CANDIDATE_SIMILARITY_THRESHOLD) {
-          break
-        }
       }
     } else {
       // No middle lines to compare, just accept based on anchors
@@ -659,19 +782,34 @@ export function replace(content: string, oldString: string, newString: string, r
       const index = content.indexOf(search)
       if (index === -1) continue
       notFound = false
+
+      const adjusted =
+        search !== oldString && differsOnlyByIndentation(search, oldString)
+          ? adjustIndentation(oldString, newString, search)
+          : newString
+
       if (replaceAll) {
-        return content.replaceAll(search, newString)
+        return content.replaceAll(search, adjusted)
       }
       const lastIndex = content.lastIndexOf(search)
       if (index !== lastIndex) continue
-      return content.substring(0, index) + newString + content.substring(index + search.length)
+      return content.substring(0, index) + adjusted + content.substring(index + search.length)
     }
   }
 
   if (notFound) {
-    throw new Error("oldString not found in content")
+    const hint = findSimilarLines(content, oldString)
+    throw new Error(
+      hint
+        ? `oldString not found in content\n\nThe most similar lines in the file are:\n${hint}`
+        : "oldString not found in content",
+    )
   }
+
+  const locations = findMatchLocations(content, oldString)
   throw new Error(
-    "Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.",
+    locations
+      ? `Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.\n\nMatches found at:\n${locations}`
+      : "Found multiple matches for oldString. Provide more surrounding lines in oldString to identify the correct match.",
   )
 }

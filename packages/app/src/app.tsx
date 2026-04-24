@@ -48,9 +48,7 @@ export function AppInterface() {
       <Match when={!access()}>
         <Loading />
       </Match>
-      <Match when={access()}>
-        {(resolvedAccess) => <AppWithAccess access={resolvedAccess()} />}
-      </Match>
+      <Match when={access()}>{(resolvedAccess) => <AppWithAccess access={resolvedAccess()} />}</Match>
     </Switch>
   )
 }

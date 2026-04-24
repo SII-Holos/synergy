@@ -26,19 +26,26 @@
       "bun": "./src/tool.ts",
       "types": "./src/tool.ts",
       "import": "./dist/tool.js"
+    },
+    "./hooks": {
+      "bun": "./src/hooks.ts",
+      "types": "./src/hooks.ts",
+      "import": "./dist/hooks.js"
     }
   },
   "files": [
     "dist"
   ],
-  "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
-    "zod": "catalog:"
+  "dependencies": {},
+  "peerDependencies": {
+    "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "zod": "catalog:"
   }
 }
