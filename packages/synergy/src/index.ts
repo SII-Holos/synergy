@@ -32,7 +32,7 @@ import { RestartCommand } from "./cli/cmd/restart"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
-import { MigrateCommand } from "./cli/cmd/migrate"
+import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -133,6 +133,7 @@ const cli = yargs(hideBin(process.argv))
   .command(StatusCommand)
   .command(LogsCommand)
   .command(PluginCommand)
+  .command(DataCommand)
   .command(MigrateCommand)
   .fail((msg) => {
     if (
