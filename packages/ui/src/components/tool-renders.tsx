@@ -676,7 +676,7 @@ ToolRegistry.register({
           )
         }
       >
-        <Show when={props.metadata.filediff?.path || props.input.filePath}>
+        <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
           <div data-component="edit-content">
             <Dynamic
               component={diffComponent}
@@ -727,7 +727,7 @@ ToolRegistry.register({
           )
         }
       >
-        <Show when={props.input.content || props.input.filePath}>
+        <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
           <div data-component="write-content">
             <Dynamic
               component={codeComponent}
@@ -1150,7 +1150,7 @@ ToolRegistry.register({
           )
         }
       >
-        <Show when={props.metadata.results}>
+        <Show when={props.status !== "generating" && props.metadata.results}>
           {(results) => {
             const lastResult = () => {
               const r = results()
