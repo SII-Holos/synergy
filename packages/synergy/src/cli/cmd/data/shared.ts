@@ -175,9 +175,6 @@ export async function copyDirSkipExisting(
   rootSrc?: string,
   totalFiles?: number,
 ): Promise<{ copied: number; skipped: number }> {
-  let copied = 0
-  let skipped = 0
-
   if (!rootSrc) {
     rootSrc = src
   }
@@ -186,60 +183,64 @@ export async function copyDirSkipExisting(
     totalFiles = await countFiles(src)
   }
 
-  await fs.mkdir(dst, { recursive: true })
-  const entries = await fs.readdir(src, { withFileTypes: true })
+  // Shared mutable counters so recursive calls accumulate correctly
+  const acc = { copied: 0, skipped: 0 }
 
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name)
-    const dstPath = path.join(dst, entry.name)
+  async function walk(currentSrc: string, currentDst: string) {
+    await fs.mkdir(currentDst, { recursive: true })
+    const entries = await fs.readdir(currentSrc, { withFileTypes: true })
 
-    if (entry.isDirectory()) {
-      const result = await copyDirSkipExisting(srcPath, dstPath, onProgress, rootSrc, totalFiles)
-      copied += result.copied
-      skipped += result.skipped
-    } else if (entry.isFile()) {
-      const exists = await fs
-        .access(dstPath)
-        .then(() => true)
-        .catch(() => false)
-      if (exists) {
-        skipped++
-      } else {
-        await fs.copyFile(srcPath, dstPath)
-        copied++
-      }
-      if (onProgress && totalFiles) {
-        onProgress({
-          copied,
-          skipped,
-          total: totalFiles,
-          currentFile: path.relative(rootSrc, srcPath),
-        })
-      }
-    } else if (entry.isSymbolicLink()) {
-      const exists = await fs
-        .access(dstPath)
-        .then(() => true)
-        .catch(() => false)
-      if (exists) {
-        skipped++
-      } else {
-        const linkTarget = await fs.readlink(srcPath)
-        await fs.symlink(linkTarget, dstPath).catch(() => {})
-        copied++
-      }
-      if (onProgress && totalFiles) {
-        onProgress({
-          copied,
-          skipped,
-          total: totalFiles,
-          currentFile: path.relative(rootSrc, srcPath),
-        })
+    for (const entry of entries) {
+      const srcPath = path.join(currentSrc, entry.name)
+      const dstPath = path.join(currentDst, entry.name)
+
+      if (entry.isDirectory()) {
+        await walk(srcPath, dstPath)
+      } else if (entry.isFile()) {
+        const exists = await fs
+          .access(dstPath)
+          .then(() => true)
+          .catch(() => false)
+        if (exists) {
+          acc.skipped++
+        } else {
+          await fs.copyFile(srcPath, dstPath)
+          acc.copied++
+        }
+        if (onProgress && totalFiles) {
+          onProgress({
+            copied: acc.copied,
+            skipped: acc.skipped,
+            total: totalFiles,
+            currentFile: path.relative(rootSrc!, srcPath),
+          })
+        }
+      } else if (entry.isSymbolicLink()) {
+        const exists = await fs
+          .access(dstPath)
+          .then(() => true)
+          .catch(() => false)
+        if (exists) {
+          acc.skipped++
+        } else {
+          const linkTarget = await fs.readlink(srcPath)
+          await fs.symlink(linkTarget, dstPath).catch(() => {})
+          acc.copied++
+        }
+        if (onProgress && totalFiles) {
+          onProgress({
+            copied: acc.copied,
+            skipped: acc.skipped,
+            total: totalFiles,
+            currentFile: path.relative(rootSrc!, srcPath),
+          })
+        }
       }
     }
   }
 
-  return { copied, skipped }
+  await walk(src, dst)
+  return { copied: acc.copied, skipped: acc.skipped }
 }
 
 async function countFiles(dir: string): Promise<number> {

@@ -101,7 +101,7 @@ export async function executeMove(opts: MoveOptions) {
   // Step 2: Select categories
   const selectable = CATEGORIES.filter((c) => !c.required)
   const selected = await prompts.multiselect({
-    message: "What should be moved?",
+    message: "What should be moved? (Space to toggle, Enter to confirm)",
     options: selectable.map((cat) => ({
       value: cat.key,
       label: cat.label,
@@ -256,21 +256,14 @@ export async function executeMove(opts: MoveOptions) {
       }
 
       const catSize = catStats.get(cat.key)?.size ?? 0
-      const catFileCount = catStats.get(cat.key)?.fileCount ?? 0
       const spinner = prompts.spinner()
       spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
 
       try {
-        const result = await copyDirSkipExisting(
-          src,
-          dst,
-          (p) => {
-            const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-            spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-          },
-          undefined,
-          catFileCount,
-        )
+        const result = await copyDirSkipExisting(src, dst, (p) => {
+          const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+          spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+        })
         const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
         spinner.stop(`Moved ${subdir}/${skippedNote}`)
       } catch (e) {

@@ -92,7 +92,7 @@ export const DataMergeCommand = cmd({
       // Step 1: Select categories
       const selectable = CATEGORIES.filter((c) => !c.required)
       const selected = await prompts.multiselect({
-        message: "What should be merged?",
+        message: "What should be merged? (Space to toggle, Enter to confirm)",
         options: selectable.map((cat) => ({
           value: cat.key,
           label: cat.label,
@@ -203,17 +203,10 @@ export const DataMergeCommand = cmd({
           spinner.start(`Merging ${subdir}/...`)
 
           try {
-            const catFileCount = srcCatStats.get(cat.key)?.fileCount ?? 0
-            const result = await copyDirSkipExisting(
-              src,
-              dst,
-              (p) => {
-                const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-                spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-              },
-              undefined,
-              catFileCount,
-            )
+            const result = await copyDirSkipExisting(src, dst, (p) => {
+              const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+              spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+            })
             const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
             spinner.stop(`Merged ${subdir}/${skippedNote}`)
           } catch (e) {
