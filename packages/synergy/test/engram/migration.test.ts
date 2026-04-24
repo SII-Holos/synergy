@@ -59,7 +59,7 @@ describe("engram migrations", () => {
 
   describe("migration metadata", () => {
     test("exports exactly 4 migrations", () => {
-      expect(migrations.length).toBe(4)
+      expect(migrations.length).toBe(5)
     })
 
     test("each migration has a valid id and description", () => {
