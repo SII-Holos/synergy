@@ -206,8 +206,7 @@ export const ImportStep: Component = () => {
   }
 
   const fieldStatusLabel = (fieldValid: boolean, failedRecommended?: boolean) => {
-    if (liveValidation().status !== "passed" && liveValidation().status !== "failed")
-      return t("coreValidationPending")
+    if (liveValidation().status !== "passed" && liveValidation().status !== "failed") return t("coreValidationPending")
     if (failedRecommended) return t("coreValidationSkipped")
     return fieldValid ? t("coreValidationPassed") : t("coreValidationFailed")
   }
