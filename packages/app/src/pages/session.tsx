@@ -182,7 +182,7 @@ export default function Page() {
   const isNewSession = createMemo(() => {
     if (resolvingHome()) return false
     if (!params.id) return true
-    if (isGlobalScope(sdk.directory) && messages().length === 0) return true
+    if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
     return false
   })
   const messagesReady = createMemo(() => {
@@ -282,7 +282,7 @@ export default function Page() {
 
   function navigateMessageByOffset(offset: number) {
     const msgs = visibleUserMessages()
-    if (msgs.length === 0) return
+    if (!msgs || msgs.length === 0) return
 
     const current = activeMessage()
     const currentIndex = current ? msgs.findIndex((m) => m.id === current.id) : -1
@@ -881,7 +881,7 @@ export default function Page() {
                   />
                 </Match>
                 <Match when={!isNewSession()}>
-                  <Show when={activeMessage() || timeline().length > 0}>
+                  <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
                     <Show
                       when={!mobileReview()}
                       fallback={

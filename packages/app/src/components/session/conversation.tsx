@@ -99,7 +99,7 @@ export function SessionConversation(props: {
             })
           }
 
-          const isLast = () => index() === props.timeline().length - 1
+          const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
 
           if (msg.role === "assistant") {
             return (

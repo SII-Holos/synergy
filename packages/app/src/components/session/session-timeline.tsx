@@ -16,7 +16,7 @@ export function SessionTimeline(props: SessionTimelineProps) {
   const [containerEl, setContainerEl] = createSignal<HTMLDivElement>()
 
   const messages = createMemo(() => props.messages())
-  const total = createMemo(() => messages().length)
+  const total = createMemo(() => messages()?.length ?? 0)
 
   const activeIndex = createMemo(() => {
     const activeId = props.currentMessage?.()?.id

@@ -139,21 +139,22 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
           if (msg.role === "user") {
             for (const part of parts) {
-              if (part.type === "text") out.user += part.text.length
-              if (part.type === "file") out.user += part.source?.text.value.length ?? 0
+              if (part.type === "text") out.user += part.text?.length ?? 0
+              if (part.type === "file") out.user += part.source?.text?.value?.length ?? 0
             }
             continue
           }
 
           if (msg.role === "assistant") {
             for (const part of parts) {
-              if (part.type === "text") out.assistant += part.text.length
-              if (part.type === "reasoning") out.assistant += part.text.length
+              if (part.type === "text") out.assistant += part.text?.length ?? 0
+              if (part.type === "reasoning") out.assistant += part.text?.length ?? 0
               if (part.type === "tool") {
-                out.tool += Object.keys(part.state.input).length * 16
-                if (part.state.status === "pending") out.tool += part.state.raw.length
-                if (part.state.status === "completed") out.tool += part.state.output.length
-                if (part.state.status === "error") out.tool += part.state.error.length
+                out.tool += Object.keys(part.state.input ?? {}).length * 16
+                if (part.state.status === "pending") out.tool += part.state.raw?.length ?? 0
+                if (part.state.status === "generating") out.tool += (part.state as { raw?: string }).raw?.length ?? 0
+                if (part.state.status === "completed") out.tool += part.state.output?.length ?? 0
+                if (part.state.status === "error") out.tool += part.state.error?.length ?? 0
               }
             }
           }
