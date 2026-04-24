@@ -84,8 +84,8 @@ export namespace BunProc {
     // In both cases, verify the directory actually exists to guard against
     // a partially failed prior install that left a stale cache entry.
     const dirExists = existsSync(cached)
-    if (dirExists && existing === version) return cached
-    if (dirExists && existing && version === "latest") return cached
+    if (dirExists && existing === version) return resolveEntry(cached, pkg, isNonRegistry)
+    if (dirExists && existing && version === "latest") return resolveEntry(cached, pkg, isNonRegistry)
 
     const proxied = !!(
       process.env.HTTP_PROXY ||
@@ -145,7 +145,7 @@ export namespace BunProc {
 
     parsed.dependencies[pkg] = resolvedVersion
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
-    return mod
+    return resolveEntry(mod, pkg, isNonRegistry)
   }
 
   /**
@@ -179,5 +179,28 @@ export namespace BunProc {
       .replace(/^github:/, "")
       .split("/")
       .pop()!
+  }
+
+  /**
+   * Resolve the entry file path from a package directory.
+   * Bun's import() cannot resolve a bare directory path — it needs a file.
+   * Use require.resolve() with the package name (resolved from the lockfile
+   * for non-registry specs) which handles package.json "exports" and "main".
+   */
+  function resolveEntry(pkgDir: string, pkg: string, isNonRegistry: boolean): string {
+    const actualPkg = isNonRegistry ? resolveActualPkgNameFromLockfile(pkg) : pkg
+    try {
+      // require.resolve with a bare name resolves through node_modules
+      // starting from Global.Path.cache, which is where we install packages.
+      const cacheReq = createRequire(path.join(Global.Path.cache, "package.json"))
+      return cacheReq.resolve(actualPkg)
+    } catch {}
+    // Fallback: read package.json exports/main manually
+    try {
+      const pkgJson = JSON.parse(require("fs").readFileSync(path.join(pkgDir, "package.json"), "utf-8"))
+      const entry = pkgJson.exports?.["."] ?? pkgJson.main ?? "index.ts"
+      return path.join(pkgDir, entry)
+    } catch {}
+    return path.join(pkgDir, "index.ts")
   }
 }
