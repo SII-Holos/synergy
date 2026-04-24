@@ -877,6 +877,23 @@ function createGlobalSync() {
         }
         break
       }
+      case "session.compacted": {
+        const sessionID = event.properties.sessionID as string
+        const messages = store.message[sessionID]
+        if (!messages) break
+        batch(() => {
+          setStore(
+            produce((draft) => {
+              for (const msg of messages) {
+                delete draft.part[msg.id]
+              }
+              delete draft.message[sessionID]
+              delete draft.session_diff[sessionID]
+            }),
+          )
+        })
+        break
+      }
     }
   })
   onCleanup(unsub)
