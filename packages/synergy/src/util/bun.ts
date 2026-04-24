@@ -2,6 +2,7 @@ import z from "zod"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import path from "path"
+import { existsSync } from "fs"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { readableStreamToText } from "bun"
 import { createRequire } from "module"
@@ -75,12 +76,16 @@ export namespace BunProc {
       return result
     })
     const existing = parsed.dependencies[pkg]
+    const cached = modPath(pkg, isNonRegistry)
     // For registry packages: exact version match means cached.
     // For non-registry packages (github:, git+, etc.): if any dependency
     // entry exists, consider it cached — Bun resolves the ref on install
     // and we don't want to re-install on every startup.
-    if (existing === version) return modPath(pkg, isNonRegistry)
-    if (existing && version === "latest") return modPath(pkg, isNonRegistry)
+    // In both cases, verify the directory actually exists to guard against
+    // a partially failed prior install that left a stale cache entry.
+    const dirExists = existsSync(cached)
+    if (dirExists && existing === version) return cached
+    if (dirExists && existing && version === "latest") return cached
 
     const proxied = !!(
       process.env.HTTP_PROXY ||
