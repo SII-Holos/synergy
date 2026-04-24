@@ -37,6 +37,10 @@ const SUBTITLES = [
   "Drop some context, let's go.",
 ]
 
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
 function getTimeGreeting(): string {
   const hour = new Date().getHours()
   const pool = hour < 12 ? GREETINGS_MORNING : hour < 18 ? GREETINGS_AFTERNOON : GREETINGS_EVENING
@@ -48,18 +52,22 @@ function getSubtitle(): string {
 }
 
 export function NewSessionGreeting() {
+  const [clock, setClock] = createSignal(formatTime(new Date()))
   const [greeting] = createSignal(getTimeGreeting())
   const [subtitle, setSubtitle] = createSignal(getSubtitle())
   const [transitioning, setTransitioning] = createSignal(false)
 
-  const interval = setInterval(() => {
+  const clockInterval = setInterval(() => setClock(formatTime(new Date())), 1000)
+  onCleanup(() => clearInterval(clockInterval))
+
+  const subtitleInterval = setInterval(() => {
     setTransitioning(true)
     setTimeout(() => {
       setSubtitle(getSubtitle())
       setTransitioning(false)
     }, 300)
   }, 8000)
-  onCleanup(() => clearInterval(interval))
+  onCleanup(() => clearInterval(subtitleInterval))
 
   return (
     <>
@@ -81,13 +89,15 @@ export function NewSessionGreeting() {
       </h1>
       <p
         classList={{
-          "text-16-medium text-text-weak transition-opacity duration-300": true,
+          "text-16-medium text-text-weak transition-opacity duration-300 w-full flex items-center gap-2.5": true,
           "opacity-0": transitioning(),
           "opacity-100": !transitioning(),
         }}
         style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both" }}
       >
-        {subtitle()}
+        <span>{subtitle()}</span>
+        <span class="text-text-weaker">·</span>
+        <span class="tabular-nums">{clock()}</span>
       </p>
     </>
   )
