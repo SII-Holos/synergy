@@ -6427,17 +6427,37 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "recompute",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Set to 'true' to force a full analytics recompute"
           }
         ],
-        "summary": "Get memory stats",
-        "description": "Get statistics about the memory database including counts and file size.",
+        "summary": "Get engram stats",
+        "description": "Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
         "responses": {
           "200": {
-            "description": "Memory statistics",
+            "description": "Engram statistics",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MemoryStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15461,6 +15481,29 @@
         },
         "required": ["status", "input", "raw"]
       },
+      "ToolStateGenerating": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "generating"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "deltasReceived": {
+            "type": "number"
+          }
+        },
+        "required": ["status", "input", "raw", "deltasReceived"]
+      },
       "ToolStateRunning": {
         "type": "object",
         "properties": {
@@ -15591,6 +15634,9 @@
         "anyOf": [
           {
             "$ref": "#/components/schemas/ToolStatePending"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateGenerating"
           },
           {
             "$ref": "#/components/schemas/ToolStateRunning"

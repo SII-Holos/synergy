@@ -55,6 +55,7 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
+    const generatingAccum: Record<string, { raw: string; deltas: number }> = {}
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -126,7 +127,7 @@ export namespace SessionProcessor {
                   }
                   break
 
-                case "tool-input-start":
+                case "tool-input-start": {
                   const part = await Session.updatePart({
                     id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -141,13 +142,50 @@ export namespace SessionProcessor {
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
+                  generatingAccum[value.id] = { raw: "", deltas: 0 }
                   break
+                }
 
-                case "tool-input-delta":
+                case "tool-input-delta": {
+                  const match = toolcalls[value.id]
+                  if (!match) break
+                  const accum = generatingAccum[value.id]
+                  if (!accum) break
+                  accum.raw += value.delta
+                  accum.deltas += 1
+                  // Throttle generating updates: emit at most every ~8 deltas to avoid flooding
+                  if (accum.deltas % 8 !== 0 && value.delta.length < 50) break
+                  const part = await Session.updatePart({
+                    ...match,
+                    state: {
+                      status: "generating",
+                      input: {},
+                      raw: accum.raw,
+                      deltasReceived: accum.deltas,
+                    },
+                  })
+                  toolcalls[value.id] = part as MessageV2.ToolPart
                   break
+                }
 
-                case "tool-input-end":
+                case "tool-input-end": {
+                  const match = toolcalls[value.id]
+                  if (!match) break
+                  const accum = generatingAccum[value.id]
+                  if (!accum || accum.deltas === 0) break
+                  // Final flush: ensure the last chunk is pushed even if it didn't hit the throttle
+                  const part = await Session.updatePart({
+                    ...match,
+                    state: {
+                      status: "generating",
+                      input: {},
+                      raw: accum.raw,
+                      deltasReceived: accum.deltas,
+                    },
+                  })
+                  toolcalls[value.id] = part as MessageV2.ToolPart
                   break
+                }
 
                 case "tool-call": {
                   const match = toolcalls[value.toolCallId]
@@ -165,6 +203,7 @@ export namespace SessionProcessor {
                       metadata: value.providerMetadata,
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                    delete generatingAccum[value.toolCallId]
 
                     if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, value.input)) {
                       const agent = await Agent.get(input.assistantMessage.agent)

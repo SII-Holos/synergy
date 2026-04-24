@@ -34,12 +34,13 @@ export interface BasicToolProps {
   forceOpen?: boolean
   status?: string
   countdown?: number
+  deltasReceived?: number
   onSubtitleClick?: () => void
 }
 
 export function BasicTool(props: BasicToolProps) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
-  const active = () => props.status === "pending" || props.status === "running"
+  const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
   createEffect(() => {
     if (props.forceOpen) setOpen(true)
@@ -86,6 +87,11 @@ export function BasicTool(props: BasicToolProps) {
                             }}
                           >
                             {trigger().subtitle}
+                          </span>
+                        </Show>
+                        <Show when={props.status === "generating" && props.deltasReceived != null}>
+                          <span data-slot="basic-tool-tool-generating">
+                            Generating… ({props.deltasReceived} chunks)
                           </span>
                         </Show>
                         <Show when={trigger().args?.length}>
@@ -157,6 +163,7 @@ export function SmartTool(props: {
   status?: string
   hideDetails?: boolean
   metadata?: Record<string, any>
+  deltasReceived?: number
 }) {
   const classified = createMemo(() => classifyTool(props.tool, props.input, props.metadata ?? {}))
 
@@ -164,6 +171,7 @@ export function SmartTool(props: {
     <BasicTool
       icon={classified().spec.icon}
       status={props.status}
+      deltasReceived={props.deltasReceived}
       trigger={() => ({
         title: classified().title,
         subtitle: classified().subtitle,

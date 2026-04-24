@@ -113,6 +113,7 @@ import type {
   EngramResetResponses,
   EngramSearchErrors,
   EngramSearchResponses,
+  EngramStatsErrors,
   EngramStatsResponses,
   EventSubscribeResponses,
   ExperienceListFilter,
@@ -4730,18 +4731,29 @@ export class Experience extends HeyApiClient {
 
 export class Engram extends HeyApiClient {
   /**
-   * Get memory stats
+   * Get engram stats
    *
-   * Get statistics about the memory database including counts and file size.
+   * Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
    */
   public stats<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      recompute?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<EngramStatsResponses, unknown, ThrowOnError>({
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "recompute" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EngramStatsResponses, EngramStatsErrors, ThrowOnError>({
       url: "/engram/stats",
       ...options,
       ...params,

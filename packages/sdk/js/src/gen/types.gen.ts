@@ -2188,6 +2188,15 @@ export type ToolStatePending = {
   raw: string
 }
 
+export type ToolStateGenerating = {
+  status: "generating"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  deltasReceived: number
+}
+
 export type ToolStateRunning = {
   status: "running"
   input: {
@@ -2235,7 +2244,7 @@ export type ToolStateError = {
   }
 }
 
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
+export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
 
 export type ToolPart = {
   id: string
@@ -7123,13 +7132,26 @@ export type EngramStatsData = {
   path?: never
   query?: {
     directory?: string
+    /**
+     * Set to 'true' to force a full analytics recompute
+     */
+    recompute?: "true" | "false"
   }
   url: "/engram/stats"
 }
 
+export type EngramStatsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+
 export type EngramStatsResponses = {
   /**
-   * Memory statistics
+   * Engram statistics
    */
   200: MemoryStats
 }

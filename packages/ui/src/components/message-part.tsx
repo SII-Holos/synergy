@@ -22,6 +22,7 @@ import {
   ToolPart,
   ToolStateCompleted,
   ToolStateError,
+  ToolStateGenerating,
   UserMessage,
   Todo,
 } from "@ericsanchezok/synergy-sdk"
@@ -1256,6 +1257,8 @@ export interface ToolProps {
   tool: string
   output?: string
   status?: string
+  raw?: string
+  deltasReceived?: number
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
@@ -1328,9 +1331,10 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     return next
   })
 
-  const throttledRaw = createThrottledValue(() =>
-    part().state.status === "pending" ? ((part().state as any).raw ?? "") : "",
-  )
+  const throttledRaw = createThrottledValue(() => {
+    const s = part().state
+    return s.status === "pending" ? s.raw : s.status === "generating" ? s.raw : ""
+  })
   const [streamInput, setStreamInput] = createStore<Record<string, any>>({})
   createEffect(() => {
     const raw = throttledRaw()
@@ -1358,6 +1362,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       output={p.output}
       status={p.status}
       metadata={p.metadata}
+      deltasReceived={p.deltasReceived}
       hideDetails={p.hideDetails}
     />
   )
@@ -1400,6 +1405,10 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             // @ts-expect-error — output exists on completed state
             output={part().state.output}
             status={part().state.status}
+            raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
+            deltasReceived={
+              part().state.status === "generating" ? (part().state as ToolStateGenerating).deltasReceived : undefined
+            }
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}
           />

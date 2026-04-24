@@ -209,6 +209,22 @@ export namespace MessageV2 {
 
   export type ToolStatePending = z.infer<typeof ToolStatePending>
 
+  // While the LLM is streaming tool arguments (before the full JSON is parsed),
+  // we emit "generating" with the accumulated raw JSON and a delta count.
+  // `input` is empty because arguments aren't fully parsed yet.
+  export const ToolStateGenerating = z
+    .object({
+      status: z.literal("generating"),
+      input: z.record(z.string(), z.any()),
+      raw: z.string(),
+      deltasReceived: z.number(),
+    })
+    .meta({
+      ref: "ToolStateGenerating",
+    })
+
+  export type ToolStateGenerating = z.infer<typeof ToolStateGenerating>
+
   export const ToolStateRunning = z
     .object({
       status: z.literal("running"),
@@ -260,7 +276,13 @@ export namespace MessageV2 {
   export type ToolStateError = z.infer<typeof ToolStateError>
 
   export const ToolState = z
-    .discriminatedUnion("status", [ToolStatePending, ToolStateRunning, ToolStateCompleted, ToolStateError])
+    .discriminatedUnion("status", [
+      ToolStatePending,
+      ToolStateGenerating,
+      ToolStateRunning,
+      ToolStateCompleted,
+      ToolStateError,
+    ])
     .meta({
       ref: "ToolState",
     })
