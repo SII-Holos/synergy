@@ -60,11 +60,14 @@ export namespace BunProc {
     }),
   )
 
+  const NON_REGISTRY_RE = /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/
+
   export async function install(pkg: string, version = "latest") {
     // Use lock to ensure only one install at a time
     using _ = await Lock.write("bun-install")
 
-    const mod = path.join(Global.Path.cache, "node_modules", pkg)
+    const isNonRegistry = NON_REGISTRY_RE.test(pkg) || NON_REGISTRY_RE.test(version)
+
     const pkgjson = Bun.file(path.join(Global.Path.cache, "package.json"))
     const parsed = await pkgjson.json().catch(async () => {
       const result = { dependencies: {} }
@@ -76,8 +79,8 @@ export namespace BunProc {
     // For non-registry packages (github:, git+, etc.): if any dependency
     // entry exists, consider it cached — Bun resolves the ref on install
     // and we don't want to re-install on every startup.
-    if (existing === version) return mod
-    if (existing && version === "latest") return mod
+    if (existing === version) return modPath(pkg, isNonRegistry)
+    if (existing && version === "latest") return modPath(pkg, isNonRegistry)
 
     const proxied = !!(
       process.env.HTTP_PROXY ||
@@ -86,12 +89,8 @@ export namespace BunProc {
       process.env.https_proxy
     )
 
-    // For non-registry protocols (github:, git+, git://, https://, etc.),
-    // appending @version is invalid — install the spec as-is.
-    const isNonRegistry =
-      /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(pkg) ||
-      /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(version)
-
+    // For non-registry protocols, appending @version is invalid — install
+    // the spec as-is unless an explicit non-latest version is provided.
     const target = isNonRegistry ? (version && version !== "latest" ? pkg + "@" + version : pkg) : pkg + "@" + version
 
     // Build command arguments
@@ -126,6 +125,8 @@ export namespace BunProc {
       )
     })
 
+    const mod = modPath(pkg, isNonRegistry)
+
     // Resolve actual version from installed package when using "latest"
     // This ensures subsequent starts use the cached version until explicitly updated
     let resolvedVersion = version
@@ -140,5 +141,38 @@ export namespace BunProc {
     parsed.dependencies[pkg] = resolvedVersion
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
     return mod
+  }
+
+  /**
+   * Resolve the node_modules path for an installed package.
+   * For non-registry specs (github:, git+, etc.), Bun installs under
+   * the package's actual name (from package.json), not the git spec —
+   * so we read the lockfile to find the real directory name.
+   */
+  function modPath(pkg: string, isNonRegistry: boolean): string {
+    const actualPkg = isNonRegistry ? resolveActualPkgNameFromLockfile(pkg) : pkg
+    return path.join(Global.Path.cache, "node_modules", actualPkg)
+  }
+
+  function resolveActualPkgNameFromLockfile(spec: string): string {
+    try {
+      const lockfilePath = path.join(Global.Path.cache, "bun.lock")
+      const content = JSON.parse(require("fs").readFileSync(lockfilePath, "utf-8"))
+      if (content?.workspaces) {
+        for (const workspace of Object.values(content.workspaces) as any[]) {
+          if (!workspace?.dependencies) continue
+          for (const [name, value] of Object.entries(workspace.dependencies)) {
+            if (value === spec || (typeof value === "string" && value.startsWith(spec + "#"))) {
+              return name
+            }
+          }
+        }
+      }
+    } catch {}
+    // Fallback: strip protocol prefix and take the repo name
+    return spec
+      .replace(/^github:/, "")
+      .split("/")
+      .pop()!
   }
 }
