@@ -135,7 +135,7 @@ function initialize(conn: Database) {
       rewards                  TEXT NOT NULL DEFAULT '{}',
       q_values                 TEXT NOT NULL DEFAULT '{}',
       q_visits                 INTEGER NOT NULL DEFAULT 0,
-      q_updated_at             TEXT,
+      q_updated_at             INTEGER,
       q_history                TEXT NOT NULL DEFAULT '[]',
       retrieved_experience_ids TEXT NOT NULL DEFAULT '[]',
       reward_status            TEXT NOT NULL DEFAULT 'evaluated',
@@ -323,7 +323,7 @@ export namespace EngramDB {
       rewards: string
       q_values: string
       q_visits: number
-      q_updated_at: string | null
+      q_updated_at: number | null
       q_history: string
       retrieved_experience_ids: string
       created_at: number
@@ -666,14 +666,14 @@ export namespace EngramDB {
         history.splice(0, history.length - maxSize)
       }
 
-      const now = new Date().toISOString()
+      const now = Date.now()
       conn
         .prepare(
           `UPDATE experience
          SET q_values = ?1, q_visits = q_visits + 1, q_updated_at = ?2, q_history = ?3, updated_at = ?4
          WHERE id = ?5`,
         )
-        .run(JSON.stringify(newQ), now, JSON.stringify(history), Date.now(), id)
+        .run(JSON.stringify(newQ), now, JSON.stringify(history), now, id)
 
       log.info("experience.updateQValues", { id, oldQ, newQ, visits: row.q_visits + 1 })
 

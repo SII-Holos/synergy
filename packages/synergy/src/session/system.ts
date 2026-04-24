@@ -13,6 +13,25 @@ import type { Provider } from "@/provider/provider"
 import { Flag } from "@/flag/flag"
 
 export namespace SystemPrompt {
+  function formatLocalDate(date: Date): string {
+    const offset = -date.getTimezoneOffset()
+    const sign = offset >= 0 ? "+" : "-"
+    const absOffset = Math.abs(offset)
+    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
+    const minutes = String(absOffset % 60).padStart(2, "0")
+    return `${date.toDateString()} (UTC${sign}${hours}:${minutes})`
+  }
+
+  function formatLocalDateTime(epochMs: number): string {
+    const date = new Date(epochMs)
+    const offset = -date.getTimezoneOffset()
+    const sign = offset >= 0 ? "+" : "-"
+    const absOffset = Math.abs(offset)
+    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
+    const minutes = String(absOffset % 60).padStart(2, "0")
+    return `${date.toLocaleString()} (UTC${sign}${hours}:${minutes})`
+  }
+
   export function provider(_model: Provider.Model) {
     return [PROMPT_FALLBACK]
   }
@@ -40,7 +59,7 @@ export namespace SystemPrompt {
       `  Working directory: ${Instance.directory}`,
       `  Is directory a git repo: ${scope.type === "project" && scope.vcs === "git" ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
-      `  Today's date: ${new Date().toDateString()}`,
+      `  Today's date: ${formatLocalDate(new Date())}`,
     ]
 
     if (scope.type === "global") {
@@ -70,7 +89,7 @@ export namespace SystemPrompt {
     if (session) {
       envLines.push(`  Session ID: ${session.id}`)
       if (session.title) envLines.push(`  Session title: ${session.title}`)
-      envLines.push(`  Session created: ${new Date(session.time.created).toISOString()}`)
+      envLines.push(`  Session created: ${formatLocalDateTime(session.time.created)}`)
       if (session.parentID) {
         envLines.push(`  Parent session: ${session.parentID}`)
       }

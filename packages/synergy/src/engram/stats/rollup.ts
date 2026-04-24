@@ -43,14 +43,14 @@ export namespace Rollup {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
 
-  /** ISO week key: "2026-W16" */
+  /** Week key based on local timezone: "2026-W16" */
   function weekKey(timestamp: number): string {
     const d = new Date(timestamp)
-    const dayNum = d.getUTCDay() || 7
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const dayNum = d.getDay() || 7
+    d.setDate(d.getDate() + 4 - dayNum)
+    const yearStart = new Date(d.getFullYear(), 0, 1)
     const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`
+    return `${d.getFullYear()}-W${String(weekNo).padStart(2, "0")}`
   }
 
   function percentile(sorted: number[], p: number): number {

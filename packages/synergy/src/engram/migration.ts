@@ -181,4 +181,32 @@ export const migrations: Migration[] = [
       if (rows.length > 0) log.info("purged tool-hallucination intents", { removed: rows.length })
     },
   },
+  {
+    id: "20260424-engram-q-updated-at-integer",
+    description: "Convert q_updated_at from ISO text to epoch milliseconds integer",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, q_updated_at FROM experience WHERE q_updated_at IS NOT NULL").all() as {
+        id: string
+        q_updated_at: string
+      }[]
+
+      progress(2, 3)
+      const stmt = conn.prepare("UPDATE experience SET q_updated_at = ?1 WHERE id = ?2")
+      for (const row of rows) {
+        const ms = new Date(row.q_updated_at).getTime()
+        if (Number.isNaN(ms)) {
+          log.warn("unparseable q_updated_at, setting to NULL", { id: row.id, value: row.q_updated_at })
+          stmt.run(null, row.id)
+        } else {
+          stmt.run(ms, row.id)
+        }
+      }
+
+      progress(3, 3)
+      if (rows.length > 0) log.info("migrated q_updated_at to integer", { count: rows.length })
+    },
+  },
 ]
