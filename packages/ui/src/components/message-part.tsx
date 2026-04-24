@@ -43,7 +43,7 @@ import { FileIcon } from "./file-icon"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createTypewriter } from "../hooks"
+import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 
 interface Diagnostic {
   range: {
@@ -1353,6 +1353,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   const render = createMemo(() => ToolRegistry.render(part().tool))
 
+  // Smoothly animate charsReceived so tool cards don't jump
+  const charsAnimated = createAnimatedNumber(() => {
+    const s = part().state
+    return s.status === "generating" ? (s as ToolStateGenerating).charsReceived : 0
+  })
+
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
   // which classifies by semantic category for appropriate icon/title/subtitle
   const fallbackRender = (p: any) => (
@@ -1405,9 +1411,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             output={part().state.output}
             status={part().state.status}
             raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
-            charsReceived={
-              part().state.status === "generating" ? (part().state as ToolStateGenerating).charsReceived : undefined
-            }
+            charsReceived={charsAnimated()}
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}
           />

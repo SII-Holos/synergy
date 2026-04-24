@@ -8,7 +8,7 @@ import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
-import { createAutoScroll, createAnimatedNumber } from "../hooks"
+import { createAutoScroll } from "../hooks"
 import { BasicTool } from "./basic-tool"
 import { Icon } from "./icon"
 import { Checkbox } from "./checkbox"
@@ -649,14 +649,13 @@ ToolRegistry.register({
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
-    const animatedChars = createAnimatedNumber(() => props.charsReceived ?? 0)
     return (
       <BasicTool
         {...props}
         icon="pen-line"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Edit", props.input, animatedChars())
+            () => generatingTrigger("Edit", props.input, props.charsReceived)
           ) : (
             <div data-component="edit-trigger">
               <div data-slot="message-part-title-area">
@@ -705,14 +704,13 @@ ToolRegistry.register({
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
-    const animatedChars = createAnimatedNumber(() => props.charsReceived ?? 0)
     return (
       <BasicTool
         {...props}
         icon="text-select"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Write", props.input, animatedChars())
+            () => generatingTrigger("Write", props.input, props.charsReceived)
           ) : (
             <div data-component="write-trigger">
               <div data-slot="message-part-title-area">
@@ -1130,14 +1128,13 @@ ToolRegistry.register({
   name: "multiedit",
   render(props) {
     const diffComponent = useDiffComponent()
-    const animatedChars = createAnimatedNumber(() => props.charsReceived ?? 0)
     return (
       <BasicTool
         {...props}
         icon="pen-line"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Multi Edit", props.input, animatedChars())
+            () => generatingTrigger("Multi Edit", props.input, props.charsReceived)
           ) : (
             <div data-component="edit-trigger">
               <div data-slot="message-part-title-area">
@@ -1189,7 +1186,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "patch",
   render(props) {
-    const animatedChars = createAnimatedNumber(() => props.charsReceived ?? 0)
     return (
       <BasicTool
         {...props}
@@ -1197,7 +1193,7 @@ ToolRegistry.register({
         trigger={() => ({
           title: "Patch",
           subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
-          args: props.status === "generating" && props.charsReceived ? [`${animatedChars()} chunks`] : [],
+          args: props.status === "generating" && props.charsReceived ? [`${props.charsReceived} chunks`] : [],
         })}
       >
         <Show when={props.output}>
