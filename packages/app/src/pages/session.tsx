@@ -742,6 +742,7 @@ export default function Page() {
 
   createEffect(() => {
     document.addEventListener("keydown", handleKeyDown)
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
   })
 
   const previewPrompt = () =>
