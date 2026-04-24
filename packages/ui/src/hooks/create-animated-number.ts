@@ -37,8 +37,8 @@ export function createAnimatedNumber(target: () => number): () => number {
 
     // Larger gaps → more urgency → faster catch-up
     const gap = Math.abs(tgt - value)
-    const urgency = Math.min(gap / 800, 1) // scales from 0 to 1
-    const baseSpeed = 0.3 + urgency * 0.4 // 0.3 → 0.7 lerp per frame
+    const urgency = Math.min(gap / 2000, 1) // scales from 0 to 1
+    const baseSpeed = 0.08 + urgency * 0.17 // 0.08 → 0.25 lerp per frame
     const factor = Math.min(1 - Math.pow(1 - baseSpeed, frames), 1)
 
     value += (tgt - value) * factor
