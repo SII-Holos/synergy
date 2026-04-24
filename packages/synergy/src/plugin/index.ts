@@ -193,9 +193,22 @@ export namespace Plugin {
       let pluginDir: string
 
       if (!pluginPath.startsWith("file://")) {
-        const lastAtIndex = pluginPath.lastIndexOf("@")
-        const pkg = lastAtIndex > 0 ? pluginPath.substring(0, lastAtIndex) : pluginPath
-        const version = lastAtIndex > 0 ? pluginPath.substring(lastAtIndex + 1) : "latest"
+        // For non-registry specs (github:, git+ssh:, git+https:, etc.),
+        // the entire string is the package spec — don't split on @ because
+        // URLs like git+ssh://git@github.com/org/repo contain @ in the
+        // userinfo. For registry packages, split on the last @ to separate
+        // name and version.
+        const isNonRegistry = /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(pluginPath)
+        let pkg: string
+        let version: string
+        if (isNonRegistry) {
+          pkg = pluginPath
+          version = "latest"
+        } else {
+          const lastAtIndex = pluginPath.lastIndexOf("@")
+          pkg = lastAtIndex > 0 ? pluginPath.substring(0, lastAtIndex) : pluginPath
+          version = lastAtIndex > 0 ? pluginPath.substring(lastAtIndex + 1) : "latest"
+        }
         const builtin = BUILTIN.some((x) => x.startsWith(pkg + "@"))
         pluginPath = await BunProc.install(pkg, version).catch((err) => {
           if (builtin) return ""
