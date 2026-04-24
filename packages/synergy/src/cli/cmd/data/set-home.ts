@@ -53,10 +53,13 @@ export const DataSetHomeCommand = cmd({
     const currentRoot = Global.Path.root
     const currentHome = process.env.SYNERGY_HOME || ""
 
+    // The actual data root is SYNERGY_HOME/.synergy (same as root() logic)
+    const targetRoot = targetPath.endsWith(".synergy") ? targetPath : path.join(targetPath, ".synergy")
+
     prompts.log.info(`Current: ${shortenPath(currentRoot)}`)
 
-    if (targetPath === currentRoot || targetPath === path.join(os.homedir(), ".synergy")) {
-      if (currentHome && targetPath === currentRoot) {
+    if (targetRoot === currentRoot || targetRoot === path.join(os.homedir(), ".synergy")) {
+      if (currentHome && targetRoot === currentRoot) {
         prompts.log.info("SYNERGY_HOME already points to this location")
         prompts.outro("No change needed")
         return
@@ -64,15 +67,14 @@ export const DataSetHomeCommand = cmd({
     }
 
     // Check if target has existing data
-    const targetSynergyDir = targetPath.endsWith(".synergy") ? targetPath : targetPath
-    const targetExists = await dirExists(targetSynergyDir)
-    const targetEmpty = targetExists ? await isDirEmpty(targetSynergyDir).catch(() => true) : true
+    const targetExists = await dirExists(targetRoot)
+    const targetEmpty = targetExists ? await isDirEmpty(targetRoot).catch(() => true) : true
 
     if (targetExists && !targetEmpty) {
-      const catStats = await scanCategories(targetSynergyDir)
+      const catStats = await scanCategories(targetRoot)
       let totalSize = 0
       for (const stats of catStats.values()) totalSize += stats.size
-      prompts.log.info(`Found existing data at ${shortenPath(targetSynergyDir)} (${formatSize(totalSize)})`)
+      prompts.log.info(`Found existing data at ${shortenPath(targetRoot)} (${formatSize(totalSize)})`)
     }
 
     // Check if current location has data
@@ -92,29 +94,13 @@ export const DataSetHomeCommand = cmd({
 
     // Create target directory structure
     if (!targetExists) {
-      await fs.mkdir(targetSynergyDir, { recursive: true })
-      prompts.log.info(`Created directory at ${shortenPath(targetSynergyDir)}`)
+      await fs.mkdir(targetRoot, { recursive: true })
+      prompts.log.info(`Created directory at ${shortenPath(targetRoot)}`)
     }
 
-    // Update shell profile
-    // set-home writes SYNERGY_HOME to point to the parent of .synergy
-    // because root() = path.join(homeDir(), ".synergy")
-    // so if user says "set-home /shared/synergy", we want root to be /shared/synergy/.synergy
-    // BUT the user likely means "use /shared/synergy as my data root"
-    // We need SYNERGY_HOME such that path.join(SYNERGY_HOME, ".synergy") = targetPath
-    // So SYNERGY_HOME should be the parent of targetPath IF targetPath ends with .synergy
-    // Otherwise SYNERGY_HOME = targetPath and the actual dir will be targetPath/.synergy
-
-    let envValue: string
-    if (targetSynergyDir.endsWith(".synergy")) {
-      // User specified the .synergy dir directly
-      // SYNERGY_HOME = parent, so root() = path.join(parent, ".synergy") = targetSynergyDir
-      envValue = path.dirname(targetSynergyDir)
-    } else {
-      // User specified a custom base dir
-      // SYNERGY_HOME = targetPath, root() = path.join(targetPath, ".synergy")
-      envValue = targetSynergyDir
-    }
+    // SYNERGY_HOME = what the user typed (the base path).
+    // root() = path.join(SYNERGY_HOME, ".synergy"), which equals targetRoot.
+    const envValue = targetPath
 
     const result = await updateShellProfile(envValue)
     if (result.updated) {
