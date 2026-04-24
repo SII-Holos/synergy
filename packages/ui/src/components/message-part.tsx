@@ -651,6 +651,77 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
             title: input.enabled ? "Enable Allow All" : "Disable Allow All",
             subtitle: input.target,
           }
+        // research — holos-research plugin
+        case "research_init": {
+          const args: string[] = []
+          pushArg(args, input.venue)
+          pushArg(args, input.participation_mode)
+          return { icon: "flask-conical", title: "Research Init", subtitle: input.project, args }
+        }
+        case "research_state": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.target_phase)
+          pushArg(args, input.participation_mode)
+          return { icon: "sigma", title: "Research State", subtitle: input.summary || input.action, args }
+        }
+        case "research_idea": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.round ? `round ${input.round}` : undefined)
+          return { icon: "lightbulb", title: "Idea", subtitle: input.title || input.id, args }
+        }
+        case "research_plan": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.idea)
+          return { icon: "map", title: "Plan", subtitle: input.title || input.id, args }
+        }
+        case "research_experiment": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.group)
+          pushArg(args, input.backend)
+          return { icon: "microscope", title: "Experiment", subtitle: input.title || input.id, args }
+        }
+        case "research_claim": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.paper_section)
+          return { icon: "scale", title: "Claim", subtitle: input.title || input.id, args }
+        }
+        case "research_exhibit": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.kind)
+          return { icon: "image", title: "Exhibit", subtitle: input.title || input.id, args }
+        }
+        case "research_paper": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.venue)
+          return { icon: "scroll-text", title: "Paper", subtitle: input.title || input.id, args }
+        }
+        case "research_submission": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.venue)
+          pushArg(args, input.outcome)
+          return { icon: "send", title: "Submission", subtitle: input.title || input.id, args }
+        }
+        case "research_wiki": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.relevance)
+          return { icon: "telescope", title: "Wiki", subtitle: input.title || input.query || input.action, args }
+        }
+        case "research_timeline": {
+          const args: string[] = []
+          pushArg(args, input.action)
+          pushArg(args, input.last ? `last ${input.last}` : undefined)
+          pushArg(args, input.event_type)
+          return { icon: "clock", title: "Timeline", subtitle: input.summary || input.action, args }
+        }
         default:
           return {
             icon: "radar",

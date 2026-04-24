@@ -2102,3 +2102,45 @@ for (const name of inspireToolNames) {
     },
   })
 }
+
+const researchToolNames = [
+  "research_init",
+  "research_state",
+  "research_idea",
+  "research_plan",
+  "research_experiment",
+  "research_claim",
+  "research_exhibit",
+  "research_paper",
+  "research_submission",
+  "research_wiki",
+  "research_timeline",
+] as const
+
+for (const name of researchToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getToolInfo(name, props.input, props.metadata)
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={() => ({
+            title: info.title,
+            subtitle: info.subtitle || "",
+            args: info.args || [],
+          })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}
