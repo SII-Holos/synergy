@@ -99,16 +99,6 @@ async function importConfigFromURL(input: { url: string; probe: boolean; force: 
     }
     spinner.stop("✓ Config validated")
 
-    if (validation.providers && validation.providers.length > 0) {
-      prompts.log.info(`Detected ${validation.providers.length} provider(s): ${validation.providers.join(", ")}`)
-    }
-
-    if (validation.roles && Object.keys(validation.roles).length > 0) {
-      for (const [role, model] of Object.entries(validation.roles)) {
-        prompts.log.info(`${role}: ${model}`)
-      }
-    }
-
     if (probe) {
       spinner.start("Running connectivity probes...")
       const probeResult = await SetupService.probeImport(config)
