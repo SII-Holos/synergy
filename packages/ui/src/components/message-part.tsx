@@ -1258,7 +1258,7 @@ export interface ToolProps {
   output?: string
   status?: string
   raw?: string
-  deltasReceived?: number
+  charsReceived?: number
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
@@ -1362,7 +1362,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       output={p.output}
       status={p.status}
       metadata={p.metadata}
-      deltasReceived={p.deltasReceived}
       hideDetails={p.hideDetails}
     />
   )
@@ -1406,8 +1405,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             output={part().state.output}
             status={part().state.status}
             raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
-            deltasReceived={
-              part().state.status === "generating" ? (part().state as ToolStateGenerating).deltasReceived : undefined
+            charsReceived={
+              part().state.status === "generating" ? (part().state as ToolStateGenerating).charsReceived : undefined
             }
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}

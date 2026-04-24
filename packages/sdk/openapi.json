@@ -12758,10 +12758,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -15498,11 +15498,11 @@
           "raw": {
             "type": "string"
           },
-          "deltasReceived": {
+          "charsReceived": {
             "type": "number"
           }
         },
-        "required": ["status", "input", "raw", "deltasReceived"]
+        "required": ["status", "input", "raw", "charsReceived"]
       },
       "ToolStateRunning": {
         "type": "object",

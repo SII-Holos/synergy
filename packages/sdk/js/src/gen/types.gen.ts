@@ -897,7 +897,7 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
-     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
+     * Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.
      */
     timeout?: number | false
     [key: string]: unknown | string | boolean | number | false | undefined
@@ -2194,7 +2194,7 @@ export type ToolStateGenerating = {
     [key: string]: unknown
   }
   raw: string
-  deltasReceived: number
+  charsReceived: number
 }
 
 export type ToolStateRunning = {

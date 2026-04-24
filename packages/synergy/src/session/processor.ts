@@ -55,7 +55,7 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
-    const generatingAccum: Record<string, { raw: string; deltas: number }> = {}
+    const generatingAccum: Record<string, string> = {}
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -142,26 +142,26 @@ export namespace SessionProcessor {
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
-                  generatingAccum[value.id] = { raw: "", deltas: 0 }
+                  generatingAccum[value.id] = ""
                   break
                 }
 
                 case "tool-input-delta": {
                   const match = toolcalls[value.id]
                   if (!match) break
-                  const accum = generatingAccum[value.id]
-                  if (!accum) break
-                  accum.raw += value.delta
-                  accum.deltas += 1
-                  // Throttle generating updates: emit at most every ~8 deltas to avoid flooding
-                  if (accum.deltas % 8 !== 0 && value.delta.length < 50) break
+                  const prevRaw = generatingAccum[value.id]
+                  if (prevRaw === undefined) break
+                  const raw = prevRaw + value.delta
+                  generatingAccum[value.id] = raw
+                  // Throttle generating updates: emit when enough new content has accumulated
+                  if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
                   const part = await Session.updatePart({
                     ...match,
                     state: {
                       status: "generating",
                       input: {},
-                      raw: accum.raw,
-                      deltasReceived: accum.deltas,
+                      raw,
+                      charsReceived: raw.length,
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
@@ -171,16 +171,16 @@ export namespace SessionProcessor {
                 case "tool-input-end": {
                   const match = toolcalls[value.id]
                   if (!match) break
-                  const accum = generatingAccum[value.id]
-                  if (!accum || accum.deltas === 0) break
-                  // Final flush: ensure the last chunk is pushed even if it didn't hit the throttle
+                  const raw = generatingAccum[value.id]
+                  if (!raw) break
+                  // Final flush: push the complete accumulated raw even if it didn't hit the throttle
                   const part = await Session.updatePart({
                     ...match,
                     state: {
                       status: "generating",
                       input: {},
-                      raw: accum.raw,
-                      deltasReceived: accum.deltas,
+                      raw,
+                      charsReceived: raw.length,
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart

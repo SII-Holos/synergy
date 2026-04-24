@@ -30,13 +30,14 @@ import {
 function generatingTrigger(
   title: string,
   input: Record<string, any>,
-  deltasReceived?: number,
+  charsReceived?: number,
 ): { title: string; subtitle: string; args: string[] } {
   const filePath = input.filePath as string | undefined
+  const chars = charsReceived ? `${charsReceived.toLocaleString()} chars` : ""
   return {
     title,
     subtitle: filePath ? getDirectory(filePath) + getFilename(filePath) : `Generating ${title.toLowerCase()}…`,
-    args: deltasReceived ? [`${deltasReceived} chunks`] : [],
+    args: chars ? [chars] : [],
   }
 }
 
@@ -654,7 +655,7 @@ ToolRegistry.register({
         icon="pen-line"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Edit", props.input, props.deltasReceived)
+            () => generatingTrigger("Edit", props.input, props.charsReceived)
           ) : (
             <div data-component="edit-trigger">
               <div data-slot="message-part-title-area">
@@ -709,7 +710,7 @@ ToolRegistry.register({
         icon="text-select"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Write", props.input, props.deltasReceived)
+            () => generatingTrigger("Write", props.input, props.charsReceived)
           ) : (
             <div data-component="write-trigger">
               <div data-slot="message-part-title-area">
@@ -1133,7 +1134,7 @@ ToolRegistry.register({
         icon="pen-line"
         trigger={
           props.status === "generating" ? (
-            () => generatingTrigger("Multi Edit", props.input, props.deltasReceived)
+            () => generatingTrigger("Multi Edit", props.input, props.charsReceived)
           ) : (
             <div data-component="edit-trigger">
               <div data-slot="message-part-title-area">
@@ -1192,7 +1193,7 @@ ToolRegistry.register({
         trigger={() => ({
           title: "Patch",
           subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
-          args: props.status === "generating" && props.deltasReceived ? [`${props.deltasReceived} chunks`] : [],
+          args: props.status === "generating" && props.charsReceived ? [`${props.charsReceived} chunks`] : [],
         })}
       >
         <Show when={props.output}>
