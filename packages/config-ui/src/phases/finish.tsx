@@ -27,8 +27,14 @@ function getImportedIdentityModel(key: "embedding" | "rerank") {
   return typeof model === "string" ? model : ""
 }
 
+function isImportFieldFailedRecommended(key: "embedding" | "rerank") {
+  return Boolean(configStore.importDraft.validation.live.result?.fields?.[key]?.failedRecommended)
+}
+
 function isImportRecallConfigured() {
-  return Boolean(getImportedIdentityModel("embedding") && getImportedIdentityModel("rerank"))
+  const hasEmbedding = getImportedIdentityModel("embedding") && !isImportFieldFailedRecommended("embedding")
+  const hasRerank = getImportedIdentityModel("rerank") && !isImportFieldFailedRecommended("rerank")
+  return Boolean(hasEmbedding && hasRerank)
 }
 
 export const FinishPhase: Component = () => {
@@ -65,6 +71,8 @@ export const FinishPhase: Component = () => {
     const skipped = recallSkipped()
 
     if (isImportFlow()) {
+      const embeddingOk = Boolean(getImportedIdentityModel("embedding")) && !isImportFieldFailedRecommended("embedding")
+      const rerankOk = Boolean(getImportedIdentityModel("rerank")) && !isImportFieldFailedRecommended("rerank")
       return [
         {
           key: "model",
@@ -87,16 +95,16 @@ export const FinishPhase: Component = () => {
         {
           key: "embedding",
           label: t("embeddingTitle"),
-          value: getImportedIdentityModel("embedding") || t("notConfigured"),
-          badge: getImportedIdentityModel("embedding") ? t("finishRecommendedBadge") : t("finishFallbackBadge"),
-          state: getImportedIdentityModel("embedding") ? "optional" : "fallback",
+          value: embeddingOk ? getImportedIdentityModel("embedding") : t("notConfigured"),
+          badge: embeddingOk ? t("finishRecommendedBadge") : t("finishFallbackBadge"),
+          state: embeddingOk ? "optional" : "fallback",
         },
         {
           key: "rerank",
           label: t("rerankTitle"),
-          value: getImportedIdentityModel("rerank") || t("notConfigured"),
-          badge: getImportedIdentityModel("rerank") ? t("finishRecommendedBadge") : t("finishFallbackBadge"),
-          state: getImportedIdentityModel("rerank") ? "optional" : "fallback",
+          value: rerankOk ? getImportedIdentityModel("rerank") : t("notConfigured"),
+          badge: rerankOk ? t("finishRecommendedBadge") : t("finishFallbackBadge"),
+          state: rerankOk ? "optional" : "fallback",
         },
       ]
     }

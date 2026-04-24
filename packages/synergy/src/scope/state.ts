@@ -24,8 +24,21 @@ export namespace State {
         state,
         dispose,
       })
+      // Auto-evict on rejection so transient failures don't become permanent.
+      // The caller still sees the rejection — this only prevents it from being
+      // cached forever, allowing the next access to retry init().
+      if (state != null && typeof (state as any).catch === "function") {
+        ;(state as any).catch(() => {
+          const current = recordsByKey.get(key)
+          if (current?.get(init)?.state === state) {
+            current.delete(init)
+            if (current.size === 0) recordsByKey.delete(key)
+            log.warn("evicted failed state entry", { key })
+          }
+        })
+      }
       return state
-    }) as (() => S) & { reset: () => Promise<void>; peek: () => S | undefined }
+    }) as (() => S) & { reset: () => Promise<void>; resetAll: () => Promise<void>; peek: () => S | undefined }
 
     accessor.reset = async () => {
       const key = root()
@@ -51,6 +64,27 @@ export namespace State {
       const entry = entries.get(init)
       if (!entry) return undefined
       return entry.state as S
+    }
+
+    accessor.resetAll = async () => {
+      const tasks: Promise<void>[] = []
+      for (const [key, entries] of recordsByKey) {
+        const entry = entries.get(init)
+        if (!entry) continue
+        if (entry.dispose) {
+          tasks.push(
+            Promise.resolve(entry.state)
+              .then((state) => entry.dispose!(state))
+              .catch((error) => {
+                log.error("Error while resetting state across scopes:", { error, key })
+              }),
+          )
+        }
+        entries.delete(init)
+        if (entries.size === 0) recordsByKey.delete(key)
+      }
+      await Promise.all(tasks)
+      if (tasks.length > 0) log.info("state entry reset across all scopes", { count: tasks.length })
     }
 
     return accessor

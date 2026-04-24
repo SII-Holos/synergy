@@ -11,6 +11,8 @@ import {
 import type {
   AgendaActivateErrors,
   AgendaActivateResponses,
+  AgendaActivityErrors,
+  AgendaActivityResponses,
   AgendaCancelErrors,
   AgendaCancelResponses,
   AgendaCompleteErrors,
@@ -111,6 +113,7 @@ import type {
   EngramResetResponses,
   EngramSearchErrors,
   EngramSearchResponses,
+  EngramStatsErrors,
   EngramStatsResponses,
   EventSubscribeResponses,
   ExperienceListFilter,
@@ -312,6 +315,9 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StatsGetErrors,
+  StatsGetResponses,
+  StatsProgressResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -394,6 +400,46 @@ export class Agenda extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "token" }] }])
     return (options?.client ?? this.client).post<AgendaWebhookResponses, AgendaWebhookErrors, ThrowOnError>({
       url: "/agenda/webhook/{token}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Browse agenda activity
+   *
+   * Browse agenda execution activity with pagination, optional search, and agenda/session metadata.
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      itemID?: string
+      query?: string
+      search?: string
+      offset?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "itemID" },
+            { in: "query", key: "query" },
+            { in: "query", key: "search" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AgendaActivityResponses, AgendaActivityErrors, ThrowOnError>({
+      url: "/agenda/activity",
       ...options,
       ...params,
     })
@@ -709,7 +755,7 @@ export class Agenda extends HeyApiClient {
   /**
    * Create agenda item
    *
-   * Create a new agenda item with optional triggers, task, and delivery configuration.
+   * Create a new agenda item with optional triggers and execution configuration.
    */
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1653,9 +1699,9 @@ export class Scope extends HeyApiClient {
   }
 
   /**
-   * Remove scope
+   * Archive scope
    *
-   * Remove a scope from the tracked list. Does not delete scope files or session data.
+   * Archive a scope. Archived scopes are hidden from the list but can be restored.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
@@ -1696,6 +1742,7 @@ export class Scope extends HeyApiClient {
         url?: string
         color?: string
       }
+      archived?: number | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1708,6 +1755,7 @@ export class Scope extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "name" },
             { in: "body", key: "icon" },
+            { in: "body", key: "archived" },
           ],
         },
       ],
@@ -2650,14 +2698,18 @@ export class Session extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all Synergy sessions, sorted by most recently updated.
+   * Get a paginated list of Synergy sessions, sorted by most recently updated.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-      start?: number
-      search?: string
+      offset?: number
       limit?: number
+      search?: string
+      since?: number
+      before?: number
+      pinned?: boolean
+      parentOnly?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2667,9 +2719,13 @@ export class Session extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
-            { in: "query", key: "start" },
-            { in: "query", key: "search" },
+            { in: "query", key: "offset" },
             { in: "query", key: "limit" },
+            { in: "query", key: "search" },
+            { in: "query", key: "since" },
+            { in: "query", key: "before" },
+            { in: "query", key: "pinned" },
+            { in: "query", key: "parentOnly" },
           ],
         },
       ],
@@ -4675,18 +4731,29 @@ export class Experience extends HeyApiClient {
 
 export class Engram extends HeyApiClient {
   /**
-   * Get memory stats
+   * Get engram stats
    *
-   * Get statistics about the memory database including counts and file size.
+   * Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
    */
   public stats<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      recompute?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<EngramStatsResponses, unknown, ThrowOnError>({
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "recompute" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EngramStatsResponses, EngramStatsErrors, ThrowOnError>({
       url: "/engram/stats",
       ...options,
       ...params,
@@ -5134,6 +5201,57 @@ export class Asset extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<AssetGetResponses, AssetGetErrors, ThrowOnError>({
       url: "/asset/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Stats extends HeyApiClient {
+  /**
+   * Get stats snapshot
+   *
+   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      recompute?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "recompute" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<StatsGetResponses, StatsGetErrors, ThrowOnError>({
+      url: "/stats",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stream stats recompute progress
+   *
+   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
+   */
+  public progress<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).sse.get<StatsProgressResponses, unknown, ThrowOnError>({
+      url: "/stats/progress",
       ...options,
       ...params,
     })
@@ -5872,6 +5990,8 @@ export class SynergyClient extends HeyApiClient {
   note = new Note({ client: this.client })
 
   asset = new Asset({ client: this.client })
+
+  stats = new Stats({ client: this.client })
 
   app = new App({ client: this.client })
 

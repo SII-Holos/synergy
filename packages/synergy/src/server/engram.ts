@@ -7,6 +7,7 @@ import { MemoryRecall } from "../engram/memory-recall"
 import { ExperienceRecall } from "../engram/experience-recall"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
+import { EngramStatsEngine } from "../engram"
 
 const log = Log.create({ service: "server.engram" })
 
@@ -441,17 +442,41 @@ export const EngramRoute = new Hono()
   .get(
     "/stats",
     describeRoute({
-      summary: "Get memory stats",
-      description: "Get statistics about the memory database including counts and file size.",
+      summary: "Get engram stats",
+      description:
+        "Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
       operationId: "engram.stats",
       responses: {
         200: {
-          description: "Memory statistics",
+          description: "Engram statistics",
           content: { "application/json": { schema: resolver(MemoryStats) } },
         },
+        ...errors(400),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        recompute: z
+          .enum(["true", "false"])
+          .optional()
+          .default("false")
+          .meta({ description: "Set to 'true' to force a full analytics recompute" }),
+      }),
+    ),
     async (c) => {
+      const { recompute } = c.req.valid("query")
+
+      if (recompute === "true") {
+        try {
+          const snapshot = await EngramStatsEngine.recompute()
+          return c.json(snapshot)
+        } catch (err: any) {
+          return c.json({ message: err?.message ?? String(err) }, 400)
+        }
+      }
+
+      // Legacy summary format (used by engram panel header for counts/dbSizeBytes)
       const dbFile = Bun.file(EngramDB.dbPath())
       const dbSize = (await dbFile.exists()) ? (await dbFile.stat()).size : 0
       return c.json({

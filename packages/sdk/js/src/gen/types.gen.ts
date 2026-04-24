@@ -105,6 +105,31 @@ export type AgendaTriggerWatch = {
          */
         debounce?: string
       }
+    | {
+        kind: "tool"
+        /**
+         * Synergy tool name to call, e.g. 'inspire_jobs'
+         */
+        tool: string
+        /**
+         * Arguments to pass to the tool
+         */
+        args?: {
+          [key: string]: unknown
+        }
+        /**
+         * Poll interval, e.g. '5m'. Default: '5m'
+         */
+        interval?: string
+        /**
+         * 'change': fire when tool output differs; 'match': fire when output matches pattern
+         */
+        trigger?: "change" | "match"
+        /**
+         * Regex pattern, required when trigger is 'match'
+         */
+        match?: string
+      }
 }
 
 export type AgendaTriggerWebhook = {
@@ -123,6 +148,14 @@ export type AgendaTrigger =
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
 
+export type AgendaSessionRef = {
+  sessionID: string
+  /**
+   * Brief description of what this session contains
+   */
+  hint?: string
+}
+
 /**
  * Scope where the item was created
  */
@@ -133,75 +166,14 @@ export type AgendaScope = {
   worktree?: string
 }
 
-export type AgendaSessionRef = {
-  sessionID: string
-  /**
-   * Brief description of what this session contains
-   */
-  hint?: string
-}
-
-/**
- * Execution configuration
- */
-export type AgendaTask = {
-  /**
-   * Instruction for the agent
-   */
-  prompt: string
-  /**
-   * Agent to use, defaults to the configured default
-   */
-  agent?: string
-  /**
-   * Model override
-   */
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  workScope?: AgendaScope
-  /**
-   * Sessions whose content may be relevant — injected as context references
-   */
-  sessionRefs?: Array<AgendaSessionRef>
-  /**
-   * Execution timeout in milliseconds
-   */
-  timeout?: number
-  /**
-   * 'ephemeral' (default): create a new session per trigger. 'persistent': reuse the same session across triggers.
-   */
-  sessionMode?: "ephemeral" | "persistent"
-  /**
-   * 'full' (default): inject complete agenda context XML. 'signal': inject only the signal payload. 'none': send only the task prompt.
-   */
-  contextMode?: "full" | "signal" | "none"
-}
-
-/**
- * Delivery configuration, defaults to { target: 'auto' }
- */
-export type AgendaDelivery =
-  | {
-      target: "auto"
-    }
-  | {
-      target: "silent"
-    }
-  | {
-      target: "home"
-    }
-  | {
-      target: "session"
-      sessionID: string
-    }
-
 export type ChannelInfo = {
   type: string
   accountId?: string
   chatId: string
+  chatType?: "dm" | "group"
+  chatName?: string
   senderId?: string
+  senderName?: string
   scopeKey?: string
   createdAt?: number
 }
@@ -276,11 +248,44 @@ export type AgendaItem = {
   description?: string
   tags?: Array<string>
   /**
-   * Activation conditions. Schedule items have time triggers; todo items may have none (manual activation) or non-time triggers.
+   * If true, item is visible from all scopes
+   */
+  global?: boolean
+  /**
+   * Activation conditions
    */
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  /**
+   * Instruction for the agent when triggered
+   */
+  prompt: string
+  /**
+   * Agent to use, defaults to configured default
+   */
+  agent?: string
+  /**
+   * Model override
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  /**
+   * Sessions whose content may be relevant — injected as context references
+   */
+  sessionRefs?: Array<AgendaSessionRef>
+  /**
+   * Execution timeout in milliseconds
+   */
+  timeout?: number
+  /**
+   * Whether to wake the origin session's agent on completion
+   */
+  wake?: boolean
+  /**
+   * Whether to suppress result delivery entirely
+   */
+  silent?: boolean
   origin: AgendaOrigin
   createdBy: "user" | "agent"
   state?: AgendaItemState
@@ -307,6 +312,7 @@ export type Scope = {
     created: number
     updated: number
     initialized?: number
+    archived?: number
   }
   sandboxes: Array<string>
 }
@@ -727,7 +733,6 @@ export type PermissionConfig =
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
       websearch?: PermissionActionConfig
-      codesearch?: PermissionActionConfig
       download?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
@@ -792,6 +797,26 @@ export type AgentConfig = {
     | undefined
 }
 
+export type ExternalAgentConfig = {
+  /**
+   * Disable this external agent
+   */
+  disabled?: boolean
+  /**
+   * Override path to the external agent binary
+   */
+  path?: string
+  /**
+   * Default model for this external agent
+   */
+  model?: string
+  /**
+   * Whether to auto-discover this agent on startup (default: true)
+   */
+  auto_discover?: boolean
+  [key: string]: unknown | boolean | string | undefined
+}
+
 export type ProviderConfig = {
   api?: string
   name?: string
@@ -827,13 +852,13 @@ export type ProviderConfig = {
       }
       limit?: {
         context: number
+        input?: number
         output: number
       }
       modalities?: {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
         output: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
-      experimental?: boolean
       status?: "alpha" | "beta" | "deprecated"
       options?: {
         [key: string]: unknown
@@ -872,7 +897,7 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
-     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
+     * Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.
      */
     timeout?: number | false
     [key: string]: unknown | string | boolean | number | false | undefined
@@ -881,11 +906,11 @@ export type ProviderConfig = {
 
 export type PassiveRetrievalConfig = {
   /**
-   * Minimum cosine similarity for retrieval candidates (default: 0.5)
+   * Minimum cosine similarity for retrieval candidates (default: 0.7)
    */
   simThreshold?: number
   /**
-   * Number of experiences to retrieve (default: 5)
+   * Number of experiences to retrieve (default: 8)
    */
   topK?: number
   /**
@@ -1005,11 +1030,11 @@ export type EvolutionActive = {
     | boolean
     | {
         /**
-         * Default minimum similarity for auto-injection (default: 0.5)
+         * Default minimum similarity for auto-injection (default: 0.7)
          */
         simThreshold?: number
         /**
-         * Default maximum entries per category to contextually retrieve (default: 5)
+         * Default maximum entries per category to contextually retrieve (default: 3)
          */
         topK?: number
         /**
@@ -1296,15 +1321,42 @@ export type EmailSmtpConfig = {
 }
 
 /**
+ * IMAP settings for reading emails
+ */
+export type EmailImapConfig = {
+  /**
+   * IMAP server hostname
+   */
+  host?: string
+  /**
+   * IMAP server port
+   */
+  port?: number
+  /**
+   * Use TLS/SSL for the IMAP connection
+   */
+  secure?: boolean
+  /**
+   * IMAP username
+   */
+  username?: string
+  /**
+   * IMAP password or app token
+   */
+  password?: string
+}
+
+/**
  * Outgoing email configuration
  */
 export type EmailConfig = {
   /**
-   * Enable outgoing email features
+   * Enable email features
    */
   enabled?: boolean
   from?: EmailFromConfig
   smtp?: EmailSmtpConfig
+  imap?: EmailImapConfig
 }
 
 /**
@@ -1428,6 +1480,12 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
+   * External agent configurations (e.g. codex, claude-code)
+   */
+  external_agent?: {
+    [key: string]: ExternalAgentConfig
+  }
+  /**
    * Custom provider configurations and model overrides
    */
   provider?: {
@@ -1516,6 +1574,12 @@ export type Config = {
      */
     giteaSSHHost?: string
   }
+  question?: {
+    /**
+     * Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)
+     */
+    timeout?: number
+  }
   compaction?: {
     /**
      * Enable automatic compaction when context is full (default: true)
@@ -1525,29 +1589,12 @@ export type Config = {
      * Enable pruning of old tool outputs (default: true)
      */
     prune?: boolean
+    /**
+     * Fraction of usable context that triggers auto-compaction (default: 0.85)
+     */
+    overflowThreshold?: number
   }
   experimental?: {
-    hook?: {
-      file_edited?: {
-        [key: string]: Array<{
-          command: Array<string>
-          environment?: {
-            [key: string]: string
-          }
-        }>
-      }
-      session_completed?: Array<{
-        command: Array<string>
-        environment?: {
-          [key: string]: string
-        }
-      }>
-    }
-    /**
-     * Number of retries for chat completions on failure
-     */
-    chatMaxRetries?: number
-    disable_paste_summary?: boolean
     /**
      * Enable the batch tool
      */
@@ -1568,6 +1615,14 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
+  }
+  /**
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
+   */
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
   }
   /**
    * Custom category configurations for background tasks. Categories define model and prompt presets.
@@ -1636,7 +1691,7 @@ export type RuntimeReloadTarget =
   | "all"
 
 export type RuntimeReloadResult = {
-  success: true
+  success: boolean
   requested: Array<RuntimeReloadTarget>
   executed: Array<RuntimeReloadTarget>
   cascaded: Array<RuntimeReloadTarget>
@@ -1718,6 +1773,7 @@ export type Model = {
   }
   limit: {
     context: number
+    input?: number
     output: number
   }
   status: "alpha" | "beta" | "deprecated" | "active"
@@ -1857,6 +1913,10 @@ export type Session = {
   interaction?: SessionInteraction
   agenda?: {
     itemID: string
+  }
+  lastExchange?: {
+    user?: string
+    assistant?: string
   }
   revert?: {
     messageID: string
@@ -2128,6 +2188,15 @@ export type ToolStatePending = {
   raw: string
 }
 
+export type ToolStateGenerating = {
+  status: "generating"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  charsReceived: number
+}
+
 export type ToolStateRunning = {
   status: "running"
   input: {
@@ -2175,7 +2244,7 @@ export type ToolStateError = {
   }
 }
 
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
+export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
 
 export type ToolPart = {
   id: string
@@ -2349,6 +2418,14 @@ export type QuestionRequest = {
     messageID: string
     callID: string
   }
+  /**
+   * Seconds before this question auto-expires
+   */
+  timeout?: number
+  /**
+   * Unix timestamp (ms) when this question was asked
+   */
+  createdAt?: number
 }
 
 export type QuestionAnswer = Array<string>
@@ -2394,6 +2471,7 @@ export type Command = {
   agent?: string
   model?: string
   mcp?: boolean
+  source?: "command" | "mcp" | "skill"
   template: string
   hints: Array<string>
 }
@@ -2629,11 +2707,6 @@ export type MemoryInfo = {
   updatedAt: number
 }
 
-export type AgendaSessionList = Array<{
-  sessionID: string
-  scopeID: string
-}>
-
 export type AgendaRunLog = {
   /**
    * Run identifier
@@ -2666,6 +2739,56 @@ export type AgendaRunLog = {
   }
 }
 
+export type AgendaActivityAgenda = {
+  id: string
+  /**
+   * Scope that owns the agenda item
+   */
+  scopeID: string
+  title: string
+  description?: string
+  status: "pending" | "active" | "paused" | "done" | "cancelled"
+  tags?: Array<string>
+  global: boolean
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type AgendaActivitySession = {
+  id: string
+  /**
+   * Scope that owns the session
+   */
+  scopeID: string
+  title: string
+  time: {
+    created: number
+    updated: number
+    archived?: number
+  }
+}
+
+export type AgendaActivityEntry = {
+  run: AgendaRunLog
+  agenda: AgendaActivityAgenda
+  session?: AgendaActivitySession
+}
+
+export type AgendaActivityPage = {
+  items: Array<AgendaActivityEntry>
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
+export type AgendaSessionList = Array<{
+  sessionID: string
+  scopeID: string
+}>
+
 export type AgendaTriggerResult = {
   triggered: true
   /**
@@ -2676,11 +2799,20 @@ export type AgendaTriggerResult = {
 
 export type AgendaCreateInput = {
   title: string
+  prompt: string
   description?: string
   tags?: Array<string>
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  global?: boolean
+  wake?: boolean
+  silent?: boolean
+  agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  sessionRefs?: Array<AgendaSessionRef>
+  timeout?: number
   createdBy?: "user" | "agent"
   /**
    * Session where the item was created
@@ -2695,8 +2827,12 @@ export type AgendaPatchInput = {
   status?: "pending" | "active" | "paused" | "done" | "cancelled"
   tags?: Array<string>
   triggers?: Array<AgendaTrigger>
-  task?: AgendaTask
-  delivery?: AgendaDelivery
+  prompt?: string
+  global?: boolean
+  wake?: boolean
+  silent?: boolean
+  agent?: string
+  sessionRefs?: Array<AgendaSessionRef>
 }
 
 export type NoteInfo = {
@@ -2752,6 +2888,144 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
+}
+
+export type StatsSnapshot = {
+  overview: {
+    totalSessions: number
+    activeSessions: number
+    archivedSessions: number
+    totalMessages: number
+    totalTurns: number
+    totalDays: number
+    longestStreak: number
+    currentStreak: number
+    projectCount: number
+  }
+  tokenCost: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    cost: number
+    cacheHitRate: number
+    avgCostPerTurn: number
+    avgTokensPerTurn: number
+    dailyCost: number
+    dailyTokens: number
+  }
+  models: {
+    models: Array<{
+      providerID: string
+      modelID: string
+      messages: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      avgResponseMs: number
+    }>
+  }
+  agents: {
+    agents: Array<{
+      agent: string
+      messages: number
+      sessions: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      subagentInvocations: number
+    }>
+    totalSubagentCalls: number
+  }
+  tools: {
+    tools: Array<{
+      tool: string
+      calls: number
+      successes: number
+      errors: number
+      avgDurationMs: number
+    }>
+  }
+  codeChanges: {
+    totalAdditions: number
+    totalDeletions: number
+    totalFiles: number
+    netLines: number
+    dailyAdditions: number
+    dailyDeletions: number
+  }
+  lifecycle: {
+    pinnedCount: number
+    avgTurnsPerSession: number
+    medianTurnsPerSession: number
+    compactionCount: number
+    retryCount: number
+    errorCount: number
+    errorRate: number
+    durationBuckets: {
+      short: number
+      medium: number
+      long: number
+    }
+  }
+  channels: {
+    channels: Array<{
+      channel: string
+      sessions: number
+      messages: number
+    }>
+    interactiveSessions: number
+    unattendedSessions: number
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      sessions: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      additions: number
+      deletions: number
+      files: number
+      toolCalls: number
+      errors: number
+    }>
+    hours: Array<{
+      hour: string
+      turns: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
+  watermark: number
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -2958,6 +3232,15 @@ export type FriendReplyMapping = Array<{
   subSessionId: string
 }>
 
+export type ExternalAgentInfo = {
+  adapter: string
+  path?: string
+  version?: string
+  config?: {
+    [key: string]: unknown
+  }
+}
+
 export type Agent = {
   name: string
   description?: string
@@ -2977,6 +3260,7 @@ export type Agent = {
     [key: string]: unknown
   }
   steps?: number
+  external?: ExternalAgentInfo
 }
 
 export type McpStatusConnected = {
@@ -3320,11 +3604,20 @@ export type EventQuestionRejected = {
   }
 }
 
+export type EventQuestionTimedOut = {
+  type: "question.timed_out"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
 export type EventRuntimeReloaded = {
   type: "runtime.reloaded"
   properties: {
     executed: Array<RuntimeReloadTarget>
     cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -3480,6 +3773,14 @@ export type EventHolosConnected = {
   type: "holos.connected"
   properties: {
     peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
   }
 }
 
@@ -3656,6 +3957,7 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventQuestionTimedOut
   | EventRuntimeReloaded
   | EventMessageUpdated
   | EventMessageRemoved
@@ -3676,6 +3978,7 @@ export type Event =
   | EventHolosQueueDelivered
   | EventHolosQueueExpired
   | EventHolosConnected
+  | EventHolosConnectionStatusChanged
   | EventHolosPresence
   | EventSessionCompacted
   | EventAgendaItemCreated
@@ -3959,6 +4262,7 @@ export type ScopeUpdateData = {
       url?: string
       color?: string
     }
+    archived?: number | null
   }
   path: {
     scopeID: string
@@ -4730,26 +5034,47 @@ export type SessionListData = {
   query?: {
     directory?: string
     /**
-     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
+     * Number of sessions to skip
      */
-    start?: number
+    offset?: number
+    /**
+     * Maximum number of sessions to return
+     */
+    limit?: number
     /**
      * Filter sessions by title (case-insensitive)
      */
     search?: string
     /**
-     * Maximum number of sessions to return
+     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
      */
-    limit?: number
+    since?: number
+    /**
+     * Filter sessions updated before this timestamp (milliseconds since epoch)
+     */
+    before?: number
+    /**
+     * Only include pinned sessions
+     */
+    pinned?: boolean
+    /**
+     * Only include top-level sessions (exclude subsessions). Default: true
+     */
+    parentOnly?: boolean
   }
   url: "/session"
 }
 
 export type SessionListResponses = {
   /**
-   * List of sessions
+   * Paginated list of sessions
    */
-  200: Array<Session>
+  200: {
+    data: Array<Session>
+    total: number
+    offset: number
+    limit: number
+  }
 }
 
 export type SessionListResponse = SessionListResponses[keyof SessionListResponses]
@@ -6161,13 +6486,13 @@ export type ProviderListResponses = {
           }
           limit: {
             context: number
+            input?: number
             output: number
           }
           modalities?: {
             input: Array<"text" | "audio" | "image" | "video" | "pdf">
             output: Array<"text" | "audio" | "image" | "video" | "pdf">
           }
-          experimental?: boolean
           status?: "alpha" | "beta" | "deprecated"
           options: {
             [key: string]: unknown
@@ -6807,13 +7132,26 @@ export type EngramStatsData = {
   path?: never
   query?: {
     directory?: string
+    /**
+     * Set to 'true' to force a full analytics recompute
+     */
+    recompute?: "true" | "false"
   }
   url: "/engram/stats"
 }
 
+export type EngramStatsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+
 export type EngramStatsResponses = {
   /**
-   * Memory statistics
+   * Engram statistics
    */
   200: MemoryStats
 }
@@ -6991,6 +7329,57 @@ export type EngramListResponses = {
 }
 
 export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+
+export type AgendaActivityData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Limit activity to this scope (includes global items when provided)
+     */
+    scopeID?: string
+    /**
+     * Limit activity to a specific agenda item
+     */
+    itemID?: string
+    /**
+     * Optional case-insensitive text search across item, run, and session metadata
+     */
+    query?: string
+    /**
+     * Alias for query
+     */
+    search?: string
+    /**
+     * Page offset
+     */
+    offset?: number
+    /**
+     * Page size
+     */
+    limit?: number
+  }
+  url: "/agenda/activity"
+}
+
+export type AgendaActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AgendaActivityError = AgendaActivityErrors[keyof AgendaActivityErrors]
+
+export type AgendaActivityResponses = {
+  /**
+   * Paginated agenda activity
+   */
+  200: AgendaActivityPage
+}
+
+export type AgendaActivityResponse = AgendaActivityResponses[keyof AgendaActivityResponses]
 
 export type AgendaSessionsData = {
   body?: never
@@ -7325,6 +7714,7 @@ export type AgendaListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda"
 }
@@ -7656,6 +8046,201 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type StatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Set to 'true' to force a full recompute from scratch
+     */
+    recompute?: "true" | "false"
+  }
+  url: "/stats"
+}
+
+export type StatsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type StatsGetError = StatsGetErrors[keyof StatsGetErrors]
+
+export type StatsGetResponses = {
+  /**
+   * Stats snapshot
+   */
+  200: StatsSnapshot
+}
+
+export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
+
+export type StatsProgressData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/stats/progress"
+}
+
+export type StatsProgressResponses = {
+  /**
+   * Server-sent events containing progress and final snapshot payloads
+   */
+  200: {
+    type: "progress" | "done" | "error"
+    progress?: {
+      phase: "scan" | "digest" | "bucket" | "snapshot"
+      current: number
+      total: number
+      message?: string
+    }
+    snapshot?: {
+      overview: {
+        totalSessions: number
+        activeSessions: number
+        archivedSessions: number
+        totalMessages: number
+        totalTurns: number
+        totalDays: number
+        longestStreak: number
+        currentStreak: number
+        projectCount: number
+      }
+      tokenCost: {
+        tokens: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        cost: number
+        cacheHitRate: number
+        avgCostPerTurn: number
+        avgTokensPerTurn: number
+        dailyCost: number
+        dailyTokens: number
+      }
+      models: {
+        models: Array<{
+          providerID: string
+          modelID: string
+          messages: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          avgResponseMs: number
+        }>
+      }
+      agents: {
+        agents: Array<{
+          agent: string
+          messages: number
+          sessions: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          subagentInvocations: number
+        }>
+        totalSubagentCalls: number
+      }
+      tools: {
+        tools: Array<{
+          tool: string
+          calls: number
+          successes: number
+          errors: number
+          avgDurationMs: number
+        }>
+      }
+      codeChanges: {
+        totalAdditions: number
+        totalDeletions: number
+        totalFiles: number
+        netLines: number
+        dailyAdditions: number
+        dailyDeletions: number
+      }
+      lifecycle: {
+        pinnedCount: number
+        avgTurnsPerSession: number
+        medianTurnsPerSession: number
+        compactionCount: number
+        retryCount: number
+        errorCount: number
+        errorRate: number
+        durationBuckets: {
+          short: number
+          medium: number
+          long: number
+        }
+      }
+      channels: {
+        channels: Array<{
+          channel: string
+          sessions: number
+          messages: number
+        }>
+        interactiveSessions: number
+        unattendedSessions: number
+      }
+      timeSeries: {
+        days: Array<{
+          day: string
+          sessions: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          additions: number
+          deletions: number
+          files: number
+          toolCalls: number
+          errors: number
+        }>
+        hours: Array<{
+          hour: string
+          turns: number
+        }>
+        hourlyActivity: Array<number>
+      }
+      computedAt: number
+      watermark: number
+    }
+    message?: string
+  }
+}
+
+export type StatsProgressResponse = StatsProgressResponses[keyof StatsProgressResponses]
 
 export type HolosCredentialsStatusData = {
   body?: never

@@ -46,6 +46,7 @@ export namespace ModelsDev {
       .optional(),
     limit: z.object({
       context: z.number(),
+      input: z.number().optional(),
       output: z.number(),
     }),
     modalities: z
@@ -54,7 +55,6 @@ export namespace ModelsDev {
         output: z.array(z.enum(["text", "audio", "image", "video", "pdf"])),
       })
       .optional(),
-    experimental: z.boolean().optional(),
     status: z.enum(["alpha", "beta", "deprecated"]).optional(),
     options: z.record(z.string(), z.any()),
     headers: z.record(z.string(), z.string()).optional(),
@@ -74,6 +74,8 @@ export namespace ModelsDev {
 
   export type Provider = z.infer<typeof Provider>
 
+  let inFlight: Promise<void> | undefined
+
   export async function get() {
     refresh()
     const file = Bun.file(filepath)
@@ -84,8 +86,16 @@ export namespace ModelsDev {
     return JSON.parse(json) as Record<string, Provider>
   }
 
-  export async function refresh() {
+  export function refresh(): Promise<void> | undefined {
     if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return
+    if (inFlight) return inFlight
+    inFlight = doRefresh().finally(() => {
+      inFlight = undefined
+    })
+    return inFlight
+  }
+
+  async function doRefresh() {
     const file = Bun.file(filepath)
     log.info("refreshing", {
       file,

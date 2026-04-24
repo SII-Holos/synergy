@@ -91,6 +91,7 @@ const dictionary = {
     importValidationRunningShort: "Checking",
     coreValidationPassed: "Ready",
     coreValidationFailed: "Needs attention",
+    coreValidationSkipped: "Skipped",
     coreValidationPending: "Pending",
     coreValidationAwaiting: "Waiting for check results.",
     importValidationSummary:
@@ -455,6 +456,7 @@ const dictionary = {
     importValidationRunningShort: "检查中",
     coreValidationPassed: "已就绪",
     coreValidationFailed: "需要处理",
+    coreValidationSkipped: "已跳过",
     coreValidationPending: "待检查",
     coreValidationAwaiting: "等待检查结果。",
     importValidationSummary: "Synergy 会先检查文件本身，再测试必要模型槽位，这样你能知道这份配置是否真的能直接使用。",

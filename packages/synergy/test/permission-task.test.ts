@@ -1,19 +1,8 @@
-import { describe, test, expect, mock } from "bun:test"
+import { describe, test, expect } from "bun:test"
 import { PermissionNext } from "../src/permission/next"
 import { Config } from "../src/config/config"
 import { Instance } from "../src/scope/instance"
 import { tmpdir } from "./fixture/fixture"
-
-// Mock BunProc to prevent Config.installDependencies() from running `bun add`
-// which hangs in test environments without network access.
-mock.module("../src/util/bun", () => ({
-  BunProc: {
-    install: async (pkg: string) => pkg,
-    run: async () => {},
-    which: () => process.execPath,
-    InstallFailedError: class extends Error {},
-  },
-}))
 
 describe("PermissionNext.evaluate for permission.task", () => {
   const createRuleset = (rules: Record<string, "allow" | "deny" | "ask">): PermissionNext.Ruleset =>

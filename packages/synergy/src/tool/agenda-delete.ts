@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda } from "../agenda"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-delete.txt"
 
 const parameters = z.object({
@@ -11,7 +12,7 @@ export const AgendaDeleteTool = Tool.define("agenda_delete", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    await Agenda.remove(params.id)
+    await Agenda.remove(params.id, Instance.scope.id)
 
     return {
       title: "Deleted",

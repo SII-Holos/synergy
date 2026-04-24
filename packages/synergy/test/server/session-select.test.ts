@@ -29,9 +29,10 @@ describe("Server.App() current contract", () => {
 
           const listed = await app.request("/session", { method: "GET" })
           expect(listed.status).toBe(200)
-          const sessions = await listed.json()
-          expect(Array.isArray(sessions)).toBe(true)
-          expect(sessions.some((item: any) => item.id === session.id)).toBe(true)
+          const result = await listed.json()
+          expect(result).toHaveProperty("data")
+          expect(result).toHaveProperty("total")
+          expect(result.data.some((item: any) => item.id === session.id)).toBe(true)
 
           await Session.remove(session.id)
         },

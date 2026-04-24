@@ -1,0 +1,33 @@
+Control a target session remotely — inspect its state and perform actions as if you were the user in that session.
+
+The `target` parameter identifies which session to control:
+- A session ID (e.g. "ses_xxx") to target a specific session
+- "home" to target the app home session
+- A Holos contact/agent ID
+
+## Actions
+
+### `status` — Query session state
+Returns the session's current runtime status, pending questions, pending permission requests, and allow-all state. Use this before other actions to understand what the session needs. For example, before answering a question, call `status` first to see what questions are pending and what options are available.
+
+### `compact` — Trigger compaction
+Forces the target session to compact its conversation history. Useful when a child session is approaching context limits.
+
+### `abort` — Abort execution
+Stops any ongoing processing in the target session. Use when a delegated agent is stuck or doing the wrong thing.
+
+### `question_reply` — Answer a pending question
+Provide answers to a question that the target session's agent has asked. The `answers` format is an array of arrays of selected labels — one array per question, each containing the label(s) the user selected. For single-select questions, pass one label; for multiple-select, pass multiple. Use `status` first to discover pending question IDs and available options.
+
+### `question_reject` — Dismiss a pending question
+Reject a question the target session's agent has asked. The agent will receive an error and can adjust its approach.
+
+### `permission_reply` — Approve or deny a permission request
+Respond to a pending permission request in the target session. Use `reply: "once"` to approve this specific request, or `reply: "reject"` to deny it. When rejecting, you can optionally provide a `message` to guide the agent. Use `status` first to discover pending permission IDs.
+
+### `set_allow_all` — Toggle allow-all mode
+Enable or disable allow-all mode for the target session. When enabled, all current and future permission requests are automatically approved. This is the programmatic equivalent of clicking "Allow All" in the UI.
+
+## Typical workflow
+1. Call `session_control` with `action: "status"` to see what the session needs
+2. Based on the response, call `session_control` again with the appropriate action (e.g. `question_reply`, `permission_reply`)

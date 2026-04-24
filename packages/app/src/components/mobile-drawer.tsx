@@ -1,16 +1,20 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show, onMount } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { useLayout, getAvatarColors, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { useLayout, getAvatarColors, type LocalScope } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { isGlobalScope } from "@/utils/scope"
-import { relativeTime } from "@/utils/time"
+import { assetPath } from "@/utils/proxy"
+import { useTheme } from "@ericsanchezok/synergy-ui/theme"
+import { getScopeLabel, isGlobalScope } from "@/utils/scope"
+import { ActiveZone } from "@/components/scopes/active-zone"
+import { SessionRow } from "@/components/scopes/session-row"
+import { PaginationBar } from "@/components/scopes/pagination-bar"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 export function MobileDrawer() {
@@ -19,6 +23,7 @@ export function MobileDrawer() {
   const navigate = useNavigate()
   const params = useParams()
   const notification = useNotification()
+  const theme = useTheme()
 
   const [drilldown, setDrilldown] = createSignal<LocalScope | null>(null)
 
@@ -51,7 +56,11 @@ export function MobileDrawer() {
           {/* Header */}
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
-              <Mark class="size-4.5 shrink-0" />
+              <img
+                src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+                alt="Holos"
+                class="size-6 shrink-0"
+              />
               <span class="text-14-medium text-text-strong">Synergy</span>
             </A>
             <button
@@ -159,7 +168,7 @@ function ScopeListView(props: {
               onClick={() => props.onSelectScope(scope)}
             >
               <Avatar
-                fallback={scope.name || getFilename(scope.worktree)}
+                fallback={getScopeLabel(scope)}
                 src={scope.icon?.url}
                 size="small"
                 background={colors().background}
@@ -172,7 +181,7 @@ function ScopeListView(props: {
                   "text-text-base": !isActive(),
                 }}
               >
-                {scope.name || getFilename(scope.worktree)}
+                {getScopeLabel(scope)}
               </span>
               <Icon name="chevron-right" size="small" class="ml-auto shrink-0 text-icon-weak" />
             </button>
@@ -192,24 +201,51 @@ function SessionListDrawerView(props: {
   onNewSession: () => void
 }) {
   const layout = useLayout()
-  const globalSync = useGlobalSync()
-  const [loadingMore, setLoadingMore] = createSignal(false)
+  const globalSDK = useGlobalSDK()
+  const [currentPage, setCurrentPage] = createSignal(1)
+  const [loading, setLoading] = createSignal(false)
+  const [pagedSessions, setPagedSessions] = createSignal<Session[]>([])
+  const [pagedTotal, setPagedTotal] = createSignal(0)
 
-  const sessions = createMemo(() => layout.nav.projectSessions(props.scope))
-  const hasMore = createMemo(() => layout.nav.projectHasMoreSessions(props.scope))
+  const allSessions = createMemo(() => layout.nav.projectSessions(props.scope))
+  const childStore = createMemo(() => layout.nav.childStoreForScope(props.scope))
+  const totalPages = createMemo(() => Math.max(1, Math.ceil(pagedTotal() / SESSION_PAGE_SIZE)))
 
-  const scopeName = createMemo(() => {
-    if (isGlobalScope(props.scope.worktree)) return "Home"
-    return props.scope.name || getFilename(props.scope.worktree)
-  })
+  const scopeName = createMemo(() => getScopeLabel(props.scope))
 
-  async function loadMore() {
-    setLoadingMore(true)
-    try {
-      await layout.nav.loadMoreSessions(props.scope)
-    } finally {
-      setLoadingMore(false)
-    }
+  function fetchPage(page: number) {
+    setLoading(true)
+    const offset = (page - 1) * SESSION_PAGE_SIZE
+    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory: props.scope.worktree, throwOnError: true })
+    sdk.session
+      .list({ offset, limit: SESSION_PAGE_SIZE })
+      .then((x) => {
+        const result = x.data!
+        setPagedSessions((result.data ?? []).filter((s) => !!s?.id && !s.time?.archived))
+        setPagedTotal(result.total)
+      })
+      .finally(() => setLoading(false))
+  }
+
+  onMount(() => fetchPage(1))
+
+  function goToPage(page: number) {
+    if (page < 1 || page > totalPages()) return
+    setCurrentPage(page)
+    fetchPage(page)
+  }
+
+  function getSessionState(session: Session) {
+    const store = childStore()
+    if (!store)
+      return { isWorking: false, hasPermission: false, hasError: false, hasNotification: false, notificationCount: 0 }
+    const status = store.session_status[session.id]
+    const isWorking = status?.type === "busy" || status?.type === "retry"
+    const hasPermission = (store.permission[session.id] ?? []).length > 0
+    const unseen = props.notification.session.unseen(session.id)
+    const hasError = unseen.some((n) => n.type === "error")
+    const hasNotification = unseen.length > 0
+    return { isWorking, hasPermission, hasError, hasNotification, notificationCount: unseen.length }
   }
 
   return (
@@ -238,72 +274,58 @@ function SessionListDrawerView(props: {
         <span>New session</span>
       </button>
 
-      {/* Session list */}
-      <div class="flex-1 min-h-0 overflow-y-auto py-1">
-        <For each={sessions()}>
-          {(session) => {
-            const isActive = () => session.id === props.currentSessionID
-            const updatedAt = () => session.time.updated ?? session.time.created
-            const [childStore] = globalSync.child(session.scope.directory!)
-            const isWorking = createMemo(() => {
-              if (isActive()) return false
-              const status = childStore.session_status[session.id]
-              return status?.type === "busy" || status?.type === "retry"
-            })
-            const sessionNotifications = createMemo(() => props.notification.session.unseen(session.id))
-            const hasNotification = createMemo(() => sessionNotifications().length > 0)
+      {/* Active Zone */}
+      <Show when={childStore()}>
+        {(store) => (
+          <ActiveZone
+            sessions={allSessions()}
+            childStore={store()}
+            notification={props.notification}
+            onSelectSession={props.onSelectSession}
+          />
+        )}
+      </Show>
 
+      {/* Session list */}
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <For each={pagedSessions()}>
+          {(session) => {
+            const state = getSessionState(session)
             return (
-              <button
-                type="button"
-                classList={{
-                  "w-full flex items-start gap-3 px-4 py-2.5 transition-colors text-left": true,
-                  "bg-surface-interactive-base/8": isActive(),
-                  "hover:bg-surface-raised-base-hover": !isActive(),
-                }}
-                onClick={() => props.onSelectSession(session)}
-              >
-                <div class="w-3 shrink-0 pt-1.5 flex items-center justify-center">
-                  <Show when={isWorking()}>
-                    <Spinner class="size-3" />
-                  </Show>
-                  <Show when={!isWorking() && hasNotification()}>
-                    <div class="size-1.5 rounded-full bg-text-interactive-base" />
-                  </Show>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div
-                    classList={{
-                      "text-13-medium truncate": true,
-                      "text-text-interactive-base": isActive(),
-                      "text-text-base": !isActive(),
-                    }}
-                  >
-                    {session.title || "New session"}
-                  </div>
-                  <div class="text-11-regular text-text-weak mt-0.5">{relativeTime(updatedAt())}</div>
-                </div>
-                <Show when={session.pinned && session.pinned > 0}>
-                  <Icon name="pin" size="small" class="shrink-0 text-icon-weak mt-0.5" />
-                </Show>
-              </button>
+              <SessionRow
+                session={session}
+                isActive={session.id === props.currentSessionID}
+                isWorking={state.isWorking}
+                hasPermission={state.hasPermission}
+                hasError={state.hasError}
+                hasNotification={state.hasNotification}
+                notificationCount={state.notificationCount}
+                onSelect={() => props.onSelectSession(session)}
+                onTogglePin={() => layout.nav.pinSession(session, !(session.pinned && session.pinned > 0))}
+                onArchive={() => layout.nav.archiveSession(session)}
+                onRename={(title) =>
+                  globalSDK.client.session.update({ directory: session.scope.directory, sessionID: session.id, title })
+                }
+              />
             )
           }}
         </For>
-        <Show when={hasMore()}>
-          <button
-            type="button"
-            class="w-full px-4 py-2 text-12-medium text-text-weak hover:text-text-base transition-colors text-center"
-            disabled={loadingMore()}
-            onClick={loadMore}
-          >
-            {loadingMore() ? "Loading..." : "Load more"}
-          </button>
-        </Show>
-        <Show when={sessions().length === 0}>
+        <Show when={pagedSessions().length === 0}>
           <div class="px-4 py-8 text-center text-13-regular text-text-weak">No sessions yet</div>
         </Show>
       </div>
+
+      {/* Pagination */}
+      <Show when={pagedTotal() > 0 || currentPage() > 1}>
+        <PaginationBar
+          total={pagedTotal()}
+          currentPage={currentPage()}
+          totalPages={totalPages()}
+          pageSize={SESSION_PAGE_SIZE}
+          onPageChange={goToPage}
+          loading={loading()}
+        />
+      </Show>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { batch, createMemo } from "solid-js"
+import { batch, createMemo, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -15,6 +15,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = globalSync.child(sdk.directory)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
+    const maxMessages = 500
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
@@ -54,21 +55,25 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       await retry(() => sdk.client.session.messages({ sessionID, limit }))
         .then((messages) => {
           const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-          const next = items
+          const all = items
             .map((x) => x.info)
             .filter((m) => !!m?.id)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
 
-          batch(() => {
-            setStore("message", sessionID, reconcile(next, { key: "id" }))
+          const keep = all.length > maxMessages ? all.slice(-maxMessages) : all
 
-            for (const message of items) {
+          batch(() => {
+            setStore("message", sessionID, reconcile(keep, { key: "id" }))
+
+            const keepIds = new Set(keep.map((m) => m.id))
+            for (const item of items) {
+              if (!keepIds.has(item.info.id)) continue
               setStore(
                 "part",
-                message.info.id,
+                item.info.id,
                 reconcile(
-                  message.parts
+                  item.parts
                     .filter((p) => !!p?.id)
                     .slice()
                     .sort((a, b) => a.id.localeCompare(b.id)),
@@ -78,12 +83,40 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }
 
             setMeta("limit", sessionID, limit)
-            setMeta("complete", sessionID, next.length < limit)
+            setMeta("complete", sessionID, all.length < limit)
           })
         })
         .finally(() => {
           setMeta("loading", sessionID, false)
         })
+    }
+
+    const evictSession = (sessionID: string) => {
+      const messages = store.message[sessionID]
+      if (!messages) return
+
+      batch(() => {
+        setStore(
+          produce((draft) => {
+            for (const msg of messages) {
+              delete draft.part[msg.id]
+            }
+            delete draft.message[sessionID]
+            delete draft.session_diff[sessionID]
+            delete draft.todo[sessionID]
+            delete draft.dag[sessionID]
+            delete draft.permission[sessionID]
+            delete draft.question[sessionID]
+          }),
+        )
+        setMeta(
+          produce((draft) => {
+            delete draft.limit[sessionID]
+            delete draft.complete[sessionID]
+            delete draft.loading[sessionID]
+          }),
+        )
+      })
     }
 
     return {
@@ -100,6 +133,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if (match.found) return globalSync.data.scope[match.index]
         return undefined
       },
+      evictSession,
       session: {
         get: getSession,
         addOptimisticMessage(input: {
@@ -252,5 +286,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         return store.path.directory
       },
     }
+
+    onCleanup(() => {
+      globalSync.releaseChild(sdk.directory)
+    })
   },
 })

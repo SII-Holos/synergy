@@ -7,6 +7,7 @@ import { NoteEvent } from "./event"
 import { NoteTypes } from "./types"
 import { NoteError } from "./error"
 import { Log } from "../util/log"
+import { Plugin } from "../plugin"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
@@ -117,25 +118,44 @@ export namespace NoteStore {
 
   export async function create(input: NoteTypes.CreateInput, options?: { scopeID?: string }): Promise<NoteTypes.Info> {
     const targetScopeID = options?.scopeID ?? Instance.scope.id
+    const create = await Plugin.trigger(
+      "note.create.before",
+      {
+        scopeID: targetScopeID,
+      },
+      {
+        note: structuredClone(input),
+      },
+    )
     const id = Identifier.ascending("note")
     const scopeID = Identifier.asScopeID(targetScopeID)
     const isGlobal = targetScopeID === "global"
     const now = Date.now()
     const note: NoteTypes.Info = {
       id,
-      title: input.title,
-      content: input.content ?? { type: "doc", content: [] },
-      contentText: input.contentText ?? "",
+      title: create.note.title,
+      content: create.note.content ?? { type: "doc", content: [] },
+      contentText: create.note.contentText ?? "",
       pinned: false,
       global: isGlobal,
-      tags: input.tags ?? [],
+      tags: create.note.tags ?? [],
       version: 1,
       time: { created: now, updated: now },
     }
     await Storage.write(StoragePath.note(scopeID, id), note)
     await indexSet(targetScopeID, note)
-    log.info("created", { id, title: input.title, global: isGlobal, scopeID: targetScopeID })
+    log.info("created", { id, title: note.title, global: isGlobal, scopeID: targetScopeID })
     await Bus.publish(NoteEvent.Created, { note })
+    await Plugin.trigger(
+      "note.create.after",
+      {
+        scopeID: targetScopeID,
+        noteID: note.id,
+      },
+      {
+        note,
+      },
+    )
     return note
   }
 
@@ -178,26 +198,38 @@ export namespace NoteStore {
   export async function update(scopeID: string, noteID: string, patch: NoteTypes.PatchInput): Promise<NoteTypes.Info> {
     const sid = Identifier.asScopeID(scopeID)
     const sourcePath = StoragePath.note(sid, noteID)
+    const current = normalize(await Storage.read<NoteTypes.Info>(sourcePath))
+    const update = await Plugin.trigger(
+      "note.update.before",
+      {
+        scopeID,
+        noteID,
+        current,
+      },
+      {
+        patch: structuredClone(patch),
+      },
+    )
 
     let wasGlobal = false
     const note = await Storage.update<NoteTypes.Info>(sourcePath, (draft) => {
       draft.global ??= false
       draft.version ??= 1
       wasGlobal = draft.global
-      if (patch.expectedVersion !== undefined && patch.expectedVersion !== draft.version) {
+      if (update.patch.expectedVersion !== undefined && update.patch.expectedVersion !== draft.version) {
         throw new NoteError.Conflict({
           noteID,
-          expectedVersion: patch.expectedVersion,
+          expectedVersion: update.patch.expectedVersion,
           note: normalize(draft),
         })
       }
-      if (patch.title !== undefined) draft.title = patch.title
-      if (patch.content !== undefined) draft.content = patch.content
-      if (patch.contentText !== undefined) draft.contentText = patch.contentText
-      if (patch.pinned !== undefined) draft.pinned = patch.pinned
-      if (patch.tags !== undefined) draft.tags = patch.tags
-      if (patch.global !== undefined) draft.global = patch.global
-      if (patch.global === true && !wasGlobal) {
+      if (update.patch.title !== undefined) draft.title = update.patch.title
+      if (update.patch.content !== undefined) draft.content = update.patch.content
+      if (update.patch.contentText !== undefined) draft.contentText = update.patch.contentText
+      if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
+      if (update.patch.tags !== undefined) draft.tags = update.patch.tags
+      if (update.patch.global !== undefined) draft.global = update.patch.global
+      if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string
       }
       draft.version += 1
@@ -225,6 +257,16 @@ export namespace NoteStore {
 
     log.info("updated", { id: noteID, version: note.version })
     await Bus.publish(NoteEvent.Updated, { note })
+    await Plugin.trigger(
+      "note.update.after",
+      {
+        scopeID,
+        noteID,
+      },
+      {
+        note,
+      },
+    )
     return note
   }
 

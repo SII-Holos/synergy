@@ -7,7 +7,8 @@ import { usePanel } from "@/context/panel"
 import { useLayout, getAvatarColors } from "@/context/layout"
 import { useRecentSessions, type RecentSessionItem } from "@/context/recent-sessions"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { Mark } from "@ericsanchezok/synergy-ui/logo"
+import { assetPath } from "@/utils/proxy"
+
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
@@ -16,7 +17,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createStore } from "solid-js/store"
 import { DialogSettings } from "@/components/dialog/dialog-settings"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
-import { isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
@@ -121,9 +122,14 @@ function SessionIdentitySwitcher() {
   )
 
   const recentItems = createMemo(() => recent.list())
-  const projectLabel = createMemo(
-    () => recent.currentDirectory() && recentItems().find((item) => item.isCurrent)?.scope.name,
-  )
+  const currentScope = createMemo(() => {
+    const directory = projectDirectory()
+    if (!directory) return undefined
+    return globalSync.data.scope.find(
+      (scope) => scope.worktree === directory || (scope.sandboxes ?? []).includes(directory),
+    )
+  })
+  const projectLabel = createMemo(() => getScopeLabel(currentScope(), projectDirectory()))
   const sessionTitle = createMemo(() => {
     if (isGlobal()) return "Home"
     if (isHolosConversation()) {
@@ -195,7 +201,7 @@ function SessionIdentitySwitcher() {
             }
           >
             <div class="sid-trigger-meta-row">
-              <span class="sid-trigger-project truncate">{projectLabel() || "Project"}</span>
+              <span class="sid-trigger-project truncate">{projectLabel()}</span>
               <span class="sid-trigger-summary shrink-0">{summary()}</span>
             </div>
             <div class="sid-trigger-title-row">
@@ -270,6 +276,7 @@ export function HeaderBar() {
   const dialog = useDialog()
   const navigate = useNavigate()
   const layout = useLayout()
+  const theme = useTheme()
   const inDirectory = () => !!params.dir
   const isGlobal = createMemo(() => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false))
   const isHolosConversation = createMemo(() => {
@@ -285,10 +292,14 @@ export function HeaderBar() {
       <div class="flex items-center gap-1 min-w-0">
         <A
           href="/"
-          class="hidden md:flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
+          class="hidden md:flex items-center justify-center size-6 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
           onClick={() => panel.close()}
         >
-          <Mark class="size-4.5 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6" />
+          <img
+            src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+            alt="Holos"
+            class="size-6 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6"
+          />
         </A>
         <button
           type="button"
@@ -337,7 +348,8 @@ export function HeaderBar() {
 
         <div class="flex items-center gap-0.5">
           <PanelToggle id="note" icon="notebook-pen" label="Notes" />
-          <PanelToggle id="lucid" icon="sparkles" label="Lucid" />
+          {/* TODO: Lucid panel icon — still in design, re-enable when ready */}
+          {/* <PanelToggle id="lucid" icon="sparkles" label="Lucid" /> */}
           <Show when={inDirectory()}>
             <PanelToggle id="engram" icon="brain" label="Engram" />
             <PanelToggle id="agenda" icon="clipboard-list" label="Agenda" />

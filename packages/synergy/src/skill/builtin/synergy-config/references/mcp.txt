@@ -135,6 +135,44 @@ Converted:
 4. Root config key is `"mcp"` (not `"mcpServers"` or `"servers"`)
 5. Schema is strict — unknown fields cause validation errors
 
+## Troubleshooting
+
+### MCP server not connecting
+
+- Check `type` is `"local"` or `"remote"` — `"http"` and `"stdio"` are not valid Synergy types.
+- Check `command` is an array, not a bare string: `["npx", ...]` not `"npx"`.
+- For local servers, run the command manually in a terminal to verify it works.
+- Check `enabled` is not `false`.
+
+### "Command not found" for local MCP
+
+- The MCP process runs in Synergy's shell, not the user's interactive shell. Programs installed via npm/npx, Homebrew, or custom paths may not be on PATH.
+- Use an absolute path in the command array: `["/usr/local/bin/node", "server.js"]` instead of `["node", "server.js"]`.
+- Alternatively, set `PATH` in the `environment` field.
+
+### Remote MCP timeout
+
+- Increase `timeout` (default 5000ms) — slow servers or large tool lists may need 10000 or more.
+- Verify the URL is reachable from the Synergy server: `curl <url>` from the same host.
+- If the server requires authentication, check that OAuth or `headers` is configured.
+
+### OAuth failing
+
+- Do not set `"oauth": false` on servers that require authentication.
+- Verify the redirect URI registered with the OAuth provider matches what Synergy sends.
+- Check stored credentials in `~/.synergy/data/auth/mcp.json` — stale or invalid tokens may need to be deleted so re-authentication is triggered.
+
+### Converted config not working
+
+- Re-check conversion rules: `env` → `environment`, `command` + `args` → single array, `mcpServers`/`servers` → `mcp`.
+- Ensure `type` was explicitly set to `"local"` or `"remote"` — never `"http"` or `"stdio"`.
+- Ensure `command` is a flat array of strings, not a string plus a separate `args` array.
+
+### MCP tools not appearing
+
+- Run `runtime_reload(target: "mcp")` after config changes.
+- Check server logs for errors during the tool list request — a failing MCP server may connect but return an empty or errored tool list.
+
 ## Reload
 
 ```

@@ -74,6 +74,7 @@ export const ScopeRoute = new Hono()
       z.object({
         name: z.string().optional(),
         icon: Scope.Info.shape.icon.optional(),
+        archived: z.number().nullable().optional(),
       }),
     ),
     async (c) => {
@@ -86,8 +87,8 @@ export const ScopeRoute = new Hono()
   .delete(
     "/:scopeID",
     describeRoute({
-      summary: "Remove scope",
-      description: "Remove a scope from the tracked list. Does not delete scope files or session data.",
+      summary: "Archive scope",
+      description: "Archive a scope. Archived scopes are hidden from the list but can be restored.",
       operationId: "scope.remove",
       responses: {
         200: {

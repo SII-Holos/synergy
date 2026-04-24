@@ -8,6 +8,7 @@ import z from "zod"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionManager } from "./manager"
 import { Scope } from "@/scope"
 import { Agent } from "@/agent/agent"
@@ -15,6 +16,8 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
+import { LLM } from "./llm"
+import type { ModelMessage } from "ai"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -33,17 +36,173 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
+  /** Detect whether a processor error was caused by exceeding the model's context window. */
+  export function isContextExceeded(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false
+    const obj = error as { name?: string; data?: { message?: string; statusCode?: number; responseBody?: string } }
+    if (obj.name !== "APIError") return false
+    // Check the primary error message and the raw response body, since
+    // ProviderTransform.error() may rewrite the message and drop keywords.
+    const texts = [obj.data?.message ?? "", obj.data?.responseBody ?? ""].map((s) => s.toLowerCase())
+    return texts.some(
+      (msg) =>
+        msg.includes("context_length_exceeded") ||
+        msg.includes("context length") ||
+        msg.includes("maximum context") ||
+        msg.includes("max_tokens") ||
+        (msg.includes("token") && msg.includes("exceed")) ||
+        (msg.includes("too long") && msg.includes("context")) ||
+        (msg.includes("request too large") && msg.includes("token")),
+    )
+  }
+
+  /**
+   * Trim a ModelMessage array so the compaction LLM's input stays within its
+   * context window. Keeps the most recent messages (highest signal for
+   * summarization) and inserts a marker for omitted history.
+   */
+  async function trimMessagesForContext(
+    messages: ModelMessage[],
+    budget: number,
+    modelID?: string,
+  ): Promise<ModelMessage[]> {
+    const estimateJSON = modelID
+      ? (value: unknown) => Token.estimateModelJSONSync(modelID, value)
+      : (value: unknown) => Token.estimateJSON(value)
+    const estimated = estimateJSON(messages)
+    if (estimated <= budget) return messages
+
+    // If budget is zero or negative (output + prompt alone exceeds context),
+    // keep only the last 2 messages so the compaction model has *something*
+    // to summarize. The mechanical fallback will catch the failure if even
+    // this is too large.
+    const effectiveBudget = Math.max(budget, 0)
+
+    let used = 0
+    let startIndex = messages.length
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const cost = estimateJSON(messages[i])
+      if (used + cost > effectiveBudget) break
+      used += cost
+      startIndex = i
+    }
+    // Always include at least the last two messages for minimal context
+    startIndex = Math.min(startIndex, Math.max(0, messages.length - 2))
+
+    if (startIndex === 0) return messages
+
+    log.info("trimming compaction input", {
+      originalMessages: messages.length,
+      keptMessages: messages.length - startIndex,
+      omittedMessages: startIndex,
+      estimatedTokens: estimated,
+      budget,
+    })
+    const marker: ModelMessage = {
+      role: "system",
+      content:
+        `[Earlier conversation (${startIndex} messages) was omitted to fit the summarization model's context window. ` +
+        `Focus on summarizing the recent messages below.]`,
+    }
+    return [marker, ...messages.slice(startIndex)]
+  }
+
+  /**
+   * Build a deterministic summary from raw messages when LLM compaction fails.
+   * Not as good as an LLM summary, but establishes a compaction boundary and
+   * preserves enough context for the agent to continue working.
+   */
+  function buildMechanicalSummary(messages: MessageV2.WithParts[], sessionID: string): string {
+    const sections: string[] = []
+
+    const recentUsers = messages
+      .filter(
+        (m) => m.info.role === "user" && !m.parts.some((p) => p.type === "text" && "synthetic" in p && p.synthetic),
+      )
+      .slice(-3)
+      .map((m) => {
+        const text = m.parts
+          .filter((p): p is MessageV2.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join(" ")
+          .trim()
+        return text.slice(0, 300)
+      })
+      .filter(Boolean)
+    if (recentUsers.length) {
+      sections.push("### Recent user requests\n" + recentUsers.map((t) => `- ${t}`).join("\n"))
+    }
+
+    const files = new Set<string>()
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === "patch") {
+          for (const file of part.files) files.add(file)
+        }
+      }
+    }
+    if (files.size) {
+      sections.push(
+        "### Files involved\n" +
+          [...files]
+            .slice(0, 30)
+            .map((f) => `- ${f}`)
+            .join("\n"),
+      )
+    }
+
+    const tools = new Set<string>()
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === "tool") tools.add(part.tool)
+      }
+    }
+    if (tools.size) {
+      sections.push("### Tools used\n" + [...tools].join(", "))
+    }
+
+    sections.push(
+      "### Note\n" +
+        "This is an automatically generated summary because LLM-based compaction could not complete. " +
+        `Use \`session_read\` with session ID \`${sessionID}\` to browse the full conversation history.`,
+    )
+
+    return "## Conversation Summary (Automatic Fallback)\n\n" + sections.join("\n\n")
+  }
+
+  /** Overwrite the compaction assistant message with a mechanical summary. */
+  async function writeMechanicalSummary(
+    msg: MessageV2.Assistant,
+    input: { messages: MessageV2.WithParts[]; sessionID: string },
+  ) {
+    const summary = buildMechanicalSummary(input.messages, input.sessionID)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: summary,
+      time: { start: Date.now(), end: Date.now() },
+    })
+    msg.error = undefined
+    msg.finish = "stop"
+    if (!msg.time.completed) msg.time.completed = Date.now()
+    await Session.updateMessage(msg)
+    log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
+  }
+
   // goes backwards through parts until there are 40_000 tokens worth of tool
   // calls. then erases output of previous tool calls. idea is to throw away old
   // tool calls that are no longer relevant.
-  export async function prune(input: { sessionID: string }) {
-    const config = await Config.get()
-    if (config.compaction?.prune === false) return
-    log.info("pruning")
-    const msgs = await Session.messages({ sessionID: input.sessionID })
+
+  /** Pure scan that returns the completed tool parts eligible for pruning. */
+  export function selectPartsToPrune(msgs: MessageV2.WithParts[], modelID?: string): MessageV2.ToolPart[] {
     let total = 0
     let pruned = 0
-    const toPrune = []
+    const toPrune: MessageV2.ToolPart[] = []
+    const estimateTokens = modelID
+      ? (text: string) => Token.estimateModelSync(modelID, text)
+      : (text: string) => Token.estimate(text)
 
     const protectBoundary = Turn.countRecentTurns(msgs, 2)
 
@@ -56,8 +215,8 @@ export namespace SessionCompaction {
           if (part.state.status === "completed") {
             if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
 
-            if (part.state.time.compacted) break loop
-            const estimate = Token.estimate(part.state.output)
+            if (part.state.time.compacted) continue
+            const estimate = estimateTokens(part.state.output)
             total += estimate
             if (total > PRUNE_PROTECT) {
               pruned += estimate
@@ -66,16 +225,73 @@ export namespace SessionCompaction {
           }
       }
     }
-    log.info("found", { pruned, total })
-    if (pruned > PRUNE_MINIMUM) {
-      for (const part of toPrune) {
-        if (part.state.status === "completed") {
+    return pruned > PRUNE_MINIMUM ? toPrune : []
+  }
+
+  export async function prune(input: { sessionID: string; modelID?: string }) {
+    const config = await Config.get()
+    if (config.compaction?.prune === false) return
+    log.info("pruning")
+    const msgs = await Session.messages({ sessionID: input.sessionID })
+
+    const toPrune = selectPartsToPrune(msgs, input.modelID)
+
+    if (toPrune.length > 0) {
+      const completed = toPrune.filter(
+        (part): part is MessageV2.ToolPart & { state: { status: "completed"; time: { compacted?: number } } } =>
+          part.state.status === "completed",
+      )
+      await Promise.all(
+        completed.map((part) => {
           part.state.time.compacted = Date.now()
-          await Session.updatePart(part)
+          return Session.updatePart(part)
+        }),
+      )
+      log.info("pruned", { count: completed.length })
+    }
+  }
+
+  const ANCHOR_OPEN = "<anchor>"
+  const ANCHOR_CLOSE = "</anchor>"
+
+  /**
+   * Build the anchor text that preserves the user's original request across
+   * compaction boundaries.  If a previous compaction already embedded an
+   * anchor in one of the continue messages, reuse it verbatim so the same
+   * text survives any number of compactions without degradation.
+   */
+  function buildAnchor(messages: MessageV2.WithParts[]): string | undefined {
+    // Check if a previous compaction already embedded an anchor.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.info.role !== "user") continue
+      for (const part of msg.parts) {
+        if (part.type === "text" && part.synthetic && part.text.startsWith(ANCHOR_OPEN)) {
+          return part.text
         }
       }
-      log.info("pruned", { count: toPrune.length })
     }
+
+    // First compaction — extract the original user request.
+    for (const msg of messages) {
+      if (msg.info.role !== "user") continue
+      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+      if (textParts.length === 0) continue
+      const text = textParts
+        .map((p) => p.text)
+        .join("\n")
+        .trim()
+      if (!text) continue
+      return [
+        ANCHOR_OPEN,
+        "This is the user's original request that initiated this work session.",
+        "",
+        text,
+        ANCHOR_CLOSE,
+      ].join("\n")
+    }
+
+    return undefined
   }
 
   export async function process(input: {
@@ -136,6 +352,15 @@ export namespace SessionCompaction {
       "Provide a detailed prompt for continuing our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next considering new session will not have access to our conversation."
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
+    // Trim the conversation history so it fits within the compaction model's
+    // context window, reserving space for the prompt and output.
+    const contextLimit = model.limit?.context ?? 0
+    const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
+    const messageBudget = contextLimit > 0 ? contextLimit - promptCost : Infinity
+    const safeMessages = isFinite(messageBudget)
+      ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
+      : modelMessages
+
     const result = await processor.process({
       user: userMessage,
       agent,
@@ -144,7 +369,7 @@ export namespace SessionCompaction {
       tools: {},
       system: [],
       messages: [
-        ...modelMessages,
+        ...safeMessages,
         {
           role: "user" as const,
           content: [
@@ -158,7 +383,24 @@ export namespace SessionCompaction {
       model,
     })
 
-    if (result === "continue" && input.auto) {
+    // If the LLM call failed due to context limits (e.g. bad token estimation
+    // or model-reported limits don't match reality), fall back to a
+    // deterministic mechanical summary rather than letting compaction fail.
+    let compactionOk = true
+    if (processor.message.error) {
+      if (isContextExceeded(processor.message.error)) {
+        log.warn("compaction LLM context exceeded, using mechanical fallback", {
+          sessionID: input.sessionID,
+        })
+        await writeMechanicalSummary(msg, input)
+      } else {
+        compactionOk = false
+      }
+    }
+
+    if (!compactionOk) return "stop"
+
+    if (input.auto) {
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",
@@ -170,6 +412,7 @@ export namespace SessionCompaction {
         model: userMessage.model,
         summary: { title: "Compaction complete", diffs: [] },
       })
+      const now = Date.now()
       await Session.updatePart({
         id: Identifier.ascending("part"),
         messageID: continueMsg.id,
@@ -177,13 +420,21 @@ export namespace SessionCompaction {
         type: "text",
         synthetic: true,
         text: "Continue if you have next steps",
-        time: {
-          start: Date.now(),
-          end: Date.now(),
-        },
+        time: { start: now, end: now },
       })
+      const anchor = buildAnchor(input.messages)
+      if (anchor) {
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: continueMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: anchor,
+          time: { start: now, end: now },
+        })
+      }
     }
-    if (processor.message.error) return "stop"
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
     return input.auto ? "continue" : "stop"
   }
@@ -192,7 +443,7 @@ export namespace SessionCompaction {
     type: "compaction",
     phase: "pre",
     blocking: true,
-    signals: ["overflow", "compact"],
+    signals: ["compact"],
     collect() {
       return []
     },
@@ -218,7 +469,7 @@ export namespace SessionCompaction {
       return [{ type: "prune" }]
     },
     async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID })
+      await prune({ sessionID: ctx.sessionID, modelID: ctx.modelID })
       return "pass"
     },
   })

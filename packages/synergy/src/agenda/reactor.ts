@@ -8,6 +8,7 @@ import { SessionInteraction } from "../session/interaction"
 import { AgendaDelivery } from "./delivery"
 import { AgendaPrompt } from "./prompt"
 import { AgendaTypes } from "./types"
+import { Plugin } from "../plugin"
 import { Log } from "../util/log"
 
 export namespace AgendaReactor {
@@ -30,11 +31,32 @@ export namespace AgendaReactor {
   }
 
   async function run(signal: AgendaTypes.FiredSignal, scopeID: string): Promise<Result> {
-    const item = await AgendaStore.get(scopeID, signal.source).catch(() => undefined as AgendaTypes.Item | undefined)
-    if (!item || item.status !== "active") {
-      log.info("skipped", { itemID: signal.source, reason: !item ? "not found" : `status=${item.status}` })
+    const storedItem = await AgendaStore.get(scopeID, signal.source).catch(
+      () => undefined as AgendaTypes.Item | undefined,
+    )
+    if (!storedItem || storedItem.status !== "active") {
+      log.info("skipped", { itemID: signal.source, reason: !storedItem ? "not found" : `status=${storedItem.status}` })
       return { nextRunAt: undefined, sessionID: undefined }
     }
+
+    const before = await Plugin.trigger(
+      "agenda.run.before",
+      {
+        signal,
+        item: storedItem,
+        scopeID,
+      },
+      {
+        skip: false,
+        item: storedItem,
+      },
+    )
+    if (before.skip) {
+      log.info("skipped by plugin", { itemID: storedItem.id, signalType: signal.type })
+      return { nextRunAt: AgendaStore.computeNextRunAt(storedItem.triggers), sessionID: undefined }
+    }
+
+    const item = before.item
 
     if (item.state.consecutiveErrors >= 5) {
       log.warn("auto-pausing item due to consecutive errors", {
@@ -45,8 +67,10 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined, deactivated: true }
     }
 
-    const scope = item.task?.workScope ?? Scope.global()
-    const persistent = item.task?.sessionMode === "persistent"
+    const scope = item.origin.scope ?? Scope.global()
+    const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
+    const contextMode = AgendaTypes.inferContextMode(sessionMode)
+    const persistent = sessionMode === "persistent"
     const startTime = Date.now()
     let sessionID: string | undefined
     let error: Error | undefined
@@ -58,17 +82,17 @@ export namespace AgendaReactor {
           ? await resolveOrCreateSession(item, scope, scopeID)
           : await createEphemeralSession(item, scope)
 
-        const promptText = AgendaPrompt.build(item, signal)
+        const promptText = AgendaPrompt.build(item, signal, contextMode)
 
         try {
           await withTimeout(
             SessionInvoke.invoke({
               sessionID: sessionID!,
-              agent: item.task?.agent,
-              model: item.task?.model,
+              agent: item.agent,
+              model: item.model,
               parts: [{ type: "text", text: promptText }],
             }),
-            item.task?.timeout ?? DEFAULT_TIMEOUT,
+            item.timeout ?? DEFAULT_TIMEOUT,
           )
         } catch (err) {
           error = err instanceof Error ? err : new Error(String(err))
@@ -96,25 +120,57 @@ export namespace AgendaReactor {
       })
     })
 
-    const { nextRunAt } = await AgendaStore.updateRunState(
-      scopeID,
-      item.id,
-      {
-        status: error ? "error" : "ok",
-        error: error?.message,
-        sessionID,
-        startTime,
-        duration,
-      },
-      item.triggers,
-      signal.type,
-    ).catch((err) => {
+    let nextRunAt: number | undefined
+    try {
+      const result = await AgendaStore.updateRunState(
+        scopeID,
+        item.id,
+        {
+          status: error ? "error" : "ok",
+          error: error?.message,
+          sessionID,
+          startTime,
+          duration,
+        },
+        item.triggers,
+        signal.type,
+      )
+      nextRunAt = result.nextRunAt
+    } catch (err) {
       log.error("failed to update item state", {
         itemID: item.id,
         error: err instanceof Error ? err : new Error(String(err)),
       })
-      return { nextRunAt: undefined }
-    })
+      // Fallback: compute nextRunAt locally for recurring triggers so the
+      // clock entry is not lost. One-off triggers (at/delay) that already
+      // fired will correctly resolve to undefined.
+      nextRunAt = AgendaStore.computeNextRunAt(item.triggers)
+    }
+
+    if (error) {
+      await Plugin.trigger(
+        "agenda.run.error",
+        {
+          signal,
+          item,
+          scopeID,
+          error: error.message,
+          sessionID,
+        },
+        {},
+      )
+    } else {
+      await Plugin.trigger(
+        "agenda.run.after",
+        {
+          signal,
+          item,
+          run: runLog,
+          scopeID,
+        },
+        {},
+      )
+    }
 
     if (sessionID && !error) {
       await deliverResult(item, sessionID).catch((err) => {
@@ -145,9 +201,7 @@ export namespace AgendaReactor {
     }
 
     const sessionID = await createEphemeralSession(item, scope)
-
     await AgendaStore.setPersistentSession(scopeID, item.id, sessionID)
-
     return sessionID
   }
 

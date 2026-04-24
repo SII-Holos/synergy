@@ -28,6 +28,7 @@ export namespace StoragePath {
   ]
 
   export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
+  export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
 
   export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "sessions",
@@ -78,6 +79,8 @@ export namespace StoragePath {
     runID,
   ]
 
+  export const agendaRunIndex = (scopeID: ScopeID) => ["agenda", "run_index", scopeID as string]
+
   export const agendaSessionsRoot = (itemID: string) => ["agenda", "sessions", itemID]
   export const agendaSession = (itemID: string, sessionID: string) => ["agenda", "sessions", itemID, sessionID]
 
@@ -103,4 +106,16 @@ export namespace StoragePath {
     triggerMessageID,
   ]
   export const holosAutoTurnCount = (contactId: string) => ["holos", "auto_turns", contactId]
+
+  // Stats
+  export const statsRoot = () => ["stats"]
+  export const statsWatermark = () => ["stats", "watermark"]
+  export const statsSnapshot = () => ["stats", "snapshot"]
+  export const engramSnapshot = () => ["engram", "stats", "snapshot"]
+  /** Per-session digest: stats/digests/{sessionID} */
+  export const statsDigestsRoot = () => ["stats", "digests"]
+  export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]
+  /** Daily buckets: stats/daily/{YYYY-MM-DD} */
+  export const statsDailyRoot = () => ["stats", "daily"]
+  export const statsDaily = (day: string) => ["stats", "daily", day]
 }

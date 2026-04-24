@@ -1,6 +1,8 @@
 import process from "node:process"
+import { MetaSynergyControlClient } from "./control/client"
 import { MetaSynergyControlServer } from "./control/server"
 import type { MetaSynergyControlRequest } from "./control/schema"
+import { MetaSynergyDisplay } from "./display"
 import { MetaSynergyMigrationRunner } from "./migration"
 import { MetaSynergyHost } from "./host"
 import { MetaSynergyInboundHandler, type SessionOpenDecision } from "./inbound/handler"
@@ -91,6 +93,16 @@ export class MetaSynergyRuntime {
       },
     }
 
+    if (
+      runtime.state.runtimeMode === "managed" &&
+      !MetaSynergyOwnerRegistry.hasActiveLocalOwner(runtime.state.ownerRegistry)
+    ) {
+      runtime.state.runtimeMode = "standalone"
+      runtime.state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(runtime.state.ownerRegistry)
+      MetaSynergyOwnerRegistry.releaseLocalOwner(runtime.state.ownerRegistry)
+      runtime.state.connectionStatus = "disconnected"
+    }
+
     await MetaSynergyStore.saveState(runtime.state)
     return runtime
   }
@@ -113,11 +125,10 @@ export class MetaSynergyRuntime {
     state.service.stoppedAt = undefined
     state.logs.filePath = MetaSynergyStore.logsPath()
     state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(state.ownerRegistry)
-    MetaSynergyOwnerRegistry.declareLocalOwner(
-      state.ownerRegistry,
-      state.envID ?? this.host.envID ?? crypto.randomUUID(),
-    )
-    await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
+    if (state.runtimeMode === "standalone") {
+      MetaSynergyOwnerRegistry.releaseLocalOwner(state.ownerRegistry)
+      await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
+    }
     state.connectionStatus = state.runtimeMode === "managed" ? "disconnected" : "connecting"
     MetaSynergyLog.configure({ printToConsole: state.service.printLogs })
     await MetaSynergyStore.saveState(state)
@@ -147,7 +158,9 @@ export class MetaSynergyRuntime {
         this.#scheduleReconnect("initial_connect_failed")
       }
 
-      console.log(`MetaSynergy running as ${nextAuth.agentID}`)
+      console.log(
+        `MetaSynergy running as ${MetaSynergyDisplay.identifier(nextAuth.agentID, { hiddenReason: "policy" })}`,
+      )
     } else {
       this.#clearReconnectTimer()
       this.#client = null
@@ -176,6 +189,7 @@ export class MetaSynergyRuntime {
   async stopServerProcess(input?: { exit?: boolean }) {
     this.#stopping = true
     this.#clearReconnectTimer()
+    await this.#releaseManagedOwner("service_stop")
     this.#stopLoops()
     if (this.state) {
       this.state.connectionStatus = "disconnected"
@@ -296,13 +310,14 @@ export class MetaSynergyRuntime {
     }
   }
 
-  async enterManagedMode() {
+  async enterManagedMode(input?: { ownerID?: string; leaseExpiresAt?: number }) {
     const state = requireState(this)
     state.runtimeMode = "managed"
     state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(state.ownerRegistry)
     MetaSynergyOwnerRegistry.declareLocalOwner(
       state.ownerRegistry,
-      state.envID ?? this.host.envID ?? crypto.randomUUID(),
+      input?.ownerID ?? state.envID ?? this.host.envID ?? crypto.randomUUID(),
+      { leaseExpiresAt: input?.leaseExpiresAt },
     )
     await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
     this.#clearReconnectTimer()
@@ -317,6 +332,54 @@ export class MetaSynergyRuntime {
       connectionStatus: state.connectionStatus,
       service: this.getServiceSnapshot(),
     }
+  }
+
+  async enterStandaloneMode(input?: { ownerID?: string; reason?: string }) {
+    const state = requireState(this)
+    const previousMode = state.runtimeMode
+    state.runtimeMode = "standalone"
+    state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(state.ownerRegistry)
+    MetaSynergyOwnerRegistry.releaseLocalOwner(state.ownerRegistry, input?.ownerID)
+    await MetaSynergyOwnerRegistry.saveFile(state.ownerRegistry)
+    this.#clearReconnectTimer()
+    this.#reconnectAttempt = 0
+    if (this.sessions.current()) {
+      this.sessions.kickCurrent(false)
+    }
+    await this.#client?.disconnect().catch(() => undefined)
+    this.#client = null
+    await this.#setConnectionStatus("disconnected")
+    await MetaSynergyStore.saveState(state)
+
+    MetaSynergyLog.info("runtime.mode.changed", {
+      from: previousMode,
+      to: state.runtimeMode,
+      reason: input?.reason,
+    })
+
+    if (state.service.runtimeStatus === "running" && !this.#stopping) {
+      void this.#resumeStandaloneConnection(input?.reason)
+    }
+
+    return {
+      mode: state.runtimeMode,
+      ownership: this.getOwnershipSnapshot(),
+      connectionStatus: state.connectionStatus,
+      service: this.getServiceSnapshot(),
+    }
+  }
+
+  async releaseManagedMode(input?: { ownerID?: string; reason?: string }) {
+    const state = requireState(this)
+    if (state.runtimeMode !== "managed") {
+      return {
+        mode: state.runtimeMode,
+        ownership: this.getOwnershipSnapshot(),
+        connectionStatus: state.connectionStatus,
+        service: this.getServiceSnapshot(),
+      }
+    }
+    return await this.enterStandaloneMode({ ownerID: input?.ownerID, reason: input?.reason ?? "release_requested" })
   }
 
   async getApproval() {
@@ -458,10 +521,11 @@ export class MetaSynergyRuntime {
 
   async getStatusPayload() {
     const state = requireState(this)
-    const authInfo =
-      state.runtimeMode === "managed" ? { auth: undefined, source: null } : await MetaSynergyHolosAuth.inspect()
+    const authInfo = await MetaSynergyHolosAuth.inspect()
     return {
-      auth: sanitizeAuth(authInfo.auth, authInfo.source),
+      auth: sanitizeAuth(authInfo.auth, authInfo.source, {
+        hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
+      }),
       mode: state.runtimeMode,
       ownership: this.getOwnershipSnapshot(),
       state: sanitizeState(state),
@@ -493,13 +557,25 @@ export class MetaSynergyRuntime {
       case "runtime.mode":
         return await this.getMode()
       case "runtime.enter_managed":
-      case "runtime.enter_managed_mode":
         return await this.enterManagedMode()
+      case "runtime.enter_managed_mode":
+        return await this.enterManagedMode({
+          ownerID: controlOwnerID(request),
+        })
       case "runtime.set_mode":
         if (request.mode === "managed") {
-          return await this.enterManagedMode()
+          return await this.enterManagedMode({
+            ownerID: controlOwnerID(request),
+            leaseExpiresAt: controlLeaseExpiresAt(request),
+          })
         }
-        throw new Error(`Unsupported runtime mode transition: ${String(request.mode)}`)
+        return await this.enterStandaloneMode({ ownerID: controlOwnerID(request), reason: "control_set_mode" })
+      case "runtime.release_managed":
+        return await this.releaseManagedMode({
+          ownerID: controlOwnerID(request),
+          reason: "control_release_managed",
+        })
+
       case "runtime.reconnect":
         return await this.reconnect()
       case "collaboration.status":
@@ -700,7 +776,13 @@ export class MetaSynergyRuntime {
       }
     }, 30_000)
     idleTimer.unref?.()
-    this.#timers = [idleTimer]
+
+    const ownershipTimer = setInterval(() => {
+      void this.#watchManagedOwnership()
+    }, 5_000)
+    ownershipTimer.unref?.()
+
+    this.#timers = [idleTimer, ownershipTimer]
   }
 
   #stopLoops() {
@@ -818,10 +900,47 @@ export class MetaSynergyRuntime {
     }
   }
 
+  async #resumeStandaloneConnection(reason?: string) {
+    const state = this.state
+    if (!state || state.runtimeMode !== "standalone" || this.#stopping) return
+    const auth = await MetaSynergyHolosAuth.load()
+    if (!auth) {
+      MetaSynergyLog.warn("runtime.connection.recover_skipped_missing_auth", { reason })
+      return
+    }
+    try {
+      await this.#connectClient()
+    } catch (error) {
+      MetaSynergyLog.error("runtime.connection.recover_failed", {
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      this.#scheduleReconnect(reason ?? "standalone_transition_failed")
+    }
+  }
+
   #clearReconnectTimer() {
     if (!this.#reconnectTimer) return
     clearTimeout(this.#reconnectTimer)
     this.#reconnectTimer = null
+  }
+
+  async #releaseManagedOwner(reason: string) {
+    if (!this.state || this.state.runtimeMode !== "managed") return
+    this.state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(this.state.ownerRegistry)
+    MetaSynergyOwnerRegistry.releaseLocalOwner(this.state.ownerRegistry)
+    await MetaSynergyOwnerRegistry.saveFile(this.state.ownerRegistry)
+    await MetaSynergyStore.saveState(this.state)
+    MetaSynergyLog.info("runtime.managed.owner_released", { reason })
+  }
+
+  async #watchManagedOwnership() {
+    if (!this.state || this.#stopping || this.state.runtimeMode !== "managed") return
+    this.state.ownerRegistry = MetaSynergyOwnerRegistry.hydrate(this.state.ownerRegistry)
+    if (MetaSynergyOwnerRegistry.hasActiveLocalOwner(this.state.ownerRegistry)) {
+      return
+    }
+    await this.enterStandaloneMode({ reason: "managed_owner_lost" })
   }
 
   async #setConnectionStatus(status: "disconnected" | "connecting" | "connected") {
@@ -831,20 +950,37 @@ export class MetaSynergyRuntime {
   }
 }
 
+function controlOwnerID(request: { owner?: unknown; ownerAgentId?: unknown }) {
+  if (typeof request.ownerAgentId === "string" && request.ownerAgentId.length > 0) return request.ownerAgentId
+  if (typeof request.owner === "string" && request.owner.length > 0) return request.owner
+  return undefined
+}
+
+function controlLeaseExpiresAt(request: { leaseExpiresAt?: unknown }) {
+  return typeof request.leaseExpiresAt === "number" && Number.isFinite(request.leaseExpiresAt)
+    ? request.leaseExpiresAt
+    : undefined
+}
+
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: MetaSynergyHolosAuthSource | null,
+  options?: { hiddenReason?: "managed" | "policy" | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: auth.agentID,
+        agentID: MetaSynergyDisplay.identifier(auth.agentID, {
+          hiddenReason: options?.hiddenReason,
+        }),
         source,
+        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
+        hiddenReason: null,
       }
 }
 

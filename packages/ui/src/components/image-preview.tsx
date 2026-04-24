@@ -1,5 +1,5 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
-import { IconButton } from "./icon-button"
+import { Icon } from "./icon"
 
 export interface ImagePreviewProps {
   src: string
@@ -12,7 +12,9 @@ export function ImagePreview(props: ImagePreviewProps) {
       <div data-slot="image-preview-container">
         <Kobalte.Content data-slot="image-preview-content">
           <div data-slot="image-preview-header">
-            <Kobalte.CloseButton data-slot="image-preview-close" as={IconButton} icon="x" variant="ghost" />
+            <Kobalte.CloseButton data-slot="image-preview-close" data-component="icon-button" data-variant="ghost">
+              <Icon name="x" size="small" />
+            </Kobalte.CloseButton>
           </div>
           <div data-slot="image-preview-body">
             <img src={props.src} alt={props.alt ?? "Image preview"} data-slot="image-preview-image" />

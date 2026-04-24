@@ -187,7 +187,7 @@ export namespace Channel {
 
   export async function reload() {
     log.info("reloading channel state")
-    await state.reset()
+    await state.resetAll()
     log.info("channel state reloaded")
   }
 

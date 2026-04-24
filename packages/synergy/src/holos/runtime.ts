@@ -24,7 +24,7 @@ import { Envelope } from "./envelope"
 import { FriendRequest } from "./friend-request"
 import { HolosAuth } from "./auth"
 import { HolosLocalMeta, LocalMetaError } from "./local-meta"
-import { HolosLocalTakeover } from "./local-takeover"
+import { releaseManagedMode, HolosLocalTakeover } from "./local-takeover"
 import { HolosMessageMetadata } from "./message-metadata"
 import { HolosOutbound } from "./outbound"
 import { HolosProfile } from "./profile"
@@ -55,6 +55,7 @@ type ConnectionState = {
   ws: WebSocket | null
   peerId: string | null
   heartbeatTimer: ReturnType<typeof setInterval> | null
+  managedLeaseTimer: ReturnType<typeof setInterval> | null
   pendingSends: Map<string, PendingSend>
   presencePoller: { stop: () => void } | null
   retryLoop: { stop: () => void } | null
@@ -146,10 +147,25 @@ export namespace HolosRuntime {
 
   export const Event = {
     Connected: BusEvent.define("holos.connected", z.object({ peerId: z.string() })),
+    StatusChanged: BusEvent.define(
+      "holos.connection.status_changed",
+      z.object({ status: z.string(), error: z.string().optional() }),
+    ),
     PresenceUpdate: BusEvent.define(
       "holos.presence",
       z.object({ peerId: z.string(), status: HolosProtocol.PeerStatus }),
     ),
+  }
+
+  function setStatus(current: RuntimeConnection, next: Status) {
+    const prev = current.status.status
+    current.status = next
+    if (prev !== next.status) {
+      Bus.publish(Event.StatusChanged, {
+        status: next.status,
+        ...("error" in next ? { error: next.error } : {}),
+      }).catch((err) => log.warn("failed to publish status change", { error: err }))
+    }
   }
 
   const appEventHandlers = new Set<AppEventHandler>()
@@ -210,25 +226,25 @@ export namespace HolosRuntime {
     current.abort = new AbortController()
     current.holosConfig = holos ?? null
     current.provider = null
-    current.status = { status: "disconnected" }
+    setStatus(current, { status: "disconnected" })
 
     if (!holos || !holos.enabled) {
-      current.status = { status: "disabled" }
+      setStatus(current, { status: "disabled" })
       return
     }
 
-    current.status = { status: "connecting" }
+    setStatus(current, { status: "connecting" })
 
     void start().catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
-      current.status = { status: "failed", error: message }
+      setStatus(current, { status: "failed", error: message })
     })
   }
 
   export async function start(): Promise<void> {
     const current = await state()
     if (!current.holosConfig) {
-      current.status = { status: "disabled" }
+      setStatus(current, { status: "disabled" })
       return
     }
 
@@ -238,38 +254,46 @@ export namespace HolosRuntime {
     }
     current.abort.abort()
     current.abort = new AbortController()
-    current.status = { status: "connecting" }
+    const signal = current.abort.signal
+    setStatus(current, { status: "connecting" })
 
     const provider = new HolosProvider()
     await provider.connect({
       config: current.holosConfig,
-      signal: current.abort.signal,
+      signal,
       onDisconnect: (reason) => {
-        if (current.abort.signal.aborted) return
+        if (signal.aborted) return
         current.provider = null
         void syncRemoteExecutionState(current).catch((err) =>
           log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
         )
-        const status: Status = { status: "disconnected" }
-        current.status = status
+        setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
       },
     })
 
+    if (signal.aborted) return
+
     current.provider = provider
-    current.status = { status: "connected" }
+    setStatus(current, { status: "connected" })
     await syncRemoteExecutionState(current)
   }
 
   export async function stop(): Promise<void> {
     const current = await state()
+    const peerId = current.provider?.peerId ?? null
     if (current.reconnectTimer) {
       clearTimeout(current.reconnectTimer)
       current.reconnectTimer = null
     }
     current.provider = null
     current.abort.abort()
-    current.status = { status: "disconnected" }
+    if (peerId) {
+      await releaseManagedMode(peerId).catch((err) =>
+        log.warn("managed release failed during stop", { error: err instanceof Error ? err.message : String(err) }),
+      )
+    }
+    setStatus(current, { status: "disconnected" })
     await syncRemoteExecutionState(current).catch((err) =>
       log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
     )
@@ -286,14 +310,12 @@ export namespace HolosRuntime {
       if (!current.holosConfig || current.abort.signal.aborted) return
 
       if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-        const status: Status = { status: "failed", error: "max reconnect attempts exceeded" }
-        current.status = status
+        setStatus(current, { status: "failed", error: "max reconnect attempts exceeded" })
         return
       }
 
       const delayMs = Math.min(RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS)
-      const status: Status = { status: "connecting" }
-      current.status = status
+      setStatus(current, { status: "connecting" })
 
       if (current.reconnectTimer) clearTimeout(current.reconnectTimer)
       current.reconnectTimer = setTimeout(() => {
@@ -301,8 +323,7 @@ export namespace HolosRuntime {
         if (current.abort.signal.aborted) return
         start().catch((err) => {
           const message = err instanceof Error ? err.message : String(err)
-          const failed: Status = { status: "failed", error: message }
-          current.status = failed
+          setStatus(current, { status: "failed", error: message })
           log.warn("holos reconnect failed", { attempt: attempt + 1, reason, error: message })
           scheduleReconnect({ attempt: attempt + 1, reason })
         })
@@ -338,6 +359,7 @@ export class HolosProvider {
     ws: null,
     peerId: null,
     heartbeatTimer: null,
+    managedLeaseTimer: null,
     pendingSends: new Map(),
     presencePoller: null,
     retryLoop: null,
@@ -345,6 +367,10 @@ export class HolosProvider {
   private sentMessageIds = new Map<string, number>()
   private idCounter = 0
   private static readonly PROBE_WAIT_MS = 2_000
+
+  get peerId() {
+    return this.state.peerId
+  }
 
   async connect(input: ConnectInput): Promise<void> {
     const { config: holosConfig, signal, onDisconnect } = input
@@ -375,6 +401,7 @@ export class HolosProvider {
       ws,
       peerId: credentials.agentId,
       heartbeatTimer: null,
+      managedLeaseTimer: null,
       pendingSends: new Map(),
       presencePoller: null,
       retryLoop: null,
@@ -389,6 +416,7 @@ export class HolosProvider {
         if (cleanedUp) return
         cleanedUp = true
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
+        if (this.state.managedLeaseTimer) clearInterval(this.state.managedLeaseTimer)
         this.state.presencePoller?.stop()
         this.state.retryLoop?.stop()
         for (const unsub of subs) unsub()
@@ -413,6 +441,13 @@ export class HolosProvider {
           }
         }, HEARTBEAT_INTERVAL_MS)
         this.state.heartbeatTimer.unref?.()
+
+        this.state.managedLeaseTimer = setInterval(() => {
+          void this.refreshManagedLease().catch((err: unknown) =>
+            log.warn("managed lease refresh failed", { error: err instanceof Error ? err.message : String(err) }),
+          )
+        }, 5_000)
+        this.state.managedLeaseTimer.unref?.()
 
         Instance.provide({
           scope: capturedScope,
@@ -507,6 +542,11 @@ export class HolosProvider {
     const requestId = crypto.randomUUID()
     this.state.ws.send(Envelope.wsSend({ targetAgentId: agentId, event: "presence.ping", payload: {}, requestId }))
     this.trackSend(requestId, agentId)
+  }
+
+  private async refreshManagedLease(): Promise<void> {
+    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN || !this.state.peerId) return
+    await HolosLocalTakeover.refreshManagedLease(this.state.peerId)
   }
 
   async refreshPresence(): Promise<{ count: number }> {

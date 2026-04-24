@@ -1,4 +1,4 @@
-import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions } from "ai"
+import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import z from "zod"
 import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
@@ -28,11 +28,15 @@ export namespace ToolResolver {
     includeMCP?: boolean
   }
 
-  export async function resolve(input: Input): Promise<Record<string, AITool>> {
-    using _ = log.time("resolve")
-    const tools: Record<string, AITool> = {}
+  export interface Definition {
+    id: string
+    description: string
+    inputSchema: JSONSchema7
+    createRuntimeTool?(input: Input): AITool
+  }
 
-    const context = (args: any, options: ToolCallOptions): Tool.Context => ({
+  function contextFactory(input: Input) {
+    return (args: any, options: ToolCallOptions): Tool.Context => ({
       sessionID: input.sessionID,
       abort: options.abortSignal!,
       messageID: input.processor.message.id,
@@ -69,182 +73,223 @@ export namespace ToolResolver {
         })
       },
     })
+  }
+
+  export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+    using _ = log.time("definitions")
+    const result: Definition[] = []
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
-      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), { tool: item.id })
-      tools[item.id] = tool({
-        id: item.id as any,
+      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
+        tool: item.id,
+      }) as JSONSchema7
+      result.push({
+        id: item.id,
         description: item.description,
-        inputSchema: jsonSchema(schema as any),
-        async execute(args, options) {
-          const ctx = context(args, options)
-          let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-          const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-            resolveExecution = r
-          })
-          input.processor.trackExecution(options.toolCallId, executionPromise)
+        inputSchema: schema,
+        createRuntimeTool(runtimeInput) {
+          const context = contextFactory(runtimeInput)
+          return tool({
+            id: item.id as any,
+            description: item.description,
+            inputSchema: jsonSchema(schema),
+            async execute(args, options) {
+              const ctx = context(args, options)
+              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
+              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
+                resolveExecution = r
+              })
+              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
 
-          try {
-            await Plugin.trigger(
-              "tool.execute.before",
-              {
-                tool: item.id,
-                sessionID: ctx.sessionID,
-                callID: ctx.callID,
-              },
-              {
-                args,
-              },
-            )
-            const result = await item.execute(args, ctx)
-            await Plugin.trigger(
-              "tool.execute.after",
-              {
-                tool: item.id,
-                sessionID: ctx.sessionID,
-                callID: ctx.callID,
-              },
-              result,
-            )
-            resolveExecution({
-              status: "completed",
-              input: args,
-              result: {
-                output: result.output,
-                title: result.title ?? "",
-                metadata: result.metadata ?? {},
-                attachments: result.attachments,
-              },
-            })
-            return result
-          } catch (error) {
-            resolveExecution({
-              status: "error",
-              input: args,
-              error: (error as any).toString(),
-            })
-            throw error
-          }
-        },
-        toModelOutput(result) {
-          return {
-            type: "text",
-            value: result.output,
-          }
+              try {
+                await Plugin.trigger(
+                  "tool.execute.before",
+                  {
+                    tool: item.id,
+                    sessionID: ctx.sessionID,
+                    callID: ctx.callID,
+                  },
+                  {
+                    args,
+                  },
+                )
+                const result = await item.execute(args, ctx)
+                await Plugin.trigger(
+                  "tool.execute.after",
+                  {
+                    tool: item.id,
+                    sessionID: ctx.sessionID,
+                    callID: ctx.callID,
+                  },
+                  result,
+                )
+                resolveExecution({
+                  status: "completed",
+                  input: args,
+                  result: {
+                    output: result.output,
+                    title: result.title ?? "",
+                    metadata: result.metadata ?? {},
+                    attachments: result.attachments,
+                  },
+                })
+                return result
+              } catch (error) {
+                resolveExecution({
+                  status: "error",
+                  input: args,
+                  error: (error as any).toString(),
+                })
+                throw error
+              }
+            },
+            toModelOutput(result) {
+              return {
+                type: "text",
+                value: result.output,
+              }
+            },
+          })
         },
       })
     }
 
     if (input.includeMCP !== false) {
       for (const [key, item] of Object.entries(await MCP.tools())) {
-        const execute = item.execute
-        if (!execute) continue
-
-        item.execute = async (args, opts) => {
-          const ctx = context(args, opts)
-          let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
-          const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
-            resolveExecution = r
-          })
-          input.processor.trackExecution(opts.toolCallId, executionPromise)
-
-          try {
-            await Plugin.trigger(
-              "tool.execute.before",
-              {
-                tool: key,
-                sessionID: ctx.sessionID,
-                callID: opts.toolCallId,
-              },
-              {
-                args,
-              },
-            )
-
-            await ctx.ask({
-              permission: key,
-              metadata: {},
-              patterns: ["*"],
-            })
-
-            const result = await execute(args, opts)
-
-            await Plugin.trigger(
-              "tool.execute.after",
-              {
-                tool: key,
-                sessionID: ctx.sessionID,
-                callID: opts.toolCallId,
-              },
-              result,
-            )
-
-            const textParts: string[] = []
-            const attachments: MessageV2.FilePart[] = []
-
-            for (const contentItem of result.content) {
-              if (contentItem.type === "text") {
-                textParts.push(contentItem.text)
-              } else if (contentItem.type === "image") {
-                attachments.push({
-                  id: Identifier.ascending("part"),
-                  sessionID: input.sessionID,
-                  messageID: input.processor.message.id,
-                  type: "file",
-                  mime: contentItem.mimeType,
-                  url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
+        const schema = {
+          ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
+          type: "object",
+          properties:
+            (((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"]) ?? {},
+          additionalProperties: false,
+        } satisfies JSONSchema7
+        result.push({
+          id: key,
+          description: item.description ?? "",
+          inputSchema: schema,
+          createRuntimeTool(runtimeInput) {
+            const context = contextFactory(runtimeInput)
+            const execute = item.execute
+            if (!execute) return item
+            return {
+              ...item,
+              execute: async (args, opts) => {
+                const ctx = context(args, opts)
+                let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
+                const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
+                  resolveExecution = r
                 })
-              }
-            }
+                runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
 
-            const output = {
-              title: "",
-              metadata: result.metadata ?? {},
-              output: textParts.join("\n\n"),
-              attachments,
-              content: result.content,
-            }
+                try {
+                  await Plugin.trigger(
+                    "tool.execute.before",
+                    {
+                      tool: key,
+                      sessionID: ctx.sessionID,
+                      callID: opts.toolCallId,
+                    },
+                    {
+                      args,
+                    },
+                  )
 
-            resolveExecution({
-              status: "completed",
-              input: args,
-              result: {
-                output: output.output,
-                title: output.title,
-                metadata: output.metadata,
-                attachments: output.attachments,
+                  await ctx.ask({
+                    permission: key,
+                    metadata: {},
+                    patterns: ["*"],
+                  })
+
+                  const result = await execute(args, opts)
+
+                  await Plugin.trigger(
+                    "tool.execute.after",
+                    {
+                      tool: key,
+                      sessionID: ctx.sessionID,
+                      callID: opts.toolCallId,
+                    },
+                    result,
+                  )
+
+                  const textParts: string[] = []
+                  const attachments: MessageV2.FilePart[] = []
+
+                  for (const contentItem of result.content) {
+                    if (contentItem.type === "text") {
+                      textParts.push(contentItem.text)
+                    } else if (contentItem.type === "image") {
+                      attachments.push({
+                        id: Identifier.ascending("part"),
+                        sessionID: runtimeInput.sessionID,
+                        messageID: runtimeInput.processor.message.id,
+                        type: "file",
+                        mime: contentItem.mimeType,
+                        url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
+                      })
+                    }
+                  }
+
+                  const output = {
+                    title: "",
+                    metadata: result.metadata ?? {},
+                    output: textParts.join("\n\n"),
+                    attachments,
+                    content: result.content,
+                  }
+
+                  resolveExecution({
+                    status: "completed",
+                    input: args,
+                    result: {
+                      output: output.output,
+                      title: output.title,
+                      metadata: output.metadata,
+                      attachments: output.attachments,
+                    },
+                  })
+
+                  return output
+                } catch (error) {
+                  resolveExecution({
+                    status: "error",
+                    input: args,
+                    error: (error as any).toString(),
+                  })
+                  throw error
+                }
               },
-            })
-
-            return output
-          } catch (error) {
-            resolveExecution({
-              status: "error",
-              input: args,
-              error: (error as any).toString(),
-            })
-            throw error
-          }
-        }
-        item.toModelOutput = (result) => {
-          return {
-            type: "text",
-            value: result.output,
-          }
-        }
-        tools[key] = item
+              toModelOutput(result) {
+                return {
+                  type: "text",
+                  value: result.output,
+                }
+              },
+            }
+          },
+        })
       }
     }
 
-    // Apply permission filtering: disabled by agent permission + user tool toggles
     const disabled = PermissionNext.disabled(
-      Object.keys(tools),
+      result.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
     )
 
-    for (const id of Object.keys(tools)) {
-      if (disabled.has(id) || input.userTools?.[id] === false || input.userTools?.["*"] === false) {
-        delete tools[id]
+    return result.filter(
+      (item) => !disabled.has(item.id) && input.userTools?.[item.id] !== false && input.userTools?.["*"] !== false,
+    )
+  }
+
+  export async function resolve(input: Input): Promise<Record<string, AITool>> {
+    using _ = log.time("resolve")
+    const tools: Record<string, AITool> = {}
+    const defs = await definitions(input)
+
+    for (const item of defs) {
+      const runtimeTool = item.createRuntimeTool?.(input)
+      if (runtimeTool) {
+        tools[item.id] = runtimeTool
       }
     }
 

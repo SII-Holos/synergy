@@ -20,6 +20,13 @@ import {
   type ExperienceSortKey,
   DISCRETE_DIMENSIONS,
   experienceSortLabels,
+  engramActionButtonClass,
+  engramCardBaseClass,
+  engramCardExpandedClass,
+  engramCardHoverClass,
+  engramInsetClass,
+  engramMenuClass,
+  engramMetaLabelClass,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -401,33 +408,26 @@ export function ExperienceView(props: {
             </Show>
             <div class="ml-auto flex items-center gap-1">
               <Show when={displayedItems().length > 0}>
-                <button
-                  type="button"
-                  class="flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-                  onClick={() => setSelecting(true)}
-                >
+                <button type="button" class={engramActionButtonClass} onClick={() => setSelecting(true)}>
                   <Icon name="square-check" size="small" class="opacity-70" />
                   <span>Select</span>
                 </button>
               </Show>
-              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={4}>
-                <Popover.Trigger
-                  as="button"
-                  class="flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-                >
+              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
+                <Popover.Trigger as="button" class={engramActionButtonClass}>
                   <span>{experienceSortLabels[sort()]}</span>
                   <Icon name="chevron-down" size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
-                  <Popover.Content class="min-w-36 rounded-xl border border-border-weak-base/40 bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden py-1.5">
+                  <Popover.Content class={engramMenuClass}>
                     <For each={availableSorts()}>
                       {(key) => (
                         <button
                           type="button"
                           classList={{
-                            "w-full px-3 py-1.5 text-left text-13-regular transition-colors": true,
-                            "text-text-interactive-base bg-surface-raised-base-hover": sort() === key,
-                            "text-text-base hover:bg-surface-raised-base-hover": sort() !== key,
+                            "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
+                            "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
+                            "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
                           }}
                           onClick={() => {
                             setSort(key)
@@ -554,6 +554,11 @@ export function ExperienceView(props: {
 }
 
 function RewardDimensions(props: { rewards: RewardsInfo }) {
+  const valueTone = (value: number) => {
+    if (value > 0) return "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]"
+    if (value < 0) return "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]"
+    return "text-text-weaker"
+  }
   const discrete = createMemo(() => {
     const entries: Array<{ short: string; full: string; value: number }> = []
     for (const dim of DISCRETE_DIMENSIONS) {
@@ -565,20 +570,16 @@ function RewardDimensions(props: { rewards: RewardsInfo }) {
 
   return (
     <Show when={discrete().length > 0}>
-      <div class="flex items-center gap-2 w-full">
-        <div class="flex items-center gap-2 min-w-0">
+      <div class="flex w-full items-center gap-2">
+        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
           <For each={discrete()}>
             {(dim) => (
-              <div class="flex items-center gap-0.5" title={`${dim.full}: ${dim.value}`}>
-                <span class="text-[10px] text-text-weak">{dim.short}</span>
-                <span
-                  classList={{
-                    "text-[11px] font-semibold leading-none": true,
-                    "text-[#67e8f9]": dim.value > 0,
-                    "text-text-weaker": dim.value === 0,
-                    "text-[#fb7185]": dim.value < 0,
-                  }}
-                >
+              <div
+                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base/48 px-2 py-1 ring-1 ring-inset ring-border-base/35"
+                title={`${dim.full}: ${dim.value}`}
+              >
+                <span class="text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">{dim.short}</span>
+                <span class={`text-[10px] font-semibold leading-none ${valueTone(dim.value)}`}>
                   {dim.value > 0 ? "+1" : dim.value < 0 ? "−1" : "·0"}
                 </span>
               </div>
@@ -658,40 +659,42 @@ function ExperienceCard(props: {
   return (
     <div
       classList={{
-        "flex flex-col rounded-2xl bg-surface-raised-base border border-border-base/30 transition-all cursor-pointer overflow-hidden": true,
-        "bg-surface-raised-base-hover shadow-md shadow-black/[0.08] border-border-base/50":
-          props.expanded && !props.selecting,
-        "hover:bg-surface-raised-base-hover hover:border-border-base/50": !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/15 ring-1 ring-text-interactive-base/40": props.selecting && props.selected,
-        "hover:bg-surface-raised-base-hover/30": props.selecting && !props.selected,
+        [`${engramCardBaseClass} cursor-pointer`]: true,
+        [engramCardExpandedClass]: props.expanded && !props.selecting,
+        [engramCardHoverClass]: !props.expanded && !props.selecting,
+        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
+          props.selecting && props.selected,
+        "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
     >
-      <div class="p-4 flex flex-col gap-2">
+      <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
           <Show when={props.selecting}>
             <div class="pt-0.5">
               <SelectionCheckbox selected={props.selected} />
             </div>
           </Show>
-          <span
-            classList={{
-              "text-13-medium text-text-strong flex-1 min-w-0 leading-snug": true,
-              "line-clamp-2": !props.expanded || props.selecting,
-            }}
-          >
-            {props.item.intent}
-          </span>
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="min-w-0 flex-1">
+            <span
+              classList={{
+                "block text-13-medium text-text-strong leading-snug [overflow-wrap:anywhere]": true,
+                "line-clamp-2": !props.expanded || props.selecting,
+              }}
+            >
+              {props.item.intent}
+            </span>
+          </div>
+          <div class="flex shrink-0 items-center gap-1.5 self-start">
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="px-1.5 py-0.5 rounded-md bg-surface-interactive-base/10 text-10-medium text-text-interactive-base">
+              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
                 {Math.round((props.similarity ?? 0) * 100)}%
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-text-interactive-base hover:bg-surface-raised-base-active transition-colors"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-interactive-base"
                 onClick={copyExperience}
                 title="Copy all content"
               >
@@ -701,7 +704,7 @@ function ExperienceCard(props: {
               </button>
               <button
                 type="button"
-                class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-text-diff-delete-base hover:bg-surface-raised-base-active transition-colors"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -711,43 +714,40 @@ function ExperienceCard(props: {
         </div>
 
         <Show when={!props.selecting}>
-          <div class="flex flex-col gap-1.5">
-            <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex flex-col gap-2">
+            <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${engramInsetClass}`}>
               <Show when={reward() !== null}>
                 <span
                   classList={{
-                    "px-1.5 py-0.5 rounded-md text-10-medium": true,
-                    "bg-icon-success-base/15 text-icon-success-base": reward()! >= 0.5,
-                    "bg-icon-warning-base/15 text-icon-warning-base": reward()! >= 0 && reward()! < 0.5,
-                    "bg-text-diff-delete-base/15 text-text-diff-delete-base": reward()! < 0,
+                    "rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset": true,
+                    "bg-icon-success-base/14 text-icon-success-base ring-icon-success-base/12": reward()! >= 0.5,
+                    "bg-icon-warning-base/14 text-icon-warning-base ring-icon-warning-base/12":
+                      reward()! >= 0 && reward()! < 0.5,
+                    "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12":
+                      reward()! < 0,
                   }}
                 >
                   R {reward()!.toFixed(2)}
                 </span>
               </Show>
-              <span class="px-1.5 py-0.5 rounded-md bg-text-interactive-base/10 text-10-medium text-text-interactive-base">
+              <span class="rounded-full bg-text-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
                 Q {qValue().toFixed(2)}
               </span>
-              <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+              <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                 {qVisits()} visits
               </span>
               <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
-                <span class="px-1.5 py-0.5 rounded-md bg-icon-warning-base/15 text-10-medium text-icon-warning-base">
+                <span class="rounded-full bg-icon-warning-base/14 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
                   {turnsRemaining()} remaining
                 </span>
               </Show>
               <Show when={rewards()?.confidence !== undefined}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+                <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   C {rewards()!.confidence!.toFixed(2)}
                 </span>
               </Show>
-              <Show when={sourceModel()}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weak max-w-full truncate">
-                  {sourceModel()}
-                </span>
-              </Show>
               <Show when={props.searching && searchScore() !== undefined}>
-                <span class="px-1.5 py-0.5 rounded-md bg-surface-inset-base text-10-medium text-text-weaker">
+                <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   S {searchScore()!.toFixed(2)}
                 </span>
               </Show>
@@ -759,23 +759,44 @@ function ExperienceCard(props: {
               <QValueDimensions qValues={qValues()!} />
             </Show>
             <Show when={rewards()?.reason}>
-              <p class="text-[11px] text-text-weak/80 italic leading-snug line-clamp-2">{rewards()!.reason}</p>
+              <p
+                classList={{
+                  "rounded-[0.9rem] bg-surface-inset-base/36 px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
+                  "line-clamp-2": !props.expanded,
+                }}
+              >
+                {rewards()!.reason}
+              </p>
             </Show>
           </div>
 
           <Show when={props.expanded}>
-            <div class="flex flex-col gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
-              <Show when={sourceModel()}>
-                <div class="text-11-regular text-text-weak truncate">Model: {sourceModel()}</div>
-              </Show>
-              <Show when={scopeID()}>
-                <div class="text-11-regular text-text-weak truncate">Scope: {scopeID()}</div>
-              </Show>
-              <Show when={sessionID()}>
-                <div class="text-11-regular text-text-weak truncate">Session: {sessionID()}</div>
-              </Show>
+            <div
+              class={`mt-1 flex flex-col gap-2.5 border-t border-border-base/28 pt-3`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div class={`grid gap-2 sm:grid-cols-3 ${engramInsetClass} px-3.5 py-3`}>
+                <Show when={sourceModel()}>
+                  <div class="min-w-0">
+                    <div class={engramMetaLabelClass}>Model</div>
+                    <div class="mt-1 truncate text-11-regular text-text-weak">{sourceModel()}</div>
+                  </div>
+                </Show>
+                <Show when={scopeID()}>
+                  <div class="min-w-0">
+                    <div class={engramMetaLabelClass}>Scope</div>
+                    <div class="mt-1 truncate text-11-regular text-text-weak">{scopeID()}</div>
+                  </div>
+                </Show>
+                <Show when={sessionID()}>
+                  <div class="min-w-0">
+                    <div class={engramMetaLabelClass}>Session</div>
+                    <div class="mt-1 truncate text-11-regular text-text-weak">{sessionID()}</div>
+                  </div>
+                </Show>
+              </div>
 
-              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1" />}>
+              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak" />}>
                 {(detail) => (
                   <>
                     <Show when={detail().script}>
@@ -808,8 +829,13 @@ function ExperienceCard(props: {
             </div>
           </Show>
 
-          <div class="flex items-center justify-between mt-0.5">
-            <span class="text-11-regular text-text-weak">
+          <div
+            classList={{
+              "mt-0.5 flex items-center justify-between border-t border-border-base/28 pt-2.5": props.expanded,
+              "mt-0.5 flex items-center justify-between": !props.expanded,
+            }}
+          >
+            <span class="text-11-regular text-text-weaker">
               <Show when={props.expanded} fallback={relativeTime(updated() ?? props.item.createdAt)}>
                 {absoluteDate(props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
@@ -818,18 +844,20 @@ function ExperienceCard(props: {
                 </Show>
               </Show>
             </span>
-            <Icon
-              name="chevron-down"
-              size="small"
-              class="text-icon-weak transition-transform"
-              classList={{ "rotate-180": props.expanded }}
-            />
+            <span
+              classList={{
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "rotate-180 bg-surface-inset-base/5": props.expanded,
+              }}
+            >
+              <Icon name="chevron-down" size="small" />
+            </span>
           </div>
         </Show>
 
         <Show when={props.selecting}>
-          <div class="flex items-center justify-between mt-0.5">
-            <span class="text-11-regular text-text-weak">{relativeTime(updated() ?? props.item.createdAt)}</span>
+          <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
+            <span class="text-11-regular text-text-weaker">{relativeTime(updated() ?? props.item.createdAt)}</span>
           </div>
         </Show>
       </div>
@@ -851,19 +879,22 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
 
   return (
     <Show when={dims().length > 0 && hasNonZero()}>
-      <div class="flex items-center gap-2 w-full">
-        <span class="text-[10px] text-text-weaker shrink-0">Q</span>
-        <div class="flex items-center gap-2 flex-1 min-w-0">
+      <div class="flex w-full items-center gap-2">
+        <span class="shrink-0 text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">Q</span>
+        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
           <For each={dims()}>
             {(dim) => (
-              <div class="flex items-center gap-0.5" title={`${dim.full} Q: ${dim.value.toFixed(4)}`}>
-                <span class="text-[10px] text-text-weak">{dim.short}</span>
+              <div
+                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base/48 px-2 py-1 ring-1 ring-inset ring-border-base/35"
+                title={`${dim.full} Q: ${dim.value.toFixed(4)}`}
+              >
+                <span class="text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">{dim.short}</span>
                 <span
                   classList={{
-                    "text-[11px] font-semibold leading-none tabular-nums": true,
-                    "text-[#67e8f9]": dim.value > 0.05,
+                    "text-[10px] font-semibold leading-none tabular-nums": true,
+                    "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]": dim.value > 0.05,
                     "text-text-weaker": dim.value >= -0.05 && dim.value <= 0.05,
-                    "text-[#fb7185]": dim.value < -0.05,
+                    "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]": dim.value < -0.05,
                   }}
                 >
                   {dim.value >= 0 ? "+" : ""}
@@ -880,22 +911,25 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
 
 function CollapsibleSection(props: { label: string; expanded: boolean; onToggle: () => void; children: any }) {
   return (
-    <div class="rounded-lg border border-border-base/30 overflow-hidden">
+    <div class={`overflow-hidden ${engramInsetClass}`}>
       <button
         type="button"
-        class="w-full flex items-center gap-1.5 px-3 py-2 text-12-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+        class="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-12-medium text-text-weak transition-colors hover:bg-surface-raised-base/52 hover:text-text-base"
         onClick={props.onToggle}
       >
-        <Icon
-          name="chevron-right"
-          size="small"
-          class="transition-transform"
-          classList={{ "rotate-90": props.expanded }}
-        />
-        <span>{props.label}</span>
+        <span class={engramMetaLabelClass}>{props.label}</span>
+        <span class="text-12-medium text-text-weak">Content</span>
+        <span
+          classList={{
+            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base/75 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+            "rotate-90": props.expanded,
+          }}
+        >
+          <Icon name="chevron-right" size="small" />
+        </span>
       </button>
       <Show when={props.expanded}>
-        <div class="px-3 pb-2.5 border-t border-border-base/20">{props.children}</div>
+        <div class="border-t border-border-base/22 px-3.5 pb-3 pt-2.5">{props.children}</div>
       </Show>
     </div>
   )

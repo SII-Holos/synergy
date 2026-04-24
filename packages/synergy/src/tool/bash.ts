@@ -11,7 +11,10 @@ import type { BashBackend, BashMetadata } from "./bash/shared"
 
 const parameters = z.object({
   command: z.string().describe("The command to execute"),
-  timeout: z.number().describe("Optional timeout in milliseconds").optional(),
+  timeout: z
+    .number()
+    .describe("Optional timeout in seconds. If not specified, commands will time out after 120 seconds (2 minutes).")
+    .optional(),
   workdir: z
     .string()
     .describe(
@@ -29,11 +32,11 @@ const parameters = z.object({
     .describe(
       "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
     ),
-  yieldMs: z
+  yieldSeconds: z
     .number()
     .optional()
     .describe(
-      "Milliseconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10000 (10 seconds).",
+      "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
     ),
   envID: MetaProtocolEnv.EnvID.optional().describe(
     "Optional execution environment ID. Omit for local execution; provide one to target a remote execution backend.",

@@ -351,7 +351,7 @@ export const ConfigRoute = new Hono()
       const { name } = c.req.valid("param")
       const activation = await Config.configSetActivate(name)
       const runtimeReload = await RuntimeReload.reload({
-        targets: ["config"],
+        targets: ["all"],
         scope: "global",
         reason: `config.set.activate:${activation.active}`,
       })

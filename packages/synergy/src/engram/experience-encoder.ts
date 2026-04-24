@@ -3,6 +3,7 @@ import { TurnDigest } from "./turn-digest"
 import { Embedding } from "./embedding"
 import { EngramDB } from "./database"
 import { ExperienceRecall } from "./experience-recall"
+import { Intent } from "./intent"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { LLM } from "../session/llm"
@@ -12,15 +13,29 @@ import { Scope } from "../scope"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { SessionEndpoint } from "../session/endpoint"
+import { Plugin } from "../plugin"
 
 export namespace ExperienceEncoder {
   const log = Log.create({ service: "engram.encoder" })
+
+  interface EncodeOutcome {
+    encoded: boolean
+    skipped: boolean
+    superseded?: string
+    duplicateOf?: string
+    experienceID?: string
+  }
 
   export function onComplete(msg: MessageV2.Assistant) {
     if (msg.error && !MessageV2.AbortedError.isInstance(msg.error)) return
     if (msg.finish === "tool-calls") return
 
     encode(msg.sessionID, msg.parentID)
+      .then(async (outcome) => {
+        await triggerEncodeAfter(msg.sessionID, msg.parentID, outcome).catch((err) =>
+          log.error("encode after hook failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }),
+        )
+      })
       .catch((err) => log.error("encoding failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }))
       .finally(async () => {
         await retryFailedEncodings(msg.sessionID, msg.parentID).catch((err) =>
@@ -32,25 +47,24 @@ export namespace ExperienceEncoder {
       })
   }
 
-  async function encode(sessionID: string, userMessageID: string) {
+  async function encode(sessionID: string, userMessageID: string): Promise<EncodeOutcome> {
     const existing = EngramDB.Experience.get(userMessageID)
     if (existing && existing.reward_status !== "encoding_failed") {
       const content = EngramDB.Experience.getContent(userMessageID)
-      if (content?.script) return
+      if (content?.script) return { encoded: false, skipped: true, experienceID: userMessageID }
     }
 
     const session = await Session.get(sessionID).catch(() => undefined)
-    if (!session?.scope) return
-    if (session.parentID) return
-    if (SessionEndpoint.type(session.endpoint) === "genesis") return
-    if (SessionEndpoint.isHolos(session.endpoint)) return
-    if (session.agenda) return
+    if (!session?.scope) return { encoded: false, skipped: true }
+    if (session.parentID) return { encoded: false, skipped: true }
+    if (SessionEndpoint.type(session.endpoint) === "genesis") return { encoded: false, skipped: true }
+    if (SessionEndpoint.isHolos(session.endpoint)) return { encoded: false, skipped: true }
 
     const scope = session.scope as Scope
 
     const config = await Config.get()
     const evo = Config.resolveEvolution(config.identity?.evolution)
-    if (evo.encode === false) return
+    if (evo.encode === false) return { encoded: false, skipped: true }
 
     const learning = evo.learning
     const msgs = await Session.messages({ sessionID })
@@ -58,25 +72,27 @@ export namespace ExperienceEncoder {
     userMessageID = Turn.resolveRealUser(msgs, userMessageID)
 
     const userMsg = msgs.find((m) => m.info.id === userMessageID)
-    if (!userMsg) return
-    if (Turn.isSyntheticUser(userMsg)) return
+    if (!userMsg) return { encoded: false, skipped: true }
+    if (Turn.isSyntheticUser(userMsg)) return { encoded: false, skipped: true }
 
     const userText = Turn.resolveUserText(msgs, userMessageID)
-    if (!userText) return
+    if (!userText) return { encoded: false, skipped: true }
 
     using _ = log.time("encode", { sessionID, userMessageID })
 
     try {
       const userInfo = userMsg.info as MessageV2.User
       const intentCtx = await buildIntentContext(sessionID, userInfo, learning)
-      const history = buildHistory(msgs, userMessageID)
-      const intent = await generateIntent(intentCtx, history, userText)
+      const history = buildIntentHistory(msgs, userMessageID)
+      const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
       const extracted = await TurnDigest.extractSingle(sessionID, userMessageID, {
         toolOutputBudget: learning.digestToolOutputBudget,
       })
-      if (!extracted || extracted.digest.segments.length === 0) return
+      if (!extracted || extracted.digest.segments.length === 0) {
+        return { encoded: false, skipped: true }
+      }
 
       const { digest, turn } = extracted
       const sourceAssistant = turn.assistants.at(-1)
@@ -86,25 +102,61 @@ export namespace ExperienceEncoder {
         ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
         : undefined
 
+      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
+      const raw = TurnDigest.renderToText(digest)
+
       const duplicate = EngramDB.Experience.findSimilar(
         scope.id,
         intentEmbedding.vector,
         learning.dedupIntentThreshold,
         scriptEmbedding?.vector,
         learning.dedupScriptThreshold,
+        learning.rewardWeights,
       )
       if (duplicate) {
+        if (shouldSupersede(duplicate, learning.qInit)) {
+          EngramDB.Experience.supersede(duplicate.id, {
+            sessionID,
+            scopeID: scope.id,
+            intent,
+            sourceProviderID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.providerID : undefined,
+            sourceModelID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.modelID : undefined,
+            intentEmbedding,
+            scriptEmbedding,
+            content: { script, raw },
+            metadata: { changes: digest.changes, channel: digest.channel },
+            retrievedExperienceIDs: retrievedIDs,
+          })
+
+          log.info("dedup: superseded", {
+            id: userMessageID,
+            superseded: duplicate.id,
+            intentSimilarity: duplicate.intentSimilarity,
+            scriptSimilarity: duplicate.scriptSimilarity,
+          })
+          return {
+            encoded: true,
+            skipped: false,
+            superseded: duplicate.id,
+            experienceID: duplicate.id,
+          }
+        }
+
         log.info("dedup: skipping", {
           id: userMessageID,
           duplicateOf: duplicate.id,
           intentSimilarity: duplicate.intentSimilarity,
           scriptSimilarity: duplicate.scriptSimilarity,
+          rewardStatus: duplicate.rewardStatus,
+          compositeQ: duplicate.compositeQ,
         })
-        return
+        return {
+          encoded: false,
+          skipped: false,
+          duplicateOf: duplicate.id,
+          experienceID: duplicate.id,
+        }
       }
-
-      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
-      const raw = TurnDigest.renderToText(digest)
 
       EngramDB.Experience.insert({
         id: userMessageID,
@@ -122,6 +174,7 @@ export namespace ExperienceEncoder {
         qInit: learning.qInit,
       })
       log.info("encoded", { id: userMessageID })
+      return { encoded: true, skipped: false, experienceID: userMessageID }
     } catch (err) {
       const userInfo = userMsg.info as MessageV2.User
       const fallbackTurn = Turn.collectOne(msgs, userMessageID)
@@ -136,6 +189,23 @@ export namespace ExperienceEncoder {
       })
       throw err
     }
+  }
+
+  async function triggerEncodeAfter(sessionID: string, userMessageID: string, outcome: EncodeOutcome) {
+    await Plugin.trigger(
+      "engram.experience.encode.after",
+      {
+        sessionID,
+        userMessageID,
+      },
+      {
+        encoded: outcome.encoded,
+        skipped: outcome.skipped,
+        duplicateOf: outcome.duplicateOf,
+        superseded: outcome.superseded,
+        experienceID: outcome.experienceID,
+      },
+    )
   }
 
   async function retryFailedEncodings(sessionID: string, excludeID?: string) {
@@ -154,7 +224,6 @@ export namespace ExperienceEncoder {
     if (session?.parentID) return
     if (SessionEndpoint.type(session?.endpoint) === "genesis") return
     if (SessionEndpoint.isHolos(session?.endpoint)) return
-    if (session?.agenda) return
 
     const config = await Config.get()
     const evo = Config.resolveEvolution(config.identity?.evolution)
@@ -415,6 +484,36 @@ export namespace ExperienceEncoder {
       .join("\n\n")
   }
 
+  function buildIntentHistory(msgs: MessageV2.WithParts[], currentUserMsgId: string): string | undefined {
+    const turns = Turn.collect(msgs, { skipSynthetic: true })
+    const currentIdx = turns.findIndex((t) => t.user.info.id === currentUserMsgId)
+    if (currentIdx <= 0) return undefined
+
+    return turns
+      .slice(0, currentIdx)
+      .map((turn) => {
+        const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
+
+        const assistantLines: string[] = []
+        for (const msg of turn.assistants) {
+          for (const part of msg.parts) {
+            if (part.type === "text" && !part.synthetic && part.text.trim()) {
+              assistantLines.push(part.text.trim())
+            } else if (part.type === "tool" && part.state.status === "completed") {
+              assistantLines.push(`(used ${part.tool}: ${part.state.title})`)
+            } else if (part.type === "tool" && part.state.status === "error") {
+              assistantLines.push(`(used ${part.tool}: error)`)
+            }
+          }
+        }
+
+        const lines = [`User: ${userInput}`]
+        if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("; ")}`)
+        return lines.join("\n")
+      })
+      .join("\n\n")
+  }
+
   function buildRewardContent(msgs: MessageV2.WithParts[], turns: Turn.Raw[], turnIdx: number): string {
     const turn = turns[turnIdx]
 
@@ -464,5 +563,12 @@ export namespace ExperienceEncoder {
     }
 
     return parts.join("\n")
+  }
+
+  function shouldSupersede(duplicate: EngramDB.Experience.DuplicateInfo, qInit: number): boolean {
+    if (duplicate.rewardStatus === "encoding_failed") return true
+    if (duplicate.rewardStatus === "pending") return true
+    // Evaluated experience: only supersede if its verified Q is not better than a fresh start
+    return duplicate.compositeQ <= qInit
   }
 }

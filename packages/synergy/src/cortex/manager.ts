@@ -3,7 +3,6 @@ import { Config } from "../config/config"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Session } from "../session"
-import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
@@ -13,6 +12,7 @@ import { CortexConcurrency } from "./concurrency"
 import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
+import { Plugin } from "../plugin"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -54,7 +54,6 @@ export namespace Cortex {
       scope: parent.scope as import("@/scope").Scope,
       parentID: input.parentSessionID,
       title: `[Cortex] ${input.description} (@${input.agent})`,
-      interaction: SessionInteraction.unattended("cortex"),
       permission: [
         { permission: "question", pattern: "*", action: "deny" },
         ...(executionRole === "delegated_subagent"
@@ -183,6 +182,15 @@ export namespace Cortex {
 
     Bus.publish(Event.TaskCompleted, { task })
     Bus.publish(Event.TasksUpdated, { tasks: list() })
+    void Plugin.trigger(
+      "cortex.task.after",
+      {
+        task,
+      },
+      {},
+    ).catch((error) => {
+      log.error("cortex task hook failed", { taskID, error })
+    })
 
     updateDagNode(task)
 

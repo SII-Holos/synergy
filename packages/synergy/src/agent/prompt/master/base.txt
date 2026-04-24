@@ -375,7 +375,7 @@ Prefer `ast_grep` when searching for code structure, not just text. It's more pr
 When using `bash`, adhere to these guidelines:
 
 - Quote file paths containing spaces with double quotes.
-- For long-running commands (dev servers, watch mode, builds), use `background: true` or set `yieldMs` to auto-background if the command exceeds a time threshold.
+- For long-running commands (dev servers, watch mode, builds), use `background: true` or set `yieldSeconds` to auto-background if the command exceeds a time threshold.
 - Command output may be truncated. For large outputs, use dedicated tools or pagination.
 - After launching a background bash command, use the `process` tool to manage it:
   - `poll` — check if still running and get recent output. Use `block: true` to wait for completion instead of polling in a loop.

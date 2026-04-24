@@ -101,6 +101,7 @@ export namespace ConfigSetup {
     }
     limit?: {
       context?: number
+      input?: number
       output?: number
     }
     cost?: {
@@ -172,6 +173,8 @@ export namespace ConfigSetup {
     message: string
     mode?: ValidationMode
     latencyMs?: number
+    /** True when this recommended field was provided but failed validation, so it was downgraded to a skip. */
+    failedRecommended?: boolean
   }
 
   export interface RequiredCoreValidationResult {
@@ -200,7 +203,7 @@ export namespace ConfigSetup {
   }
 
   export async function init() {
-    await ModelsDev.refresh().catch(() => {})
+    await ModelsDev.refresh()?.catch(() => {})
   }
 
   export async function getAvailableProviders(): Promise<ProviderInfo[]> {
@@ -574,6 +577,7 @@ export namespace ConfigSetup {
             model.limit?.context !== undefined && model.limit?.output !== undefined
               ? {
                   context: model.limit.context,
+                  input: model.limit?.input,
                   output: model.limit.output,
                 }
               : undefined,
@@ -803,6 +807,7 @@ export namespace ConfigSetup {
       },
       limit: {
         context: configModel?.limit?.context ?? existingModel?.limit.context ?? 0,
+        input: configModel?.limit?.input ?? existingModel?.limit.input,
         output: configModel?.limit?.output ?? existingModel?.limit.output ?? 0,
       },
       capabilities: {
@@ -1226,6 +1231,28 @@ export namespace ConfigSetup {
     return { valid: true, message, mode: "static" }
   }
 
+  function downgradeRecommended(result: FieldValidationResult): FieldValidationResult {
+    if (result.valid) return result
+    return {
+      valid: true,
+      message: `${result.message} — memory evolution will be disabled`,
+      mode: "static",
+      failedRecommended: true,
+    }
+  }
+
+  function stripFailedIdentityFields(
+    identity: Record<string, unknown>,
+    validation: RequiredCoreValidationResult,
+  ): void {
+    const embeddingFailed = validation.fields.embedding.failedRecommended
+    const rerankFailed = validation.fields.rerank.failedRecommended
+    if (!embeddingFailed && !rerankFailed) return
+    if (embeddingFailed) delete identity.embedding
+    if (rerankFailed) delete identity.rerank
+    identity.evolution = false
+  }
+
   export async function validateRequiredCore(config: SetupDraft): Promise<RequiredCoreValidationResult> {
     const { embedding, rerank } = extractIdentityInputs(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
@@ -1240,12 +1267,16 @@ export namespace ConfigSetup {
             importContext: context,
           })
         : requiredMissing("Vision model is required"),
-      embedding: embedding
-        ? await verifyIdentityModel(embedding, "embedding")
-        : recommendedSkipped("Skipped — memory evolution will be disabled"),
-      rerank: rerank
-        ? await verifyIdentityModel(rerank, "rerank")
-        : recommendedSkipped("Skipped — memory evolution will be disabled"),
+      embedding: downgradeRecommended(
+        embedding
+          ? await verifyIdentityModel(embedding, "embedding")
+          : recommendedSkipped("Skipped — memory evolution will be disabled"),
+      ),
+      rerank: downgradeRecommended(
+        rerank
+          ? await verifyIdentityModel(rerank, "rerank")
+          : recommendedSkipped("Skipped — memory evolution will be disabled"),
+      ),
     }
 
     return summarizeValidation(fields)
@@ -1257,7 +1288,7 @@ export namespace ConfigSetup {
   ): Promise<RequiredCoreValidationResult> {
     const { embedding, rerank } = extractIdentityInputs(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
-    const [model, visionModel, embeddingProbe, rerankProbe] = await Promise.all([
+    const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? probeLanguageModel(config.model, { label: "Default model", importContext: context })
         : Promise.resolve(requiredMissing("Default model is required")),
@@ -1285,14 +1316,14 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: embeddingProbe,
-      rerank: rerankProbe,
+      embedding: downgradeRecommended(embeddingResult),
+      rerank: downgradeRecommended(rerankResult),
     })
   }
 
   async function validateImportedCore(config: Config.Info): Promise<RequiredCoreValidationResult> {
     const { embedding, rerank } = extractIdentityInputs(config)
-    const [model, visionModel, embeddingValidation, rerankValidation] = await Promise.all([
+    const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? verifyLanguageModel(config.model, { label: "Default model", importContext: { config } })
         : Promise.resolve(requiredMissing("Default model is required")),
@@ -1314,8 +1345,8 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: embeddingValidation,
-      rerank: rerankValidation,
+      embedding: downgradeRecommended(embeddingResult),
+      rerank: downgradeRecommended(rerankResult),
     })
   }
 
@@ -1324,7 +1355,7 @@ export namespace ConfigSetup {
     options: LiveProbeOptions = {},
   ): Promise<RequiredCoreValidationResult> {
     const { embedding, rerank } = extractIdentityInputs(config)
-    const [model, visionModel, embeddingProbe, rerankProbe] = await Promise.all([
+    const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? probeLanguageModel(config.model, { label: "Default model", importContext: { config } })
         : Promise.resolve(requiredMissing("Default model is required")),
@@ -1352,8 +1383,8 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: embeddingProbe,
-      rerank: rerankProbe,
+      embedding: downgradeRecommended(embeddingResult),
+      rerank: downgradeRecommended(rerankResult),
     })
   }
 
@@ -1438,6 +1469,12 @@ export namespace ConfigSetup {
 
     const current = await Config.globalRaw()
     const built = applySetupDraft(current, config)
+
+    if (built.identity) {
+      stripFailedIdentityFields(built.identity, resolvedValidation)
+      if (Object.keys(built.identity).length === 0) delete built.identity
+    }
+
     const parsed = Config.Info.safeParse(built)
     if (!parsed.success) {
       throw new Error(parsed.error.issues.map(formatIssue).join(", "))
@@ -1599,6 +1636,14 @@ export namespace ConfigSetup {
     const out: Record<string, unknown> = { $schema: CONFIG_SCHEMA }
     for (const [key, value] of Object.entries(result.config)) {
       if (value !== undefined && value !== null) out[key] = value
+    }
+
+    if (result.coreValidation) {
+      const identity = out.identity as Record<string, unknown> | undefined
+      if (identity) {
+        stripFailedIdentityFields(identity, result.coreValidation)
+        if (Object.keys(identity).length === 0) delete out.identity
+      }
     }
 
     const parsed = Config.Info.safeParse(out)

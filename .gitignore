@@ -45,8 +45,9 @@ ref/
 holos-paper/
 awcp-paper/
 research/
-data/
+/data/
 *.tgz
+Auto-claude-code-research-in-sleep/
 
 # Runtime caches
 local_cache/
@@ -59,3 +60,10 @@ results/
 .synergy/bun.lock
 
 tmp_*
+
+# External cloned repos for analysis
+qzcli_tool/
+
+# SII-Holos plugin repos (separate git repos, not part of synergy)
+holos-inspire/
+holos-research/

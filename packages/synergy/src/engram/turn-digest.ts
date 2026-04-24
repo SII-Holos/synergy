@@ -10,6 +10,7 @@ export namespace TurnDigest {
 
   export interface Options {
     toolOutputBudget?: number
+    modelID?: string
   }
 
   export const TextSegment = z
@@ -174,7 +175,8 @@ export namespace TurnDigest {
   ): Info {
     const userInfo = userMsg.info as MessageV2.User
     const input = extractUserInput(userMsg)
-    const segments = buildSegments(assistants, options)
+    const modelID = options?.modelID ?? userInfo.model.modelID
+    const segments = buildSegments(assistants, { ...options, modelID })
 
     const tokens = aggregateTokens(assistants)
     const cost = assistants.reduce((sum, m) => {
@@ -218,11 +220,12 @@ export namespace TurnDigest {
   function buildSegments(msgs: MessageV2.WithParts[], options?: Options): Segment[] {
     const segments: Segment[] = []
     const budget = options?.toolOutputBudget ?? DEFAULT_TOOL_OUTPUT_BUDGET
+    const modelID = options?.modelID
 
     for (const msg of msgs) {
       if (msg.info.role === "user") continue
       for (const part of msg.parts) {
-        const segment = partToSegment(part, budget)
+        const segment = partToSegment(part, budget, modelID)
         if (segment) segments.push(segment)
       }
     }
@@ -230,7 +233,7 @@ export namespace TurnDigest {
     return segments
   }
 
-  function partToSegment(part: MessageV2.Part, toolOutputBudget: number): Segment | undefined {
+  function partToSegment(part: MessageV2.Part, toolOutputBudget: number, modelID?: string): Segment | undefined {
     switch (part.type) {
       case "text":
         if (part.synthetic) return undefined
@@ -242,7 +245,7 @@ export namespace TurnDigest {
         return { type: "reasoning", text: part.text }
 
       case "tool":
-        return toolPartToSegment(part, toolOutputBudget)
+        return toolPartToSegment(part, toolOutputBudget, modelID)
 
       case "patch":
         if (part.files.length === 0) return undefined
@@ -260,7 +263,11 @@ export namespace TurnDigest {
     }
   }
 
-  function toolPartToSegment(part: MessageV2.ToolPart, toolOutputBudget: number): Segment | undefined {
+  function toolPartToSegment(
+    part: MessageV2.ToolPart,
+    toolOutputBudget: number,
+    modelID?: string,
+  ): Segment | undefined {
     if (part.state.status === "pending" || part.state.status === "running") return undefined
 
     if (part.state.status === "completed") {
@@ -270,7 +277,7 @@ export namespace TurnDigest {
         title: part.state.title,
         status: "completed",
         input: part.state.input,
-        output: truncate(part.state.output, toolOutputBudget),
+        output: truncate(part.state.output, toolOutputBudget, modelID),
       }
     }
 
@@ -329,10 +336,11 @@ export namespace TurnDigest {
     }
   }
 
-  function truncate(text: string, tokenBudget: number): string {
-    const estimated = Token.estimate(text)
+  function truncate(text: string, tokenBudget: number, modelID?: string): string {
+    const estimated = modelID ? Token.estimateModelSync(modelID, text) : Token.estimate(text)
     if (estimated <= tokenBudget) return text
-    const charBudget = tokenBudget * 4
+    const ratio = modelID ? Math.max(text.length / estimated, 1) : 4
+    const charBudget = Math.floor(tokenBudget * ratio)
     return text.slice(0, charBudget) + "\n... [truncated]"
   }
 

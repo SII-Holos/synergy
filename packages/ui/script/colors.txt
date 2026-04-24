@@ -32,6 +32,10 @@
 --surface-interactive-hover: var(--cobalt-light-4);
 --surface-interactive-weak: var(--cobalt-light-2);
 --surface-interactive-weak-hover: var(--cobalt-light-3);
+--surface-interactive-solid: var(--cobalt-light-9);
+--surface-interactive-solid-hover: var(--cobalt-light-10);
+--surface-interactive-selected: var(--cobalt-light-5);
+--surface-interactive-selected-weak: var(--cobalt-light-4);
 --surface-success-base: var(--apple-light-3);
 --surface-success-weak: var(--apple-light-2);
 --surface-success-strong: var(--apple-light-9);

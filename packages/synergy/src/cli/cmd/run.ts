@@ -12,6 +12,7 @@ import { Server } from "../../server/server"
 import { runMigrations } from "../../migration"
 import { Provider } from "../../provider/provider"
 import { Agent } from "../../agent/agent"
+import { readPipedStdin } from "../stdin"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -127,7 +128,10 @@ export const SendCommand = cmd({
       }
     }
 
-    if (!process.stdin.isTTY) message += "\n" + (await Bun.stdin.text())
+    if (!process.stdin.isTTY) {
+      const piped = await readPipedStdin()
+      if (piped) message += "\n" + piped
+    }
 
     if (message.trim().length === 0 && !args.command) {
       UI.error("You must provide a message or a command")
@@ -287,7 +291,8 @@ export const SendCommand = cmd({
       const sessionID = await (async () => {
         if (args.continue) {
           const result = await sdk.session.list()
-          return result.data?.find((s) => !s.parentID)?.id
+          const sessions = result.data?.data ?? []
+          return sessions.find((s) => !s.parentID)?.id
         }
         if (args.session) return args.session
 
@@ -307,7 +312,8 @@ export const SendCommand = cmd({
         process.exit(1)
       }
 
-      return await execute(sdk, sessionID)
+      await execute(sdk, sessionID)
+      process.exit(0)
     }
 
     await bootstrap(process.cwd(), async () => {
@@ -327,7 +333,8 @@ export const SendCommand = cmd({
       const sessionID = await (async () => {
         if (args.continue) {
           const result = await sdk.session.list()
-          return result.data?.find((s) => !s.parentID)?.id
+          const sessions = result.data?.data ?? []
+          return sessions.find((s) => !s.parentID)?.id
         }
         if (args.session) return args.session
 
@@ -349,7 +356,8 @@ export const SendCommand = cmd({
       }
 
       await execute(sdk, sessionID)
-      server.stop()
+      server.stop(true)
+      process.exit(0)
     })
   },
 })

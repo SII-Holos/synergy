@@ -16,6 +16,13 @@ import {
   recallModeLabels,
   recallModeColors,
   memorySortLabels,
+  engramActionButtonClass,
+  engramCardBaseClass,
+  engramCardExpandedClass,
+  engramCardHoverClass,
+  engramInsetClass,
+  engramMenuClass,
+  engramMetaLabelClass,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -193,7 +200,7 @@ export function MemoryView(props: {
             />
           }
         >
-          <div class="flex items-center gap-1.5 flex-wrap">
+          <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${engramInsetClass}`}>
             <For each={MEMORY_CATEGORIES}>
               {(cat) => {
                 const count = () => categoryCounts().get(cat) ?? 0
@@ -210,7 +217,7 @@ export function MemoryView(props: {
             <Show when={categoryFilter().size > 0}>
               <button
                 type="button"
-                class="px-1.5 py-0.5 rounded-md text-11-regular text-text-weaker hover:text-text-weak transition-colors"
+                class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-weak"
                 onClick={() => setCategoryFilter(new Set())}
               >
                 Clear
@@ -219,33 +226,26 @@ export function MemoryView(props: {
 
             <div class="ml-auto flex items-center gap-1">
               <Show when={sorted().length > 0}>
-                <button
-                  type="button"
-                  class="flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-                  onClick={() => setSelecting(true)}
-                >
+                <button type="button" class={engramActionButtonClass} onClick={() => setSelecting(true)}>
                   <Icon name="square-check" size="small" class="opacity-70" />
                   <span>Select</span>
                 </button>
               </Show>
-              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={4}>
-                <Popover.Trigger
-                  as="button"
-                  class="flex items-center gap-1 px-2 py-1 rounded-lg text-12-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-                >
+              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
+                <Popover.Trigger as="button" class={engramActionButtonClass}>
                   <span>{memorySortLabels[sort()]}</span>
                   <Icon name="chevron-down" size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
-                  <Popover.Content class="min-w-36 rounded-xl border border-border-weak-base/40 bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden py-1.5">
+                  <Popover.Content class={engramMenuClass}>
                     <For each={availableSorts()}>
                       {(key) => (
                         <button
                           type="button"
                           classList={{
-                            "w-full px-3 py-1.5 text-left text-13-regular transition-colors": true,
-                            "text-text-interactive-base bg-surface-raised-base-hover": sort() === key,
-                            "text-text-base hover:bg-surface-raised-base-hover": sort() !== key,
+                            "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
+                            "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
+                            "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
                           }}
                           onClick={() => {
                             setSort(key)
@@ -338,16 +338,16 @@ function MemoryCard(props: {
   return (
     <div
       classList={{
-        "flex flex-col rounded-2xl bg-surface-raised-base border border-border-base/30 transition-all cursor-pointer overflow-hidden": true,
-        "bg-surface-raised-base-hover shadow-md shadow-black/[0.08] border-border-base/50":
-          props.expanded && !props.selecting,
-        "hover:bg-surface-raised-base-hover hover:border-border-base/50": !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/15 ring-1 ring-text-interactive-base/40": props.selecting && props.selected,
-        "hover:bg-surface-raised-base-hover/30": props.selecting && !props.selected,
+        [`${engramCardBaseClass} cursor-pointer`]: true,
+        [engramCardExpandedClass]: props.expanded && !props.selecting,
+        [engramCardHoverClass]: !props.expanded && !props.selecting,
+        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
+          props.selecting && props.selected,
+        "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
     >
-      <div class="p-4 flex flex-col gap-2">
+      <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
           <Show when={props.selecting}>
             <div class="pt-0.5">
@@ -361,30 +361,30 @@ function MemoryCard(props: {
               <span class="line-clamp-2">{props.item.title}</span>
             )}
           </span>
-          <div class="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <Show when={category()}>
               <span
-                class={`px-1.5 py-0.5 rounded-md text-10-medium ${categoryColors[category()!] ?? "bg-surface-inset-base text-text-weak"}`}
+                class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${categoryColors[category()!] ?? "bg-surface-inset-base text-text-weak"}`}
               >
                 {categoryLabels[category()!] ?? category()}
               </span>
             </Show>
             <Show when={recallMode()}>
               <span
-                class={`px-1.5 py-0.5 rounded-md text-10-medium ${recallModeColors[recallMode()!] ?? "bg-surface-inset-base text-text-weaker"}`}
+                class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${recallModeColors[recallMode()!] ?? "bg-surface-inset-base text-text-weaker"}`}
               >
                 {recallModeLabels[recallMode()!] ?? recallMode()}
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="px-1.5 py-0.5 rounded-md bg-surface-interactive-base/10 text-10-medium text-text-interactive-base">
+              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
                 {Math.round(props.similarity! * 100)}%
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-text-diff-delete-base hover:bg-surface-raised-base-active transition-colors"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -397,17 +397,24 @@ function MemoryCard(props: {
           <Show
             when={props.expanded}
             fallback={
-              <div class="text-12-regular text-text-weak line-clamp-3 leading-relaxed">{props.item.content}</div>
+              <div class="text-12-regular leading-relaxed text-text-weak/90 line-clamp-3">{props.item.content}</div>
             }
           >
-            <Markdown
-              text={props.item.content}
-              class="text-12-regular text-text-weak leading-relaxed [&_h1]:text-13-medium [&_h2]:text-13-medium [&_h3]:text-12-medium [&_pre]:text-11-regular [&_code]:text-11-regular [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_pre]:my-1.5 [&_pre]:rounded-lg [&_pre]:p-2.5"
-            />
+            <div class={`px-3.5 py-3 ${engramInsetClass}`}>
+              <Markdown
+                text={props.item.content}
+                class="text-12-regular leading-relaxed text-text-weak/90 [&_h1]:text-13-medium [&_h2]:text-13-medium [&_h3]:text-12-medium [&_pre]:text-11-regular [&_code]:text-11-regular [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_pre]:my-1.5 [&_pre]:rounded-xl [&_pre]:bg-surface-raised-base/78 [&_pre]:p-2.5"
+              />
+            </div>
           </Show>
 
-          <div class="flex items-center justify-between mt-0.5">
-            <span class="text-11-regular text-text-weak">
+          <div
+            classList={{
+              "mt-0.5 flex items-center justify-between border-t border-border-base/28 pt-2.5": props.expanded,
+              "mt-0.5 flex items-center justify-between": !props.expanded,
+            }}
+          >
+            <span class="text-11-regular text-text-weaker">
               <Show when={props.expanded} fallback={relativeTime(updated() ?? props.item.createdAt)}>
                 {absoluteDate(props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
@@ -416,18 +423,20 @@ function MemoryCard(props: {
                 </Show>
               </Show>
             </span>
-            <Icon
-              name="chevron-down"
-              size="small"
-              class="text-icon-weak transition-transform"
-              classList={{ "rotate-180": props.expanded }}
-            />
+            <span
+              classList={{
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "rotate-180 bg-surface-inset-base/5": props.expanded,
+              }}
+            >
+              <Icon name="chevron-down" size="small" />
+            </span>
           </div>
         </Show>
 
         <Show when={props.selecting}>
-          <div class="flex items-center justify-between mt-0.5">
-            <span class="text-11-regular text-text-weak">{relativeTime(updated() ?? props.item.createdAt)}</span>
+          <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
+            <span class="text-11-regular text-text-weaker">{relativeTime(updated() ?? props.item.createdAt)}</span>
           </div>
         </Show>
       </div>

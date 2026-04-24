@@ -1,9 +1,10 @@
 import { spawn } from "child_process"
+import path from "path"
+import { realpathSync } from "fs"
 import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@/util/lazy"
-import { Flag } from "@/flag/flag.ts"
 import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
 import { Instance } from "@/scope/instance"
@@ -11,7 +12,7 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 
-const DEFAULT_TIMEOUT = Flag.SYNERGY_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
+const DEFAULT_TIMEOUT_S = 2 * 60
 
 const log = Log.create({ service: "bash-tool" })
 
@@ -52,7 +53,7 @@ export const LocalBashBackend: BashBackend = {
     if (params.timeout !== undefined && params.timeout < 0) {
       throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
     }
-    const timeout = params.timeout ?? DEFAULT_TIMEOUT
+    const timeout = params.timeout ?? DEFAULT_TIMEOUT_S
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
       throw new Error("Failed to parse command")
@@ -82,12 +83,12 @@ export const LocalBashBackend: BashBackend = {
       if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
         for (const arg of command.slice(1)) {
           if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-          const resolved = await $`realpath ${arg}`
-            .cwd(cwd)
-            .quiet()
-            .nothrow()
-            .text()
-            .then((x) => x.trim())
+          let resolved: string | undefined
+          try {
+            resolved = realpathSync(path.resolve(cwd, arg))
+          } catch {
+            // path doesn't exist — skip
+          }
           log.info("resolved path", { arg, resolved })
           if (resolved) {
             const normalized =
@@ -138,8 +139,6 @@ export const LocalBashBackend: BashBackend = {
       stdin: child.stdin ?? undefined,
     })
 
-    let output = ""
-
     ctx.metadata({
       metadata: {
         output: "",
@@ -149,11 +148,10 @@ export const LocalBashBackend: BashBackend = {
 
     const append = (chunk: Buffer) => {
       const text = chunk.toString()
-      output += text
       ProcessRegistry.appendOutput(regProc, text)
       ctx.metadata({
         metadata: {
-          output: truncateMetadataOutput(output),
+          output: truncateMetadataOutput(regProc.output),
           description: params.description,
         },
       })
@@ -186,8 +184,8 @@ export const LocalBashBackend: BashBackend = {
           `Process ID: ${regProc.id}\n` +
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
+          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
           `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get full output.\n` +
           `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
       }
     }
@@ -211,18 +209,21 @@ export const LocalBashBackend: BashBackend = {
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true
-      void kill()
-    }, timeout + 100)
+    const timeoutTimer = setTimeout(
+      () => {
+        timedOut = true
+        void kill()
+      },
+      timeout * 1000 + 100,
+    )
 
-    const yieldMs = params.yieldMs
+    const yieldS = params.yieldSeconds
     const yieldResult = await new Promise<"exited" | "yielded" | "error">((resolve, reject) => {
-      const yieldTimer = yieldMs
+      const yieldTimer = yieldS
         ? setTimeout(() => {
             yielded = true
             resolve("yielded")
-          }, yieldMs)
+          }, yieldS * 1000)
         : undefined
 
       const cleanup = () => {
@@ -249,20 +250,20 @@ export const LocalBashBackend: BashBackend = {
       return {
         title: `[Auto-Background] ${params.description}`,
         metadata: {
-          output: truncateMetadataOutput(output),
+          output: truncateMetadataOutput(regProc.output),
           description: params.description,
           processId: regProc.id,
           background: true,
           backend: "local",
         },
         output:
-          `Command auto-backgrounded after ${yieldMs}ms.\n\n` +
+          `Command auto-backgrounded after ${yieldS}s.\n\n` +
           `Process ID: ${regProc.id}\n` +
           `Command: ${params.command}\n` +
           `Status: running\n\n` +
-          `Recent output:\n${output.slice(-1000) || "(no output yet)"}\n\n` +
+          `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
           `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get full output.\n` +
           `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
       }
     }
@@ -270,15 +271,28 @@ export const LocalBashBackend: BashBackend = {
     const resultMetadata: string[] = []
 
     if (timedOut) {
-      resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout} ms`)
+      resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout}s`)
     }
 
     if (aborted) {
       resultMetadata.push("User aborted the command")
     }
 
+    const output = regProc.output
+
     if (resultMetadata.length > 0) {
-      output += "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>"
+      return {
+        title: params.description,
+        metadata: {
+          output: truncateMetadataOutput(
+            output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
+          ),
+          exit: child.exitCode,
+          description: params.description,
+          backend: "local",
+        },
+        output: output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
+      }
     }
 
     return {

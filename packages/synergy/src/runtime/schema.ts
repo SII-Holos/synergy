@@ -26,7 +26,7 @@ export namespace RuntimeSchema {
 
   export const ReloadResult = z
     .object({
-      success: z.literal(true),
+      success: z.boolean(),
       requested: z.array(ReloadTarget),
       executed: z.array(ReloadTarget),
       cascaded: z.array(ReloadTarget),

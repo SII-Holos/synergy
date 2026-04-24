@@ -24,7 +24,7 @@ export function TerminalPanel(props: {
 }) {
   return (
     <div
-      class="relative w-full flex-col shrink-0 border-t border-border-weak-base"
+      class="relative w-full flex flex-col shrink-0 border-t border-border-weak-base"
       style={{ height: `${props.layout.terminal.height()}px` }}
     >
       <ResizeHandle
@@ -78,17 +78,31 @@ export function TerminalPanel(props: {
                 </TooltipKeybind>
               </div>
             </Tabs.List>
-            <For each={props.terminal.all()}>
-              {(pty) => (
-                <Tabs.Content value={pty.id}>
-                  <Terminal
-                    pty={pty}
-                    onCleanup={props.terminal.update}
-                    onConnectError={() => props.terminal.clone(pty.id)}
-                  />
-                </Tabs.Content>
-              )}
-            </For>
+            {/* Render terminals outside Tabs.Content to prevent unmount on tab switch.
+                Stack all instances in the same area; only the active one is visible. */}
+            <div class="relative" style={{ height: `calc(${props.layout.terminal.height()}px - 40px)` }}>
+              <For each={props.terminal.all()}>
+                {(pty) => (
+                  <div
+                    classList={{
+                      "absolute inset-0": true,
+                      "invisible pointer-events-none": props.terminal.active() !== pty.id,
+                    }}
+                  >
+                    <Terminal
+                      pty={pty}
+                      onCleanup={props.terminal.update}
+                      onGone={(ptyID) => {
+                        props.terminal.close(ptyID)
+                        if (props.terminal.all().length === 0) {
+                          props.terminal.new()
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </For>
+            </div>
           </Tabs>
           <DragOverlay>
             <Show when={props.activeTerminalDraggable}>

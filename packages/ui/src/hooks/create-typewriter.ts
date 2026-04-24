@@ -20,6 +20,7 @@ const MAX_INTEGRAL = 400
 export interface TypewriterOptions {
   source: () => string
   streaming: () => boolean
+  completed?: () => boolean
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -100,8 +101,14 @@ export function createTypewriter(options: TypewriterOptions) {
     return clamp((ingressRate * TARGET_LOOKAHEAD_MS) / 1000, MIN_TARGET_BUFFER, MAX_TARGET_BUFFER)
   }
 
-  function getTargetDisplayRate(now: number, elapsedMs: number, buffer: number, streaming: boolean) {
-    if (!streaming) {
+  function getTargetDisplayRate(
+    now: number,
+    elapsedMs: number,
+    buffer: number,
+    streaming: boolean,
+    completed: boolean,
+  ) {
+    if (completed || !streaming) {
       integralError = 0
       return Math.max(DRAIN_RATE, buffer * 10)
     }
@@ -122,8 +129,8 @@ export function createTypewriter(options: TypewriterOptions) {
     return clamp(ingressRate + correction, floor, MAX_RATE)
   }
 
-  function updateDisplayRate(now: number, elapsedMs: number, buffer: number, streaming: boolean) {
-    const targetRate = getTargetDisplayRate(now, elapsedMs, buffer, streaming)
+  function updateDisplayRate(now: number, elapsedMs: number, buffer: number, streaming: boolean, completed: boolean) {
+    const targetRate = getTargetDisplayRate(now, elapsedMs, buffer, streaming, completed)
     const alpha = smoothingAlpha(elapsedMs, RATE_SMOOTHING_MS)
     displayRate += (targetRate - displayRate) * alpha
     displayRate = clamp(displayRate, MIN_RATE, MAX_RATE)
@@ -149,7 +156,7 @@ export function createTypewriter(options: TypewriterOptions) {
     lastTickTime = now
 
     const buffer = total - revealedLength
-    const rate = updateDisplayRate(now, elapsedMs, buffer, options.streaming())
+    const rate = updateDisplayRate(now, elapsedMs, buffer, options.streaming(), options.completed?.() ?? false)
 
     fractional += (rate * elapsedMs) / 1000
     const chars = Math.floor(fractional)
@@ -183,6 +190,7 @@ export function createTypewriter(options: TypewriterOptions) {
   createEffect(() => {
     const source = options.source()
     const streaming = options.streaming()
+    const completed = options.completed?.() ?? false
     const now = performance.now()
 
     if (lastSourceUpdateTime === 0) {
@@ -190,7 +198,8 @@ export function createTypewriter(options: TypewriterOptions) {
       lastObservedSourceLength = source.length
     }
 
-    if (!streaming && !animating) {
+    if (completed || (!streaming && !animating)) {
+      stop()
       revealedLength = source.length
       fractional = 0
       resetEstimator(now, source.length)

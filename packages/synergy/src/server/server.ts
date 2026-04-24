@@ -53,13 +53,17 @@ import { EngramRoute } from "./engram"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
+import { StatsRoute } from "./stats"
 import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
 import { HolosRoute, HolosDataRoute } from "./holos"
 import { RuntimeRoute } from "./runtime-route"
+import { RuntimeReload } from "../runtime/reload"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
+
+RuntimeReload.startAutoReload()
 
 export namespace Server {
   export const DEFAULT_PORT = 4096
@@ -74,7 +78,7 @@ export namespace Server {
     return path.resolve(import.meta.dirname, "../../../app/dist")
   })()
   let _url: URL | undefined
-  let _corsWhitelist: string[] = []
+  let _corsWhitelist = new Set<string>()
   let _appMounted = false
 
   function isLoopbackOrigin(input: string) {
@@ -110,7 +114,8 @@ export namespace Server {
     } catch {
       // fallback to original value
     }
-    return directory === "global" ? Scope.global() : (await Scope.fromDirectory(directory)).scope
+    if (directory === "global") return Scope.global()
+    return (await Scope.fromDirectory(directory)).scope
   }
 
   async function provideRequestScope(c: Context, next: Next) {
@@ -193,7 +198,7 @@ export namespace Server {
               if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
                 return input
               }
-              if (_corsWhitelist.includes(input)) {
+              if (_corsWhitelist.has(input)) {
                 return input
               }
 
@@ -240,11 +245,39 @@ export namespace Server {
         )
         .get(
           "/global/event/ws",
-          upgradeWebSocket(() => {
-            let cleanup: (() => void) | undefined
-            return {
+          (() => {
+            const globalEventClients: Set<any> = new Set()
+            const broadcastHandler = (event: any) => {
+              const data = JSON.stringify(event)
+              for (const client of globalEventClients) {
+                try {
+                  client.send(data)
+                } catch {
+                  globalEventClients.delete(client)
+                }
+              }
+            }
+            GlobalBus.on("event", broadcastHandler)
+            const heartbeat = setInterval(() => {
+              for (const client of globalEventClients) {
+                try {
+                  client.send(
+                    JSON.stringify({
+                      payload: {
+                        type: "server.heartbeat",
+                        properties: {},
+                      },
+                    }),
+                  )
+                } catch {
+                  globalEventClients.delete(client)
+                }
+              }
+            }, 30000)
+            return upgradeWebSocket(() => ({
               onOpen(_event, ws) {
                 log.info("global event ws connected")
+                globalEventClients.add(ws)
                 ws.send(
                   JSON.stringify({
                     payload: {
@@ -253,38 +286,32 @@ export namespace Server {
                     },
                   }),
                 )
-                const handler = (event: any) => {
-                  try {
-                    ws.send(JSON.stringify(event))
-                  } catch {}
-                }
-                GlobalBus.on("event", handler)
-                const heartbeat = setInterval(() => {
-                  try {
+              },
+              onClose(_event, ws) {
+                globalEventClients.delete(ws)
+                log.info("global event ws disconnected")
+              },
+              onError(_event, ws) {
+                globalEventClients.delete(ws)
+              },
+              onMessage(_event, ws) {
+                try {
+                  if (typeof _event.data !== "string") return
+                  const data = JSON.parse(_event.data)
+                  if (data?.payload?.type === "client.ping") {
                     ws.send(
                       JSON.stringify({
                         payload: {
-                          type: "server.heartbeat",
+                          type: "server.pong",
                           properties: {},
                         },
                       }),
                     )
-                  } catch {}
-                }, 30000)
-                cleanup = () => {
-                  GlobalBus.off("event", handler)
-                  clearInterval(heartbeat)
-                }
+                  }
+                } catch {}
               },
-              onClose() {
-                cleanup?.()
-                log.info("global event ws disconnected")
-              },
-              onError() {
-                cleanup?.()
-              },
-            }
-          }),
+            }))
+          })(),
         )
         .post(
           "/global/dispose",
@@ -642,6 +669,7 @@ export namespace Server {
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/asset", AssetRoute)
+        .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
 
         .post(
@@ -971,7 +999,7 @@ export namespace Server {
 
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
-    _corsWhitelist = [...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])]
+    _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
 
     const args = {
       hostname: opts.hostname,
@@ -991,7 +1019,7 @@ export namespace Server {
 
     _url = server.url
 
-    if (isExternalHost && _corsWhitelist.length > 0) {
+    if (isExternalHost && _corsWhitelist.size > 0) {
       log.info("cors auto-detected LAN origins", { origins: _corsWhitelist })
     }
 

@@ -16,7 +16,7 @@ import {
   extractPostImageKeys,
   downloadImageByKey,
 } from "./message"
-import type { FeishuEventPayload, FeishuMention, FeishuSender } from "./feishu-types"
+import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } from "./feishu-types"
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
 
@@ -37,7 +37,7 @@ type AccountState = {
   missingBotOpenIdWarned?: boolean
 }
 
-function resolveGroupScopeKey(input: {
+export function resolveGroupScopeKey(input: {
   chatId: string
   senderId: string
   rootId?: string
@@ -60,23 +60,103 @@ function resolveGroupScopeKey(input: {
   }
 }
 
-function isSelfSender(senderType?: string): boolean {
+export function isSelfSender(senderType?: string): boolean {
   if (!senderType) return false
   return SELF_SENDER_TYPES.has(senderType.toLowerCase())
 }
 
-function normalizeBotOpenId(openId?: string): string | undefined {
+export function normalizeBotOpenId(openId?: string): string | undefined {
   const normalized = openId?.trim()
   return normalized ? normalized : undefined
 }
 
-function resolveSenderOpenId(sender?: FeishuSender): string | undefined {
+export function resolveSenderOpenId(sender?: FeishuSender): string | undefined {
   return normalizeBotOpenId(sender?.sender_id?.open_id)
 }
 
-function isBotMentioned(mentions: FeishuMention[], botOpenId?: string): boolean {
+export function isBotMentioned(mentions: FeishuMention[], botOpenId?: string): boolean {
   if (!botOpenId) return false
   return mentions.some((mention) => normalizeBotOpenId(mention.id.open_id) === botOpenId)
+}
+
+export interface MessageFilterInput {
+  message: FeishuMessage | undefined
+  sender: FeishuSender | undefined
+  accountConfig: Config.ChannelFeishuAccount
+  botOpenId?: string
+}
+
+export interface MessageFilterResult {
+  accepted: boolean
+  reason?: string
+  isGroup: boolean
+  wasMentioned: boolean
+  needsBotOpenIdResolution: boolean
+}
+
+export function filterInboundMessage(input: MessageFilterInput): MessageFilterResult {
+  const { message, sender, accountConfig, botOpenId } = input
+
+  if (!message?.chat_id) {
+    return {
+      accepted: false,
+      reason: "missing chat_id",
+      isGroup: false,
+      wasMentioned: false,
+      needsBotOpenIdResolution: false,
+    }
+  }
+
+  if (isSelfSender(sender?.sender_type)) {
+    return {
+      accepted: false,
+      reason: "self sender",
+      isGroup: false,
+      wasMentioned: false,
+      needsBotOpenIdResolution: false,
+    }
+  }
+
+  const isGroup = message.chat_type === "group"
+  const mentions = message.mentions ?? []
+
+  if (isGroup && !accountConfig.allowGroup) {
+    return {
+      accepted: false,
+      reason: "group not allowed",
+      isGroup,
+      wasMentioned: false,
+      needsBotOpenIdResolution: false,
+    }
+  }
+  if (!isGroup && !accountConfig.allowDM) {
+    return { accepted: false, reason: "DM not allowed", isGroup, wasMentioned: false, needsBotOpenIdResolution: false }
+  }
+
+  const needsBotOpenIdResolution = isGroup && !!accountConfig.requireMention && !botOpenId
+  const effectiveBotOpenId = botOpenId
+  const wasMentioned = isBotMentioned(mentions, effectiveBotOpenId)
+
+  if (isGroup && accountConfig.requireMention && !effectiveBotOpenId) {
+    return {
+      accepted: false,
+      reason: "bot open_id unresolvable",
+      isGroup,
+      wasMentioned: false,
+      needsBotOpenIdResolution,
+    }
+  }
+  if (isGroup && accountConfig.requireMention && !wasMentioned) {
+    return {
+      accepted: false,
+      reason: "bot not mentioned",
+      isGroup,
+      wasMentioned: false,
+      needsBotOpenIdResolution: false,
+    }
+  }
+
+  return { accepted: true, isGroup, wasMentioned, needsBotOpenIdResolution: false }
 }
 
 export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeishuAccount, Config.ChannelFeishu> {
@@ -93,13 +173,17 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }
   }
 
-  private async getAccessToken(accountId: string): Promise<string> {
-    const account = this.accounts.get(accountId)
-    if (!account) throw new Error(`Feishu account not found: ${accountId}`)
+  private scheduleTokenRefresh(accountId: string, expiresInMs: number) {
+    const refreshIn = Math.max(expiresInMs - 120_000, 30_000)
+    const timer = setTimeout(() => {
+      this.refreshToken(accountId).catch(() => {})
+    }, refreshIn)
+    timer.unref()
+  }
 
-    if (account.tokenCache && account.tokenCache.expiresAt > Date.now() + 60_000) {
-      return account.tokenCache.token
-    }
+  private async refreshToken(accountId: string): Promise<void> {
+    const account = this.accounts.get(accountId)
+    if (!account) return
 
     const response = await fetch(`${account.apiBase}/auth/v3/tenant_access_token/internal`, {
       method: "POST",
@@ -120,7 +204,19 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       expiresAt: Date.now() + result.expire * 1000,
     }
 
-    return result.tenant_access_token
+    this.scheduleTokenRefresh(accountId, result.expire * 1000)
+  }
+
+  private async getAccessToken(accountId: string): Promise<string> {
+    const account = this.accounts.get(accountId)
+    if (!account) throw new Error(`Feishu account not found: ${accountId}`)
+
+    if (account.tokenCache && account.tokenCache.expiresAt > Date.now() + 60_000) {
+      return account.tokenCache.token
+    }
+
+    await this.refreshToken(accountId)
+    return account.tokenCache!.token
   }
 
   private async ensureBotOpenId(accountId: string): Promise<string | undefined> {
@@ -220,7 +316,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
 
-    const eventDispatcher = new Lark.EventDispatcher({}).register<{
+    const eventDispatcher = new Lark.EventDispatcher({ logger }).register<{
       "card.action.trigger"?: (data: unknown) => Promise<unknown> | unknown
     }>({
       "im.message.receive_v1": (data: unknown) => {
@@ -331,54 +427,50 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   ): Promise<ChannelTypes.MessageContext | null> {
     const message = payload.message ?? payload.event?.message
     const sender = payload.sender ?? payload.event?.sender
-
-    if (!message?.chat_id) return null
+    const account = this.accounts.get(accountId)
 
     log.info("feishu buildMessageContext entered", {
       accountId,
-      messageId: message.message_id,
-      chatId: message.chat_id,
-      messageType: message.message_type,
+      messageId: message?.message_id,
+      chatId: message?.chat_id,
+      messageType: message?.message_type,
       senderType: sender?.sender_type,
     })
 
-    if (isSelfSender(sender?.sender_type)) {
-      log.info("feishu self message ignored", {
-        accountId,
-        messageId: message.message_id,
-        chatId: message.chat_id,
-        senderType: sender?.sender_type,
-      })
-      return null
-    }
-
-    const isGroup = message.chat_type === "group"
-    const mentions = message.mentions ?? []
-    const account = this.accounts.get(accountId)
-
-    if (isGroup && !accountConfig.allowGroup) return null
-    if (!isGroup && !accountConfig.allowDM) return null
-
+    const isGroup = message?.chat_type === "group"
     const botOpenId =
       isGroup && accountConfig.requireMention ? await this.ensureBotOpenId(accountId) : account?.botOpenId
-    const wasMentioned = isBotMentioned(mentions, botOpenId)
 
-    if (isGroup && accountConfig.requireMention && !botOpenId) {
-      if (account && !account.missingBotOpenIdWarned) {
+    const filterResult = filterInboundMessage({ message, sender, accountConfig, botOpenId })
+
+    if (!filterResult.accepted) {
+      if (filterResult.reason === "self sender") {
+        log.info("feishu self message ignored", {
+          accountId,
+          messageId: message?.message_id,
+          chatId: message?.chat_id,
+          senderType: sender?.sender_type,
+        })
+      }
+      if (filterResult.reason === "bot open_id unresolvable" && account && !account.missingBotOpenIdWarned) {
         account.missingBotOpenIdWarned = true
         log.warn("feishu group mention filtering requires a resolvable bot open_id", { accountId })
       }
       return null
     }
-    if (isGroup && accountConfig.requireMention && !wasMentioned) return null
 
-    const messageType = message.message_type ?? "text"
-    const rawContent = message.content ?? ""
+    const mentions = message!.mentions ?? []
+    const wasMentioned = filterResult.wasMentioned
+
+    // filterInboundMessage guarantees message is defined when accepted
+    const msg = message!
+    const messageType = msg.message_type ?? "text"
+    const rawContent = msg.content ?? ""
     log.info("feishu message payload", {
       accountId,
-      messageId: message.message_id,
+      messageId: msg.message_id,
       messageType,
-      chatId: message.chat_id,
+      chatId: msg.chat_id,
       contentPreview: rawContent.slice(0, 800),
     })
     const senderId = sender?.sender_id?.open_id || "unknown"
@@ -392,7 +484,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     if (MEDIA_MESSAGE_TYPES.has(messageType)) {
       log.info("feishu media eligibility", {
         accountId,
-        messageId: message.message_id,
+        messageId: msg.message_id,
         messageType,
         hasAccount: Boolean(account),
       })
@@ -410,11 +502,11 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       : undefined
 
     const quotedContentPromise =
-      message.parent_id && apiCtx ? fetchQuotedContent(apiCtx, message.parent_id) : Promise.resolve(undefined)
+      msg.parent_id && apiCtx ? fetchQuotedContent(apiCtx, msg.parent_id) : Promise.resolve(undefined)
 
     const attachmentsPromise = (async (): Promise<ChannelTypes.Attachment[] | undefined> => {
       if (!apiCtx) return undefined
-      const msgId = message.message_id ?? ""
+      const msgId = msg.message_id ?? ""
       const results: ChannelTypes.Attachment[] = []
 
       if (MEDIA_MESSAGE_TYPES.has(messageType)) {
@@ -459,19 +551,19 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     if (MEDIA_MESSAGE_TYPES.has(messageType) || messageType === "post") {
       log.info("feishu media resolved", {
         accountId,
-        messageId: message.message_id,
+        messageId: msg.message_id,
         messageType,
         attachmentCount: attachments?.length ?? 0,
       })
     }
 
     const groupScope = accountConfig.groupSessionScope ?? "group"
-    const scopeKey = isGroup
+    const scopeKey = filterResult.isGroup
       ? resolveGroupScopeKey({
-          chatId: message.chat_id,
+          chatId: msg.chat_id!,
           senderId,
-          rootId: message.root_id,
-          threadId: message.thread_id,
+          rootId: msg.root_id,
+          threadId: msg.thread_id,
           scope: groupScope,
         })
       : undefined
@@ -479,18 +571,18 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     return {
       channelType: "feishu",
       accountId,
-      chatId: message.chat_id,
-      chatType: isGroup ? "group" : "dm",
+      chatId: msg.chat_id!,
+      chatType: filterResult.isGroup ? "group" : "dm",
       senderId,
       senderName: senderName ?? sender?.sender_id?.user_id,
       text,
-      messageId: message.message_id || "",
-      timestamp: Number(message.create_time) || Date.now(),
+      messageId: msg.message_id || "",
+      timestamp: Number(msg.create_time) || Date.now(),
       wasMentioned,
       messageType,
-      rootId: message.root_id,
-      parentId: message.parent_id,
-      threadId: message.thread_id,
+      rootId: msg.root_id,
+      parentId: msg.parent_id,
+      threadId: msg.thread_id,
       mentions: mentions.map((m) => ({
         key: m.key,
         id: m.id.open_id,

@@ -10,18 +10,18 @@ import {
   extractReasoningMiddleware,
 } from "ai"
 import { clone, mergeDeep, pipe } from "remeda"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
-import { Flag } from "@/flag/flag"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
 
-  export const OUTPUT_TOKEN_MAX = Flag.SYNERGY_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
+  export const OUTPUT_TOKEN_MAX = ModelLimit.OUTPUT_TOKEN_MAX
 
   export type StreamInput = {
     user: MessageV2.User

@@ -10,6 +10,7 @@ import { Flag } from "@/flag/flag"
 import { Global } from "@/global"
 import { BUILTIN_SKILLS } from "./builtin"
 import { SkillPaths } from "./paths"
+import { Plugin } from "../plugin"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
@@ -234,6 +235,79 @@ export namespace Skill {
     return candidates
   }
 
+  // ---------------------------------------------------------------------------
+  // Plugin skill resolution — resolves dir-based skills from the filesystem
+  // ---------------------------------------------------------------------------
+
+  const SKILL_CONTENT_FILES = ["SKILL.md", "Skill.md", "content.txt", "content.md"]
+  const SKILL_REF_GLOB = new Bun.Glob("*")
+
+  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & { pluginDir: string }
+
+  async function resolvePluginSkill(skill: PluginSkillInput, pluginDir: string): Promise<Info> {
+    let content = skill.content
+    let references = skill.references ? { ...skill.references } : undefined
+    let scripts: Record<string, string> | undefined
+    let baseDir = "plugin"
+
+    if (skill.dir) {
+      const dir = path.resolve(pluginDir, skill.dir)
+      baseDir = dir
+
+      if (!content) {
+        for (const name of SKILL_CONTENT_FILES) {
+          const file = Bun.file(path.join(dir, name))
+          if (await file.exists()) {
+            const raw = await file.text()
+            if (name.endsWith(".md")) {
+              const parsed = await ConfigMarkdown.parse(path.join(dir, name)).catch(() => null)
+              content = parsed?.content ?? raw
+            } else {
+              content = raw
+            }
+            break
+          }
+        }
+      }
+
+      const refDir = path.join(dir, "references")
+      if (existsSync(refDir)) {
+        references ??= {}
+        for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
+          const key = `references/${file}`
+          if (!(key in references)) {
+            references[key] = await Bun.file(path.join(refDir, file)).text()
+          }
+        }
+      }
+
+      const scriptDir = path.join(dir, "scripts")
+      if (existsSync(scriptDir)) {
+        scripts = {}
+        for await (const file of SKILL_REF_GLOB.scan({ cwd: scriptDir, absolute: false, onlyFiles: true })) {
+          const key = file.replace(/\.\w+$/, "")
+          scripts[key] = path.join(scriptDir, file)
+        }
+      }
+    }
+
+    return {
+      name: skill.name,
+      description: skill.description,
+      location: baseDir,
+      builtin: false,
+      source: "builtin",
+      scope: "global",
+      entryFile: "plugin",
+      baseDir,
+      content,
+      references,
+      scripts,
+      rawFrontmatter: {},
+      compatibility: { level: "native", warnings: [], unsupported: [] },
+    }
+  }
+
   export const state = Instance.state(async () => {
     const skills: Record<string, Info> = {}
     const priorities: Record<string, number> = {}
@@ -248,6 +322,10 @@ export namespace Skill {
     }
 
     for (const builtin of BUILTIN_SKILLS) {
+      if (builtin.condition) {
+        const ok = await builtin.condition()
+        if (!ok) continue
+      }
       skills[builtin.name] = {
         name: builtin.name,
         description: builtin.description,
@@ -268,6 +346,12 @@ export namespace Skill {
         },
       }
       priorities[builtin.name] = computePriority("builtin", "builtin")
+    }
+
+    for (const pluginSkill of await Plugin.skillEntries()) {
+      const resolved = await resolvePluginSkill(pluginSkill, pluginSkill.pluginDir)
+      skills[resolved.name] = resolved
+      priorities[resolved.name] = computePriority("builtin", "builtin")
     }
 
     const addCandidate = async (candidate: SkillCandidate) => {
@@ -414,7 +498,7 @@ export namespace Skill {
 
   export async function reload() {
     log.info("reloading skill state")
-    await state.reset()
+    await state.resetAll()
     log.info("skill state reloaded")
   }
 

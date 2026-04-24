@@ -1,4 +1,4 @@
-import { runMigrations } from "../migration"
+import { ensureMigrations } from "../migration"
 import { Server } from "./server"
 import { UI } from "../cli/ui"
 import { Installation } from "../global/installation"
@@ -10,9 +10,122 @@ import { InstanceBootstrap, ChannelBootstrap, HolosBootstrap } from "../project/
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
+import { SingleInstance } from "../daemon/single-instance"
 import { EOL } from "os"
 
 const log = Log.create({ service: "server-runtime" })
+
+/**
+ * Minimal watchdog child spawner for --restart=always.
+ * Responsibilities:
+ *  - Add --restart=none to child argv (overrides any previous --restart)
+ *  - Spawn child process
+ *  - Forward SIGINT/SIGTERM to child
+ *  - When child exits:
+ *    - If shutdown was requested via signal -> exit wrapper
+ *    - Otherwise -> automatically respawn with crash backoff
+ */
+async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<never> {
+  const originalArgv = process.argv.slice(1)
+
+  // Add --restart=none to override any --restart in original argv (yargs honors last value)
+  const childArgv = [...originalArgv, "--restart=none"]
+
+  // Preserve the parent process's working directory at startup time.
+  // This ensures that respawned children resolve relative script paths
+  // (such as src/index.ts in source/dev mode) from the same directory
+  // as the parent, regardless of SYNERGY_CWD or later chdir() calls.
+  const parentCwd = process.cwd()
+
+  let shuttingDown = false
+  let crashCount = 0
+  const crashStartTime: number[] = []
+
+  const log = Log.create({ service: "server-watchdog" })
+
+  const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    log.info("received shutdown signal, forwarding to child and exiting watchdog")
+    try {
+      child.kill()
+    } catch {}
+    try {
+      await child.exited
+    } catch {}
+  }
+
+  for (;;) {
+    const child = Bun.spawn({
+      cmd: [process.argv0, ...childArgv],
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+      cwd: parentCwd,
+      env: {
+        ...process.env,
+        SYNERGY_RESTART_POLICY: "always",
+      },
+    })
+
+    const childStartTime = Date.now()
+    const sigint = () => onWrapperSignal(child)
+    const sigterm = () => onWrapperSignal(child)
+    process.on("SIGINT", sigint)
+    process.on("SIGTERM", sigterm)
+
+    // Wait for child
+    const exitStatus = await child.exited
+
+    // Clean up signal handlers
+    process.off("SIGINT", sigint)
+    process.off("SIGTERM", sigterm)
+
+    // Track crash time for backoff calculation
+    crashStartTime.push(childStartTime)
+
+    // Keep only crashes from last 30 seconds for rapid crash counting
+    const thirtySecondsAgo = Date.now() - 30000
+    while (crashStartTime.length > 0 && crashStartTime[0] < thirtySecondsAgo) {
+      crashStartTime.shift()
+    }
+
+    // Count rapid crashes (those that didn't run for at least 30s)
+    crashCount = 0
+    for (let i = 0; i < crashStartTime.length; i++) {
+      crashCount++
+    }
+
+    // Decide whether to respawn
+    if (shuttingDown) {
+      log.info("child exited after shutdown signal, watchdog stopping")
+      process.exit(0)
+    }
+
+    // Apply crash backoff logic
+    if (crashCount >= 5) {
+      log.error(`child crashed ${crashCount} times in 30s, stopping watchdog to prevent crash loop`, {
+        exitCode: exitStatus,
+        crashCount,
+      })
+      process.exit(1)
+    }
+
+    // Calculate backoff delay: min(1000 * 2^(n-1), 30000)
+    const backoffDelay = Math.min(1000 * Math.pow(2, crashCount - 1), 30000)
+
+    log.info("child exited unexpectedly, scheduling respawn", {
+      exitCode: exitStatus,
+      crashCount,
+      delayMs: backoffDelay,
+    })
+
+    // Always delay at least 1s, and apply exponential backoff for rapid crashes
+    await Bun.sleep(backoffDelay)
+
+    log.info("respawning child", { crashCount, nextDelayMinMs: Math.min(1000 * Math.pow(2, crashCount), 30000) })
+  }
+}
 
 const DIM = UI.Style.TEXT_DIM
 const RESET = UI.Style.TEXT_NORMAL
@@ -26,6 +139,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL = 80
 
 export interface RuntimeOptions {
+  restartPolicy?: "none" | "always"
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
@@ -38,7 +152,14 @@ export interface RuntimeOptions {
 }
 
 export async function run(options: RuntimeOptions) {
-  await runMigrations()
+  // If user asked for always-restart, spawn a child and act as a dumb watcher
+  if (options.restartPolicy === "always") {
+    return runWithRestartPolicyAlways(options)
+  }
+
+  // Normal path (unchanged)
+  await SingleInstance.acquire()
+  await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
   // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.

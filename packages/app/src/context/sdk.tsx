@@ -26,6 +26,12 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     })
     onCleanup(unsub)
 
-    return { directory: props.directory, client: sdk, event: emitter, url: globalSDK.url }
+    return {
+      directory: props.directory,
+      client: sdk,
+      event: emitter,
+      url: globalSDK.url,
+      connected: globalSDK.connected,
+    }
   },
 })

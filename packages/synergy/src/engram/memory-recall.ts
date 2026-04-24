@@ -1,4 +1,5 @@
 import { Log } from "../util/log"
+import { Plugin } from "../plugin"
 import { Embedding } from "./embedding"
 import { Rerank } from "./rerank"
 import { EngramDB } from "./database"
@@ -29,15 +30,42 @@ export namespace MemoryRecall {
   }
 
   export async function search(input: SearchInput): Promise<Result[]> {
-    const topK = input.topK ?? 5
-    const vector = input.vector ?? (await Embedding.generate({ id: "search-query", text: input.query })).vector
-    const shouldRerank = input.rerank !== false
+    const search = await Plugin.trigger(
+      "engram.memory.search.before",
+      {},
+      {
+        query: input.query,
+        vector: input.vector,
+        topK: input.topK,
+        categories: input.categories,
+        recallModes: input.recallModes,
+        rerank: input.rerank,
+      },
+    )
+
+    const topK = search.topK ?? 5
+    const vector = search.vector ?? (await Embedding.generate({ id: "search-query", text: search.query })).vector
+    const shouldRerank = search.rerank !== false
 
     const candidateCount = shouldRerank ? topK * RERANK_CANDIDATE_MULTIPLIER : topK
-    const candidates = vectorSearch(vector, candidateCount, input.categories, input.recallModes)
-    if (!shouldRerank || candidates.length <= topK) return candidates.slice(0, topK)
+    const candidates = vectorSearch(vector, candidateCount, search.categories, search.recallModes)
+    const results =
+      !shouldRerank || candidates.length <= topK
+        ? candidates.slice(0, topK)
+        : await rerankResults(search.query, candidates, topK)
 
-    return rerankResults(input.query, candidates, topK)
+    const output = await Plugin.trigger(
+      "engram.memory.search.after",
+      {
+        query: search.query,
+        topK,
+      },
+      {
+        results,
+      },
+    )
+
+    return output.results
   }
 
   export function findSimilar(
@@ -45,6 +73,9 @@ export namespace MemoryRecall {
     threshold: number,
   ): Array<{ id: string; title: string; category: EngramDB.Memory.Category; similarity: number; createdAt: number }> {
     const knnResults = EngramDB.Memory.searchByVector(queryVector, 20)
+    if (knnResults.length === 0) return []
+
+    const rows = new Map(EngramDB.Memory.getMany(knnResults.map((k) => k.id)).map((r) => [r.id, r]))
     const results: Array<{
       id: string
       title: string
@@ -56,7 +87,7 @@ export namespace MemoryRecall {
     for (const knn of knnResults) {
       const similarity = 1 - knn.distance
       if (similarity < threshold) continue
-      const row = EngramDB.Memory.get(knn.id)
+      const row = rows.get(knn.id)
       if (!row) continue
       results.push({
         id: row.id,
@@ -78,10 +109,13 @@ export namespace MemoryRecall {
   ): Result[] {
     const category = categories?.length === 1 ? categories[0] : undefined
     const knnResults = EngramDB.Memory.searchByVector(queryVector, topK, category)
+    if (knnResults.length === 0) return []
+
+    const rows = new Map(EngramDB.Memory.getMany(knnResults.map((k) => k.id)).map((r) => [r.id, r]))
 
     const results: Result[] = []
     for (const knn of knnResults) {
-      const row = EngramDB.Memory.get(knn.id)
+      const row = rows.get(knn.id)
       if (!row) continue
       if (categories && categories.length > 1 && !categories.includes(row.category)) continue
       if (recallModes && !recallModes.includes(row.recall_mode)) continue

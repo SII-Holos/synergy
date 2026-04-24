@@ -1,4 +1,4 @@
-import { test, expect, mock, afterEach } from "bun:test"
+import { test, expect, mock } from "bun:test"
 import { Config } from "../../src/config/config"
 import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
@@ -8,6 +8,9 @@ import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { parse as parseJsonc } from "jsonc-parser"
+import { runMigrations } from "../../src/migration"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 
 test("loads config with defaults when no files exist", async () => {
   await using tmp = await tmpdir()
@@ -472,6 +475,7 @@ test("merges instructions arrays from global and local configs", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const instructions = config.instructions ?? []
 
@@ -511,6 +515,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const instructions = config.instructions ?? []
 
@@ -555,6 +560,7 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      await Config.state.reset()
       const config = await Config.get()
       const plugins = config.plugin ?? []
 
@@ -869,6 +875,84 @@ test("permission config preserves key order", async () => {
   })
 })
 
+test("migrates legacy channel holos config to top-level holos", async () => {
+  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
+  await fs.mkdir(path.dirname(target), { recursive: true })
+  await Bun.write(
+    target,
+    `{
+  "$schema": "file:///test/config.schema.json",
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://api.holosai.io",
+      "wsUrl": "wss://api.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}`,
+  )
+
+  await Storage.remove(StoragePath.metaMigrationLog())
+  await runMigrations()
+
+  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+  expect(migrated.holos).toEqual({
+    enabled: true,
+    apiUrl: "https://api.holosai.io",
+    wsUrl: "wss://api.holosai.io",
+    portalUrl: "https://www.holosai.io",
+  })
+  expect(migrated.channel).toBeUndefined()
+})
+
+test("removes legacy channel holos config when top-level holos already exists", async () => {
+  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
+  await fs.mkdir(path.dirname(target), { recursive: true })
+  await Bun.write(
+    target,
+    `{
+  "$schema": "file:///test/config.schema.json",
+  "channel": {
+    "holos": {
+      "type": "holos",
+      "apiUrl": "https://www.holosai.io",
+      "wsUrl": "wss://www.holosai.io",
+      "portalUrl": "https://www.holosai.io",
+      "accounts": {
+        "default": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "holos": {
+    "enabled": true,
+    "apiUrl": "https://api.holosai.io",
+    "wsUrl": "wss://api.holosai.io",
+    "portalUrl": "https://www.holosai.io"
+  }
+}`,
+  )
+
+  await Storage.remove(StoragePath.metaMigrationLog())
+  await runMigrations()
+
+  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+  expect(migrated.holos).toEqual({
+    enabled: true,
+    apiUrl: "https://api.holosai.io",
+    wsUrl: "wss://api.holosai.io",
+    portalUrl: "https://www.holosai.io",
+  })
+  expect(migrated.channel).toBeUndefined()
+})
+
 // MCP config merging tests
 
 test("project config can override MCP server enabled status", async () => {
@@ -1087,6 +1171,7 @@ test("project config overrides remote well-known config", async () => {
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        await Config.state.reset()
         const config = await Config.get()
         // Verify fetch was called for wellknown config
         expect(fetchedUrl).toBe("https://example.com/.well-known/synergy")

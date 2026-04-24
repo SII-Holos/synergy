@@ -482,6 +482,16 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "archived": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -514,8 +524,8 @@
             "required": true
           }
         ],
-        "summary": "Remove scope",
-        "description": "Remove a scope from the tracked list. Does not delete scope files or session data.",
+        "summary": "Archive scope",
+        "description": "Archive a scope. Archived scopes are hidden from the list but can be restored.",
         "responses": {
           "200": {
             "description": "Scope removed",
@@ -1976,11 +1986,21 @@
           },
           {
             "in": "query",
-            "name": "start",
+            "name": "offset",
             "schema": {
+              "default": 0,
               "type": "number"
             },
-            "description": "Filter sessions updated on or after this timestamp (milliseconds since epoch)"
+            "description": "Number of sessions to skip"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            },
+            "description": "Maximum number of sessions to return"
           },
           {
             "in": "query",
@@ -1992,25 +2012,65 @@
           },
           {
             "in": "query",
-            "name": "limit",
+            "name": "since",
             "schema": {
               "type": "number"
             },
-            "description": "Maximum number of sessions to return"
+            "description": "Filter sessions updated on or after this timestamp (milliseconds since epoch)"
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Filter sessions updated before this timestamp (milliseconds since epoch)"
+          },
+          {
+            "in": "query",
+            "name": "pinned",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only include pinned sessions"
+          },
+          {
+            "in": "query",
+            "name": "parentOnly",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            },
+            "description": "Only include top-level sessions (exclude subsessions). Default: true"
           }
         ],
         "summary": "List sessions",
-        "description": "Get a list of all Synergy sessions, sorted by most recently updated.",
+        "description": "Get a paginated list of Synergy sessions, sorted by most recently updated.",
         "responses": {
           "200": {
-            "description": "List of sessions",
+            "description": "Paginated list of sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Session"
-                  }
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Session"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "offset": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["data", "total", "offset", "limit"]
                 }
               }
             }
@@ -4953,6 +5013,9 @@
                                     "context": {
                                       "type": "number"
                                     },
+                                    "input": {
+                                      "type": "number"
+                                    },
                                     "output": {
                                       "type": "number"
                                     }
@@ -4978,9 +5041,6 @@
                                     }
                                   },
                                   "required": ["input", "output"]
-                                },
-                                "experimental": {
-                                  "type": "boolean"
                                 },
                                 "status": {
                                   "type": "string",
@@ -6367,17 +6427,37 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "recompute",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Set to 'true' to force a full analytics recompute"
           }
         ],
-        "summary": "Get memory stats",
-        "description": "Get statistics about the memory database including counts and file size.",
+        "summary": "Get engram stats",
+        "description": "Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
         "responses": {
           "200": {
-            "description": "Memory statistics",
+            "description": "Engram statistics",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MemoryStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -6703,6 +6783,104 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/agenda/activity": {
+      "get": {
+        "operationId": "agenda.activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Limit activity to this scope (includes global items when provided)"
+          },
+          {
+            "in": "query",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Limit activity to a specific agenda item"
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional case-insensitive text search across item, run, and session metadata"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for query"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "description": "Page offset"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Page size"
+          }
+        ],
+        "summary": "Browse agenda activity",
+        "description": "Browse agenda execution activity with pagination, optional search, and agenda/session metadata.",
+        "responses": {
+          "200": {
+            "description": "Paginated agenda activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgendaActivityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.activity({\n  ...\n})"
           }
         ]
       }
@@ -7278,7 +7456,7 @@
           }
         ],
         "summary": "Create agenda item",
-        "description": "Create a new agenda item with optional triggers, task, and delivery configuration.",
+        "description": "Create a new agenda item with optional triggers and execution configuration.",
         "responses": {
           "200": {
             "description": "Created item",
@@ -7326,10 +7504,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "List agenda items",
-        "description": "List all agenda items.",
+        "description": "List all agenda items, optionally filtered by scope.",
         "responses": {
           "200": {
             "description": "List of agenda items",
@@ -7870,6 +8055,620 @@
         ]
       }
     },
+    "/stats": {
+      "get": {
+        "operationId": "stats.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "recompute",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "description": "Set to 'true' to force a full recompute from scratch"
+          }
+        ],
+        "summary": "Get stats snapshot",
+        "description": "Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.",
+        "responses": {
+          "200": {
+            "description": "Stats snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/stats/progress": {
+      "get": {
+        "operationId": "stats.progress",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Stream stats recompute progress",
+        "description": "Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.",
+        "responses": {
+          "200": {
+            "description": "Server-sent events containing progress and final snapshot payloads",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["progress", "done", "error"]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "phase": {
+                          "type": "string",
+                          "enum": ["scan", "digest", "bucket", "snapshot"]
+                        },
+                        "current": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["phase", "current", "total"]
+                    },
+                    "snapshot": {
+                      "type": "object",
+                      "properties": {
+                        "overview": {
+                          "type": "object",
+                          "properties": {
+                            "totalSessions": {
+                              "type": "number"
+                            },
+                            "activeSessions": {
+                              "type": "number"
+                            },
+                            "archivedSessions": {
+                              "type": "number"
+                            },
+                            "totalMessages": {
+                              "type": "number"
+                            },
+                            "totalTurns": {
+                              "type": "number"
+                            },
+                            "totalDays": {
+                              "type": "number"
+                            },
+                            "longestStreak": {
+                              "type": "number"
+                            },
+                            "currentStreak": {
+                              "type": "number"
+                            },
+                            "projectCount": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "totalSessions",
+                            "activeSessions",
+                            "archivedSessions",
+                            "totalMessages",
+                            "totalTurns",
+                            "totalDays",
+                            "longestStreak",
+                            "currentStreak",
+                            "projectCount"
+                          ]
+                        },
+                        "tokenCost": {
+                          "type": "object",
+                          "properties": {
+                            "tokens": {
+                              "type": "object",
+                              "properties": {
+                                "input": {
+                                  "type": "number"
+                                },
+                                "output": {
+                                  "type": "number"
+                                },
+                                "reasoning": {
+                                  "type": "number"
+                                },
+                                "cache": {
+                                  "type": "object",
+                                  "properties": {
+                                    "read": {
+                                      "type": "number"
+                                    },
+                                    "write": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": ["read", "write"]
+                                }
+                              },
+                              "required": ["input", "output", "reasoning", "cache"]
+                            },
+                            "cost": {
+                              "type": "number"
+                            },
+                            "cacheHitRate": {
+                              "type": "number"
+                            },
+                            "avgCostPerTurn": {
+                              "type": "number"
+                            },
+                            "avgTokensPerTurn": {
+                              "type": "number"
+                            },
+                            "dailyCost": {
+                              "type": "number"
+                            },
+                            "dailyTokens": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "tokens",
+                            "cost",
+                            "cacheHitRate",
+                            "avgCostPerTurn",
+                            "avgTokensPerTurn",
+                            "dailyCost",
+                            "dailyTokens"
+                          ]
+                        },
+                        "models": {
+                          "type": "object",
+                          "properties": {
+                            "models": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "providerID": {
+                                    "type": "string"
+                                  },
+                                  "modelID": {
+                                    "type": "string"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "avgResponseMs": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "providerID",
+                                  "modelID",
+                                  "messages",
+                                  "turns",
+                                  "tokens",
+                                  "cost",
+                                  "avgResponseMs"
+                                ]
+                              }
+                            }
+                          },
+                          "required": ["models"]
+                        },
+                        "agents": {
+                          "type": "object",
+                          "properties": {
+                            "agents": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "agent": {
+                                    "type": "string"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "subagentInvocations": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["agent", "messages", "sessions", "tokens", "cost", "subagentInvocations"]
+                              }
+                            },
+                            "totalSubagentCalls": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["agents", "totalSubagentCalls"]
+                        },
+                        "tools": {
+                          "type": "object",
+                          "properties": {
+                            "tools": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "tool": {
+                                    "type": "string"
+                                  },
+                                  "calls": {
+                                    "type": "number"
+                                  },
+                                  "successes": {
+                                    "type": "number"
+                                  },
+                                  "errors": {
+                                    "type": "number"
+                                  },
+                                  "avgDurationMs": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["tool", "calls", "successes", "errors", "avgDurationMs"]
+                              }
+                            }
+                          },
+                          "required": ["tools"]
+                        },
+                        "codeChanges": {
+                          "type": "object",
+                          "properties": {
+                            "totalAdditions": {
+                              "type": "number"
+                            },
+                            "totalDeletions": {
+                              "type": "number"
+                            },
+                            "totalFiles": {
+                              "type": "number"
+                            },
+                            "netLines": {
+                              "type": "number"
+                            },
+                            "dailyAdditions": {
+                              "type": "number"
+                            },
+                            "dailyDeletions": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "totalAdditions",
+                            "totalDeletions",
+                            "totalFiles",
+                            "netLines",
+                            "dailyAdditions",
+                            "dailyDeletions"
+                          ]
+                        },
+                        "lifecycle": {
+                          "type": "object",
+                          "properties": {
+                            "pinnedCount": {
+                              "type": "number"
+                            },
+                            "avgTurnsPerSession": {
+                              "type": "number"
+                            },
+                            "medianTurnsPerSession": {
+                              "type": "number"
+                            },
+                            "compactionCount": {
+                              "type": "number"
+                            },
+                            "retryCount": {
+                              "type": "number"
+                            },
+                            "errorCount": {
+                              "type": "number"
+                            },
+                            "errorRate": {
+                              "type": "number"
+                            },
+                            "durationBuckets": {
+                              "type": "object",
+                              "properties": {
+                                "short": {
+                                  "type": "number"
+                                },
+                                "medium": {
+                                  "type": "number"
+                                },
+                                "long": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["short", "medium", "long"]
+                            }
+                          },
+                          "required": [
+                            "pinnedCount",
+                            "avgTurnsPerSession",
+                            "medianTurnsPerSession",
+                            "compactionCount",
+                            "retryCount",
+                            "errorCount",
+                            "errorRate",
+                            "durationBuckets"
+                          ]
+                        },
+                        "channels": {
+                          "type": "object",
+                          "properties": {
+                            "channels": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "channel": {
+                                    "type": "string"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "messages": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["channel", "sessions", "messages"]
+                              }
+                            },
+                            "interactiveSessions": {
+                              "type": "number"
+                            },
+                            "unattendedSessions": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["channels", "interactiveSessions", "unattendedSessions"]
+                        },
+                        "timeSeries": {
+                          "type": "object",
+                          "properties": {
+                            "days": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "day": {
+                                    "type": "string"
+                                  },
+                                  "sessions": {
+                                    "type": "number"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  },
+                                  "tokens": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "type": "number"
+                                      },
+                                      "cache": {
+                                        "type": "object",
+                                        "properties": {
+                                          "read": {
+                                            "type": "number"
+                                          },
+                                          "write": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["read", "write"]
+                                      }
+                                    },
+                                    "required": ["input", "output", "reasoning", "cache"]
+                                  },
+                                  "cost": {
+                                    "type": "number"
+                                  },
+                                  "additions": {
+                                    "type": "number"
+                                  },
+                                  "deletions": {
+                                    "type": "number"
+                                  },
+                                  "files": {
+                                    "type": "number"
+                                  },
+                                  "toolCalls": {
+                                    "type": "number"
+                                  },
+                                  "errors": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "day",
+                                  "sessions",
+                                  "turns",
+                                  "tokens",
+                                  "cost",
+                                  "additions",
+                                  "deletions",
+                                  "files",
+                                  "toolCalls",
+                                  "errors"
+                                ]
+                              }
+                            },
+                            "hours": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "hour": {
+                                    "type": "string"
+                                  },
+                                  "turns": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["hour", "turns"]
+                              }
+                            },
+                            "hourlyActivity": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "required": ["days", "hours", "hourlyActivity"]
+                        },
+                        "computedAt": {
+                          "type": "number"
+                        },
+                        "watermark": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "overview",
+                        "tokenCost",
+                        "models",
+                        "agents",
+                        "tools",
+                        "codeChanges",
+                        "lifecycle",
+                        "channels",
+                        "timeSeries",
+                        "computedAt",
+                        "watermark"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.progress({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/holos/credentials/status": {
       "get": {
         "operationId": "holos.credentials.status",
@@ -7900,94 +8699,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.credentials.status({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/status": {
-      "get": {
-        "operationId": "holos.status",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get Holos runtime status",
-        "description": "Return the current Holos runtime connection status.",
-        "responses": {
-          "200": {
-            "description": "Holos runtime status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "connected"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "connecting"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "disconnected"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "disabled"
-                        }
-                      },
-                      "required": ["status"]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "failed"
-                        },
-                        "error": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["status", "error"]
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.status({\n  ...\n})"
           }
         ]
       }
@@ -10708,6 +11419,42 @@
                   }
                 },
                 "required": ["kind", "glob"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "tool"
+                  },
+                  "tool": {
+                    "description": "Synergy tool name to call, e.g. 'inspire_jobs'",
+                    "type": "string"
+                  },
+                  "args": {
+                    "description": "Arguments to pass to the tool",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "interval": {
+                    "description": "Poll interval, e.g. '5m'. Default: '5m'",
+                    "type": "string"
+                  },
+                  "trigger": {
+                    "description": "'change': fire when tool output differs; 'match': fire when output matches pattern",
+                    "default": "change",
+                    "type": "string",
+                    "enum": ["change", "match"]
+                  },
+                  "match": {
+                    "description": "Regex pattern, required when trigger is 'match'",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "tool"]
               }
             ]
           }
@@ -10750,6 +11497,19 @@
           }
         ]
       },
+      "AgendaSessionRef": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "hint": {
+            "description": "Brief description of what this session contains",
+            "type": "string"
+          }
+        },
+        "required": ["sessionID"]
+      },
       "AgendaScope": {
         "description": "Scope where the item was created",
         "type": "object",
@@ -10770,119 +11530,6 @@
         "required": ["id"],
         "additionalProperties": false
       },
-      "AgendaSessionRef": {
-        "type": "object",
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          },
-          "hint": {
-            "description": "Brief description of what this session contains",
-            "type": "string"
-          }
-        },
-        "required": ["sessionID"]
-      },
-      "AgendaTask": {
-        "description": "Execution configuration",
-        "type": "object",
-        "properties": {
-          "prompt": {
-            "description": "Instruction for the agent",
-            "type": "string"
-          },
-          "agent": {
-            "description": "Agent to use, defaults to the configured default",
-            "type": "string"
-          },
-          "model": {
-            "description": "Model override",
-            "type": "object",
-            "properties": {
-              "providerID": {
-                "type": "string"
-              },
-              "modelID": {
-                "type": "string"
-              }
-            },
-            "required": ["providerID", "modelID"]
-          },
-          "workScope": {
-            "$ref": "#/components/schemas/AgendaScope"
-          },
-          "sessionRefs": {
-            "description": "Sessions whose content may be relevant — injected as context references",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgendaSessionRef"
-            }
-          },
-          "timeout": {
-            "description": "Execution timeout in milliseconds",
-            "type": "number"
-          },
-          "sessionMode": {
-            "description": "'ephemeral' (default): create a new session per trigger. 'persistent': reuse the same session across triggers.",
-            "type": "string",
-            "enum": ["ephemeral", "persistent"]
-          },
-          "contextMode": {
-            "description": "'full' (default): inject complete agenda context XML. 'signal': inject only the signal payload. 'none': send only the task prompt.",
-            "type": "string",
-            "enum": ["full", "signal", "none"]
-          }
-        },
-        "required": ["prompt"]
-      },
-      "AgendaDelivery": {
-        "description": "Delivery configuration, defaults to { target: 'auto' }",
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "auto"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "silent"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "home"
-              }
-            },
-            "required": ["target"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string",
-                "const": "session"
-              },
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["target", "sessionID"]
-          }
-        ]
-      },
       "ChannelInfo": {
         "type": "object",
         "properties": {
@@ -10895,7 +11542,17 @@
           "chatId": {
             "type": "string"
           },
+          "chatType": {
+            "type": "string",
+            "enum": ["dm", "group"]
+          },
+          "chatName": {
+            "type": "string"
+          },
           "senderId": {
+            "type": "string"
+          },
+          "senderName": {
             "type": "string"
           },
           "scopeKey": {
@@ -11030,19 +11687,60 @@
               "type": "string"
             }
           },
+          "global": {
+            "description": "If true, item is visible from all scopes",
+            "default": false,
+            "type": "boolean"
+          },
           "triggers": {
-            "description": "Activation conditions. Schedule items have time triggers; todo items may have none (manual activation) or non-time triggers.",
+            "description": "Activation conditions",
             "default": [],
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "prompt": {
+            "description": "Instruction for the agent when triggered",
+            "type": "string"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "agent": {
+            "description": "Agent to use, defaults to configured default",
+            "type": "string"
+          },
+          "model": {
+            "description": "Model override",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "sessionRefs": {
+            "description": "Sessions whose content may be relevant — injected as context references",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
+          },
+          "timeout": {
+            "description": "Execution timeout in milliseconds",
+            "type": "number"
+          },
+          "wake": {
+            "description": "Whether to wake the origin session's agent on completion",
+            "default": true,
+            "type": "boolean"
+          },
+          "silent": {
+            "description": "Whether to suppress result delivery entirely",
+            "default": false,
+            "type": "boolean"
           },
           "origin": {
             "$ref": "#/components/schemas/AgendaOrigin"
@@ -11067,7 +11765,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "status", "title", "origin", "createdBy", "time"]
+        "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
       "AgendaWebhookResult": {
         "type": "object",
@@ -11115,6 +11813,9 @@
                 "type": "number"
               },
               "initialized": {
+                "type": "number"
+              },
+              "archived": {
                 "type": "number"
               }
             },
@@ -11724,9 +12425,6 @@
               "websearch": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
-              "codesearch": {
-                "$ref": "#/components/schemas/PermissionActionConfig"
-              },
               "download": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
@@ -11812,6 +12510,28 @@
           },
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "ExternalAgentConfig": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "description": "Disable this external agent",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Override path to the external agent binary",
+            "type": "string"
+          },
+          "model": {
+            "description": "Default model for this external agent",
+            "type": "string"
+          },
+          "auto_discover": {
+            "description": "Whether to auto-discover this agent on startup (default: true)",
+            "type": "boolean"
           }
         },
         "additionalProperties": {}
@@ -11930,6 +12650,9 @@
                     "context": {
                       "type": "number"
                     },
+                    "input": {
+                      "type": "number"
+                    },
                     "output": {
                       "type": "number"
                     }
@@ -11955,9 +12678,6 @@
                     }
                   },
                   "required": ["input", "output"]
-                },
-                "experimental": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string",
@@ -12038,10 +12758,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -12063,13 +12783,13 @@
         "type": "object",
         "properties": {
           "simThreshold": {
-            "description": "Minimum cosine similarity for retrieval candidates (default: 0.5)",
+            "description": "Minimum cosine similarity for retrieval candidates (default: 0.7)",
             "type": "number",
             "minimum": 0,
             "maximum": 1
           },
           "topK": {
-            "description": "Number of experiences to retrieve (default: 5)",
+            "description": "Number of experiences to retrieve (default: 8)",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
@@ -12241,11 +12961,11 @@
                 "type": "object",
                 "properties": {
                   "simThreshold": {
-                    "description": "Default minimum similarity for auto-injection (default: 0.5)",
+                    "description": "Default minimum similarity for auto-injection (default: 0.7)",
                     "type": "number"
                   },
                   "topK": {
-                    "description": "Default maximum entries per category to contextually retrieve (default: 5)",
+                    "description": "Default maximum entries per category to contextually retrieve (default: 3)",
                     "type": "number"
                   },
                   "categories": {
@@ -12667,12 +13387,41 @@
         },
         "additionalProperties": false
       },
+      "EmailImapConfig": {
+        "description": "IMAP settings for reading emails",
+        "type": "object",
+        "properties": {
+          "host": {
+            "description": "IMAP server hostname",
+            "type": "string"
+          },
+          "port": {
+            "description": "IMAP server port",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "secure": {
+            "description": "Use TLS/SSL for the IMAP connection",
+            "type": "boolean"
+          },
+          "username": {
+            "description": "IMAP username",
+            "type": "string"
+          },
+          "password": {
+            "description": "IMAP password or app token",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "EmailConfig": {
         "description": "Outgoing email configuration",
         "type": "object",
         "properties": {
           "enabled": {
-            "description": "Enable outgoing email features",
+            "description": "Enable email features",
             "type": "boolean"
           },
           "from": {
@@ -12680,6 +13429,9 @@
           },
           "smtp": {
             "$ref": "#/components/schemas/EmailSmtpConfig"
+          },
+          "imap": {
+            "$ref": "#/components/schemas/EmailImapConfig"
           }
         },
         "additionalProperties": false
@@ -12871,6 +13623,16 @@
             },
             "additionalProperties": {
               "$ref": "#/components/schemas/AgentConfig"
+            }
+          },
+          "external_agent": {
+            "description": "External agent configurations (e.g. codex, claude-code)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExternalAgentConfig"
             }
           },
           "provider": {
@@ -13094,6 +13856,16 @@
               }
             }
           },
+          "question": {
+            "type": "object",
+            "properties": {
+              "timeout": {
+                "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
           "compaction": {
             "type": "object",
             "properties": {
@@ -13104,78 +13876,18 @@
               "prune": {
                 "description": "Enable pruning of old tool outputs (default: true)",
                 "type": "boolean"
+              },
+              "overflowThreshold": {
+                "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 1
               }
             }
           },
           "experimental": {
             "type": "object",
             "properties": {
-              "hook": {
-                "type": "object",
-                "properties": {
-                  "file_edited": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "command": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "environment": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "required": ["command"]
-                      }
-                    }
-                  },
-                  "session_completed": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "command": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "environment": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "required": ["command"]
-                    }
-                  }
-                }
-              },
-              "chatMaxRetries": {
-                "description": "Number of retries for chat completions on failure",
-                "type": "number"
-              },
-              "disable_paste_summary": {
-                "type": "boolean"
-              },
               "batch_tool": {
                 "description": "Enable the batch tool",
                 "type": "boolean"
@@ -13201,6 +13913,20 @@
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
               }
+            }
+          },
+          "pluginConfig": {
+            "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
             }
           },
           "category": {
@@ -13353,8 +14079,7 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean",
-            "const": true
+            "type": "boolean"
           },
           "requested": {
             "type": "array",
@@ -13617,6 +14342,9 @@
             "type": "object",
             "properties": {
               "context": {
+                "type": "number"
+              },
+              "input": {
                 "type": "number"
               },
               "output": {
@@ -14010,6 +14738,17 @@
               }
             },
             "required": ["itemID"]
+          },
+          "lastExchange": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "string"
+              },
+              "assistant": {
+                "type": "string"
+              }
+            }
           },
           "revert": {
             "type": "object",
@@ -14742,6 +15481,29 @@
         },
         "required": ["status", "input", "raw"]
       },
+      "ToolStateGenerating": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "generating"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "charsReceived": {
+            "type": "number"
+          }
+        },
+        "required": ["status", "input", "raw", "charsReceived"]
+      },
       "ToolStateRunning": {
         "type": "object",
         "properties": {
@@ -14872,6 +15634,9 @@
         "anyOf": [
           {
             "$ref": "#/components/schemas/ToolStatePending"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateGenerating"
           },
           {
             "$ref": "#/components/schemas/ToolStateRunning"
@@ -15323,6 +16088,14 @@
               }
             },
             "required": ["messageID", "callID"]
+          },
+          "timeout": {
+            "description": "Seconds before this question auto-expires",
+            "type": "number"
+          },
+          "createdAt": {
+            "description": "Unix timestamp (ms) when this question was asked",
+            "type": "number"
           }
         },
         "required": ["id", "sessionID", "questions"]
@@ -15457,6 +16230,10 @@
           "mcp": {
             "type": "boolean"
           },
+          "source": {
+            "type": "string",
+            "enum": ["command", "mcp", "skill"]
+          },
           "template": {
             "anyOf": [
               {
@@ -15541,9 +16318,43 @@
                 "builtin": {
                   "type": "boolean"
                 },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "synergy", "claude", "openclaw", "codex", "generic"]
+                },
                 "scope": {
                   "type": "string",
-                  "enum": ["builtin", "global", "project"]
+                  "enum": ["builtin", "project", "global", "workspace", "external"]
+                },
+                "compatibility": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": ["native", "compatible", "partial"]
+                    },
+                    "warnings": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "unsupported": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["level"]
+                },
+                "entryFile": {
+                  "type": "string"
+                },
+                "baseDir": {
+                  "type": "string"
                 },
                 "references": {
                   "type": "array",
@@ -16228,21 +17039,6 @@
         },
         "required": ["id", "title", "content", "category", "recallMode", "createdAt", "updatedAt"]
       },
-      "AgendaSessionList": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "sessionID": {
-              "type": "string"
-            },
-            "scopeID": {
-              "type": "string"
-            }
-          },
-          "required": ["sessionID", "scopeID"]
-        }
-      },
       "AgendaRunLog": {
         "type": "object",
         "properties": {
@@ -16297,6 +17093,135 @@
         },
         "required": ["id", "itemID", "status", "trigger", "time"]
       },
+      "AgendaActivityAgenda": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "description": "Scope that owns the agenda item",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "active", "paused", "done", "cancelled"]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "scopeID", "title", "status", "global", "time"]
+      },
+      "AgendaActivitySession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "description": "Scope that owns the session",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "archived": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "scopeID", "title", "time"]
+      },
+      "AgendaActivityEntry": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/AgendaRunLog"
+          },
+          "agenda": {
+            "$ref": "#/components/schemas/AgendaActivityAgenda"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AgendaActivitySession"
+          }
+        },
+        "required": ["run", "agenda"]
+      },
+      "AgendaActivityPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaActivityEntry"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "total", "limit", "offset", "hasMore"]
+      },
+      "AgendaSessionList": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sessionID": {
+              "type": "string"
+            },
+            "scopeID": {
+              "type": "string"
+            }
+          },
+          "required": ["sessionID", "scopeID"]
+        }
+      },
       "AgendaTriggerResult": {
         "type": "object",
         "properties": {
@@ -16317,6 +17242,9 @@
           "title": {
             "type": "string"
           },
+          "prompt": {
+            "type": "string"
+          },
           "description": {
             "type": "string"
           },
@@ -16332,11 +17260,38 @@
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "global": {
+            "type": "boolean"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "wake": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "sessionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
+          },
+          "timeout": {
+            "type": "number"
           },
           "createdBy": {
             "default": "user",
@@ -16351,7 +17306,7 @@
             "$ref": "#/components/schemas/SessionEndpoint"
           }
         },
-        "required": ["title"]
+        "required": ["title", "prompt"]
       },
       "AgendaPatchInput": {
         "type": "object",
@@ -16378,11 +17333,26 @@
               "$ref": "#/components/schemas/AgendaTrigger"
             }
           },
-          "task": {
-            "$ref": "#/components/schemas/AgendaTask"
+          "prompt": {
+            "type": "string"
           },
-          "delivery": {
-            "$ref": "#/components/schemas/AgendaDelivery"
+          "global": {
+            "type": "boolean"
+          },
+          "wake": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "sessionRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaSessionRef"
+            }
           }
         }
       },
@@ -16539,6 +17509,495 @@
           }
         },
         "required": ["id", "url", "mime", "size"]
+      },
+      "StatsSnapshot": {
+        "type": "object",
+        "properties": {
+          "overview": {
+            "type": "object",
+            "properties": {
+              "totalSessions": {
+                "type": "number"
+              },
+              "activeSessions": {
+                "type": "number"
+              },
+              "archivedSessions": {
+                "type": "number"
+              },
+              "totalMessages": {
+                "type": "number"
+              },
+              "totalTurns": {
+                "type": "number"
+              },
+              "totalDays": {
+                "type": "number"
+              },
+              "longestStreak": {
+                "type": "number"
+              },
+              "currentStreak": {
+                "type": "number"
+              },
+              "projectCount": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "totalSessions",
+              "activeSessions",
+              "archivedSessions",
+              "totalMessages",
+              "totalTurns",
+              "totalDays",
+              "longestStreak",
+              "currentStreak",
+              "projectCount"
+            ]
+          },
+          "tokenCost": {
+            "type": "object",
+            "properties": {
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  },
+                  "reasoning": {
+                    "type": "number"
+                  },
+                  "cache": {
+                    "type": "object",
+                    "properties": {
+                      "read": {
+                        "type": "number"
+                      },
+                      "write": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["read", "write"]
+                  }
+                },
+                "required": ["input", "output", "reasoning", "cache"]
+              },
+              "cost": {
+                "type": "number"
+              },
+              "cacheHitRate": {
+                "type": "number"
+              },
+              "avgCostPerTurn": {
+                "type": "number"
+              },
+              "avgTokensPerTurn": {
+                "type": "number"
+              },
+              "dailyCost": {
+                "type": "number"
+              },
+              "dailyTokens": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "tokens",
+              "cost",
+              "cacheHitRate",
+              "avgCostPerTurn",
+              "avgTokensPerTurn",
+              "dailyCost",
+              "dailyTokens"
+            ]
+          },
+          "models": {
+            "type": "object",
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "providerID": {
+                      "type": "string"
+                    },
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "messages": {
+                      "type": "number"
+                    },
+                    "turns": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "avgResponseMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["providerID", "modelID", "messages", "turns", "tokens", "cost", "avgResponseMs"]
+                }
+              }
+            },
+            "required": ["models"]
+          },
+          "agents": {
+            "type": "object",
+            "properties": {
+              "agents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "agent": {
+                      "type": "string"
+                    },
+                    "messages": {
+                      "type": "number"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "subagentInvocations": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["agent", "messages", "sessions", "tokens", "cost", "subagentInvocations"]
+                }
+              },
+              "totalSubagentCalls": {
+                "type": "number"
+              }
+            },
+            "required": ["agents", "totalSubagentCalls"]
+          },
+          "tools": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "calls": {
+                      "type": "number"
+                    },
+                    "successes": {
+                      "type": "number"
+                    },
+                    "errors": {
+                      "type": "number"
+                    },
+                    "avgDurationMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["tool", "calls", "successes", "errors", "avgDurationMs"]
+                }
+              }
+            },
+            "required": ["tools"]
+          },
+          "codeChanges": {
+            "type": "object",
+            "properties": {
+              "totalAdditions": {
+                "type": "number"
+              },
+              "totalDeletions": {
+                "type": "number"
+              },
+              "totalFiles": {
+                "type": "number"
+              },
+              "netLines": {
+                "type": "number"
+              },
+              "dailyAdditions": {
+                "type": "number"
+              },
+              "dailyDeletions": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "totalAdditions",
+              "totalDeletions",
+              "totalFiles",
+              "netLines",
+              "dailyAdditions",
+              "dailyDeletions"
+            ]
+          },
+          "lifecycle": {
+            "type": "object",
+            "properties": {
+              "pinnedCount": {
+                "type": "number"
+              },
+              "avgTurnsPerSession": {
+                "type": "number"
+              },
+              "medianTurnsPerSession": {
+                "type": "number"
+              },
+              "compactionCount": {
+                "type": "number"
+              },
+              "retryCount": {
+                "type": "number"
+              },
+              "errorCount": {
+                "type": "number"
+              },
+              "errorRate": {
+                "type": "number"
+              },
+              "durationBuckets": {
+                "type": "object",
+                "properties": {
+                  "short": {
+                    "type": "number"
+                  },
+                  "medium": {
+                    "type": "number"
+                  },
+                  "long": {
+                    "type": "number"
+                  }
+                },
+                "required": ["short", "medium", "long"]
+              }
+            },
+            "required": [
+              "pinnedCount",
+              "avgTurnsPerSession",
+              "medianTurnsPerSession",
+              "compactionCount",
+              "retryCount",
+              "errorCount",
+              "errorRate",
+              "durationBuckets"
+            ]
+          },
+          "channels": {
+            "type": "object",
+            "properties": {
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "channel": {
+                      "type": "string"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "messages": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["channel", "sessions", "messages"]
+                }
+              },
+              "interactiveSessions": {
+                "type": "number"
+              },
+              "unattendedSessions": {
+                "type": "number"
+              }
+            },
+            "required": ["channels", "interactiveSessions", "unattendedSessions"]
+          },
+          "timeSeries": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "day": {
+                      "type": "string"
+                    },
+                    "sessions": {
+                      "type": "number"
+                    },
+                    "turns": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "number"
+                        },
+                        "cache": {
+                          "type": "object",
+                          "properties": {
+                            "read": {
+                              "type": "number"
+                            },
+                            "write": {
+                              "type": "number"
+                            }
+                          },
+                          "required": ["read", "write"]
+                        }
+                      },
+                      "required": ["input", "output", "reasoning", "cache"]
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "additions": {
+                      "type": "number"
+                    },
+                    "deletions": {
+                      "type": "number"
+                    },
+                    "files": {
+                      "type": "number"
+                    },
+                    "toolCalls": {
+                      "type": "number"
+                    },
+                    "errors": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "day",
+                    "sessions",
+                    "turns",
+                    "tokens",
+                    "cost",
+                    "additions",
+                    "deletions",
+                    "files",
+                    "toolCalls",
+                    "errors"
+                  ]
+                }
+              },
+              "hours": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "hour": {
+                      "type": "string"
+                    },
+                    "turns": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["hour", "turns"]
+                }
+              },
+              "hourlyActivity": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "required": ["days", "hours", "hourlyActivity"]
+          },
+          "computedAt": {
+            "type": "number"
+          },
+          "watermark": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "overview",
+          "tokenCost",
+          "models",
+          "agents",
+          "tools",
+          "codeChanges",
+          "lifecycle",
+          "channels",
+          "timeSeries",
+          "computedAt",
+          "watermark"
+        ]
       },
       "HolosCredentialsStatusResponse": {
         "type": "object",
@@ -17008,6 +18467,28 @@
           "required": ["triggerMessageId", "subSessionId"]
         }
       },
+      "ExternalAgentInfo": {
+        "type": "object",
+        "properties": {
+          "adapter": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["adapter"]
+      },
       "Agent": {
         "type": "object",
         "properties": {
@@ -17065,6 +18546,9 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "external": {
+            "$ref": "#/components/schemas/ExternalAgentInfo"
           }
         },
         "required": ["name", "mode", "permission", "options"]
@@ -17596,6 +19080,58 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.mcp.prompts.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.prompts.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.resources.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.resources.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.ready": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.ready"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.command.executed": {
         "type": "object",
         "properties": {
@@ -17985,6 +19521,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.question.timed_out": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.timed_out"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.runtime.reloaded": {
         "type": "object",
         "properties": {
@@ -18006,9 +19564,15 @@
                 "items": {
                   "$ref": "#/components/schemas/RuntimeReloadTarget"
                 }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
-            "required": ["executed", "cascaded"]
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -18451,6 +20015,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.holos.presence": {
         "type": "object",
         "properties": {
@@ -18867,6 +20453,15 @@
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
+            "$ref": "#/components/schemas/Event.mcp.prompts.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.resources.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
             "$ref": "#/components/schemas/Event.command.executed"
           },
           {
@@ -18919,6 +20514,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.question.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.timed_out"
           },
           {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
@@ -18979,6 +20577,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
           },
           {
             "$ref": "#/components/schemas/Event.holos.presence"

@@ -20,6 +20,7 @@ import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
+import { publishMetaSynergyCandidate } from "./nodes/publish-meta-synergy-candidate"
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -53,7 +54,8 @@ try {
   await publishMetaProtocolCandidate(version, channel)
   await publishPluginCandidate(version, channel)
   const synergy = await publishSynergyCandidate(version, channel)
-  state.registryPackages.push(...synergy.platformPackages)
+  await publishMetaSynergyCandidate(version, channel)
+  state.registryPackages.push(...synergy.platformPackages, "@ericsanchezok/meta-synergy")
   console.log("dev release", JSON.stringify(summarizeState(state), null, 2))
 } finally {
   await restoreFiles(snapshot)

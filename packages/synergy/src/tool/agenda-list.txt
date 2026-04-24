@@ -1,5 +1,5 @@
-List agenda items in the current scope. Returns items sorted by creation time (newest first), including status, triggers, next/last run info, and run count.
+List agenda items visible from the current scope. By default shows items from the current project plus global items.
+
+Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, default).
 
 Use this to find items before calling `agenda_update`, `agenda_delete`, `agenda_trigger`, or `agenda_logs` — all of which require an item ID.
-
-Filter by `status` to find e.g. only active or paused items. Filter by `tag` to narrow by category.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import z from "zod"
-import { DiagramTool } from "../../src/tool/diagram"
+import { DiagramTool, Diagram } from "../../src/tool/diagram"
 
 const ctx = {
   sessionID: "test",
@@ -49,6 +49,30 @@ describe("tool.diagram", () => {
       direction: undefined,
       nodes: [{ label: "Client" }, { label: "Server" }],
       edges: [{ from: "Client", to: "Server", label: undefined }],
+    })
+  })
+
+  test("normalizes LR graph inputs without changing edge order", () => {
+    const doc = Diagram.normalize(
+      Diagram.parse({
+        type: "graph",
+        title: "Research State Machine",
+        direction: "LR",
+        nodes: ["Init", "Explore", "Ground"],
+        edges: ["Init -> Explore", "Explore -> Ground: candidate selected", "Ground -> Explore: novelty collapses"],
+      }),
+    )
+
+    expect(doc).toEqual({
+      type: "graph",
+      title: "Research State Machine",
+      direction: "LR",
+      nodes: [{ label: "Init" }, { label: "Explore" }, { label: "Ground" }],
+      edges: [
+        { from: "Init", to: "Explore", label: undefined },
+        { from: "Explore", to: "Ground", label: "candidate selected" },
+        { from: "Ground", to: "Explore", label: "novelty collapses" },
+      ],
     })
   })
 })

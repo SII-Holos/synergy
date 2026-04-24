@@ -155,7 +155,7 @@ export namespace LSP {
 
   export async function reload() {
     log.info("reloading lsp state")
-    await state.reset()
+    await state.resetAll()
     log.info("lsp state reloaded")
   }
 

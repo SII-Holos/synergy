@@ -56,13 +56,18 @@ async function collectSessions(scope: string, sinceMs?: number, beforeMs?: numbe
 
   for (const s of scopes) {
     const scopeID = Identifier.asScopeID(s.id)
-    const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
-    const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(id)))
+    const index = await Session.readPageIndex(scopeID)
+    const filtered = index.entries.filter((entry) => {
+      if (entry.archived) return false
+      if (sinceMs && entry.updated < sinceMs) return false
+      if (beforeMs && entry.updated >= beforeMs) return false
+      return true
+    })
+    if (filtered.length === 0) continue
+    const keys = filtered.map((entry) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(entry.id)))
     const sessions = await Storage.readMany<Session.Info>(keys)
     for (const session of sessions) {
-      if (!session || !session.scope || session.parentID || session.time.archived) continue
-      if (sinceMs && session.time.updated < sinceMs) continue
-      if (beforeMs && session.time.updated >= beforeMs) continue
+      if (!session || !session.scope || session.parentID) continue
       allSessions.push(session)
     }
   }
@@ -72,10 +77,7 @@ async function collectSessions(scope: string, sinceMs?: number, beforeMs?: numbe
 }
 
 function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefined {
-  const text = msg.parts
-    .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.ignored && !p.synthetic)
-    .map((p) => p.text)
-    .join("\n")
+  const text = MessageV2.extractText(msg.parts)
 
   if (!text) return undefined
 

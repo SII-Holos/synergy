@@ -157,8 +157,8 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       if (params.reference) {
         const refName = params.reference
 
-        if (skill.builtin && skill.references) {
-          // Built-in skill: serve reference from memory
+        if (skill.references && !skill.location.startsWith("/")) {
+          // In-memory skill (builtin or plugin): serve reference from memory
           const content = resolveBuiltinReference(skill.references, refName)
           if (!content) {
             const available = Object.keys(skill.references).join(", ")
@@ -171,10 +171,10 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
             output: content.trim(),
             metadata: {
               name: params.name,
-              dir: "builtin",
+              dir: skill.builtin ? "builtin" : (skill.baseDir ?? "builtin"),
             },
           }
-        } else if (!skill.builtin && skill.location) {
+        } else if (skill.location && skill.location.startsWith("/")) {
           // User skill: read reference from filesystem
           const dir = path.dirname(skill.location)
           const resolved = await resolveUserReference(dir, refName)
@@ -199,9 +199,13 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       let output: string
       let dir: string
 
-      if (skill.builtin && skill.content) {
-        dir = "builtin"
-        const parts = [`## Skill: ${skill.name}`, "", `**Type**: Built-in skill`]
+      if (skill.content) {
+        dir = skill.builtin ? "builtin" : (skill.baseDir ?? "builtin")
+        const parts = [
+          `## Skill: ${skill.name}`,
+          "",
+          skill.builtin ? `**Type**: Built-in skill` : `**Type**: Plugin skill`,
+        ]
         if (skill.source) parts.push(`**Source**: ${skill.source}`)
         if (skill.scope) parts.push(`**Scope**: ${skill.scope}`)
         if (skill.compatibility) parts.push(`**Compatibility**: ${skill.compatibility.level}`)
