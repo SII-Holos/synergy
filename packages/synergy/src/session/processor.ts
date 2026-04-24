@@ -189,38 +189,42 @@ export namespace SessionProcessor {
 
                 case "tool-call": {
                   const match = toolcalls[value.toolCallId]
-                  if (match) {
-                    const part = await Session.updatePart({
-                      ...match,
-                      tool: value.toolName,
-                      state: {
-                        status: "running",
-                        input: value.input,
-                        time: {
-                          start: Date.now(),
-                        },
+                  const part = await Session.updatePart({
+                    ...(match ?? {
+                      id: Identifier.ascending("part"),
+                      messageID: input.assistantMessage.id,
+                      sessionID: input.assistantMessage.sessionID,
+                      type: "tool" as const,
+                      callID: value.toolCallId,
+                    }),
+                    tool: value.toolName,
+                    state: {
+                      status: "running",
+                      input: value.input,
+                      time: {
+                        start: Date.now(),
                       },
-                      metadata: value.providerMetadata,
+                    },
+                    metadata: value.providerMetadata,
+                  })
+                  toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                  delete generatingAccum[value.toolCallId]
+
+                  if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, value.input)) {
+                    const agent = await Agent.get(input.assistantMessage.agent)
+                    const session = await Session.get(input.assistantMessage.sessionID)
+                    await PermissionNext.ask({
+                      permission: "doom_loop",
+                      patterns: [value.toolName],
+                      sessionID: input.assistantMessage.sessionID,
+                      metadata: {
+                        tool: value.toolName,
+                        input: value.input,
+                        ...PermissionNext.requestMetadata(session),
+                      },
+
+                      ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
                     })
-                    toolcalls[value.toolCallId] = part as MessageV2.ToolPart
-                    delete generatingAccum[value.toolCallId]
-
-                    if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, value.input)) {
-                      const agent = await Agent.get(input.assistantMessage.agent)
-                      const session = await Session.get(input.assistantMessage.sessionID)
-                      await PermissionNext.ask({
-                        permission: "doom_loop",
-                        patterns: [value.toolName],
-                        sessionID: input.assistantMessage.sessionID,
-                        metadata: {
-                          tool: value.toolName,
-                          input: value.input,
-                          ...PermissionNext.requestMetadata(session),
-                        },
-
-                        ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                      })
-                    }
                   }
                   break
                 }
