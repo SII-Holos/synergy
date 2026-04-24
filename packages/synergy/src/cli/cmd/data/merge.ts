@@ -83,7 +83,9 @@ export const DataMergeCommand = cmd({
         const m = source.manifest
         prompts.log.info(`Archive created: ${m.createdAt}`)
         if (m.engram) {
-          prompts.log.info(`Source engram: ${m.engram.dimensions ?? "no"} dimensions${m.engram.embeddingModel ? ` (${m.engram.embeddingModel})` : ""}, ${m.engram.memoryCount} memories`)
+          prompts.log.info(
+            `Source engram: ${m.engram.dimensions ?? "no"} dimensions${m.engram.embeddingModel ? ` (${m.engram.embeddingModel})` : ""}, ${m.engram.memoryCount} memories`,
+          )
         }
       }
 
@@ -104,7 +106,10 @@ export const DataMergeCommand = cmd({
         return
       }
 
-      const selectedKeys = new Set([...(selected as string[]), ...CATEGORIES.filter((c) => c.required).map((c) => c.key)])
+      const selectedKeys = new Set([
+        ...(selected as string[]),
+        ...CATEGORIES.filter((c) => c.required).map((c) => c.key),
+      ])
       const selectedCategories = CATEGORIES.filter((c) => selectedKeys.has(c.key))
 
       // Step 2: Confirm
@@ -121,10 +126,19 @@ export const DataMergeCommand = cmd({
       if (selectedKeys.has("core") && srcEngramInfo.exists) {
         const tgtEngramInfo = await getEngramInfo(tgtEngram)
 
-        if (tgtEngramInfo.exists && srcEngramInfo.dimensions && tgtEngramInfo.dimensions && srcEngramInfo.dimensions !== tgtEngramInfo.dimensions) {
+        if (
+          tgtEngramInfo.exists &&
+          srcEngramInfo.dimensions &&
+          tgtEngramInfo.dimensions &&
+          srcEngramInfo.dimensions !== tgtEngramInfo.dimensions
+        ) {
           prompts.log.warn("Vector dimension mismatch:")
-          prompts.log.info(`  Source: ${srcEngramInfo.dimensions}d${srcEngramInfo.embeddingModel ? ` (${srcEngramInfo.embeddingModel})` : ""}`)
-          prompts.log.info(`  Target: ${tgtEngramInfo.dimensions}d${tgtEngramInfo.embeddingModel ? ` (${tgtEngramInfo.embeddingModel})` : ""}`)
+          prompts.log.info(
+            `  Source: ${srcEngramInfo.dimensions}d${srcEngramInfo.embeddingModel ? ` (${srcEngramInfo.embeddingModel})` : ""}`,
+          )
+          prompts.log.info(
+            `  Target: ${tgtEngramInfo.dimensions}d${tgtEngramInfo.embeddingModel ? ` (${tgtEngramInfo.embeddingModel})` : ""}`,
+          )
 
           const choice = await prompts.select({
             message: "How should engram data be handled?",
@@ -190,10 +204,16 @@ export const DataMergeCommand = cmd({
 
           try {
             const catFileCount = srcCatStats.get(cat.key)?.fileCount ?? 0
-            const result = await copyDirSkipExisting(src, dst, (p) => {
-              const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-              spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-            }, undefined, catFileCount)
+            const result = await copyDirSkipExisting(
+              src,
+              dst,
+              (p) => {
+                const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+                spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+              },
+              undefined,
+              catFileCount,
+            )
             const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
             spinner.stop(`Merged ${subdir}/${skippedNote}`)
           } catch (e) {
@@ -242,8 +262,14 @@ async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
       // Read manifest if it exists
       const manifestPath = path.join(tmpDir, "manifest.json")
       let manifest: PackManifest | null = null
-      if (await Bun.file(manifestPath).exists().catch(() => false)) {
-        manifest = await Bun.file(manifestPath).json().catch(() => null)
+      if (
+        await Bun.file(manifestPath)
+          .exists()
+          .catch(() => false)
+      ) {
+        manifest = await Bun.file(manifestPath)
+          .json()
+          .catch(() => null)
       }
 
       spinner.stop("Archive extracted")
@@ -270,8 +296,14 @@ async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
   // Check for manifest (if merging from a previously packed+extracted dir)
   const manifestPath = path.join(resolved, "manifest.json")
   let manifest: PackManifest | null = null
-  if (await Bun.file(manifestPath).exists().catch(() => false)) {
-    manifest = await Bun.file(manifestPath).json().catch(() => null)
+  if (
+    await Bun.file(manifestPath)
+      .exists()
+      .catch(() => false)
+  ) {
+    manifest = await Bun.file(manifestPath)
+      .json()
+      .catch(() => null)
   }
 
   return {

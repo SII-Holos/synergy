@@ -136,7 +136,10 @@ export async function dirExists(p: string): Promise<boolean> {
     .catch(() => false)
 }
 
-export async function checkDiskSpace(target: string, needed: number): Promise<{ ok: boolean; available: number | null }> {
+export async function checkDiskSpace(
+  target: string,
+  needed: number,
+): Promise<{ ok: boolean; available: number | null }> {
   try {
     const targetParent = path.dirname(target)
     await fs.mkdir(targetParent, { recursive: true })
@@ -366,9 +369,9 @@ export async function getEngramInfo(dbPath: string): Promise<{
     const { Database } = await import("bun:sqlite")
     const conn = new Database(dbPath, { readonly: true })
 
-    const schemaRow = conn
-      .prepare("SELECT embedding_dimensions FROM schema_version LIMIT 1")
-      .get() as { embedding_dimensions: number | null } | null
+    const schemaRow = conn.prepare("SELECT embedding_dimensions FROM schema_version LIMIT 1").get() as {
+      embedding_dimensions: number | null
+    } | null
 
     const dimensions = schemaRow?.embedding_dimensions ?? null
 
@@ -547,9 +550,9 @@ export async function mergeEngramDB(
     result.vecDropped = true
   } else if (strategy === "replace_vectors") {
     // Drop target vec tables and recreate from source
-    const sourceSchema = source
-      .prepare("SELECT embedding_dimensions FROM schema_version LIMIT 1")
-      .get() as { embedding_dimensions: number | null } | null
+    const sourceSchema = source.prepare("SELECT embedding_dimensions FROM schema_version LIMIT 1").get() as {
+      embedding_dimensions: number | null
+    } | null
 
     const dimensions = sourceSchema?.embedding_dimensions
     if (dimensions) {

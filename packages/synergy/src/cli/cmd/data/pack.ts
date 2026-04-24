@@ -4,14 +4,7 @@ import os from "os"
 import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../ui"
-import {
-  CATEGORIES,
-  scanCategories,
-  formatSize,
-  shortenPath,
-  dataRoot,
-  getEngramInfo,
-} from "./shared"
+import { CATEGORIES, scanCategories, formatSize, shortenPath, dataRoot, getEngramInfo } from "./shared"
 
 export const DataPackCommand = cmd({
   command: "pack [output]",
@@ -94,7 +87,12 @@ export const DataPackCommand = cmd({
       for (const cat of selectedCategories) {
         for (const subdir of cat.subdirs) {
           const full = path.join(root, subdir)
-          if (await fs.access(full).then(() => true).catch(() => false)) {
+          if (
+            await fs
+              .access(full)
+              .then(() => true)
+              .catch(() => false)
+          ) {
             includePaths.push(subdir)
           }
         }

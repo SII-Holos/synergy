@@ -45,7 +45,9 @@ export async function executeMove(opts: MoveOptions) {
     totalFiles += stats.fileCount
   }
 
-  prompts.log.info(`Source: ${shortenPath(sourceRoot)} (${formatSize(totalSize)}, ${totalFiles.toLocaleString()} files)`)
+  prompts.log.info(
+    `Source: ${shortenPath(sourceRoot)} (${formatSize(totalSize)}, ${totalFiles.toLocaleString()} files)`,
+  )
 
   // Step 1: Target directory
   let targetPath: string
@@ -150,7 +152,9 @@ export async function executeMove(opts: MoveOptions) {
   // Step 4: Check running server
   const lock = await SingleInstance.read().catch(() => undefined)
   if (lock && isPidAlive(lock.pid)) {
-    prompts.log.warn(`Synergy server is running (pid ${lock.pid}). Moving data while running may produce inconsistent results.`)
+    prompts.log.warn(
+      `Synergy server is running (pid ${lock.pid}). Moving data while running may produce inconsistent results.`,
+    )
     const stopFirst = await prompts.confirm({
       message: "Stop the running server before continuing?",
       initialValue: true,
@@ -182,8 +186,12 @@ export async function executeMove(opts: MoveOptions) {
 
       if (srcInfo.dimensions && tgtInfo.dimensions && srcInfo.dimensions !== tgtInfo.dimensions) {
         prompts.log.warn("Vector dimension mismatch between source and target engram:")
-        prompts.log.info(`  Source: ${srcInfo.dimensions}d${srcInfo.embeddingModel ? ` (${srcInfo.embeddingModel})` : ""}`)
-        prompts.log.info(`  Target: ${tgtInfo.dimensions}d${tgtInfo.embeddingModel ? ` (${tgtInfo.embeddingModel})` : ""}`)
+        prompts.log.info(
+          `  Source: ${srcInfo.dimensions}d${srcInfo.embeddingModel ? ` (${srcInfo.embeddingModel})` : ""}`,
+        )
+        prompts.log.info(
+          `  Target: ${tgtInfo.dimensions}d${tgtInfo.embeddingModel ? ` (${tgtInfo.embeddingModel})` : ""}`,
+        )
 
         const choice = await prompts.select({
           message: "How should engram data be handled?",
@@ -253,10 +261,16 @@ export async function executeMove(opts: MoveOptions) {
       spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
 
       try {
-        const result = await copyDirSkipExisting(src, dst, (p) => {
-          const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-          spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-        }, undefined, catFileCount)
+        const result = await copyDirSkipExisting(
+          src,
+          dst,
+          (p) => {
+            const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+            spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+          },
+          undefined,
+          catFileCount,
+        )
         const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
         spinner.stop(`Moved ${subdir}/${skippedNote}`)
       } catch (e) {
@@ -269,10 +283,7 @@ export async function executeMove(opts: MoveOptions) {
   // Step 7: Write marker
   if (errors.length === 0) {
     const markerPath = path.join(targetPath, ".synergy-home")
-    await Bun.write(
-      markerPath,
-      `# Created by 'synergy data move' on ${new Date().toISOString()}\n`,
-    )
+    await Bun.write(markerPath, `# Created by 'synergy data move' on ${new Date().toISOString()}\n`)
   }
 
   // Step 8: Remove original if requested

@@ -5,7 +5,15 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../ui"
 import { Global } from "../../../global"
-import { shortenPath, dirExists, updateShellProfile, removeShellProfile, isDirEmpty, scanCategories, formatSize } from "./shared"
+import {
+  shortenPath,
+  dirExists,
+  updateShellProfile,
+  removeShellProfile,
+  isDirEmpty,
+  scanCategories,
+  formatSize,
+} from "./shared"
 
 export const DataSetHomeCommand = cmd({
   command: "set-home <path>",
