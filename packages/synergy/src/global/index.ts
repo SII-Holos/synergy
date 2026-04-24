@@ -5,14 +5,18 @@ import os from "os"
 
 const app = "synergy"
 
+function homeDir() {
+  return process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME || os.homedir()
+}
+
 function root() {
-  return path.join(process.env.SYNERGY_TEST_HOME || os.homedir(), "." + app)
+  return path.join(homeDir(), "." + app)
 }
 
 export namespace Global {
   export const Path = {
     get home() {
-      return process.env.SYNERGY_TEST_HOME || os.homedir()
+      return homeDir()
     },
     get root() {
       return root()
