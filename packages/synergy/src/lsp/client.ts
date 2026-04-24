@@ -3,7 +3,6 @@ import { Bus } from "@/bus"
 import path from "path"
 import { pathToFileURL, fileURLToPath } from "url"
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
-import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
 import { Log } from "../util/log"
 import { LANGUAGE_EXTENSIONS } from "./language"
 import z from "zod"
@@ -20,7 +19,16 @@ export namespace LSPClient {
 
   export type Info = NonNullable<Awaited<ReturnType<typeof create>>>
 
-  export type Diagnostic = VSCodeDiagnostic
+  export interface Diagnostic {
+    severity?: 1 | 2 | 3 | 4
+    message: string
+    range: {
+      start: {
+        line: number
+        character: number
+      }
+    }
+  }
 
   export const InitializeError = NamedError.create(
     "LSPInitializeError",

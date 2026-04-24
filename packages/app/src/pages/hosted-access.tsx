@@ -1,7 +1,7 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { createEffect, createMemo, createSignal, Match, onCleanup, onMount, Show, Switch } from "solid-js"
-import { type AppAccess, callbackUrlFor } from "@/utils/runtime"
+import { appAccessFromUrlParam, type AppAccess, callbackUrlFor } from "@/utils/runtime"
 import { AppWithAccess } from "@/app-access"
 
 interface HostedProfile {
@@ -476,5 +476,10 @@ function HostedAccessGate() {
 }
 
 export function HostedAppInterface() {
+  const overrideAccess = appAccessFromUrlParam()
+  if (overrideAccess) {
+    return <AppWithAccess access={overrideAccess} />
+  }
+
   return <HostedAccessGate />
 }

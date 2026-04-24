@@ -13,10 +13,6 @@ function trimSlashes(value: string) {
   return value.replace(/\/+$/, "")
 }
 
-function trimPathSlashes(value: string) {
-  return value.replace(/^\/+|\/+$/g, "")
-}
-
 function isHttpUrl(value: string) {
   return /^https?:\/\//i.test(value)
 }
@@ -43,10 +39,10 @@ export function isHostedMode() {
   return value === "1" || value === "true"
 }
 
-function readUrlParamAccess() {
+export function appAccessFromUrlParam(): AppAccess | undefined {
   const param = new URLSearchParams(document.location.search).get("url")
   if (!param || !isHttpUrl(param)) return
-  return trimSlashes(param)
+  return fromAttachUrl(param)
 }
 
 export function callbackUrlFor(attachUrl: string) {
@@ -62,53 +58,16 @@ function fromAttachUrl(attachUrl: string): AppAccess {
 }
 
 export async function resolveAppAccess(): Promise<AppAccess> {
-  const fromUrl = readUrlParamAccess()
-  if (fromUrl) return fromAttachUrl(fromUrl)
+  const fromUrl = appAccessFromUrlParam()
+  if (fromUrl) return fromUrl
 
-  if (!isHostedMode()) {
-    const attachUrl = import.meta.env.DEV
-      ? (import.meta.env.VITE_SYNERGY_SERVER_URL ?? "http://localhost:4096")
-      : browserBaseUrl()
-    return {
-      attachUrl,
-      callbackUrl: import.meta.env.DEV
-        ? (import.meta.env.VITE_SYNERGY_CALLBACK_URL ?? callbackUrlFor(attachUrl))
-        : callbackUrlFor(attachUrl),
-    }
+  const attachUrl = import.meta.env.DEV
+    ? (import.meta.env.VITE_SYNERGY_SERVER_URL ?? "http://localhost:4096")
+    : browserBaseUrl()
+  return {
+    attachUrl,
+    callbackUrl: import.meta.env.DEV
+      ? (import.meta.env.VITE_SYNERGY_CALLBACK_URL ?? callbackUrlFor(attachUrl))
+      : callbackUrlFor(attachUrl),
   }
-
-  const endpoint = import.meta.env.VITE_SYNERGY_ATTACH_URL_ENDPOINT
-  if (!endpoint) {
-    throw new Error("Hosted mode requires VITE_SYNERGY_ATTACH_URL_ENDPOINT or a ?url=... override.")
-  }
-
-  const response = await fetch(endpoint, {
-    credentials: "include",
-    headers: {
-      accept: "application/json",
-    },
-  })
-
-  let data: Record<string, unknown> | undefined
-  try {
-    data = (await response.json()) as Record<string, unknown>
-  } catch {
-    data = undefined
-  }
-
-  if (!response.ok) {
-    const message =
-      (typeof data?.message === "string" && data.message) ||
-      (typeof data?.error === "string" && data.error) ||
-      `Failed to fetch Synergy access URL (${response.status})`
-    throw new Error(message)
-  }
-
-  const attachUrl =
-    (typeof data?.attachUrl === "string" && data.attachUrl) || (typeof data?.url === "string" && data.url) || ""
-  if (!isHttpUrl(attachUrl)) {
-    throw new Error("Synergy access API did not return a valid attachUrl.")
-  }
-
-  return fromAttachUrl(attachUrl)
 }
