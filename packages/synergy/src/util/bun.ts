@@ -143,7 +143,15 @@ export namespace BunProc {
       }
     }
 
-    parsed.dependencies[pkg] = resolvedVersion
+    // For non-registry packages, write the spec itself (e.g.
+    // "github:SII-Holos/holos-inspire") as the dependency value so Bun
+    // can re-resolve it correctly. Writing a semver like "0.1.0" causes
+    // Bun to treat it as "github:...@0.1.0" which is invalid.
+    if (isNonRegistry) {
+      parsed.dependencies[pkg] = pkg
+    } else {
+      parsed.dependencies[pkg] = resolvedVersion
+    }
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
     return resolveEntry(mod, pkg, isNonRegistry)
   }
