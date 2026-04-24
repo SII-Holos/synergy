@@ -155,7 +155,7 @@ export function DagGraph(props: { nodes: DagNode[]; ready?: string[] }) {
 
   return (
     <div data-component="dag-graph" ref={ref}>
-      <Show when={layout().laid.length > 0}>
+      <Show when={layout()?.laid.length}>
         <div data-slot="dag-graph-canvas" style={{ width: `${layout().width}px`, height: `${layout().height}px` }}>
           <svg width={layout().width} height={layout().height} data-slot="dag-graph-edges">
             <For each={layout().edges}>
