@@ -421,6 +421,24 @@ export default function Page() {
     return result
   })
 
+  createEffect(() => {
+    const session = currentSession()
+    let title: string
+    if (isGlobalScope(sdk.directory)) {
+      title = "Home"
+    } else if (isHolosConversation()) {
+      const contact = holosContact()
+      title = contact?.name || contact?.id || "New session"
+    } else {
+      title = session?.title || "New session"
+    }
+    document.title = `${title} — Synergy`
+  })
+
+  onCleanup(() => {
+    document.title = "Synergy"
+  })
+
   createEffect(
     on(
       () => params.id,
