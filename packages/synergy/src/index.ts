@@ -135,13 +135,17 @@ const cli = yargs(hideBin(process.argv))
   .command(PluginCommand)
   .command(DataCommand)
   .command(MigrateCommand)
-  .fail((msg) => {
+  .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
       msg?.startsWith("Not enough non-option arguments") ||
       msg?.startsWith("Invalid values:")
     ) {
       cli.showHelp("log")
+    } else if (err) {
+      console.error(err)
+    } else if (msg) {
+      console.error(msg)
     }
     process.exit(1)
   })

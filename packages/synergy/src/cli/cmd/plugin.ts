@@ -11,6 +11,8 @@ import { BunProc } from "../../util/bun"
 import { PluginSpec } from "../../util/plugin-spec"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
+import { Instance } from "../../scope/instance"
+import { Scope } from "@/scope"
 import { EOL } from "os"
 import path from "path"
 import { existsSync } from "fs"
@@ -104,43 +106,48 @@ export const PluginUpdateCommand = cmd({
       describe: "specific plugin spec to update (e.g. github:SII-Holos/holos-inspire)",
     }),
   async handler(args) {
-    const config = await Config.get()
-    const plugins = config.plugin ?? []
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const config = await Config.get()
+        const plugins = config.plugin ?? []
 
-    if (plugins.length === 0) {
-      UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
-      return
-    }
+        if (plugins.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
+          return
+        }
 
-    const toUpdate = args.plugin ? [args.plugin as string] : plugins
+        const toUpdate = args.plugin ? [args.plugin as string] : plugins
 
-    if (args.plugin && !plugins.includes(args.plugin as string)) {
-      UI.error(`Plugin "${args.plugin}" is not in your configuration.`)
-      return
-    }
+        if (args.plugin && !plugins.includes(args.plugin as string)) {
+          UI.error(`Plugin "${args.plugin}" is not in your configuration.`)
+          return
+        }
 
-    let succeeded = 0
-    let failed = 0
+        let succeeded = 0
+        let failed = 0
 
-    for (const pluginSpec of toUpdate) {
-      const { pkg, version } = PluginSpec.parse(pluginSpec)
-      const spinner = prompts.spinner()
-      spinner.start(`Updating ${pluginSpec}`)
+        for (const pluginSpec of toUpdate) {
+          const { pkg, version } = PluginSpec.parse(pluginSpec)
+          const spinner = prompts.spinner()
+          spinner.start(`Updating ${pluginSpec}`)
 
-      try {
-        await BunProc.invalidateCache(pkg)
-        await BunProc.install(pkg, version)
-        spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
-        succeeded++
-      } catch {
-        spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
-        failed++
-      }
-    }
+          try {
+            await BunProc.invalidateCache(pkg)
+            await BunProc.install(pkg, version)
+            spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            succeeded++
+          } catch {
+            spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            failed++
+          }
+        }
 
-    UI.println(
-      `${UI.Style.TEXT_DIM}Updated ${succeeded} plugin${succeeded !== 1 ? "s" : ""}${failed > 0 ? `, ${failed} failed` : ""}${UI.Style.TEXT_NORMAL}`,
-    )
+        UI.println(
+          `${UI.Style.TEXT_DIM}Updated ${succeeded} plugin${succeeded !== 1 ? "s" : ""}${failed > 0 ? `, ${failed} failed` : ""}${UI.Style.TEXT_NORMAL}`,
+        )
+      },
+    })
   },
 })
 
@@ -149,22 +156,27 @@ export const PluginListCommand = cmd({
   describe: "list configured plugins and their install status",
   builder: (yargs: Argv) => yargs,
   async handler() {
-    const config = await Config.get()
-    const plugins = config.plugin ?? []
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const config = await Config.get()
+        const plugins = config.plugin ?? []
 
-    if (plugins.length === 0) {
-      UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
-      return
-    }
+        if (plugins.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
+          return
+        }
 
-    for (const pluginSpec of plugins) {
-      const { pkg } = PluginSpec.parse(pluginSpec)
-      const installed = isPluginInstalled(pkg)
-      const status = installed
-        ? `${UI.Style.TEXT_SUCCESS}✔ installed${UI.Style.TEXT_NORMAL}`
-        : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
-      UI.println(`${pluginSpec.padEnd(36)} ${status}`)
-    }
+        for (const pluginSpec of plugins) {
+          const { pkg } = PluginSpec.parse(pluginSpec)
+          const installed = isPluginInstalled(pkg)
+          const status = installed
+            ? `${UI.Style.TEXT_SUCCESS}✔ installed${UI.Style.TEXT_NORMAL}`
+            : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
+          UI.println(`${pluginSpec.padEnd(36)} ${status}`)
+        }
+      },
+    })
   },
 })
 
