@@ -237,13 +237,17 @@ export namespace SessionCompaction {
     const toPrune = selectPartsToPrune(msgs, input.modelID)
 
     if (toPrune.length > 0) {
-      for (const part of toPrune) {
-        if (part.state.status === "completed") {
+      const completed = toPrune.filter(
+        (part): part is MessageV2.ToolPart & { state: { status: "completed"; time: { compacted?: number } } } =>
+          part.state.status === "completed",
+      )
+      await Promise.all(
+        completed.map((part) => {
           part.state.time.compacted = Date.now()
-          await Session.updatePart(part)
-        }
-      }
-      log.info("pruned", { count: toPrune.length })
+          return Session.updatePart(part)
+        }),
+      )
+      log.info("pruned", { count: completed.length })
     }
   }
 

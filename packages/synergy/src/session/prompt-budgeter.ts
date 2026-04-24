@@ -136,14 +136,17 @@ export namespace PromptBudgeter {
   }
 
   async function estimateTools(defs: ToolResolver.Definition[], modelID: string) {
-    let total = 0
-    for (const item of defs) {
-      total += TOOL_OVERHEAD_PER_TOOL
-      total += await Token.estimateModel(modelID, item.id)
-      total += await Token.estimateModel(modelID, item.description)
-      total += await estimateSchema(modelID, item.inputSchema)
-    }
-    return total
+    const results = await Promise.all(
+      defs.map(async (item) => {
+        const [idTokens, descTokens, schemaTokens] = await Promise.all([
+          Token.estimateModel(modelID, item.id),
+          Token.estimateModel(modelID, item.description),
+          estimateSchema(modelID, item.inputSchema),
+        ])
+        return TOOL_OVERHEAD_PER_TOOL + idTokens + descTokens + schemaTokens
+      }),
+    )
+    return results.reduce((sum, n) => sum + n, 0)
   }
 
   async function estimateSchema(modelID: string, schema: JSONSchema7) {
