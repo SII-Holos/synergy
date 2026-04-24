@@ -934,7 +934,7 @@ export namespace Provider {
 
       const customFetch = options["fetch"]
 
-      const DEFAULT_TIMEOUT_MS = 300_000
+      const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         const fetchFn = customFetch ?? fetch
