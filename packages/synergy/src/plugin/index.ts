@@ -17,8 +17,10 @@ import { Bus } from "../bus"
 import { Log } from "../util/log"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { BunProc } from "../util/bun"
+import { PluginSpec } from "../util/plugin-spec"
 import { Instance } from "../scope/instance"
 import { Flag } from "../flag/flag"
+import { UI } from "../cli/ui"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
@@ -188,33 +190,35 @@ export namespace Plugin {
       pluginPaths.push(...BUILTIN)
     }
 
+    let installedCount = 0
+    let failedCount = 0
+
     for (let pluginPath of pluginPaths) {
       log.info("loading plugin", { path: pluginPath })
+      const name = PluginSpec.displayName(pluginPath)
       let pluginDir: string
 
       if (!pluginPath.startsWith("file://")) {
-        // For non-registry specs (github:, git+ssh:, git+https:, etc.),
-        // the entire string is the package spec — don't split on @ because
-        // URLs like git+ssh://git@github.com/org/repo contain @ in the
-        // userinfo. For registry packages, split on the last @ to separate
-        // name and version.
-        const isNonRegistry = /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/.test(pluginPath)
-        let pkg: string
-        let version: string
-        if (isNonRegistry) {
-          pkg = pluginPath
-          version = "latest"
-        } else {
-          const lastAtIndex = pluginPath.lastIndexOf("@")
-          pkg = lastAtIndex > 0 ? pluginPath.substring(0, lastAtIndex) : pluginPath
-          version = lastAtIndex > 0 ? pluginPath.substring(lastAtIndex + 1) : "latest"
-        }
+        const { pkg, version, nonRegistry } = PluginSpec.parse(pluginPath)
         const builtin = BUILTIN.some((x) => x.startsWith(pkg + "@"))
-        pluginPath = await BunProc.install(pkg, version).catch((err) => {
-          if (builtin) return ""
+
+        UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
+
+        const result = await BunProc.install(pkg, version).catch((err) => {
+          UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
+          failedCount++
+          if (builtin) return null
           throw err
         })
-        if (!pluginPath) continue
+        if (!result) continue
+
+        installedCount++
+        pluginPath = result.entryPath
+        UI.println(
+          result.cached
+            ? `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} ${UI.Style.TEXT_DIM}(cached)${UI.Style.TEXT_NORMAL}`
+            : `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} installed`,
+        )
         pluginDir = findPackageRoot(pluginPath)
       } else {
         const filePath = pluginPath.slice("file://".length)
@@ -252,8 +256,13 @@ export namespace Plugin {
           skills: hooks.skills,
           agents: hooks.agents,
         })
+        UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
         log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
       }
+    }
+
+    if (pluginPaths.length > 0) {
+      UI.println(`  Plugins: ${installedCount} installed, ${failedCount} failed`)
     }
 
     return { loaded, baseInput }

@@ -7,10 +7,10 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { readableStreamToText } from "bun"
 import { createRequire } from "module"
 import { Lock } from "../util/lock"
+import { PluginSpec } from "./plugin-spec"
 
 export namespace BunProc {
   const log = Log.create({ service: "bun" })
-  const req = createRequire(import.meta.url)
 
   export async function run(cmd: string[], options?: Bun.SpawnOptions.OptionsObject<any, any, any>) {
     log.info("running", {
@@ -61,13 +61,39 @@ export namespace BunProc {
     }),
   )
 
-  const NON_REGISTRY_RE = /^(github:|git\+|git:\/\/|https?:\/\/|ssh:\/\/)/
+  /** Resolve the actual package name from the lockfile for non-registry specs. */
+  export function resolvePkgName(spec: string): string {
+    try {
+      const lockfilePath = path.join(Global.Path.cache, "bun.lock")
+      const content = JSON.parse(require("fs").readFileSync(lockfilePath, "utf-8"))
+      if (content?.workspaces) {
+        for (const workspace of Object.values(content.workspaces) as any[]) {
+          if (!workspace?.dependencies) continue
+          for (const [name, value] of Object.entries(workspace.dependencies)) {
+            if (value === spec || (typeof value === "string" && value.startsWith(spec + "#"))) {
+              return name
+            }
+          }
+        }
+      }
+    } catch {}
+    // Fallback: strip protocol prefix and take the repo name
+    return spec
+      .replace(/^github:/, "")
+      .split("/")
+      .pop()!
+  }
 
-  export async function install(pkg: string, version = "latest") {
+  export interface InstallResult {
+    entryPath: string
+    cached: boolean
+  }
+
+  export async function install(pkg: string, version = "latest"): Promise<InstallResult> {
     // Use lock to ensure only one install at a time
     using _ = await Lock.write("bun-install")
 
-    const isNonRegistry = NON_REGISTRY_RE.test(pkg) || NON_REGISTRY_RE.test(version)
+    const isNonRegistry = PluginSpec.isNonRegistry(pkg) || PluginSpec.isNonRegistry(version)
 
     const pkgjson = Bun.file(path.join(Global.Path.cache, "package.json"))
     const parsed = await pkgjson.json().catch(async () => {
@@ -84,8 +110,9 @@ export namespace BunProc {
     // In both cases, verify the directory actually exists to guard against
     // a partially failed prior install that left a stale cache entry.
     const dirExists = existsSync(cached)
-    if (dirExists && existing === version) return resolveEntry(cached, pkg, isNonRegistry)
-    if (dirExists && existing && version === "latest") return resolveEntry(cached, pkg, isNonRegistry)
+    if (dirExists && existing === version) return { entryPath: resolveEntry(cached, pkg, isNonRegistry), cached: true }
+    if (dirExists && existing && version === "latest")
+      return { entryPath: resolveEntry(cached, pkg, isNonRegistry), cached: true }
 
     const proxied = !!(
       process.env.HTTP_PROXY ||
@@ -153,7 +180,27 @@ export namespace BunProc {
       parsed.dependencies[pkg] = resolvedVersion
     }
     await Bun.write(pkgjson.name!, JSON.stringify(parsed, null, 2))
-    return resolveEntry(mod, pkg, isNonRegistry)
+    return { entryPath: resolveEntry(mod, pkg, isNonRegistry), cached: false }
+  }
+
+  export async function invalidateCache(pkg?: string) {
+    const pkgjsonPath = path.join(Global.Path.cache, "package.json")
+    const pkgjson = Bun.file(pkgjsonPath)
+    const parsed = await pkgjson.json().catch(() => ({ dependencies: {} }))
+
+    if (pkg) {
+      delete parsed.dependencies[pkg]
+    } else {
+      parsed.dependencies = {}
+    }
+
+    await Bun.write(pkgjsonPath, JSON.stringify(parsed, null, 2))
+
+    const lockfilePath = path.join(Global.Path.cache, "bun.lock")
+    if (existsSync(lockfilePath)) {
+      const { unlinkSync } = require("fs")
+      unlinkSync(lockfilePath)
+    }
   }
 
   /**
@@ -163,40 +210,12 @@ export namespace BunProc {
    * so we read the lockfile to find the real directory name.
    */
   function modPath(pkg: string, isNonRegistry: boolean): string {
-    const actualPkg = isNonRegistry ? resolveActualPkgNameFromLockfile(pkg) : pkg
+    const actualPkg = isNonRegistry ? resolvePkgName(pkg) : pkg
     return path.join(Global.Path.cache, "node_modules", actualPkg)
   }
 
-  function resolveActualPkgNameFromLockfile(spec: string): string {
-    try {
-      const lockfilePath = path.join(Global.Path.cache, "bun.lock")
-      const content = JSON.parse(require("fs").readFileSync(lockfilePath, "utf-8"))
-      if (content?.workspaces) {
-        for (const workspace of Object.values(content.workspaces) as any[]) {
-          if (!workspace?.dependencies) continue
-          for (const [name, value] of Object.entries(workspace.dependencies)) {
-            if (value === spec || (typeof value === "string" && value.startsWith(spec + "#"))) {
-              return name
-            }
-          }
-        }
-      }
-    } catch {}
-    // Fallback: strip protocol prefix and take the repo name
-    return spec
-      .replace(/^github:/, "")
-      .split("/")
-      .pop()!
-  }
-
-  /**
-   * Resolve the entry file path from a package directory.
-   * Bun's import() cannot resolve a bare directory path — it needs a file.
-   * Use require.resolve() with the package name (resolved from the lockfile
-   * for non-registry specs) which handles package.json "exports" and "main".
-   */
   function resolveEntry(pkgDir: string, pkg: string, isNonRegistry: boolean): string {
-    const actualPkg = isNonRegistry ? resolveActualPkgNameFromLockfile(pkg) : pkg
+    const actualPkg = isNonRegistry ? resolvePkgName(pkg) : pkg
     try {
       // require.resolve with a bare name resolves through node_modules
       // starting from Global.Path.cache, which is where we install packages.
