@@ -124,6 +124,8 @@ interface LayoutEdge {
   label?: string
   kind: EdgeKind
   lane: number
+  srcPort: number
+  dstPort: number
 }
 
 interface GroupRect {
@@ -168,6 +170,7 @@ const GROUP_LABEL_H = 18
 const EDGE_ARROW_ID = "diagram-graph-arrowhead"
 const LOOP_EDGE_BASE = 28
 const LOOP_EDGE_GAP = 34
+const BETWEEN_LANE_GAP = 20
 
 function estimateTextWidth(text: string): number {
   let w = 0
@@ -188,6 +191,145 @@ function estimateNodeH(node: NormalizedNode, cardW: number): number {
     h += descLines * DESC_LINE_H + 2
   }
   return h
+}
+
+// ── Crossing minimization ──
+
+function avgSlotInLayer(neighbors: number[], layerNodes: number[]): number {
+  if (neighbors.length === 0) return Infinity
+  let sum = 0
+  let count = 0
+  for (const n of neighbors) {
+    const idx = layerNodes.indexOf(n)
+    if (idx >= 0) {
+      sum += idx
+      count++
+    }
+  }
+  return count > 0 ? sum / count : Infinity
+}
+
+function minimizeCrossings(
+  layerGroups: Map<number, number[]>,
+  edges: IndexedEdge[],
+  layers: number[],
+): Map<number, number[]> {
+  const result = new Map<number, number[]>()
+  for (const [layer, nodes] of layerGroups) {
+    result.set(layer, [...nodes])
+  }
+
+  const maxLayer = Math.max(...result.keys())
+  if (maxLayer <= 0) return result
+
+  const succs: number[][] = Array.from({ length: layers.length }, () => [])
+  const preds: number[][] = Array.from({ length: layers.length }, () => [])
+  for (const e of edges) {
+    succs[e.from].push(e.to)
+    preds[e.to].push(e.from)
+  }
+
+  // Repeat forward/backward sweeps for convergence
+  for (let pass = 0; pass < 4; pass++) {
+    for (let l = 1; l <= maxLayer; l++) {
+      const nodes = result.get(l)
+      if (!nodes || nodes.length <= 1) continue
+      const prev = result.get(l - 1) ?? []
+      nodes.sort((a, b) => avgSlotInLayer(preds[a], prev) - avgSlotInLayer(preds[b], prev))
+    }
+    for (let l = maxLayer - 1; l >= 0; l--) {
+      const nodes = result.get(l)
+      if (!nodes || nodes.length <= 1) continue
+      const next = result.get(l + 1) ?? []
+      nodes.sort((a, b) => avgSlotInLayer(succs[a], next) - avgSlotInLayer(succs[b], next))
+    }
+  }
+
+  return result
+}
+
+// ── Port assignment ──
+
+interface EdgePorts {
+  srcPort: number
+  dstPort: number
+}
+
+function computePorts(edges: IndexedEdge[], laid: LayoutNode[]): EdgePorts[] {
+  const ports: EdgePorts[] = edges.map(() => ({ srcPort: 0.5, dstPort: 0.5 }))
+
+  // Group by source — distribute exit ports
+  const srcGroups = new Map<number, Array<{ edgeIdx: number; targetCx: number }>>()
+  const dstGroups = new Map<number, Array<{ edgeIdx: number; sourceCx: number }>>()
+
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    const from = laid[e.from]
+    const to = laid[e.to]
+
+    const sList = srcGroups.get(e.from) ?? []
+    sList.push({ edgeIdx: i, targetCx: to.x + to.w / 2 })
+    srcGroups.set(e.from, sList)
+
+    const dList = dstGroups.get(e.to) ?? []
+    dList.push({ edgeIdx: i, sourceCx: from.x + from.w / 2 })
+    dstGroups.set(e.to, dList)
+  }
+
+  for (const [, group] of srcGroups) {
+    if (group.length <= 1) continue
+    group.sort((a, b) => a.targetCx - b.targetCx)
+    group.forEach((item, idx) => {
+      ports[item.edgeIdx].srcPort = 0.12 + (0.76 * idx) / (group.length - 1)
+    })
+  }
+
+  for (const [, group] of dstGroups) {
+    if (group.length <= 1) continue
+    group.sort((a, b) => a.sourceCx - b.sourceCx)
+    group.forEach((item, idx) => {
+      ports[item.edgeIdx].dstPort = 0.12 + (0.76 * idx) / (group.length - 1)
+    })
+  }
+
+  return ports
+}
+
+// ── TB lane assignment ──
+
+function assignTBLanes(edges: IndexedEdge[], layers: number[], laid: LayoutNode[], ports: EdgePorts[]): number[] {
+  const lanes = new Array<number>(edges.length).fill(0)
+
+  // Group by (fromLayer, toLayer)
+  const groups = new Map<string, Array<{ edgeIdx: number; srcCx: number; dstCx: number }>>()
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    if (layers[e.from] >= layers[e.to]) continue // only forward edges get horizontal lanes
+    const key = `${layers[e.from]}-${layers[e.to]}`
+    const group = groups.get(key) ?? []
+    const src = laid[e.from]
+    const dst = laid[e.to]
+    group.push({
+      edgeIdx: i,
+      srcCx: src.x + src.w * ports[i].srcPort,
+      dstCx: dst.x + dst.w * ports[i].dstPort,
+    })
+    groups.set(key, group)
+  }
+
+  for (const [, group] of groups) {
+    if (group.length <= 1) continue
+    group.sort((a, b) => {
+      const midA = (a.srcCx + a.dstCx) / 2
+      const midB = (b.srcCx + b.dstCx) / 2
+      return midA - midB
+    })
+    group.forEach((item, idx) => {
+      lanes[item.edgeIdx] = idx - (group.length - 1) / 2
+    })
+  }
+
+  return lanes
 }
 
 function normalizeGraphDirection(direction?: string): GraphDirection {
@@ -313,6 +455,7 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
     }
   }
 
+  // Phase 1: Build indexed edges
   const labelIndex = new Map(nodes.map((node, index) => [node.label, index]))
   const indexedEdges: IndexedEdge[] = []
   for (const edge of doc.edges) {
@@ -322,8 +465,12 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
     indexedEdges.push({ from, to, label: edge.label })
   }
 
+  // Phase 2: Layer assignment
   const layers = computeGraphLayers(nodes.length, indexedEdges)
-  const layerGroups = new Map<number, number[]>()
+  const maxLayer = Math.max(0, ...layers)
+  const layerCount = maxLayer + 1
+
+  let layerGroups = new Map<number, number[]>()
   for (let i = 0; i < nodes.length; i++) {
     const layer = layers[i]
     const group = layerGroups.get(layer) ?? []
@@ -331,8 +478,12 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
     layerGroups.set(layer, group)
   }
 
-  const maxLayer = Math.max(0, ...layerGroups.keys())
-  const layerCount = maxLayer + 1
+  // Phase 3: Crossing minimization
+  if (indexedEdges.length > 0) {
+    layerGroups = minimizeCrossings(layerGroups, indexedEdges, layers)
+  }
+
+  // Phase 4: Coordinate assignment
   const maxGroupSize = Math.max(1, ...[...layerGroups.values()].map((group) => group.length))
   const cw = containerWidth || 600
   const cardW =
@@ -377,9 +528,12 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
       })
     }
 
+    // Phase 5: Ports + lanes
+    const ports = computePorts(indexedEdges, laid)
     const provisionalEdges = indexedEdges.map((edge) => ({ fromLayer: layers[edge.from], toLayer: layers[edge.to] }))
     const lanes = assignEdgeLanes(provisionalEdges)
     const loopLaneCount = lanes.filter((lane) => lane >= 0).length
+
     const nodeBounds = {
       left: Math.min(...laid.map((node) => node.x)),
       top: Math.min(...laid.map((node) => node.y)),
@@ -395,7 +549,8 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
       const fromLayer = layers[edge.from]
       const toLayer = layers[edge.to]
       const kind: EdgeKind = toLayer > fromLayer ? "forward" : toLayer < fromLayer ? "backward" : "same-layer"
-      return { from, to, label: edge.label, kind, lane: lanes[index] }
+      const p = ports[index]
+      return { from, to, label: edge.label, kind, lane: lanes[index], srcPort: p.srcPort, dstPort: p.dstPort }
     })
 
     return {
@@ -410,6 +565,8 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
       loopStart,
     }
   }
+
+  // ── TB layout ──
 
   const layerHeights = new Array<number>(layerCount).fill(0)
   for (let layer = 0; layer <= maxLayer; layer++) {
@@ -444,21 +601,33 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
     currentY += layerHeights[layer] + GAP_Y
   }
 
+  // Phase 5: Ports
+  const ports = computePorts(indexedEdges, laid)
+
+  // Phase 6: Lanes — forward edges get horizontal lanes, backward get below-graph lanes
+  const tbForwardLanes = assignTBLanes(indexedEdges, layers, laid, ports)
+  const provisionalEdges = indexedEdges.map((edge) => ({ fromLayer: layers[edge.from], toLayer: layers[edge.to] }))
+  const backwardLanes = assignEdgeLanes(provisionalEdges)
+  const loopLaneCount = backwardLanes.filter((lane) => lane >= 0).length
+
   const nodeBounds = {
     left: Math.min(...laid.map((node) => node.x)),
     top: Math.min(...laid.map((node) => node.y)),
     right: Math.max(...laid.map((node) => node.x + node.w)),
     bottom: Math.max(...laid.map((node) => node.y + node.h)),
   }
+  const loopStart = nodeBounds.bottom + LOOP_EDGE_BASE
+  const height = loopLaneCount > 0 ? loopStart + (loopLaneCount - 1) * LOOP_EDGE_GAP + PAD : nodeBounds.bottom + PAD
 
-  const height = currentY - GAP_Y + PAD
-  const edges = indexedEdges.map((edge) => {
+  const edges = indexedEdges.map((edge, index) => {
     const from = laid[edge.from]
     const to = laid[edge.to]
     const fromLayer = layers[edge.from]
     const toLayer = layers[edge.to]
     const kind: EdgeKind = toLayer > fromLayer ? "forward" : toLayer < fromLayer ? "backward" : "same-layer"
-    return { from, to, label: edge.label, kind, lane: -1 }
+    const p = ports[index]
+    const lane = kind === "forward" ? tbForwardLanes[index] : backwardLanes[index]
+    return { from, to, label: edge.label, kind, lane, srcPort: p.srcPort, dstPort: p.dstPort }
   })
 
   return {
@@ -470,7 +639,7 @@ export function computeGraphLayout(doc: GraphDocument, containerWidth: number): 
     cardW,
     direction,
     nodeBounds,
-    loopStart: nodeBounds.bottom,
+    loopStart,
   }
 }
 
@@ -478,9 +647,9 @@ function getGraphEdgePath(edge: LayoutEdge, layout: GraphLayout) {
   if (layout.direction === "LR") {
     if (edge.kind === "forward") {
       const x1 = edge.from.x + edge.from.w
-      const y1 = edge.from.y + edge.from.h / 2
-      const x2 = edge.to.x - 8
-      const y2 = edge.to.y + edge.to.h / 2
+      const y1 = edge.from.y + edge.from.h * edge.srcPort
+      const x2 = edge.to.x
+      const y2 = edge.to.y + edge.to.h * edge.dstPort
       const cx = (x1 + x2) / 2
       return {
         path: `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`,
@@ -489,9 +658,10 @@ function getGraphEdgePath(edge: LayoutEdge, layout: GraphLayout) {
       }
     }
 
-    const x1 = edge.from.x + edge.from.w / 2
+    // Backward / same-layer: route below graph
+    const x1 = edge.from.x + edge.from.w * edge.srcPort
     const y1 = edge.from.y + edge.from.h
-    const x2 = edge.to.x + edge.to.w / 2
+    const x2 = edge.to.x + edge.to.w * edge.dstPort
     const y2 = edge.to.y + edge.to.h
     const laneY = layout.loopStart + edge.lane * LOOP_EDGE_GAP
     const midX = (x1 + x2) / 2
@@ -502,15 +672,40 @@ function getGraphEdgePath(edge: LayoutEdge, layout: GraphLayout) {
     }
   }
 
-  const x1 = edge.from.x + edge.from.w / 2
+  // ── TB layout ──
+  const x1 = edge.from.x + edge.from.w * edge.srcPort
   const y1 = edge.from.y + edge.from.h
-  const x2 = edge.to.x + edge.to.w / 2
-  const y2 = edge.to.y - 8
-  const cy = (y1 + y2) / 2
+  const x2 = edge.to.x + edge.to.w * edge.dstPort
+  const y2 = edge.to.y
+
+  if (edge.kind === "forward") {
+    const cy = (y1 + y2) / 2
+    const midX = (x1 + x2) / 2 + edge.lane * BETWEEN_LANE_GAP
+    return {
+      path: `M${x1},${y1} C${x1},${cy} ${midX},${cy} ${x2},${y2}`,
+      labelX: midX,
+      labelY: cy,
+    }
+  }
+
+  // Backward: route below graph
+  if (edge.kind === "backward") {
+    const laneY = layout.loopStart + (edge.lane + 1) * LOOP_EDGE_GAP
+    const midX = (x1 + x2) / 2
+    return {
+      path: `M${x1},${y1} C${x1},${laneY} ${midX},${laneY} ${midX},${laneY} S${x2},${laneY} ${x2},${y2}`,
+      labelX: midX,
+      labelY: laneY,
+    }
+  }
+
+  // Same-layer: route with vertical offset below node area
+  const laneY = layout.nodeBounds.bottom + (edge.lane + 1) * LOOP_EDGE_GAP
+  const midX = (x1 + x2) / 2
   return {
-    path: `M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}`,
-    labelX: (x1 + x2) / 2,
-    labelY: cy,
+    path: `M${x1},${y1} C${x1},${laneY} ${midX},${laneY} ${midX},${laneY} S${x2},${laneY} ${x2},${y2}`,
+    labelX: midX,
+    labelY: laneY,
   }
 }
 
@@ -681,7 +876,8 @@ export function DiagramCompare(props: { document: CompareDocument }) {
 
 const SEQ_ACTOR_H = 32
 const SEQ_ACTOR_GAP = 16
-const SEQ_STEP_H = 40
+const SEQ_STEP_H = 36
+const SEQ_STEP_NOTE_H = 52
 const SEQ_TOP_PAD = 8
 const SEQ_STEP_PAD = 12
 const SEQ_SIDE_PAD = 32
@@ -691,18 +887,25 @@ function estimateActorWidth(label: string): number {
   return Math.max(60, estimateTextWidth(label) * 0.72 + 28)
 }
 
+function sequenceStepHeight(step: NormalizedStep): number {
+  return step.note ? SEQ_STEP_NOTE_H : SEQ_STEP_H
+}
+
 function computeSequenceLayout(doc: SequenceDocument, containerWidth: number) {
   const actors = doc.actors
   const steps = doc.steps
   const hasActors = actors.length > 0 && steps.some((s) => s.from || s.to)
+  const stepHeights = steps.map(sequenceStepHeight)
 
   if (!hasActors) {
+    const totalStepH = stepHeights.reduce((s, h) => s + h, 0)
     return {
       hasActors: false as const,
       actors: [] as string[],
       steps,
+      stepHeights,
       width: containerWidth || 400,
-      height: SEQ_TOP_PAD + SEQ_ACTOR_H + steps.length * SEQ_STEP_H + SEQ_STEP_PAD,
+      height: SEQ_TOP_PAD + SEQ_ACTOR_H + totalStepH + SEQ_STEP_PAD,
     }
   }
 
@@ -721,9 +924,9 @@ function computeSequenceLayout(doc: SequenceDocument, containerWidth: number) {
   }
 
   const bodyTop = SEQ_TOP_PAD + SEQ_ACTOR_H + SEQ_ACTOR_GAP
-  const height = bodyTop + steps.length * SEQ_STEP_H + SEQ_STEP_PAD
+  const height = bodyTop + stepHeights.reduce((s, h) => s + h, 0) + SEQ_STEP_PAD
 
-  return { hasActors: true as const, actors, actorWidths, actorXs, steps, width, height, bodyTop }
+  return { hasActors: true as const, actors, actorWidths, actorXs, steps, stepHeights, width, height, bodyTop }
 }
 
 export function DiagramSequence(props: { document: SequenceDocument }) {
@@ -742,7 +945,10 @@ export function DiagramSequence(props: { document: SequenceDocument }) {
 
   return (
     <div data-component="diagram-sequence" ref={ref}>
-      <Show when={layout().hasActors} fallback={<TimelineView steps={layout().steps} />}>
+      <Show
+        when={layout().hasActors}
+        fallback={<TimelineView steps={layout().steps} stepHeights={layout().stepHeights} />}
+      >
         {(_) => {
           const l = layout() as ReturnType<typeof computeSequenceLayout> & { hasActors: true }
           const actorIndex = new Map(l.actors.map((a, i) => [a, i]))
@@ -765,7 +971,8 @@ export function DiagramSequence(props: { document: SequenceDocument }) {
                       const fi = step.from ? actorIndex.get(step.from) : undefined
                       const ti = step.to ? actorIndex.get(step.to) : undefined
                       if (fi === undefined || ti === undefined) return null
-                      const y = l.bodyTop + si() * SEQ_STEP_H + SEQ_STEP_H / 2
+                      const offset = l.stepHeights.slice(0, si()).reduce((s, h) => s + h, 0)
+                      const y = l.bodyTop + offset + l.stepHeights[si()] / 2
                       const x1 = l.actorXs[fi]
                       const x2 = l.actorXs[ti]
                       const labelX = (x1 + x2) / 2
@@ -819,13 +1026,19 @@ export function DiagramSequence(props: { document: SequenceDocument }) {
   )
 }
 
-function TimelineView(props: { steps: NormalizedStep[] }) {
+function TimelineView(props: { steps: NormalizedStep[]; stepHeights: number[] }) {
+  let cumulative = 0
   return (
     <div data-component="diagram-sequence">
-      <svg width="100%" height={props.steps.length * SEQ_STEP_H + SEQ_STEP_PAD * 2} style={{ display: "block" }}>
+      <svg
+        width="100%"
+        height={props.stepHeights.reduce((s, h) => s + h, 0) + SEQ_STEP_PAD * 2}
+        style={{ display: "block" }}
+      >
         <For each={props.steps}>
           {(step, i) => {
-            const y = SEQ_STEP_PAD + i() * SEQ_STEP_H + SEQ_STEP_H / 2
+            const y = SEQ_STEP_PAD + cumulative + props.stepHeights[i()] / 2
+            cumulative += props.stepHeights[i()]
             return (
               <>
                 <rect data-slot="sequence-step-bg" x={PAD} y={y - 14} width="calc(100% - 24px)" height={28} />
@@ -843,17 +1056,26 @@ function TimelineView(props: { steps: NormalizedStep[] }) {
 
 // ── Timeline ──
 
-const TL_CARD_W = 168
+const TL_MIN_CARD_W = 128
+const TL_MAX_CARD_W = 192
 const TL_CARD_GAP = 16
 const TL_AXIS_Y = 28
 const TL_PAD = 20
 
 export function DiagramTimeline(props: { document: TimelineDocument }) {
   const [overflow, setOverflow] = createSignal(false)
+  const [containerWidth, setContainerWidth] = createSignal(0)
+  let ref: HTMLDivElement | undefined
   let scrollRef: HTMLDivElement | undefined
 
   const events = () => props.document.events
-  const totalWidth = () => events().length * TL_CARD_W + (events().length - 1) * TL_CARD_GAP + 2 * TL_PAD
+  const cardW = () => {
+    const cw = containerWidth()
+    const n = events().length
+    const total = cw - 2 * TL_PAD - (n - 1) * TL_CARD_GAP
+    return Math.max(TL_MIN_CARD_W, Math.min(TL_MAX_CARD_W, Math.floor(total / n)))
+  }
+  const totalWidth = () => events().length * cardW() + Math.max(0, events().length - 1) * TL_CARD_GAP + 2 * TL_PAD
 
   function checkOverflow() {
     if (!scrollRef) return
@@ -862,18 +1084,23 @@ export function DiagramTimeline(props: { document: TimelineDocument }) {
   }
 
   onMount(() => {
+    if (!ref) return
+    setContainerWidth(ref.clientWidth)
+    const obs = new ResizeObserver((e) => setContainerWidth(e[0].contentRect.width))
+    obs.observe(ref)
     queueMicrotask(checkOverflow)
+    onCleanup(() => obs.disconnect())
   })
 
   return (
-    <div data-component="diagram-timeline">
+    <div data-component="diagram-timeline" ref={ref}>
       <div data-slot="timeline-scroll" data-overflow={overflow()} ref={scrollRef} onScroll={checkOverflow}>
         <div data-slot="timeline-canvas" style={{ width: `${totalWidth()}px` }}>
           <svg width={totalWidth()} height={TL_AXIS_Y + 6} data-slot="timeline-axis-svg">
             <line x1={TL_PAD} y1={TL_AXIS_Y} x2={totalWidth() - TL_PAD} y2={TL_AXIS_Y} data-slot="timeline-axis" />
             <For each={events()}>
               {(_, i) => {
-                const cx = TL_PAD + i() * (TL_CARD_W + TL_CARD_GAP) + TL_CARD_W / 2
+                const cx = TL_PAD + i() * (cardW() + TL_CARD_GAP) + cardW() / 2
                 return <circle cx={cx} cy={TL_AXIS_Y} r={3.5} data-slot="timeline-dot" />
               }}
             </For>
@@ -1063,19 +1290,28 @@ function ChartBar(props: { labels: string[]; series: ChartSeries[] }) {
                     const barH = () => (val() / layout().ceil) * layout().plotH
                     const x = () =>
                       gx() + layout().groupPad / 2 + si() * layout().barSlotW + (layout().barSlotW - layout().barW) / 2
-                    const y = () => CHART_PAD.top + layout().plotH - barH()
+                    const barTop = () => CHART_PAD.top + layout().plotH - barH()
+                    const labelAbove = () => barTop() - 4
+                    const labelInside = () => barTop() + Math.max(barH() / 2, 8)
+                    const labelY = () => (labelAbove() < CHART_PAD.top + 10 ? labelInside() : labelAbove())
+                    const labelAnchor = () => (labelAbove() < CHART_PAD.top + 10 ? "hanging" : "auto")
                     return (
                       <>
                         <rect
                           x={x()}
-                          y={y()}
+                          y={barTop()}
                           width={layout().barW}
                           height={barH()}
                           rx={2}
                           fill={CHART_COLORS[si() % CHART_COLORS.length]}
                           data-slot="chart-bar"
                         />
-                        <text x={x() + layout().barW / 2} y={y() - 4} data-slot="chart-bar-value">
+                        <text
+                          x={x() + layout().barW / 2}
+                          y={labelY()}
+                          data-slot="chart-bar-value"
+                          data-label-anchor={labelAnchor()}
+                        >
                           {formatTickValue(val())}
                         </text>
                       </>

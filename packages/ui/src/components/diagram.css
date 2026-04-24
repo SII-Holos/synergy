@@ -193,6 +193,10 @@
     }
   }
 
+  tbody tr:nth-child(even) [data-slot="diagram-td"] {
+    background: color-mix(in srgb, var(--surface-raised-base) 40%, transparent);
+  }
+
   [data-slot="diagram-caption"] {
     padding: 8px 12px 0;
     font-size: 11px;
@@ -332,7 +336,8 @@
   }
 
   [data-slot="timeline-card"] {
-    flex: 0 0 168px;
+    flex: 1 1 0;
+    min-width: 0;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-weak-base);
     background: var(--surface-base);
@@ -501,6 +506,11 @@
     fill: var(--text-weaker);
     text-anchor: middle;
     dominant-baseline: auto;
+
+    &[data-label-anchor="hanging"] {
+      dominant-baseline: hanging;
+      fill: var(--surface-base);
+    }
   }
 
   [data-slot="chart-legend"] {
