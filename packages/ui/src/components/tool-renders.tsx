@@ -818,7 +818,7 @@ ToolRegistry.register({
   name: "dagwrite",
   render(props) {
     const nodes = () =>
-      (props.metadata?.nodes ?? props.input.nodes ?? []) as {
+      (props.metadata?.nodes ?? props.input?.nodes ?? []) as {
         id: string
         content: string
         status: string
@@ -856,7 +856,7 @@ ToolRegistry.register({
           args: ratio() ? [ratio()] : [],
         })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>
@@ -890,7 +890,7 @@ ToolRegistry.register({
           args: ratio() ? [ratio()] : [],
         })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>
@@ -923,7 +923,7 @@ ToolRegistry.register({
           args: ratio() ? [ratio()] : [],
         })}
       >
-        <Show when={nodes().length}>
+        <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
         </Show>
       </BasicTool>

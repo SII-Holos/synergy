@@ -138,7 +138,7 @@ function statusLabel(status: string) {
   }
 }
 
-export function DagGraph(props: { nodes: DagNode[]; ready?: string[] }) {
+export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   let ref: HTMLDivElement | undefined
 
@@ -150,7 +150,7 @@ export function DagGraph(props: { nodes: DagNode[]; ready?: string[] }) {
     onCleanup(() => observer.disconnect())
   })
 
-  const layout = createMemo(() => computeLayout(props.nodes, containerWidth()))
+  const layout = createMemo(() => computeLayout(props.nodes ?? [], containerWidth()))
   const readySet = createMemo(() => new Set(props.ready ?? []))
 
   return (
