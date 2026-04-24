@@ -30,6 +30,19 @@ export namespace McpAuth {
 
   const filepath = Global.Path.authMcp
 
+  let cache: Record<string, Entry> | undefined
+
+  export function invalidateCache() {
+    cache = undefined
+  }
+
+  export async function all(): Promise<Record<string, Entry>> {
+    if (cache) return cache
+    const file = Bun.file(filepath)
+    cache = (await file.json().catch(() => ({}))) as Record<string, Entry>
+    return cache
+  }
+
   export async function get(mcpName: string): Promise<Entry | undefined> {
     const data = await all()
     return data[mcpName]
@@ -52,28 +65,19 @@ export namespace McpAuth {
     return entry
   }
 
-  export async function all(): Promise<Record<string, Entry>> {
-    const file = Bun.file(filepath)
-    return file.json().catch(() => ({}))
-  }
-
   export async function set(mcpName: string, entry: Entry, serverUrl?: string): Promise<void> {
-    const file = Bun.file(filepath)
+    if (serverUrl) entry.serverUrl = serverUrl
     const data = await all()
-    // Always update serverUrl if provided
-    if (serverUrl) {
-      entry.serverUrl = serverUrl
-    }
-    await Bun.write(file, JSON.stringify({ ...data, [mcpName]: entry }, null, 2))
-    await fs.chmod(file.name!, 0o600)
+    data[mcpName] = entry
+    await Bun.write(filepath, JSON.stringify(data, null, 2))
+    await fs.chmod(filepath, 0o600)
   }
 
   export async function remove(mcpName: string): Promise<void> {
-    const file = Bun.file(filepath)
     const data = await all()
     delete data[mcpName]
-    await Bun.write(file, JSON.stringify(data, null, 2))
-    await fs.chmod(file.name!, 0o600)
+    await Bun.write(filepath, JSON.stringify(data, null, 2))
+    await fs.chmod(filepath, 0o600)
   }
 
   export async function updateTokens(mcpName: string, tokens: Tokens, serverUrl?: string): Promise<void> {
