@@ -199,9 +199,17 @@ export const ImportStep: Component = () => {
     return t("coreValidationPending")
   }
 
-  const fieldTone = (fieldValid: boolean): StatusTone => {
+  const fieldTone = (fieldValid: boolean, failedRecommended?: boolean): StatusTone => {
     if (liveValidation().status !== "passed" && liveValidation().status !== "failed") return "pending"
+    if (failedRecommended) return "warning"
     return fieldValid ? "success" : "critical"
+  }
+
+  const fieldStatusLabel = (fieldValid: boolean, failedRecommended?: boolean) => {
+    if (liveValidation().status !== "passed" && liveValidation().status !== "failed")
+      return t("coreValidationPending")
+    if (failedRecommended) return t("coreValidationSkipped")
+    return fieldValid ? t("coreValidationPassed") : t("coreValidationFailed")
   }
 
   return (
@@ -293,17 +301,15 @@ export const ImportStep: Component = () => {
                   <ValidationCard
                     tone={
                       liveValidation().status === "passed" || liveValidation().status === "failed"
-                        ? fieldTone(field.valid)
+                        ? fieldTone(field.valid, field.failedRecommended)
                         : undefined
                     }
                   >
                     <div class="flex items-center justify-between gap-3">
                       <span class="su-validation-field-label">{field.label}</span>
-                      <StatusPill tone={fieldTone(field.valid)}>
+                      <StatusPill tone={fieldTone(field.valid, field.failedRecommended)}>
                         {liveValidation().status === "passed" || liveValidation().status === "failed"
-                          ? field.valid
-                            ? t("coreValidationPassed")
-                            : t("coreValidationFailed")
+                          ? fieldStatusLabel(field.valid, field.failedRecommended)
                           : t("coreValidationPending")}
                       </StatusPill>
                     </div>

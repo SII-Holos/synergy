@@ -135,6 +135,17 @@ async function importConfigFromURL(input: { url: string; probe: boolean; force: 
           }
         }
       }
+
+      // Show warnings for recommended fields that were skipped due to validation failure
+      const failedRecommended = Object.entries(probeResult.fields).filter(
+        ([, result]) => result.failedRecommended,
+      ) as Array<[ConfigSetup.RequiredCoreField, ConfigSetup.FieldValidationResult]>
+      if (failedRecommended.length > 0) {
+        prompts.log.warn("Some recommended models could not be verified and will be skipped:")
+        for (const [field, result] of failedRecommended) {
+          prompts.log.warn(`  - ${field}: ${result.message}`)
+        }
+      }
     }
 
     prompts.intro("Import Config from URL")
