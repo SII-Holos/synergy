@@ -215,29 +215,28 @@ export namespace BunProc {
       rmSync(modDir, { recursive: true, force: true })
     }
 
-    // Purge bun's global git cache for non-registry packages.
-    // Bun caches git clones as bare repos under ~/.bun/install/cache/<hash>.git
-    // and extracted packages under names like @GH@owner-repo-hash@@@N.
-    // Without clearing these, `bun add` may reuse stale clones even with
-    // --force and --no-cache, because bun checks out from the cached bare
-    // repo and may pick a stale default branch (e.g. master vs main).
+    // Purge bun's entire package manager cache for non-registry packages.
+    // Bun has a known bug (oven-sh/bun#18947) where `--no-cache` and `--force`
+    // do NOT cause it to re-fetch git dependencies. The only reliable way to
+    // force a fresh clone is to clear the global cache entirely via
+    // `bun pm cache rm`. This is safe because the cache is purely a download
+    // cache — it will be repopulated on next install. We only do this for
+    // non-registry (git) packages during explicit updates, so the blast radius
+    // is limited.
     if (pkg && isNonRegistry) {
-      const { readdirSync, rmSync: rm } = require("fs")
-      const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
-      if (existsSync(bunCacheDir)) {
-        const repoName =
-          pkg
-            .split("/")
-            .pop()
-            ?.replace(/\.git$/, "") ?? ""
-        for (const entry of readdirSync(bunCacheDir)) {
-          // Match both encoded package names (@GH@...repo...) and bare git
-          // repos (<hash>.git). Bare repos use hash names with no repo info,
-          // so we clear ALL .git entries to guarantee a fresh clone.
-          const isGitCache = entry.endsWith(".git")
-          const matchesRepo = repoName && entry.includes(repoName)
-          if (isGitCache || matchesRepo) {
-            rm(path.join(bunCacheDir, entry), { recursive: true, force: true })
+      try {
+        await BunProc.run(["pm", "cache", "rm"], { cwd: Global.Path.cache })
+      } catch {
+        // Best-effort: if bun pm cache rm fails (e.g. no cache exists yet),
+        // fall back to manually removing likely stale entries.
+        const { readdirSync, rmSync: rm } = require("fs")
+        const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
+        if (existsSync(bunCacheDir)) {
+          for (const entry of readdirSync(bunCacheDir)) {
+            const isGitCache = entry.endsWith(".git")
+            if (isGitCache) {
+              rm(path.join(bunCacheDir, entry), { recursive: true, force: true })
+            }
           }
         }
       }
