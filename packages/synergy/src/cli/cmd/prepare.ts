@@ -6,7 +6,9 @@ import path from "path"
 
 function requireSourceCheckout(repoRoot: string): void {
   const generateScript = path.join(repoRoot, "script", "generate.ts")
-  if (!fs.existsSync(generateScript)) {
+  const appDir = path.join(repoRoot, "packages", "app")
+  const synergyDir = path.join(repoRoot, "packages", "synergy")
+  if (!fs.existsSync(generateScript) || !fs.existsSync(appDir) || !fs.existsSync(synergyDir)) {
     UI.error("'synergy prepare' is only available in source checkouts (development mode).")
     UI.error("Installed builds do not need this step.")
     process.exit(1)

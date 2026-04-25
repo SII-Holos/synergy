@@ -10,7 +10,10 @@ const virtuaPackagePath = require.resolve("virtua/package.json")
 const virtuaSolidEntry = path.join(path.dirname(virtuaPackagePath), "lib/solid/index.mjs")
 
 const sdkRoot = path.resolve(fileURLToPath(new URL("../sdk/js", import.meta.url)))
-const sdkDistExists = fs.existsSync(path.join(sdkRoot, "dist/index.js"))
+const sdkDistComplete =
+  fs.existsSync(path.join(sdkRoot, "dist/index.js")) &&
+  fs.existsSync(path.join(sdkRoot, "dist/client.js")) &&
+  fs.existsSync(path.join(sdkRoot, "dist/server.js"))
 
 /**
  * Fallback aliases for the SDK — only active when dist/ hasn't been built yet.
@@ -20,7 +23,7 @@ const sdkDistExists = fs.existsSync(path.join(sdkRoot, "dist/index.js"))
  * restart the dev server to switch back to normal package resolution.
  * @type {import("vite").Alias[]}
  */
-const sdkAliases = sdkDistExists
+const sdkAliases = sdkDistComplete
   ? []
   : [
       { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },

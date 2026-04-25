@@ -240,12 +240,13 @@ describe("PID file identity token", () => {
   })
 
   test("verifyWatchdogIdentity should parse /proc/<pid>/stat correctly (handle comm with spaces)", () => {
-    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+    // parseProcStatStarttime is now in shared util
+    const utilSource = fs.readFileSync(path.join(__dirname, "../../src/util/proc.ts"), "utf-8")
 
     // Must NOT use naive fields[21] which breaks when comm contains spaces.
     // Instead, should find last ')' and parse from there.
-    const usesNaiveSplit = /fields\[21\]/.test(restartSource)
-    const usesLastParen = /lastIndexOf/.test(restartSource) && /lastParen/.test(restartSource)
+    const usesNaiveSplit = /fields\[21\]/.test(utilSource)
+    const usesLastParen = /lastIndexOf/.test(utilSource) && /lastParen/.test(utilSource)
 
     expect(usesNaiveSplit).toBe(false)
     expect(usesLastParen).toBe(true)

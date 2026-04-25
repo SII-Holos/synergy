@@ -5,6 +5,7 @@ import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
 import { getDevWatchdogPidFile, getDevRestartFlagFile } from "../../server/runtime"
+import { parseProcStatStarttime } from "../../util/proc"
 
 async function isWatchdogRunning(pid: number): Promise<boolean> {
   try {
@@ -36,19 +37,6 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
   }
 }
 
-// Parse starttime (field 22) from /proc/<pid>/stat output.
-// Field 2 (comm) is parenthesized and may contain spaces, so we
-// split from the last ')' rather than naively splitting on spaces.
-function parseProcStatStarttime(stat: string): number | undefined {
-  const lastParen = stat.lastIndexOf(")")
-  if (lastParen === -1) return undefined
-  const afterComm = stat.slice(lastParen + 2).trim()
-  const fields = afterComm.split(" ")
-  // After comm, starttime is at index 19 (0-indexed)
-  const starttime = parseInt(fields[19], 10)
-  return isNaN(starttime) ? undefined : starttime
-}
-
 export const RestartCommand = cmd({
   command: "restart",
   describe: "restart synergy server",
@@ -62,6 +50,7 @@ export const RestartCommand = cmd({
       let pid: number
       let startTime: number | undefined
       let starttimeJiffies: number | undefined
+      let storedCwd: string | undefined
 
       // Parse PID file — may be JSON with identity token or plain PID (legacy)
       try {
@@ -69,9 +58,15 @@ export const RestartCommand = cmd({
         pid = parseInt(String(data.pid), 10)
         startTime = data.startTime
         starttimeJiffies = data.starttimeJiffies
+        storedCwd = data.devCwd
       } catch {
         pid = parseInt(content.trim(), 10)
       }
+
+      // Use the stored cwd from PID file for flag file path consistency.
+      // If the server was started from a different directory than restart,
+      // the stored cwd ensures we write the flag file to the right location.
+      const effectiveCwd = storedCwd ?? cwd
 
       if (!isNaN(pid)) {
         const isRunning = await isWatchdogRunning(pid)
@@ -92,7 +87,7 @@ export const RestartCommand = cmd({
             if (process.platform === "win32") {
               // On Windows, SIGUSR1 is not available. Use a flag file
               // that the watchdog polls to trigger a restart.
-              await Bun.write(getDevRestartFlagFile(cwd), String(Date.now()))
+              await Bun.write(getDevRestartFlagFile(effectiveCwd), String(Date.now()))
               UI.println(`Restart requested for dev server (watchdog PID ${pid}).`)
             } else {
               process.kill(pid, "SIGUSR1")
