@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show, onCleanup } from "solid-js"
+import { createSignal, createMemo, Show } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -6,21 +6,10 @@ import { useHolos } from "@/context/holos"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
 import { Panel } from "@/components/panel"
+import { ViewTab } from "@/components/engram/shared"
 import { EditProfileDialog } from "./edit-profile-dialog"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
-
-const HOLOS_EVENTS = new Set([
-  "holos.contact.added",
-  "holos.contact.removed",
-  "holos.contact.updated",
-  "holos.contact.config_updated",
-  "holos.friend_request.created",
-  "holos.friend_request.updated",
-  "holos.friend_request.removed",
-  "holos.profile.updated",
-  "holos.connection.status_changed",
-])
 
 const CARD_ENTER_STYLE = `
 @keyframes contactFadeUp {
@@ -37,20 +26,15 @@ export function HolosPanel() {
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
-
-  const unsub = globalSDK.event.listen((e) => {
-    const eventType = e.details?.type
-    if (eventType && HOLOS_EVENTS.has(eventType)) {
-      void holos.refresh()
-    }
-  })
-  onCleanup(unsub)
+  const [refreshingContacts, setRefreshingContacts] = createSignal(false)
 
   const pendingIncoming = createMemo(() =>
     (holos.state.social.friendRequests ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),
   )
 
   async function refetchAll() {
+    if (refreshingContacts()) return
+    setRefreshingContacts(true)
     await holos.refresh()
     try {
       await globalSDK.client.holos.refreshPresence()
@@ -60,6 +44,7 @@ export function HolosPanel() {
         await new Promise((resolve) => setTimeout(resolve, 500))
         await holos.refresh()
       }
+      setRefreshingContacts(false)
     }
   }
 
@@ -136,26 +121,20 @@ export function HolosPanel() {
       <style>{CARD_ENTER_STYLE}</style>
       <Panel.Header>
         <Panel.HeaderRow>
-          <Panel.Title>Holos</Panel.Title>
-          <Panel.Actions>
-            <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
-          </Panel.Actions>
-        </Panel.HeaderRow>
-        <div class="flex items-center gap-1">
-          <Panel.FilterChip active={tab() === "hub"} onClick={() => setTab("hub")}>
-            Hub
-          </Panel.FilterChip>
-          <Panel.FilterChip active={tab() === "contacts"} onClick={() => setTab("contacts")}>
-            <span class="flex items-center gap-1.5">
+          <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
+            <ViewTab active={tab() === "hub"} onClick={() => setTab("hub")}>
+              Hub
+            </ViewTab>
+            <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
               Contacts
               <Show when={pendingIncoming().length > 0}>
-                <span class="flex items-center justify-center size-4 rounded-full bg-surface-interactive-base text-text-on-interactive-base text-[9px] font-medium leading-none">
+                <span class="ml-1 flex inline-flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
                   {pendingIncoming().length}
                 </span>
               </Show>
-            </span>
-          </Panel.FilterChip>
-        </div>
+            </ViewTab>
+          </div>
+        </Panel.HeaderRow>
       </Panel.Header>
       <Panel.Body>
         <Show when={holos.loaded} fallback={<Panel.Loading />}>
@@ -178,7 +157,7 @@ export function HolosPanel() {
             />
           </Show>
           <Show when={tab() === "contacts"}>
-            <ContactsView />
+            <ContactsView onRefresh={refetchAll} refreshing={refreshingContacts()} />
           </Show>
         </Show>
       </Panel.Body>

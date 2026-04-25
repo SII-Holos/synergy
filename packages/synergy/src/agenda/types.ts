@@ -244,6 +244,57 @@ export namespace AgendaTypes {
     .meta({ ref: "AgendaRunLog" })
   export type RunLog = z.infer<typeof RunLog>
 
+  export const ActivityAgenda = z
+    .object({
+      id: z.string(),
+      scopeID: z.string().describe("Scope that owns the agenda item"),
+      title: z.string(),
+      description: z.string().optional(),
+      status: ItemStatus,
+      tags: z.array(z.string()).optional(),
+      global: z.boolean(),
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+      }),
+    })
+    .meta({ ref: "AgendaActivityAgenda" })
+  export type ActivityAgenda = z.infer<typeof ActivityAgenda>
+
+  export const ActivitySession = z
+    .object({
+      id: z.string(),
+      scopeID: z.string().describe("Scope that owns the session"),
+      title: z.string(),
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+        archived: z.number().optional(),
+      }),
+    })
+    .meta({ ref: "AgendaActivitySession" })
+  export type ActivitySession = z.infer<typeof ActivitySession>
+
+  export const ActivityEntry = z
+    .object({
+      run: RunLog,
+      agenda: ActivityAgenda,
+      session: ActivitySession.optional(),
+    })
+    .meta({ ref: "AgendaActivityEntry" })
+  export type ActivityEntry = z.infer<typeof ActivityEntry>
+
+  export const ActivityPage = z
+    .object({
+      items: z.array(ActivityEntry),
+      total: z.number(),
+      limit: z.number(),
+      offset: z.number(),
+      hasMore: z.boolean(),
+    })
+    .meta({ ref: "AgendaActivityPage" })
+  export type ActivityPage = z.infer<typeof ActivityPage>
+
   // ---------------------------------------------------------------------------
   // Fired signal — runtime representation of a trigger activation
   // ---------------------------------------------------------------------------

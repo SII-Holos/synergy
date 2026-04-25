@@ -39,7 +39,7 @@ export interface BasicToolProps {
 
 export function BasicTool(props: BasicToolProps) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
-  const active = () => props.status === "pending" || props.status === "running"
+  const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
   createEffect(() => {
     if (props.forceOpen) setOpen(true)

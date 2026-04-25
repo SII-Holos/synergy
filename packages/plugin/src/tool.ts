@@ -5,6 +5,9 @@ export type ToolContext = {
   messageID: string
   agent: string
   abort: AbortSignal
+  directory?: string
+  /** Request permission from the user before proceeding */
+  ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
 }
 
 export interface ToolResult {

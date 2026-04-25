@@ -21,6 +21,7 @@ export namespace ExperienceEncoder {
   interface EncodeOutcome {
     encoded: boolean
     skipped: boolean
+    superseded?: string
     duplicateOf?: string
     experienceID?: string
   }
@@ -82,7 +83,7 @@ export namespace ExperienceEncoder {
     try {
       const userInfo = userMsg.info as MessageV2.User
       const intentCtx = await buildIntentContext(sessionID, userInfo, learning)
-      const history = buildHistory(msgs, userMessageID)
+      const history = buildIntentHistory(msgs, userMessageID)
       const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
@@ -101,19 +102,53 @@ export namespace ExperienceEncoder {
         ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
         : undefined
 
+      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
+      const raw = TurnDigest.renderToText(digest)
+
       const duplicate = EngramDB.Experience.findSimilar(
         scope.id,
         intentEmbedding.vector,
         learning.dedupIntentThreshold,
         scriptEmbedding?.vector,
         learning.dedupScriptThreshold,
+        learning.rewardWeights,
       )
       if (duplicate) {
+        if (shouldSupersede(duplicate, learning.qInit)) {
+          EngramDB.Experience.supersede(duplicate.id, {
+            sessionID,
+            scopeID: scope.id,
+            intent,
+            sourceProviderID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.providerID : undefined,
+            sourceModelID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.modelID : undefined,
+            intentEmbedding,
+            scriptEmbedding,
+            content: { script, raw },
+            metadata: { changes: digest.changes, channel: digest.channel },
+            retrievedExperienceIDs: retrievedIDs,
+          })
+
+          log.info("dedup: superseded", {
+            id: userMessageID,
+            superseded: duplicate.id,
+            intentSimilarity: duplicate.intentSimilarity,
+            scriptSimilarity: duplicate.scriptSimilarity,
+          })
+          return {
+            encoded: true,
+            skipped: false,
+            superseded: duplicate.id,
+            experienceID: duplicate.id,
+          }
+        }
+
         log.info("dedup: skipping", {
           id: userMessageID,
           duplicateOf: duplicate.id,
           intentSimilarity: duplicate.intentSimilarity,
           scriptSimilarity: duplicate.scriptSimilarity,
+          rewardStatus: duplicate.rewardStatus,
+          compositeQ: duplicate.compositeQ,
         })
         return {
           encoded: false,
@@ -122,9 +157,6 @@ export namespace ExperienceEncoder {
           experienceID: duplicate.id,
         }
       }
-
-      const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID)
-      const raw = TurnDigest.renderToText(digest)
 
       EngramDB.Experience.insert({
         id: userMessageID,
@@ -170,6 +202,7 @@ export namespace ExperienceEncoder {
         encoded: outcome.encoded,
         skipped: outcome.skipped,
         duplicateOf: outcome.duplicateOf,
+        superseded: outcome.superseded,
         experienceID: outcome.experienceID,
       },
     )
@@ -451,6 +484,36 @@ export namespace ExperienceEncoder {
       .join("\n\n")
   }
 
+  function buildIntentHistory(msgs: MessageV2.WithParts[], currentUserMsgId: string): string | undefined {
+    const turns = Turn.collect(msgs, { skipSynthetic: true })
+    const currentIdx = turns.findIndex((t) => t.user.info.id === currentUserMsgId)
+    if (currentIdx <= 0) return undefined
+
+    return turns
+      .slice(0, currentIdx)
+      .map((turn) => {
+        const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
+
+        const assistantLines: string[] = []
+        for (const msg of turn.assistants) {
+          for (const part of msg.parts) {
+            if (part.type === "text" && !part.synthetic && part.text.trim()) {
+              assistantLines.push(part.text.trim())
+            } else if (part.type === "tool" && part.state.status === "completed") {
+              assistantLines.push(`(used ${part.tool}: ${part.state.title})`)
+            } else if (part.type === "tool" && part.state.status === "error") {
+              assistantLines.push(`(used ${part.tool}: error)`)
+            }
+          }
+        }
+
+        const lines = [`User: ${userInput}`]
+        if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("; ")}`)
+        return lines.join("\n")
+      })
+      .join("\n\n")
+  }
+
   function buildRewardContent(msgs: MessageV2.WithParts[], turns: Turn.Raw[], turnIdx: number): string {
     const turn = turns[turnIdx]
 
@@ -500,5 +563,12 @@ export namespace ExperienceEncoder {
     }
 
     return parts.join("\n")
+  }
+
+  function shouldSupersede(duplicate: EngramDB.Experience.DuplicateInfo, qInit: number): boolean {
+    if (duplicate.rewardStatus === "encoding_failed") return true
+    if (duplicate.rewardStatus === "pending") return true
+    // Evaluated experience: only supersede if its verified Q is not better than a fresh start
+    return duplicate.compositeQ <= qInit
   }
 }

@@ -13,7 +13,7 @@ LoopJob.defineSignal({
   },
 })
 
-const ERROR_LOOP_THRESHOLD = 3
+const ERROR_LOOP_THRESHOLD = 10
 
 LoopJob.defineSignal({
   type: "error_loop",

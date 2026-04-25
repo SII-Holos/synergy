@@ -22,6 +22,7 @@ export function SessionConversation(props: {
   showTabs: Accessor<boolean>
   isWorking: Accessor<boolean>
   turnStart: number
+  turnBatch: number
   onSetTurnStart: (start: number) => void
   historyMore: Accessor<boolean>
   historyLoading: Accessor<boolean>
@@ -35,6 +36,7 @@ export function SessionConversation(props: {
   isDesktop: Accessor<boolean>
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
   anchor: (id: string) => string
+  terminalHeight: Accessor<number>
 }) {
   return (
     <ConversationViewport
@@ -53,6 +55,7 @@ export function SessionConversation(props: {
               messages={props.visibleUserMessages}
               currentMessage={props.activeMessage}
               onMessageSelect={props.scrollToMessage}
+              bottomOffset={props.terminalHeight}
             />
           </div>
         </Show>
@@ -69,7 +72,7 @@ export function SessionConversation(props: {
             variant="ghost"
             size="large"
             class="text-12-medium opacity-50"
-            onClick={() => props.onSetTurnStart(0)}
+            onClick={() => props.onSetTurnStart(Math.max(0, props.turnStart - props.turnBatch))}
           >
             Render earlier messages
           </Button>
@@ -96,7 +99,7 @@ export function SessionConversation(props: {
             })
           }
 
-          const isLast = () => index() === props.timeline().length - 1
+          const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
 
           if (msg.role === "assistant") {
             return (

@@ -1,4 +1,6 @@
 import { spawn } from "child_process"
+import path from "path"
+import { realpathSync } from "fs"
 import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
@@ -81,12 +83,12 @@ export const LocalBashBackend: BashBackend = {
       if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
         for (const arg of command.slice(1)) {
           if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-          const resolved = await $`realpath ${arg}`
-            .cwd(cwd)
-            .quiet()
-            .nothrow()
-            .text()
-            .then((x) => x.trim())
+          let resolved: string | undefined
+          try {
+            resolved = realpathSync(path.resolve(cwd, arg))
+          } catch {
+            // path doesn't exist — skip
+          }
           log.info("resolved path", { arg, resolved })
           if (resolved) {
             const normalized =

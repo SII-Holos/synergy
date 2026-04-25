@@ -33,6 +33,7 @@ import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
+import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -135,13 +136,19 @@ const cli = yargs(hideBin(process.argv))
   .command(StatusCommand)
   .command(LogsCommand)
   .command(PluginCommand)
-  .fail((msg) => {
+  .command(DataCommand)
+  .command(MigrateCommand)
+  .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
       msg?.startsWith("Not enough non-option arguments") ||
       msg?.startsWith("Invalid values:")
     ) {
       cli.showHelp("log")
+    } else if (err) {
+      console.error(err)
+    } else if (msg) {
+      console.error(msg)
     }
     process.exit(1)
   })
@@ -205,5 +212,6 @@ try {
 } finally {
   if (!isLongRunningCommand()) {
     await flushCliOutput()
+    process.exit()
   }
 }

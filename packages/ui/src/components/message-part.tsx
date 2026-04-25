@@ -22,6 +22,7 @@ import {
   ToolPart,
   ToolStateCompleted,
   ToolStateError,
+  ToolStateGenerating,
   UserMessage,
   Todo,
 } from "@ericsanchezok/synergy-sdk"
@@ -42,7 +43,7 @@ import { FileIcon } from "./file-icon"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createTypewriter } from "../hooks"
+import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 
 interface Diagnostic {
   range: {
@@ -658,6 +659,77 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           }
       }
     }
+    // research — holos-research plugin
+    case "research_init": {
+      const args: string[] = []
+      pushArg(args, input.venue)
+      pushArg(args, input.participation_mode)
+      return { icon: "flask-conical", title: "Research Init", subtitle: input.project, args }
+    }
+    case "research_state": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.target_phase)
+      pushArg(args, input.participation_mode)
+      return { icon: "sigma", title: "Research State", subtitle: input.summary, args }
+    }
+    case "research_idea": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.round ? `round ${input.round}` : undefined)
+      return { icon: "lightbulb", title: "Idea", subtitle: input.title || input.id, args }
+    }
+    case "research_plan": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.idea)
+      return { icon: "map", title: "Plan", subtitle: input.title || input.id, args }
+    }
+    case "research_experiment": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.group)
+      pushArg(args, input.backend)
+      return { icon: "microscope", title: "Experiment", subtitle: input.title || input.id, args }
+    }
+    case "research_claim": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.paper_section)
+      return { icon: "scale", title: "Claim", subtitle: input.title || input.id, args }
+    }
+    case "research_exhibit": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.kind)
+      return { icon: "image", title: "Exhibit", subtitle: input.title || input.id, args }
+    }
+    case "research_paper": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.venue)
+      return { icon: "scroll-text", title: "Paper", subtitle: input.title || input.id, args }
+    }
+    case "research_submission": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.venue)
+      pushArg(args, input.outcome)
+      return { icon: "send", title: "Submission", subtitle: input.title || input.id, args }
+    }
+    case "research_wiki": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.relevance)
+      return { icon: "telescope", title: "Wiki", subtitle: input.title || input.query, args }
+    }
+    case "research_timeline": {
+      const args: string[] = []
+      pushArg(args, input.action)
+      pushArg(args, input.last ? `last ${input.last}` : undefined)
+      pushArg(args, input.event_type)
+      return { icon: "clock", title: "Timeline", subtitle: input.summary, args }
+    }
     case "profile_get":
       return {
         icon: "scan",
@@ -1256,6 +1328,8 @@ export interface ToolProps {
   tool: string
   output?: string
   status?: string
+  raw?: string
+  charsReceived?: number
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
@@ -1328,9 +1402,10 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     return next
   })
 
-  const throttledRaw = createThrottledValue(() =>
-    part().state.status === "pending" ? ((part().state as any).raw ?? "") : "",
-  )
+  const throttledRaw = createThrottledValue(() => {
+    const s = part().state
+    return s.status === "pending" ? s.raw : s.status === "generating" ? s.raw : ""
+  })
   const [streamInput, setStreamInput] = createStore<Record<string, any>>({})
   createEffect(() => {
     const raw = throttledRaw()
@@ -1348,6 +1423,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const metadata = () => part().state?.metadata ?? {}
 
   const render = createMemo(() => ToolRegistry.render(part().tool))
+
+  // Smoothly animate charsReceived so tool cards don't jump
+  const charsAnimated = createAnimatedNumber(() => {
+    const s = part().state
+    return s.status === "generating" ? (s as ToolStateGenerating).charsReceived : 0
+  })
 
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
   // which classifies by semantic category for appropriate icon/title/subtitle
@@ -1400,6 +1481,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             // @ts-expect-error — output exists on completed state
             output={part().state.output}
             status={part().state.status}
+            raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
+            charsReceived={charsAnimated()}
             hideDetails={props.hideDetails}
             defaultOpen={props.defaultOpen}
           />

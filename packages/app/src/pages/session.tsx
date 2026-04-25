@@ -182,7 +182,7 @@ export default function Page() {
   const isNewSession = createMemo(() => {
     if (resolvingHome()) return false
     if (!params.id) return true
-    if (isGlobalScope(sdk.directory) && messages().length === 0) return true
+    if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
     return false
   })
   const messagesReady = createMemo(() => {
@@ -282,7 +282,7 @@ export default function Page() {
 
   function navigateMessageByOffset(offset: number) {
     const msgs = visibleUserMessages()
-    if (msgs.length === 0) return
+    if (!msgs || msgs.length === 0) return
 
     const current = activeMessage()
     const currentIndex = current ? msgs.findIndex((m) => m.id === current.id) : -1
@@ -312,9 +312,27 @@ export default function Page() {
   let promptDock: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
 
+  const hydratedSessions = new Set<string>()
+  const initializedSessions = new Set<string>()
+
+  createEffect(
+    on(
+      () => params.id,
+      (id, prevId) => {
+        if (prevId && prevId !== id) {
+          sync.evictSession(prevId)
+          hydratedSessions.delete(prevId)
+          initializedSessions.delete(prevId)
+        }
+        if (id) sync.session.sync(id)
+      },
+    ),
+  )
+
   createEffect(() => {
-    if (!params.id) return
-    sync.session.sync(params.id)
+    if (!sdk.connected()) return
+    const id = params.id
+    if (id) sync.session.sync(id)
   })
 
   createEffect(() => {
@@ -401,6 +419,24 @@ export default function Page() {
       result[mapping.triggerMessageId] = mapping.subSessionId
     }
     return result
+  })
+
+  createEffect(() => {
+    const session = currentSession()
+    let title: string
+    if (isGlobalScope(sdk.directory)) {
+      title = "Home"
+    } else if (isHolosConversation()) {
+      const contact = holosContact()
+      title = contact?.name || contact?.id || "New session"
+    } else {
+      title = session?.title || "New session"
+    }
+    document.title = `${title} — Synergy`
+  })
+
+  onCleanup(() => {
+    document.title = "Synergy"
   })
 
   createEffect(
@@ -570,73 +606,11 @@ export default function Page() {
 
   const turnInit = 20
   const turnBatch = 20
-  let turnHandle: number | undefined
-  let turnIdle = false
-
-  function cancelTurnBackfill() {
-    const handle = turnHandle
-    if (handle === undefined) return
-    turnHandle = undefined
-
-    if (turnIdle && window.cancelIdleCallback) {
-      window.cancelIdleCallback(handle)
-      return
-    }
-
-    clearTimeout(handle)
-  }
-
-  function scheduleTurnBackfill() {
-    if (turnHandle !== undefined) return
-    if (store.turnStart <= 0) return
-
-    if (window.requestIdleCallback) {
-      turnIdle = true
-      turnHandle = window.requestIdleCallback(() => {
-        turnHandle = undefined
-        backfillTurns()
-      })
-      return
-    }
-
-    turnIdle = false
-    turnHandle = window.setTimeout(() => {
-      turnHandle = undefined
-      backfillTurns()
-    }, 0)
-  }
-
-  function backfillTurns() {
-    const start = store.turnStart
-    if (start <= 0) return
-
-    const nextStart = Math.max(0, start - turnBatch)
-
-    const el = scroller
-    if (!el) {
-      setStore("turnStart", nextStart)
-      scheduleTurnBackfill()
-      return
-    }
-
-    const beforeHeight = el.scrollHeight
-    const beforeTop = el.scrollTop
-
-    setStore("turnStart", nextStart)
-
-    const delta = el.scrollHeight - beforeHeight
-    if (delta) el.scrollTop = beforeTop + delta
-
-    scheduleTurnBackfill()
-  }
-
-  const hydratedSessions = new Set<string>()
 
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
       ([id, ready]) => {
-        cancelTurnBackfill()
         setStore("turnStart", 0)
         if (!id || !ready) return
 
@@ -646,7 +620,6 @@ export default function Page() {
         const len = visibleUserMessages().length
         const start = len > turnInit ? len - turnInit : 0
         setStore("turnStart", start)
-        scheduleTurnBackfill()
       },
       { defer: true },
     ),
@@ -688,7 +661,6 @@ export default function Page() {
     const index = msgs.findIndex((m) => m.id === message.id)
     if (index !== -1 && index < store.turnStart) {
       setStore("turnStart", index)
-      scheduleTurnBackfill()
 
       requestAnimationFrame(() => {
         const el = document.getElementById(anchor(message.id))
@@ -732,8 +704,6 @@ export default function Page() {
       setStore("messageId", id)
     })
   }
-
-  const initializedSessions = new Set<string>()
 
   createEffect(
     on(
@@ -790,6 +760,7 @@ export default function Page() {
 
   createEffect(() => {
     document.addEventListener("keydown", handleKeyDown)
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
   })
 
   const previewPrompt = () =>
@@ -830,10 +801,11 @@ export default function Page() {
   })
 
   onCleanup(() => {
-    cancelTurnBackfill()
     document.removeEventListener("keydown", handleKeyDown)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
+    hydratedSessions.clear()
+    initializedSessions.clear()
   })
 
   return (
@@ -927,7 +899,7 @@ export default function Page() {
                   />
                 </Match>
                 <Match when={!isNewSession()}>
-                  <Show when={activeMessage() || timeline().length > 0}>
+                  <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
                     <Show
                       when={!mobileReview()}
                       fallback={
@@ -968,6 +940,7 @@ export default function Page() {
                         showTabs={showTabs}
                         isWorking={isWorking}
                         turnStart={store.turnStart}
+                        turnBatch={turnBatch}
                         onSetTurnStart={(start) => setStore("turnStart", start)}
                         historyMore={historyMore}
                         historyLoading={historyLoading}
@@ -986,6 +959,7 @@ export default function Page() {
                         isDesktop={isDesktop}
                         scrollToMessage={scrollToMessage}
                         anchor={anchor}
+                        terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
                       />
                     </Show>
                   </Show>

@@ -120,25 +120,32 @@ export namespace AgendaReactor {
       })
     })
 
-    const { nextRunAt } = await AgendaStore.updateRunState(
-      scopeID,
-      item.id,
-      {
-        status: error ? "error" : "ok",
-        error: error?.message,
-        sessionID,
-        startTime,
-        duration,
-      },
-      item.triggers,
-      signal.type,
-    ).catch((err) => {
+    let nextRunAt: number | undefined
+    try {
+      const result = await AgendaStore.updateRunState(
+        scopeID,
+        item.id,
+        {
+          status: error ? "error" : "ok",
+          error: error?.message,
+          sessionID,
+          startTime,
+          duration,
+        },
+        item.triggers,
+        signal.type,
+      )
+      nextRunAt = result.nextRunAt
+    } catch (err) {
       log.error("failed to update item state", {
         itemID: item.id,
         error: err instanceof Error ? err : new Error(String(err)),
       })
-      return { nextRunAt: undefined }
-    })
+      // Fallback: compute nextRunAt locally for recurring triggers so the
+      // clock entry is not lost. One-off triggers (at/delay) that already
+      // fired will correctly resolve to undefined.
+      nextRunAt = AgendaStore.computeNextRunAt(item.triggers)
+    }
 
     if (error) {
       await Plugin.trigger(

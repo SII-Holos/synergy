@@ -40,9 +40,9 @@ function ConfigSetStatus() {
   return (
     <DropdownMenu onOpenChange={setOpen}>
       <DropdownMenu.Trigger
-        as={Button}
-        size="small"
-        variant="ghost"
+        data-component="button"
+        data-size="small"
+        data-variant="ghost"
         class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
       >
         <div class="flex items-center gap-2 min-w-0">

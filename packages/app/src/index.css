@@ -30,6 +30,16 @@ a:active,
   min-height: 0;
 }
 
+[data-slot="dialog-container"]:has(.dialog-skill-detail) {
+  width: min(calc(100vw - 20px), 760px);
+  height: min(calc(100vh - 20px), 760px);
+}
+
+[data-slot="dialog-container"]:has(.dialog-skill-detail) [data-slot="dialog-body"] {
+  flex: 1;
+  min-height: 0;
+}
+
 [data-slot="dialog-container"]:has(.dialog-avatar-crop) {
   width: min(calc(100vw - 32px), 420px);
 }

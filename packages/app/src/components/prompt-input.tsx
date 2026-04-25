@@ -1448,6 +1448,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
     }
+    if (!session && params.id) {
+      await sync.session.sync(params.id)
+      session = info()
+    }
     if (!session) return
 
     const model = {
@@ -1821,7 +1825,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
               onClick={() => layout.terminal.toggle()}
             >
-              <Icon name={layout.terminal.opened() ? "panel-bottom-close" : "panel-bottom-open"} size="small" />
+              <Icon name={layout.terminal.opened() ? "crosshair" : "radar"} size="small" />
             </button>
           </Tooltip>
           <QuickActions

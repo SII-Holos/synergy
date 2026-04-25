@@ -291,7 +291,8 @@ export const SendCommand = cmd({
       const sessionID = await (async () => {
         if (args.continue) {
           const result = await sdk.session.list()
-          return result.data?.find((s) => !s.parentID)?.id
+          const sessions = result.data?.data ?? []
+          return sessions.find((s) => !s.parentID)?.id
         }
         if (args.session) return args.session
 
@@ -332,7 +333,8 @@ export const SendCommand = cmd({
       const sessionID = await (async () => {
         if (args.continue) {
           const result = await sdk.session.list()
-          return result.data?.find((s) => !s.parentID)?.id
+          const sessions = result.data?.data ?? []
+          return sessions.find((s) => !s.parentID)?.id
         }
         if (args.session) return args.session
 

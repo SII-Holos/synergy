@@ -45,7 +45,7 @@ ref/
 holos-paper/
 awcp-paper/
 research/
-data/
+/data/
 *.tgz
 Auto-claude-code-research-in-sleep/
 

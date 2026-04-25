@@ -138,7 +138,7 @@ function statusLabel(status: string) {
   }
 }
 
-export function DagGraph(props: { nodes: DagNode[]; ready?: string[] }) {
+export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   let ref: HTMLDivElement | undefined
 
@@ -150,12 +150,12 @@ export function DagGraph(props: { nodes: DagNode[]; ready?: string[] }) {
     onCleanup(() => observer.disconnect())
   })
 
-  const layout = createMemo(() => computeLayout(props.nodes, containerWidth()))
+  const layout = createMemo(() => computeLayout(props.nodes ?? [], containerWidth()))
   const readySet = createMemo(() => new Set(props.ready ?? []))
 
   return (
     <div data-component="dag-graph" ref={ref}>
-      <Show when={layout().laid.length > 0}>
+      <Show when={layout()?.laid.length}>
         <div data-slot="dag-graph-canvas" style={{ width: `${layout().width}px`, height: `${layout().height}px` }}>
           <svg width={layout().width} height={layout().height} data-slot="dag-graph-edges">
             <For each={layout().edges}>

@@ -102,9 +102,10 @@ export namespace Agenda {
     inflight.add(itemID)
     AgendaReactor.execute(signal, scopeID)
       .then((result) => {
-        if (result.nextRunAt !== undefined) {
-          AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
-        }
+        // Always rearm — even if nextRunAt is undefined, the clock entry
+        // should be cleared. For recurring triggers the reactor already
+        // computes a valid nextRunAt.
+        AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
       })
       .catch((err) => {
         log.error("manual trigger failed", { itemID, error: err instanceof Error ? err : new Error(String(err)) })

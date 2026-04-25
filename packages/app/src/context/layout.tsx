@@ -43,6 +43,8 @@ export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean 
 
 export type ReviewDiffStyle = "unified" | "split"
 
+export const SESSION_PAGE_SIZE = 20
+
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
   init: () => {
@@ -277,17 +279,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
       if (aPinned && bPinned) return b.pinned! - a.pinned!
-
-      const now = Date.now()
-      const oneMinuteAgo = now - 60 * 1000
-      const aUpdated = a.time.updated ?? a.time.created
-      const bUpdated = b.time.updated ?? b.time.created
-      const aRecent = aUpdated > oneMinuteAgo
-      const bRecent = bUpdated > oneMinuteAgo
-      if (aRecent && bRecent) return a.id.localeCompare(b.id)
-      if (aRecent && !bRecent) return -1
-      if (!aRecent && bRecent) return 1
-      return bUpdated - aUpdated
+      return 0
     }
 
     function projectSessions(scope: LocalScope | undefined) {
@@ -300,25 +292,49 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return sessions.filter((s) => !s.parentID)
     }
 
-    function projectHasMoreSessions(scope: LocalScope | undefined) {
-      if (!scope) return false
+    function projectSessionTotal(scope: LocalScope | undefined) {
+      if (!scope) return 0
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      return dirs.some((dir) => {
+      return dirs.reduce((sum, dir) => {
         const [store] = globalSync.child(dir)
-        return store.session.length >= store.limit
-      })
+        return sum + (store.sessionTotal ?? 0)
+      }, 0)
     }
 
-    async function loadMoreSessions(scope: LocalScope | undefined) {
-      if (!scope) return
+    function childStoreForScope(scope: LocalScope | undefined) {
+      if (!scope) return undefined
+      return globalSync.child(scope.worktree)[0]
+    }
+
+    type ChildInfo = {
+      count: number
+      sessions: Session[]
+      running: number
+    }
+
+    function childInfoForScope(scope: LocalScope | undefined): Record<string, ChildInfo> {
+      if (!scope) return {}
+      const store = childStoreForScope(scope)
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      await Promise.all(
-        dirs.map((dir) => {
-          const [, setStore] = globalSync.child(dir)
-          setStore("limit", (x) => x + 10)
-          return globalSync.scope.loadSessions(dir)
-        }),
-      )
+      const stores = dirs.map((dir) => globalSync.child(dir)[0])
+      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
+      const result: Record<string, ChildInfo> = {}
+      for (const session of all) {
+        if (!session.parentID) continue
+        if (!result[session.parentID]) result[session.parentID] = { count: 0, sessions: [], running: 0 }
+        const info = result[session.parentID]
+        info.count++
+        info.sessions.push(session)
+        if (store) {
+          const status = store.session_status[session.id]
+          if (status?.type === "busy" || status?.type === "retry") info.running++
+        }
+      }
+      // Sort children by updated desc within each parent
+      for (const info of Object.values(result)) {
+        info.sessions.sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
+      }
+      return result
     }
 
     // Prefetch queue system
@@ -466,8 +482,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nav: {
         sortSessions,
         projectSessions,
-        projectHasMoreSessions,
-        loadMoreSessions,
+        projectSessionTotal,
+        childStoreForScope,
+        childInfoForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,

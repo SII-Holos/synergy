@@ -35,6 +35,7 @@ export type SemanticCategory =
   | "config"
   | "communication"
   | "skill"
+  | "research"
   | "generic"
 
 export interface CategorySpec {
@@ -144,6 +145,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     icon: "sparkles",
     label: "Skill",
     subtitleKeys: ["name"],
+  },
+  research: {
+    icon: "flask-conical",
+    label: "Research",
+    subtitleKeys: ["action", "title", "project"],
+    argsKeys: ["action"],
   },
   generic: {
     icon: "settings",
@@ -292,6 +299,19 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
   arxiv_search: "search",
   arxiv_download: "file-read",
 
+  // research (holos-research plugin)
+  research_init: "research",
+  research_state: "research",
+  research_idea: "research",
+  research_plan: "research",
+  research_experiment: "research",
+  research_claim: "research",
+  research_exhibit: "research",
+  research_paper: "research",
+  research_submission: "research",
+  research_wiki: "research",
+  research_timeline: "research",
+
   // context7 / MCP common
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
@@ -369,6 +389,9 @@ const PATTERN_RULES: { pattern: RegExp; category: SemanticCategory }[] = [
 
   // communication
   { pattern: /^(email|mail|send|notify|message)/i, category: "communication" },
+
+  // research
+  { pattern: /^research[-_]/i, category: "research" },
 ]
 
 // ── Layer 3: Input heuristic → category ─────────────────────────────

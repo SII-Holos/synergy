@@ -783,7 +783,7 @@ export namespace SessionInvoke {
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
     const mod = await import("../cortex/manager")
     const Cortex = mod.Cortex
-    if (!Cortex) return undefined
+    if (!Cortex || typeof Cortex.getRunningTasks !== "function") return undefined
     const running = Cortex.getRunningTasks().filter((t) => t.parentSessionID === sessionID)
     if (running.length === 0) return undefined
 

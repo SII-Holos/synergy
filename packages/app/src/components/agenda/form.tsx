@@ -294,7 +294,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
           <div class="flex items-center gap-1.5">
             <button
               type="button"
-              class="px-2.5 py-1 rounded-lg text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+              class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
               onClick={props.onBack}
             >
               Cancel
@@ -302,7 +302,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
             <button
               type="button"
               classList={{
-                "px-3 py-1 rounded-lg text-11-medium transition-colors text-white": true,
+                "px-3 py-1 rounded-full text-11-medium transition-colors text-white shadow-[0_12px_28px_-22px_color-mix(in_srgb,var(--surface-brand-base)_56%,transparent)]": true,
                 "bg-text-interactive-base hover:opacity-85": !saving(),
                 "bg-text-interactive-base opacity-50 pointer-events-none": saving(),
               }}
@@ -318,26 +318,30 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
       </Panel.Header>
 
       <div class="flex-1 min-h-0 overflow-y-auto px-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div class="flex flex-col gap-0">
-          <input
-            type="text"
-            class="w-full bg-transparent text-15-medium text-text-strong outline-none py-3 placeholder:text-text-weaker/50"
-            placeholder="Add title"
-            value={title()}
-            onInput={(e) => setTitle(e.currentTarget.value)}
-          />
-
-          <div class="flex items-start gap-2.5 py-2.5">
-            <div class="shrink-0 mt-0.5 text-icon-weak">
-              <Icon name="sparkles" size="small" />
-            </div>
-            <textarea
-              class="flex-1 bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
-              placeholder="Agent prompt (what should the agent do?)"
-              value={prompt()}
-              onInput={(e) => setPrompt(e.currentTarget.value)}
-              rows={2}
+        <div class="flex flex-col gap-0 rounded-[1.25rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+          <div class="rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+            <input
+              type="text"
+              class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
+              placeholder="Add title"
+              value={title()}
+              onInput={(e) => setTitle(e.currentTarget.value)}
             />
+          </div>
+
+          <div class="mt-2 rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+            <div class="flex items-start gap-2.5">
+              <div class="shrink-0 mt-0.5 text-icon-weak">
+                <Icon name="sparkles" size="small" />
+              </div>
+              <textarea
+                class="flex-1 bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
+                placeholder="Agent prompt (what should the agent do?)"
+                value={prompt()}
+                onInput={(e) => setPrompt(e.currentTarget.value)}
+                rows={2}
+              />
+            </div>
           </div>
 
           <Divider />
@@ -366,12 +370,12 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
                 </button>
               }
             >
-              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                 <DatePicker value={date()} onChange={setDate} />
                 <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
                 <button
                   type="button"
-                  class="ml-auto text-icon-weak hover:text-text-diff-delete-base transition-colors"
+                  class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
                   onClick={() => {
                     setHasSchedule(false)
                     setRepeatMode("off")
@@ -389,27 +393,29 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 text-icon-weak">
                 <Icon name="repeat" size="small" />
               </div>
-              <RepeatControl
-                mode={repeatMode()}
-                count={intervalCount()}
-                unit={intervalUnit()}
-                onModeChange={setRepeatMode}
-                onCountChange={setIntervalCount}
-                onUnitChange={setIntervalUnit}
-              />
+              <div class="flex-1 min-w-0 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                <RepeatControl
+                  mode={repeatMode()}
+                  count={intervalCount()}
+                  unit={intervalUnit()}
+                  onModeChange={setRepeatMode}
+                  onCountChange={setIntervalCount}
+                  onUnitChange={setIntervalUnit}
+                />
+              </div>
             </div>
             <Show when={repeatMode() === "custom"}>
               <div class="pl-8 pb-2 flex flex-col gap-1.5">
                 <input
                   type="text"
-                  class="w-full bg-transparent text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-lg border border-border-weaker-base/50 focus:border-border-interactive-base"
+                  class="w-full bg-surface-raised-base/92 text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
                   placeholder="Cron expression, e.g. 0 9 * * 1-5"
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
-                  class="w-full bg-transparent text-11-regular text-text-weaker outline-none px-2.5 py-1 rounded-lg border border-border-weaker-base/50 focus:border-border-interactive-base"
+                  class="w-full bg-surface-raised-base/92 text-11-regular text-text-weaker outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
                   placeholder="Timezone (e.g. Asia/Shanghai)"
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
@@ -428,13 +434,15 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 mt-0.5 text-icon-weak">
                 <Icon name="file-text" size="small" />
               </div>
-              <textarea
-                class="flex-1 bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
-                placeholder="Description..."
-                value={description()}
-                onInput={(e) => setDescription(e.currentTarget.value)}
-                rows={2}
-              />
+              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                <textarea
+                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
+                  placeholder="Description..."
+                  value={description()}
+                  onInput={(e) => setDescription(e.currentTarget.value)}
+                  rows={2}
+                />
+              </div>
             </div>
           </Show>
 
@@ -446,13 +454,15 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 text-icon-weak">
                 <Icon name="tag" size="small" />
               </div>
-              <input
-                type="text"
-                class="flex-1 bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
-                placeholder="tag1, tag2, ..."
-                value={tagsText()}
-                onInput={(e) => setTagsText(e.currentTarget.value)}
-              />
+              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                <input
+                  type="text"
+                  class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
+                  placeholder="tag1, tag2, ..."
+                  value={tagsText()}
+                  onInput={(e) => setTagsText(e.currentTarget.value)}
+                />
+              </div>
             </div>
           </Show>
 
@@ -491,7 +501,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
       </div>
 
       <Show when={error()}>
-        <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/20 rounded-lg px-3 py-2">
+        <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           {error()}
         </div>
       </Show>
@@ -546,8 +556,8 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   })
 
   function cellClass(ts: number): string {
-    if (ts === selected()) return "bg-surface-interactive-base text-text-on-interactive-base"
-    if (ts === today()) return "bg-surface-interactive-base/20 text-text-interactive-base"
+    if (ts === selected()) return "bg-surface-interactive-solid text-text-on-interactive-base"
+    if (ts === today()) return "bg-surface-interactive-selected-weak text-text-interactive-base"
     const inMonth = new Date(ts).getMonth() === currentMonth()
     return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"
   }
@@ -556,7 +566,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-lg text-12-medium text-text-base border border-border-weaker-base/50 hover:border-border-interactive-base transition-colors"
+        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
         onClick={() => setOpen((v) => !v)}
       >
         {formatDate(props.value)}
@@ -564,7 +574,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
       <Show when={open()}>
         <div
-          class="absolute top-full left-0 mt-1 z-50 bg-surface-base border border-border-weaker-base rounded-xl shadow-lg p-3 select-none"
+          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] p-3 select-none"
           style={{ width: "224px" }}
         >
           <div class="flex items-center justify-between mb-2">
@@ -663,7 +673,7 @@ function TimePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-lg text-12-medium text-text-base border border-border-weaker-base/50 hover:border-border-interactive-base transition-colors tabular-nums"
+        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors tabular-nums"
         onClick={() => setOpen((v) => !v)}
       >
         {pad2(props.hour)}:{pad2(props.minute)}
@@ -671,7 +681,7 @@ function TimePicker(props: {
 
       <Show when={open()}>
         <div
-          class="absolute top-full left-0 mt-1 z-50 bg-surface-base border border-border-weaker-base rounded-xl shadow-lg flex overflow-hidden"
+          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] flex overflow-hidden"
           style={{ height: "200px" }}
         >
           <div
@@ -684,8 +694,8 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-base/15 text-text-interactive-base": h === props.hour,
-                    "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
+                    "bg-surface-interactive-selected-weak text-text-interactive-base": h === props.hour,
+                    "text-text-base hover:bg-surface-raised-base-hover/70": h !== props.hour,
                   }}
                   onClick={() => props.onHourChange(h)}
                 >
@@ -701,8 +711,8 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-base/15 text-text-interactive-base": m === props.minute,
-                    "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
+                    "bg-surface-interactive-selected-weak text-text-interactive-base": m === props.minute,
+                    "text-text-base hover:bg-surface-raised-base-hover/70": m !== props.minute,
                   }}
                   onClick={() => props.onMinuteChange(m)}
                 >
@@ -749,7 +759,7 @@ function RepeatControl(props: {
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
-          class="w-12 bg-transparent text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-lg border border-border-weaker-base/50 focus:border-border-interactive-base tabular-nums"
+          class="w-12 bg-surface-inset-base/65 text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-full border border-border-base/45 focus:border-border-interactive-base tabular-nums"
           value={props.count}
           onInput={(e) => {
             const raw = e.currentTarget.value.replace(/[^0-9]/g, "")
@@ -769,14 +779,14 @@ function RepeatControl(props: {
         <div ref={unitRef} class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 px-2 py-0.5 rounded-lg text-12-regular text-text-base border border-border-weaker-base/50 hover:border-border-interactive-base transition-colors"
+            class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
             onClick={() => setUnitOpen((v) => !v)}
           >
             {props.unit}
             <Icon name="chevron-down" size="small" class="text-icon-weak" />
           </button>
           <Show when={unitOpen()}>
-            <div class="absolute top-full left-0 mt-1 z-50 bg-surface-base border border-border-weaker-base rounded-xl shadow-lg overflow-hidden min-w-28">
+            <div class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden min-w-28">
               <For each={INTERVAL_UNITS}>
                 {(u) => (
                   <button
@@ -831,8 +841,9 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
     <button
       type="button"
       classList={{
-        "px-1.5 py-0.5 rounded-md text-10-medium transition-colors": true,
-        "bg-surface-interactive-base/15 text-text-interactive-base": props.active,
+        "px-2 py-0.5 rounded-full text-10-medium transition-colors": true,
+        "bg-surface-interactive-selected-weak text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/12":
+          props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
       onClick={props.onClick}
@@ -878,7 +889,7 @@ function ScopePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-12-regular text-text-base border border-border-weaker-base/50 hover:border-border-interactive-base transition-colors"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[0.95rem] text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
         onClick={() => setOpen((v) => !v)}
       >
         <span class="truncate">{activeLabel()}</span>
@@ -886,7 +897,7 @@ function ScopePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div class="absolute top-full left-0 right-0 mt-1 z-50 bg-surface-base border border-border-weaker-base rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
+        <div class="absolute top-full left-0 right-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
           <For each={props.scopes}>
             {(scope) => (
               <button
@@ -919,12 +930,16 @@ function ScopePicker(props: {
 // ---------------------------------------------------------------------------
 
 function Divider() {
-  return <div class="border-b border-border-weaker-base/50 my-0.5" />
+  return <div class="border-b border-border-weaker-base/40 my-2" />
 }
 
 function ExpandRow(props: { icon: "file-text" | "tag"; label: string; onClick: () => void }) {
   return (
-    <button type="button" class="flex items-center gap-2.5 py-2.5 w-full text-left" onClick={props.onClick}>
+    <button
+      type="button"
+      class="flex items-center gap-2.5 py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover/14 transition-colors"
+      onClick={props.onClick}
+    >
       <div class="shrink-0 text-icon-weak">
         <Icon name={props.icon} size="small" />
       </div>
@@ -937,7 +952,7 @@ function NavBtn(props: { onClick: () => void; children: string }) {
   return (
     <button
       type="button"
-      class="w-6 h-6 flex items-center justify-center rounded text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+      class="w-6 h-6 flex items-center justify-center rounded-full text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
       {props.children}

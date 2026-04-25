@@ -57,6 +57,7 @@ export type CoreField = RequiredCoreField | RecommendedCoreField
 export interface CoreFieldValidation {
   valid: boolean
   message: string
+  failedRecommended?: boolean
   [key: string]: unknown
 }
 

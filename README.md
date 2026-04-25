@@ -106,10 +106,11 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-Install dependencies and build the frontend:
+Install dependencies, build the SDK, then build the frontend:
 
 ```bash
 bun install
+bun run --cwd packages/sdk/js build
 bun run --cwd packages/app build
 ```
 

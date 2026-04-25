@@ -1,6 +1,6 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { ComponentProps, JSXElement, Match, ParentProps, Show, Switch } from "solid-js"
-import { IconButton } from "./icon-button"
+import { Icon } from "./icon"
 
 export interface DialogProps extends ParentProps {
   title?: JSXElement
@@ -37,7 +37,13 @@ export function Dialog(props: DialogProps) {
               <Switch>
                 <Match when={props.action}>{props.action}</Match>
                 <Match when={true}>
-                  <Kobalte.CloseButton data-slot="dialog-close-button" as={IconButton} icon="x" variant="ghost" />
+                  <Kobalte.CloseButton
+                    data-slot="dialog-close-button"
+                    data-component="icon-button"
+                    data-variant="ghost"
+                  >
+                    <Icon name="x" size="small" />
+                  </Kobalte.CloseButton>
                 </Match>
               </Switch>
             </div>

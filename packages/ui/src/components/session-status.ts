@@ -31,6 +31,17 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
   if (!part) return undefined
 
   if (part.type === "tool") {
+    if (part.state.status === "generating") {
+      switch (part.tool) {
+        case "edit":
+        case "write":
+        case "multiedit":
+        case "patch":
+          return "Composing edits"
+        default:
+          return "Generating input"
+      }
+    }
     switch (part.tool) {
       case "task":
         return "Delegating work"

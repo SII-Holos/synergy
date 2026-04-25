@@ -33,11 +33,11 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const context = createMemo(() => {
     const last = messages().findLast((x) => {
-      if (x.role !== "assistant") return false
+      if (x.role !== "assistant" || !x.tokens) return false
       const input = ModelLimit.actualInput(x.tokens)
       return input + x.tokens.output + x.tokens.reasoning > 0
-    }) as AssistantMessage
-    if (!last) return
+    }) as AssistantMessage | undefined
+    if (!last?.tokens) return
     const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
     const limit = model?.limit

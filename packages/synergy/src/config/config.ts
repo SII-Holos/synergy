@@ -181,26 +181,32 @@ export namespace Config {
   })
 
   export async function installDependencies(dir: string) {
-    const pkg = path.join(dir, "package.json")
+    const pkgPath = path.join(dir, "package.json")
 
-    if (!(await Bun.file(pkg).exists())) {
-      await Bun.write(pkg, "{}")
+    if (!(await Bun.file(pkgPath).exists())) {
+      await Bun.write(pkgPath, "{}")
     }
 
     const gitignore = path.join(dir, ".gitignore")
     const hasGitIgnore = await Bun.file(gitignore).exists()
     if (!hasGitIgnore) await Bun.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
 
-    await BunProc.run(
-      ["add", "@ericsanchezok/synergy-plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION), "--exact"],
-      {
-        cwd: dir,
-      },
-    ).catch(() => {})
+    const pluginPkg = "@ericsanchezok/synergy-plugin"
+    const pluginVersion = Installation.isLocal() ? "latest" : Installation.VERSION
+    const pluginInstalled = existsSync(path.join(dir, "node_modules", pluginPkg))
+
+    // Only run bun add if the plugin is not already installed to avoid
+    // repeatedly modifying bun.lock, which triggers the file watcher and
+    // causes an auto-reload loop.
+    if (!pluginInstalled) {
+      await BunProc.run(["add", `${pluginPkg}@${pluginVersion}`, "--exact"], { cwd: dir }).catch(() => {})
+    }
 
     // Install any additional dependencies defined in the package.json
     // This allows local plugins and custom tools to use external packages
-    await BunProc.run(["install"], { cwd: dir }).catch(() => {})
+    if (!existsSync(path.join(dir, "node_modules"))) {
+      await BunProc.run(["install"], { cwd: dir }).catch(() => {})
+    }
   }
 
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
@@ -1264,13 +1270,13 @@ export namespace Config {
                 .int()
                 .positive()
                 .describe(
-                  "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                  "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                 ),
               z.literal(false).describe("Disable timeout for this provider entirely."),
             ])
             .optional()
             .describe(
-              "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+              "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
             ),
         })
         .catchall(z.any())
@@ -1647,8 +1653,6 @@ export namespace Config {
     if (parsed.success) {
       if (!parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
-        const edits = modify(text, ["$schema"], CONFIG_SCHEMA, { formattingOptions })
-        await Bun.write(configFilepath, applyEdits(text, edits))
       }
       const data = parsed.data
       if (data.plugin) {

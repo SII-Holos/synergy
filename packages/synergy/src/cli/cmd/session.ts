@@ -62,7 +62,7 @@ export const SessionListCommand = cmd({
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
       const sessions = []
-      for await (const session of Session.list()) {
+      for await (const session of Session.listAll()) {
         if (!session.parentID) {
           sessions.push(session)
         }

@@ -110,7 +110,16 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const raw = await def.execute(args as any, ctx)
+          const pluginCtx = {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            abort: ctx.abort,
+            directory: Instance.directory,
+            ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
+              ctx.ask({ ...input, metadata: input.metadata ?? {} }),
+          }
+          const raw = await def.execute(args as any, pluginCtx)
           if (typeof raw === "object" && raw !== null && "output" in raw) {
             const structured = raw as { title?: string; output: string; metadata?: Record<string, any> }
             const out = await Truncate.output(structured.output, {}, initCtx?.agent)

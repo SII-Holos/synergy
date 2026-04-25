@@ -173,13 +173,17 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }
   }
 
-  private async getAccessToken(accountId: string): Promise<string> {
-    const account = this.accounts.get(accountId)
-    if (!account) throw new Error(`Feishu account not found: ${accountId}`)
+  private scheduleTokenRefresh(accountId: string, expiresInMs: number) {
+    const refreshIn = Math.max(expiresInMs - 120_000, 30_000)
+    const timer = setTimeout(() => {
+      this.refreshToken(accountId).catch(() => {})
+    }, refreshIn)
+    timer.unref()
+  }
 
-    if (account.tokenCache && account.tokenCache.expiresAt > Date.now() + 60_000) {
-      return account.tokenCache.token
-    }
+  private async refreshToken(accountId: string): Promise<void> {
+    const account = this.accounts.get(accountId)
+    if (!account) return
 
     const response = await fetch(`${account.apiBase}/auth/v3/tenant_access_token/internal`, {
       method: "POST",
@@ -200,7 +204,19 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       expiresAt: Date.now() + result.expire * 1000,
     }
 
-    return result.tenant_access_token
+    this.scheduleTokenRefresh(accountId, result.expire * 1000)
+  }
+
+  private async getAccessToken(accountId: string): Promise<string> {
+    const account = this.accounts.get(accountId)
+    if (!account) throw new Error(`Feishu account not found: ${accountId}`)
+
+    if (account.tokenCache && account.tokenCache.expiresAt > Date.now() + 60_000) {
+      return account.tokenCache.token
+    }
+
+    await this.refreshToken(accountId)
+    return account.tokenCache!.token
   }
 
   private async ensureBotOpenId(accountId: string): Promise<string | undefined> {

@@ -1,4 +1,5 @@
 import { createSignal, For, Show } from "solid-js"
+import type { JSX } from "solid-js"
 import type { FriendRequest } from "@ericsanchezok/synergy-sdk"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -22,6 +23,81 @@ function displayName(request: FriendRequest): string {
   return request.peerName || request.peerId.slice(0, 8) + "…"
 }
 
+function formatRequestDate(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(timestamp))
+}
+
+function StatusPill(props: { label: string; tone?: "default" | "success" | "warning" | "danger" }) {
+  return (
+    <span
+      class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-10-medium"
+      classList={{
+        "bg-surface-inset-base/70 text-text-weak": !props.tone || props.tone === "default",
+        "bg-emerald-500/12 text-icon-success-base": props.tone === "success",
+        "bg-amber-500/12 text-icon-warning-base": props.tone === "warning",
+        "bg-rose-500/9 text-icon-critical-base": props.tone === "danger",
+      }}
+    >
+      {props.label}
+    </span>
+  )
+}
+
+function RequestCardShell(props: {
+  request: FriendRequest
+  delay: number
+  busy?: boolean
+  directionLabel: string
+  statusTone?: "default" | "success" | "warning" | "danger"
+  actionSlot: JSX.Element
+}) {
+  return (
+    <div
+      class="flex items-start gap-3 rounded-[1rem] bg-surface-inset-base/36 p-3.5 ring-1 ring-inset ring-border-base/34 transition-all"
+      classList={{
+        "opacity-45 pointer-events-none": props.busy,
+      }}
+      style={{
+        animation: "contactFadeUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
+        "animation-delay": `${props.delay}ms`,
+      }}
+    >
+      <Avatar
+        fallback={displayName(props.request)}
+        size="small"
+        class="size-10 rounded-2xl overflow-hidden shrink-0 ring-1 ring-border-base/60 shadow-sm"
+      />
+
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <div class="truncate text-13-medium text-text-strong">{displayName(props.request)}</div>
+          <StatusPill label={props.directionLabel} />
+          <Show when={props.request.direction === "outgoing" && props.request.status}>
+            <StatusPill label={outgoingStatusLabel(props.request.status)} tone={props.statusTone} />
+          </Show>
+        </div>
+
+        <Show when={props.request.peerBio?.trim()}>
+          <div class="mt-2 rounded-2xl bg-surface-inset-base/55 px-3 py-2 text-11-regular leading-5 text-text-weak line-clamp-2">
+            {props.request.peerBio}
+          </div>
+        </Show>
+
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <span class="inline-flex items-center gap-1.5 text-10-medium text-text-subtle">
+            <Icon name="message-square" size="small" />
+            {formatRequestDate(props.request.createdAt)}
+          </span>
+          <div class="shrink-0">{props.actionSlot}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function RequestsSection(props: {
   requests: FriendRequest[]
   outgoing: FriendRequest[]
@@ -34,118 +110,119 @@ export function RequestsSection(props: {
   const isLoading = (id: string) => props.loadingIds?.has(id) ?? false
 
   return (
-    <div class="mt-5">
-      <button
-        type="button"
-        class="flex items-center gap-2 w-full px-0.5 mb-2.5 group"
-        onClick={() => setCollapsed((v) => !v)}
-      >
-        <span
-          class="shrink-0 text-icon-weak transition-transform duration-150"
-          classList={{ "rotate-90": !collapsed() }}
-        >
-          <Icon name="chevron-right" size="small" />
-        </span>
-        <span class="text-12-medium text-text-weak">Requests</span>
-        <span
-          class="flex items-center justify-center size-4.5 rounded-full bg-surface-interactive-base text-text-on-interactive-base text-10-medium leading-none"
-          style={{ animation: "badgePopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
-        >
-          {totalCount()}
+    <section class="mt-5 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+      <button type="button" class="flex w-full items-center gap-3 text-left" onClick={() => setCollapsed((v) => !v)}>
+        <div class="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-surface-brand-base/15 text-text-strong shadow-sm ring-1 ring-border-base/60">
+          <Icon name="user-plus" size="small" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-13-medium text-text-strong">Requests</span>
+            <span
+              class="flex items-center justify-center rounded-full bg-surface-interactive-solid px-2.5 py-1 text-10-medium leading-none text-text-on-interactive-base"
+              style={{ animation: "badgePopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
+            >
+              {totalCount()}
+            </span>
+          </div>
+          <p class="mt-1.5 text-11-regular leading-5 text-text-weak">
+            Review incoming invites and keep outgoing requests tidy.
+          </p>
+        </div>
+        <span class="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border-base bg-surface-raised-stronger-non-alpha text-icon-weak transition-transform duration-150">
+          <Icon name={collapsed() ? "chevron-right" : "chevron-down"} size="small" />
         </span>
       </button>
 
       <Show when={!collapsed()}>
-        <div class="flex flex-col gap-1.5">
-          <For each={props.requests}>
-            {(request, i) => {
-              const busy = () => isLoading(request.id)
-              return (
-                <div
-                  class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-surface-raised-base transition-all"
-                  classList={{ "opacity-45 pointer-events-none": busy() }}
-                  style={{
-                    animation: "contactFadeUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
-                    "animation-delay": `${i() * 40}ms`,
-                  }}
-                >
-                  <Avatar
-                    fallback={displayName(request)}
-                    size="small"
-                    class="size-7 rounded-full overflow-hidden shrink-0"
-                  />
-                  <div class="flex-1 min-w-0">
-                    <div class="text-12-medium text-text-base truncate">{displayName(request)}</div>
-                  </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      class="flex items-center justify-center size-6 rounded-md bg-surface-interactive-base text-text-on-interactive-base hover:bg-surface-interactive-base-hover transition-colors disabled:opacity-40"
-                      onClick={() => props.onRespond(request.id, "accepted")}
-                      disabled={busy()}
-                      title="Accept"
-                    >
-                      <Icon name="check" size="small" class="scale-75" />
-                    </button>
-                    <button
-                      type="button"
-                      class="flex items-center justify-center size-6 rounded-md text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors disabled:opacity-40"
-                      onClick={() => props.onRespond(request.id, "rejected")}
-                      disabled={busy()}
-                      title="Decline"
-                    >
-                      <Icon name="x" size="small" class="scale-75" />
-                    </button>
-                  </div>
-                </div>
-              )
-            }}
-          </For>
-
-          <Show when={props.outgoing.length > 0}>
+        <div class="mt-3 rounded-[1rem] bg-surface-raised-base/92 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="flex flex-col gap-4">
             <Show when={props.requests.length > 0}>
-              <div class="h-px bg-border-base/10 mx-2 my-1" />
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-center gap-2 px-1">
+                  <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Incoming</span>
+                  <span class="h-px flex-1 bg-border-base/40" />
+                </div>
+                <For each={props.requests}>
+                  {(request, i) => {
+                    const busy = () => isLoading(request.id)
+                    return (
+                      <RequestCardShell
+                        request={request}
+                        delay={i() * 40}
+                        busy={busy()}
+                        directionLabel="Incoming"
+                        actionSlot={
+                          <div class="flex items-center gap-2">
+                            <button
+                              type="button"
+                              class="inline-flex items-center gap-1.5 rounded-full bg-surface-interactive-solid px-3 py-1.5 text-11-medium text-text-on-interactive-base transition-colors hover:bg-surface-interactive-solid-hover disabled:opacity-40"
+                              onClick={() => props.onRespond(request.id, "accepted")}
+                              disabled={busy()}
+                            >
+                              <Icon name="check" size="small" />
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-weak transition-colors hover:bg-surface-inset-base hover:text-text-base disabled:opacity-40"
+                              onClick={() => props.onRespond(request.id, "rejected")}
+                              disabled={busy()}
+                            >
+                              <Icon name="x" size="small" />
+                              Decline
+                            </button>
+                          </div>
+                        }
+                      />
+                    )
+                  }}
+                </For>
+              </div>
             </Show>
-            <For each={props.outgoing}>
-              {(request, i) => {
-                const isMuted = () => request.status === "accepted" || request.status === "rejected"
-                const busy = () => isLoading(request.id)
-                return (
-                  <div
-                    class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-surface-raised-base transition-all"
-                    classList={{ "opacity-50": isMuted() && !busy(), "opacity-45 pointer-events-none": busy() }}
-                    style={{
-                      animation: "contactFadeUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
-                      "animation-delay": `${(i() + props.requests.length) * 40}ms`,
-                    }}
-                  >
-                    <Avatar
-                      fallback={displayName(request)}
-                      size="small"
-                      class="size-7 rounded-full overflow-hidden shrink-0"
-                    />
-                    <div class="flex-1 min-w-0">
-                      <div class="text-12-medium text-text-base truncate">{displayName(request)}</div>
-                    </div>
-                    <span class="text-10-regular text-text-weakest shrink-0">
-                      {outgoingStatusLabel(request.status)}
-                    </span>
-                    <button
-                      type="button"
-                      class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors shrink-0 disabled:opacity-40"
-                      onClick={() => props.onCancel(request.id)}
-                      disabled={busy()}
-                      title="Cancel request"
-                    >
-                      <Icon name="x" size="small" class="scale-75" />
-                    </button>
-                  </div>
-                )
-              }}
-            </For>
-          </Show>
+
+            <Show when={props.outgoing.length > 0}>
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-center gap-2 px-1">
+                  <span class="text-11-medium uppercase tracking-[0.14em] text-text-subtle">Outgoing</span>
+                  <span class="h-px flex-1 bg-border-base/40" />
+                </div>
+                <For each={props.outgoing}>
+                  {(request, i) => {
+                    const busy = () => isLoading(request.id)
+                    const tone = () => {
+                      if (request.status === "pending_delivery") return "warning" as const
+                      return "default" as const
+                    }
+
+                    return (
+                      <RequestCardShell
+                        request={request}
+                        delay={(i() + props.requests.length) * 40}
+                        busy={busy()}
+                        directionLabel="Outgoing"
+                        statusTone={tone()}
+                        actionSlot={
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-weak transition-colors hover:bg-surface-inset-base hover:text-text-base disabled:opacity-40"
+                            onClick={() => props.onCancel(request.id)}
+                            disabled={busy()}
+                            title="Cancel request"
+                          >
+                            <Icon name="x" size="small" />
+                            Cancel
+                          </button>
+                        }
+                      />
+                    )
+                  }}
+                </For>
+              </div>
+            </Show>
+          </div>
         </div>
       </Show>
-    </div>
+    </section>
   )
 }

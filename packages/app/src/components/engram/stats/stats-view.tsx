@@ -1,0 +1,82 @@
+import { createSignal, Show } from "solid-js"
+import { Panel } from "@/components/panel"
+import { useEngramStats, type EngramStatsSnapshot, EMPTY_SNAPSHOT } from "./use-engram-stats"
+import { EngramOverviewCards } from "./overview-cards"
+import { MemoryDistribution } from "./memory-distribution"
+import { QValueChart } from "./q-value-chart"
+import { RewardRadar } from "./reward-radar"
+
+function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
+  return (
+    <div class="mb-3 flex items-center justify-between gap-3 rounded-xl bg-surface-inset-base/42 px-3.5 py-2.5 ring-1 ring-inset ring-border-base/45">
+      <div class="min-w-0">
+        <div class="text-11-regular text-text-weak">
+          {props.syncing ? "Computing engram stats…" : (props.syncError ?? "Recompute when you want a fresh snapshot.")}
+        </div>
+      </div>
+      <button
+        type="button"
+        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
+        disabled={props.syncing}
+        onClick={() => void props.onSync()}
+      >
+        {props.syncing ? "Computing…" : "Recompute"}
+      </button>
+    </div>
+  )
+}
+
+export function StatsView() {
+  const { data, error, loading, refresh, recompute } = useEngramStats()
+  const [syncing, setSyncing] = createSignal(false)
+  const [syncError, setSyncError] = createSignal<string | null>(null)
+
+  async function handleSync() {
+    if (syncing()) return
+    setSyncing(true)
+    setSyncError(null)
+    try {
+      await recompute()
+    } catch (err: any) {
+      setSyncError(err?.message ?? "Sync failed")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <Panel.Body>
+      <SyncBar syncing={syncing()} syncError={syncError()} onSync={handleSync} />
+      <Show
+        when={data()}
+        fallback={
+          <div class="flex items-center justify-center py-12">
+            <div class="flex max-w-sm flex-col items-center gap-2 text-center">
+              <div class="text-12-medium text-text-base">
+                {loading() ? "Loading engram stats…" : "Engram stats are unavailable right now"}
+              </div>
+              <Show when={error() && !loading()}>
+                <div class="text-11-regular text-text-weak">{error()}</div>
+              </Show>
+            </div>
+          </div>
+        }
+      >
+        {(snapshot) => <EngramStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} />}
+      </Show>
+    </Panel.Body>
+  )
+}
+
+function EngramStatsContent(props: { snapshot: EngramStatsSnapshot }) {
+  const s = () => props.snapshot
+
+  return (
+    <div class="flex flex-col gap-0 pb-5">
+      <EngramOverviewCards overview={s().overview} />
+      <RewardRadar dimensions={s().experienceRL.rewardDimensions} />
+      <QValueChart distribution={s().experienceRL.qDistribution} rl={s().experienceRL} />
+      <MemoryDistribution distribution={s().memoryDistribution} totalMemories={s().overview.totalMemories} />
+    </div>
+  )
+}

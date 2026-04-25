@@ -83,8 +83,47 @@ export type PluginCLIEntry = PluginCLICommand | PluginCLIGroup
 export interface PluginSkill {
   name: string
   description: string
-  content: string
+  /** Skill main content (markdown). When `dir` is set, this overrides auto-loaded content. */
+  content?: string
+  /** Reference docs: key = reference name, value = inline content string */
   references?: Record<string, string>
+  /**
+   * Relative path (from pluginDir) to a skill directory on disk.
+   * When set, the runtime resolves content, references, and scripts from this directory
+   * using the same conventions as `.synergy/skills/` directories:
+   *   - `SKILL.md` or `content.txt` → content
+   *   - `references/*`              → references (keyed by relative path)
+   *   - `scripts/*`                 → scripts (keyed by basename without extension)
+   *
+   * Explicit `content` or `references` fields take precedence over auto-loaded values.
+   */
+  dir?: string
+}
+
+// ---------------------------------------------------------------------------
+// Plugin Agent
+// ---------------------------------------------------------------------------
+
+export interface PluginAgent {
+  name: string
+  /** Description shown to the orchestrator for routing decisions */
+  description: string
+  /** System prompt */
+  prompt: string
+  /** Agent mode (default: "all") */
+  mode?: "subagent" | "primary" | "all"
+  /** Model override in "providerID/modelID" format */
+  model?: string
+  temperature?: number
+  topP?: number
+  /** Maximum agentic iterations */
+  steps?: number
+  /** Hide from the @ autocomplete menu */
+  hidden?: boolean
+  /** Hex color code (e.g. "#FF5733") */
+  color?: string
+  /** Permission rules — same format as synergy.jsonc agent.permission */
+  permission?: Record<string, any>
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +269,8 @@ export type PluginInput = {
   config: PluginConfigAccessor
   auth: PluginAuthStore
   cache: PluginCacheStore
+  /** Absolute path to this plugin's package root (where package.json lives) */
+  pluginDir: string
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +297,8 @@ export interface PluginHooks {
   cli?: Record<string, PluginCLIEntry>
   /** Register skills that become available when this plugin is loaded */
   skills?: PluginSkill[]
+  /** Register custom agents */
+  agents?: Record<string, PluginAgent>
   /** Register custom tools */
   tool?: Record<string, ToolDefinition>
   /** Provider auth integration */

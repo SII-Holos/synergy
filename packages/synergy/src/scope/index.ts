@@ -78,24 +78,60 @@ export namespace Scope {
       return { scope: global(), sandbox: Global.Path.home }
     }
 
+    // TODO: [scope-boundary] Upward .git traversal disabled — see analysis below.
+    //
+    // Previously, fromDirectory used Filesystem.up() to search for .git in
+    // ancestor directories, then resolved the scope to the git repo root.
+    // This caused two problems:
+    //
+    // 1. Over-merging: if $HOME has a dotfiles git (git init ~), ALL
+    //    subdirectories resolve to the same scopeID, collapsing every
+    //    project into one. More generally, any ancestor .git that the user
+    //    doesn't consider a project boundary will silently merge unrelated
+    //    directories.
+    //
+    // 2. Unbounded traversal: Filesystem.up() has no depth limit and no
+    //    GIT_CEILING_DIRECTORIES support — it walks all the way to /.
+    //    With a dotfiles git this is catastrophic; even without one it's
+    //    wasted stat calls through dozens of ancestor directories.
+    //
+    // The original motivation for upward traversal was: "if a user opens
+    // synergy/packages/app/src, they probably want the 'synergy' project,
+    // not a碎片 project at 'src'." In practice, users open the directory
+    // they consider their project root — if they want the repo root, they
+    // open the repo root. The "convenience" of auto-traversal is an
+    // assumption that doesn't hold and introduces dangerous ambiguity.
+    //
+    // New behavior: the directory the user opens IS the project boundary.
+    // If the directory contains .git, we still detect VCS info (branch,
+    // worktree) for display purposes — but we never traverse upward.
+    //
+    // If we later want to restore upward traversal, the safe approach would
+    // be a multi-signal model with explicit precedence:
+    //   1. .synergy marker (user-declared boundary, hard stop)
+    //   2. .git in current directory (VCS boundary, hard stop)
+    //   3. Project marker files (package.json, Cargo.toml, etc.)
+    //   4. The directory itself (fallback, no traversal)
+    // With GIT_CEILING_DIRECTORIES respected as an additional ceiling.
+
     const resolved = await iife(async () => {
-      const matches = Filesystem.up({ targets: [".git"], start: directory })
-      const git = await matches.next().then((x) => x.value)
-      await matches.return()
-      if (git) {
-        let sandbox = path.dirname(git)
+      // Check for .git only in the current directory (no upward traversal)
+      const gitDir = path.join(directory, ".git")
+      const hasGit = existsSync(gitDir)
+
+      if (hasGit) {
         const gitBinary = Bun.which("git")
 
-        let id = await Bun.file(path.join(git, "synergy"))
+        let id = await Bun.file(path.join(gitDir, "synergy"))
           .text()
           .then((x) => x.trim())
           .catch(() => undefined)
 
         if (!gitBinary) {
           return {
-            id: id ?? dirHash(sandbox),
-            worktree: sandbox,
-            sandbox: sandbox,
+            id: id ?? dirHash(directory),
+            worktree: directory,
+            sandbox: directory,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
@@ -104,7 +140,7 @@ export namespace Scope {
           const roots = await $`git rev-list --max-parents=0 --all`
             .quiet()
             .nothrow()
-            .cwd(sandbox)
+            .cwd(directory)
             .text()
             .then((x) =>
               x
@@ -117,7 +153,7 @@ export namespace Scope {
 
           id = roots?.[0]
           if (id) {
-            void Bun.file(path.join(git, "synergy"))
+            void Bun.file(path.join(gitDir, "synergy"))
               .write(id)
               .catch(() => undefined)
           }
@@ -125,9 +161,9 @@ export namespace Scope {
 
         if (!id) {
           return {
-            id: dirHash(sandbox),
-            worktree: sandbox,
-            sandbox: sandbox,
+            id: dirHash(directory),
+            worktree: directory,
+            sandbox: directory,
             vcs: "git",
           }
         }
@@ -135,30 +171,28 @@ export namespace Scope {
         const top = await $`git rev-parse --show-toplevel`
           .quiet()
           .nothrow()
-          .cwd(sandbox)
+          .cwd(directory)
           .text()
-          .then((x) => path.resolve(sandbox, x.trim()))
+          .then((x) => path.resolve(directory, x.trim()))
           .catch(() => undefined)
 
         if (!top) {
           return {
             id,
-            sandbox,
-            worktree: sandbox,
+            sandbox: directory,
+            worktree: directory,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
-        sandbox = top
-
         const worktree = await $`git rev-parse --git-common-dir`
           .quiet()
           .nothrow()
-          .cwd(sandbox)
+          .cwd(directory)
           .text()
           .then((x) => {
             const dirname = path.dirname(x.trim())
-            if (dirname === ".") return sandbox
+            if (dirname === ".") return directory
             return dirname
           })
           .catch(() => undefined)
@@ -166,15 +200,15 @@ export namespace Scope {
         if (!worktree) {
           return {
             id,
-            sandbox,
-            worktree: sandbox,
+            sandbox: directory,
+            worktree: directory,
             vcs: Info.shape.vcs.parse(Flag.SYNERGY_FAKE_VCS),
           }
         }
 
         return {
           id,
-          sandbox,
+          sandbox: directory,
           worktree,
           vcs: "git",
         }

@@ -519,6 +519,74 @@ describe("EngramDB", () => {
         expect(rewarded[0].id).toBe("exp-page-2")
       })
     })
+
+    describe("supersede", () => {
+      const weights = { outcome: 0.35, intent: 0.25, execution: 0.2, orchestration: 0.1, expression: 0.1 }
+
+      test("replaces content but preserves Q-values and reward history", () => {
+        makeExperience("exp-old", {
+          scopeID: "scope-supersede",
+          intent: "Old intent",
+          content: { script: "old script", raw: "old raw" },
+        })
+
+        EngramDB.Experience.applyReward("exp-old", {
+          rewards: { outcome: 1.0 },
+          rewardWeights: weights,
+          alpha: 0.5,
+        })
+
+        EngramDB.Experience.updateQValues("exp-old", 0.5, { outcome: 1.0, intent: 0.8 })
+
+        const beforeSupersede = EngramDB.Experience.get("exp-old")!
+        expect(beforeSupersede.reward_status).toBe("evaluated")
+        const qBefore = JSON.parse(beforeSupersede.q_values)
+        expect(qBefore.outcome).toBeCloseTo(0.5)
+        expect(qBefore.intent).toBeCloseTo(0.4)
+
+        EngramDB.Experience.supersede("exp-old", {
+          sessionID: "sess-new",
+          scopeID: "scope-supersede",
+          intent: "New intent",
+          sourceProviderID: "prov-new",
+          sourceModelID: "model-new",
+          intentEmbedding: fakeEmbedding(),
+          scriptEmbedding: undefined,
+          content: { script: "new script", raw: "new raw" },
+          metadata: { changes: { files: [], additions: 0, deletions: 0 }, channel: undefined },
+          retrievedExperienceIDs: [],
+        })
+
+        const afterSupersede = EngramDB.Experience.get("exp-old")!
+        expect(afterSupersede.intent).toBe("New intent")
+        expect(afterSupersede.reward_status).toBe("pending")
+        expect(afterSupersede.source_provider_id).toBe("prov-new")
+
+        // Q-values and visits are inherited from old experience
+        const qAfter = JSON.parse(afterSupersede.q_values)
+        expect(qAfter.outcome).toBeCloseTo(0.5)
+        expect(qAfter.intent).toBeCloseTo(0.4)
+        expect(afterSupersede.q_visits).toBe(1)
+
+        const content = EngramDB.Experience.getContent("exp-old")
+        expect(content?.script).toBe("new script")
+        expect(content?.raw).toBe("new raw")
+      })
+
+      test("returns false for non-existent experience", () => {
+        const result = EngramDB.Experience.supersede("no-such-id", {
+          sessionID: "sess",
+          scopeID: "scope",
+          intent: "test",
+          intentEmbedding: fakeEmbedding(),
+          scriptEmbedding: undefined,
+          content: { script: undefined, raw: undefined },
+          metadata: {},
+          retrievedExperienceIDs: [],
+        })
+        expect(result).toBe(false)
+      })
+    })
   })
 
   describe("Memory", () => {

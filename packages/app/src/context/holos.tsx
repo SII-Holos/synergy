@@ -1,7 +1,35 @@
-import { createSignal } from "solid-js"
+import { createSignal, onCleanup } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type { HolosState } from "@ericsanchezok/synergy-sdk"
 import { useGlobalSDK } from "./global-sdk"
+
+const HOLOS_EVENTS = new Set([
+  "holos.contact.added",
+  "holos.contact.removed",
+  "holos.contact.updated",
+  "holos.contact.config_updated",
+  "holos.friend_request.created",
+  "holos.friend_request.updated",
+  "holos.friend_request.removed",
+  "holos.profile.updated",
+  "holos.connection.status_changed",
+])
+
+const HOLOS_EVENT_REFRESH_DEBOUNCE_MS = 150
+
+function patchConnectionState(input: {
+  previous: HolosState
+  status: HolosState["connection"]["status"]
+  error?: string
+}): HolosState {
+  return {
+    ...input.previous,
+    connection: {
+      status: input.status,
+      ...(input.error ? { error: input.error } : {}),
+    },
+  }
+}
 
 type HolosContext = {
   state: HolosState
@@ -50,19 +78,80 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     const [loaded, setLoaded] = createSignal(false)
     const [error, setError] = createSignal<string | null>(null)
 
-    async function refresh() {
+    let refreshInFlight: Promise<void> | null = null
+    let refreshQueued = false
+    let refreshVersion = 0
+    let eventRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+    async function runRefresh(version: number) {
       try {
         setError(null)
         const res = await sdk.client.holos.state({ directory: "global" })
-        if (res.data) setState(res.data as HolosState)
+        if (res.data && version === refreshVersion) {
+          setState(res.data as HolosState)
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        setError(msg)
-        console.warn("[Holos] refresh failed:", msg)
+        if (version === refreshVersion) {
+          setError(msg)
+          console.warn("[Holos] refresh failed:", msg)
+        }
       } finally {
-        setLoaded(true)
+        if (version === refreshVersion) {
+          setLoaded(true)
+        }
       }
     }
+
+    async function refresh() {
+      refreshQueued = true
+      if (refreshInFlight) return refreshInFlight
+
+      refreshInFlight = (async () => {
+        while (refreshQueued) {
+          refreshQueued = false
+          const version = ++refreshVersion
+          await runRefresh(version)
+        }
+      })().finally(() => {
+        refreshInFlight = null
+      })
+
+      return refreshInFlight
+    }
+
+    function scheduleEventRefresh() {
+      if (eventRefreshTimer) clearTimeout(eventRefreshTimer)
+      eventRefreshTimer = setTimeout(() => {
+        eventRefreshTimer = null
+        void refresh()
+      }, HOLOS_EVENT_REFRESH_DEBOUNCE_MS)
+    }
+
+    const unsub = sdk.event.listen((e) => {
+      const eventType = e.details?.type
+      if (!eventType || !HOLOS_EVENTS.has(eventType)) return
+
+      if (eventType === "holos.connection.status_changed") {
+        const properties = (
+          e.details as { properties?: { status?: HolosState["connection"]["status"]; error?: string } }
+        ).properties
+        const status = properties?.status ?? "unknown"
+        const error = properties?.error
+        setState((prev) => patchConnectionState({ previous: prev, status, error }))
+
+        if (status === "connected") {
+          scheduleEventRefresh()
+        }
+        return
+      }
+
+      scheduleEventRefresh()
+    })
+    onCleanup(() => {
+      unsub()
+      if (eventRefreshTimer) clearTimeout(eventRefreshTimer)
+    })
 
     void refresh()
 

@@ -91,7 +91,7 @@ export namespace RuntimeReload {
     provider: ["agent"],
     mcp: ["command"],
     skill: ["command"],
-    plugin: ["tool_registry"],
+    plugin: ["tool_registry", "agent", "skill"],
   }
 
   // ─── Core reload function ────────────────────────────────────────────

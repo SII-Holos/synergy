@@ -55,6 +55,7 @@ export namespace SessionProcessor {
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
+    const generatingAccum: Record<string, string> = {}
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -126,7 +127,7 @@ export namespace SessionProcessor {
                   }
                   break
 
-                case "tool-input-start":
+                case "tool-input-start": {
                   const part = await Session.updatePart({
                     id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -141,51 +142,89 @@ export namespace SessionProcessor {
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
+                  generatingAccum[value.id] = ""
                   break
+                }
 
-                case "tool-input-delta":
+                case "tool-input-delta": {
+                  const match = toolcalls[value.id]
+                  if (!match) break
+                  const prevRaw = generatingAccum[value.id]
+                  if (prevRaw === undefined) break
+                  const raw = prevRaw + value.delta
+                  generatingAccum[value.id] = raw
+                  // Throttle generating updates: emit when enough new content has accumulated
+                  if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
+                  const part = await Session.updatePart({
+                    ...match,
+                    state: {
+                      status: "generating",
+                      input: {},
+                      raw,
+                      charsReceived: raw.length,
+                    },
+                  })
+                  toolcalls[value.id] = part as MessageV2.ToolPart
                   break
+                }
 
-                case "tool-input-end":
+                case "tool-input-end": {
+                  const match = toolcalls[value.id]
+                  if (!match) break
+                  const raw = generatingAccum[value.id]
+                  if (!raw) break
+                  // Final flush: push the complete accumulated raw even if it didn't hit the throttle
+                  const part = await Session.updatePart({
+                    ...match,
+                    state: {
+                      status: "generating",
+                      input: {},
+                      raw,
+                      charsReceived: raw.length,
+                    },
+                  })
+                  toolcalls[value.id] = part as MessageV2.ToolPart
                   break
+                }
 
                 case "tool-call": {
                   const match = toolcalls[value.toolCallId]
-                  if (match) {
-                    const part = await Session.updatePart({
-                      ...match,
-                      tool: value.toolName,
-                      state: {
-                        status: "running",
-                        input: value.input,
-                        time: {
-                          start: Date.now(),
-                        },
-                      },
-                      metadata: value.providerMetadata,
-                    })
-                    toolcalls[value.toolCallId] = part as MessageV2.ToolPart
-
-                    const parts = await MessageV2.parts({
-                      sessionID: input.sessionID,
+                  const part = await Session.updatePart({
+                    ...(match ?? {
+                      id: Identifier.ascending("part"),
                       messageID: input.assistantMessage.id,
-                    })
-                    if (shouldAskDoomLoop(parts, value.toolName, value.input)) {
-                      const agent = await Agent.get(input.assistantMessage.agent)
-                      const session = await Session.get(input.assistantMessage.sessionID)
-                      await PermissionNext.ask({
-                        permission: "doom_loop",
-                        patterns: [value.toolName],
-                        sessionID: input.assistantMessage.sessionID,
-                        metadata: {
-                          tool: value.toolName,
-                          input: value.input,
-                          ...PermissionNext.requestMetadata(session),
-                        },
+                      sessionID: input.assistantMessage.sessionID,
+                      type: "tool" as const,
+                      callID: value.toolCallId,
+                    }),
+                    tool: value.toolName,
+                    state: {
+                      status: "running",
+                      input: value.input,
+                      time: {
+                        start: Date.now(),
+                      },
+                    },
+                    metadata: value.providerMetadata,
+                  })
+                  toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                  delete generatingAccum[value.toolCallId]
 
-                        ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                      })
-                    }
+                  if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, value.input)) {
+                    const agent = await Agent.get(input.assistantMessage.agent)
+                    const session = await Session.get(input.assistantMessage.sessionID)
+                    await PermissionNext.ask({
+                      permission: "doom_loop",
+                      patterns: [value.toolName],
+                      sessionID: input.assistantMessage.sessionID,
+                      metadata: {
+                        tool: value.toolName,
+                        input: value.input,
+                        ...PermissionNext.requestMetadata(session),
+                      },
+
+                      ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                    })
                   }
                   break
                 }
@@ -461,6 +500,9 @@ export namespace SessionProcessor {
           }
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
+          Session.updateLastExchange(input.sessionID).catch((e) =>
+            log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
+          )
           ExperienceEncoder.onComplete(input.assistantMessage)
           await Plugin.trigger(
             "session.turn.after",

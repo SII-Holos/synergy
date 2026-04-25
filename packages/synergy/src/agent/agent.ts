@@ -31,6 +31,7 @@ import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
+import { Plugin } from "../plugin"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -529,6 +530,30 @@ export namespace Agent {
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+    }
+
+    // Merge plugin-contributed agents (lower priority than config agents)
+    const pluginAgents = await Plugin.agentEntries()
+    for (const [key, agent] of Object.entries(pluginAgents)) {
+      if (result[key]) {
+        log.info("plugin agent skipped, name already exists", { name: key })
+        continue
+      }
+      result[key] = {
+        name: agent.name,
+        description: agent.description,
+        prompt: agent.prompt,
+        mode: agent.mode ?? "all",
+        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
+        options: {},
+        native: false,
+        ...(agent.model ? { model: Provider.parseModel(agent.model) } : {}),
+        temperature: agent.temperature,
+        topP: agent.topP,
+        steps: agent.steps,
+        hidden: agent.hidden,
+        color: agent.color,
+      }
     }
 
     for (const item of Object.values(result)) {

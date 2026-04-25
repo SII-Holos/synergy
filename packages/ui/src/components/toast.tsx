@@ -4,7 +4,6 @@ import type { ComponentProps, JSX } from "solid-js"
 import { Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Icon, type IconProps, type IconName } from "./icon"
-import { IconButton } from "./icon-button"
 
 export interface ToastRegionProps extends ComponentProps<typeof Kobalte.Region> {}
 
@@ -62,7 +61,11 @@ function ToastActions(props: ComponentProps<"div">) {
 }
 
 function ToastCloseButton(props: ToastCloseButtonProps & ComponentProps<"button">) {
-  return <Kobalte.CloseButton data-slot="toast-close-button" as={IconButton} icon="x" variant="ghost" {...props} />
+  return (
+    <Kobalte.CloseButton data-slot="toast-close-button" data-component="icon-button" data-variant="ghost" {...props}>
+      <Icon name="x" size="small" />
+    </Kobalte.CloseButton>
+  )
 }
 
 function ToastProgressTrack(props: ComponentProps<typeof Kobalte.ProgressTrack>) {

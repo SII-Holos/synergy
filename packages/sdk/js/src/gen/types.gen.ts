@@ -897,7 +897,7 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
-     * Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.
+     * Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.
      */
     timeout?: number | false
     [key: string]: unknown | string | boolean | number | false | undefined
@@ -1617,45 +1617,12 @@ export type Config = {
     mcp_timeout?: number
   }
   /**
-   * SII 启智平台 integration configuration
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
    */
-  sii?: {
-    /**
-     * Enable SII Inspire Tools for 启智平台 integration
-     */
-    enable?: boolean
-    /**
-     * Default project name for task submission
-     */
-    defaultProject?: string
-    /**
-     * Default workspace name for task submission
-     */
-    defaultWorkspace?: string
-    /**
-     * Default compute group name
-     */
-    defaultComputeGroup?: string
-    /**
-     * Default Docker image for training tasks
-     */
-    defaultImage?: string
-    /**
-     * Default spec/quota ID for OpenAPI task submission (quota_id from a previous job detail)
-     */
-    defaultSpecId?: string
-    /**
-     * Default task priority (usually project max)
-     */
-    defaultPriority?: number
-    /**
-     * Default shared memory in MB (default: 1200)
-     */
-    defaultShm?: number
-    /**
-     * Command prefix prepended to every submit command. Typically conda init + cd to project code directory
-     */
-    commandPrefix?: string
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
   }
   /**
    * Custom category configurations for background tasks. Categories define model and prompt presets.
@@ -1947,6 +1914,10 @@ export type Session = {
   agenda?: {
     itemID: string
   }
+  lastExchange?: {
+    user?: string
+    assistant?: string
+  }
   revert?: {
     messageID: string
     partID?: string
@@ -2217,6 +2188,15 @@ export type ToolStatePending = {
   raw: string
 }
 
+export type ToolStateGenerating = {
+  status: "generating"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  charsReceived: number
+}
+
 export type ToolStateRunning = {
   status: "running"
   input: {
@@ -2264,7 +2244,7 @@ export type ToolStateError = {
   }
 }
 
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
+export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
 
 export type ToolPart = {
   id: string
@@ -2727,11 +2707,6 @@ export type MemoryInfo = {
   updatedAt: number
 }
 
-export type AgendaSessionList = Array<{
-  sessionID: string
-  scopeID: string
-}>
-
 export type AgendaRunLog = {
   /**
    * Run identifier
@@ -2763,6 +2738,56 @@ export type AgendaRunLog = {
     completed?: number
   }
 }
+
+export type AgendaActivityAgenda = {
+  id: string
+  /**
+   * Scope that owns the agenda item
+   */
+  scopeID: string
+  title: string
+  description?: string
+  status: "pending" | "active" | "paused" | "done" | "cancelled"
+  tags?: Array<string>
+  global: boolean
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type AgendaActivitySession = {
+  id: string
+  /**
+   * Scope that owns the session
+   */
+  scopeID: string
+  title: string
+  time: {
+    created: number
+    updated: number
+    archived?: number
+  }
+}
+
+export type AgendaActivityEntry = {
+  run: AgendaRunLog
+  agenda: AgendaActivityAgenda
+  session?: AgendaActivitySession
+}
+
+export type AgendaActivityPage = {
+  items: Array<AgendaActivityEntry>
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
+export type AgendaSessionList = Array<{
+  sessionID: string
+  scopeID: string
+}>
 
 export type AgendaTriggerResult = {
   triggered: true
@@ -2863,6 +2888,144 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
+}
+
+export type StatsSnapshot = {
+  overview: {
+    totalSessions: number
+    activeSessions: number
+    archivedSessions: number
+    totalMessages: number
+    totalTurns: number
+    totalDays: number
+    longestStreak: number
+    currentStreak: number
+    projectCount: number
+  }
+  tokenCost: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    cost: number
+    cacheHitRate: number
+    avgCostPerTurn: number
+    avgTokensPerTurn: number
+    dailyCost: number
+    dailyTokens: number
+  }
+  models: {
+    models: Array<{
+      providerID: string
+      modelID: string
+      messages: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      avgResponseMs: number
+    }>
+  }
+  agents: {
+    agents: Array<{
+      agent: string
+      messages: number
+      sessions: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      subagentInvocations: number
+    }>
+    totalSubagentCalls: number
+  }
+  tools: {
+    tools: Array<{
+      tool: string
+      calls: number
+      successes: number
+      errors: number
+      avgDurationMs: number
+    }>
+  }
+  codeChanges: {
+    totalAdditions: number
+    totalDeletions: number
+    totalFiles: number
+    netLines: number
+    dailyAdditions: number
+    dailyDeletions: number
+  }
+  lifecycle: {
+    pinnedCount: number
+    avgTurnsPerSession: number
+    medianTurnsPerSession: number
+    compactionCount: number
+    retryCount: number
+    errorCount: number
+    errorRate: number
+    durationBuckets: {
+      short: number
+      medium: number
+      long: number
+    }
+  }
+  channels: {
+    channels: Array<{
+      channel: string
+      sessions: number
+      messages: number
+    }>
+    interactiveSessions: number
+    unattendedSessions: number
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      sessions: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      additions: number
+      deletions: number
+      files: number
+      toolCalls: number
+      errors: number
+    }>
+    hours: Array<{
+      hour: string
+      turns: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
+  watermark: number
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -4871,26 +5034,47 @@ export type SessionListData = {
   query?: {
     directory?: string
     /**
-     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
+     * Number of sessions to skip
      */
-    start?: number
+    offset?: number
+    /**
+     * Maximum number of sessions to return
+     */
+    limit?: number
     /**
      * Filter sessions by title (case-insensitive)
      */
     search?: string
     /**
-     * Maximum number of sessions to return
+     * Filter sessions updated on or after this timestamp (milliseconds since epoch)
      */
-    limit?: number
+    since?: number
+    /**
+     * Filter sessions updated before this timestamp (milliseconds since epoch)
+     */
+    before?: number
+    /**
+     * Only include pinned sessions
+     */
+    pinned?: boolean
+    /**
+     * Only include top-level sessions (exclude subsessions). Default: true
+     */
+    parentOnly?: boolean
   }
   url: "/session"
 }
 
 export type SessionListResponses = {
   /**
-   * List of sessions
+   * Paginated list of sessions
    */
-  200: Array<Session>
+  200: {
+    data: Array<Session>
+    total: number
+    offset: number
+    limit: number
+  }
 }
 
 export type SessionListResponse = SessionListResponses[keyof SessionListResponses]
@@ -6948,13 +7132,26 @@ export type EngramStatsData = {
   path?: never
   query?: {
     directory?: string
+    /**
+     * Set to 'true' to force a full analytics recompute
+     */
+    recompute?: "true" | "false"
   }
   url: "/engram/stats"
 }
 
+export type EngramStatsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+
 export type EngramStatsResponses = {
   /**
-   * Memory statistics
+   * Engram statistics
    */
   200: MemoryStats
 }
@@ -7132,6 +7329,57 @@ export type EngramListResponses = {
 }
 
 export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+
+export type AgendaActivityData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Limit activity to this scope (includes global items when provided)
+     */
+    scopeID?: string
+    /**
+     * Limit activity to a specific agenda item
+     */
+    itemID?: string
+    /**
+     * Optional case-insensitive text search across item, run, and session metadata
+     */
+    query?: string
+    /**
+     * Alias for query
+     */
+    search?: string
+    /**
+     * Page offset
+     */
+    offset?: number
+    /**
+     * Page size
+     */
+    limit?: number
+  }
+  url: "/agenda/activity"
+}
+
+export type AgendaActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AgendaActivityError = AgendaActivityErrors[keyof AgendaActivityErrors]
+
+export type AgendaActivityResponses = {
+  /**
+   * Paginated agenda activity
+   */
+  200: AgendaActivityPage
+}
+
+export type AgendaActivityResponse = AgendaActivityResponses[keyof AgendaActivityResponses]
 
 export type AgendaSessionsData = {
   body?: never
@@ -7798,6 +8046,201 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type StatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Set to 'true' to force a full recompute from scratch
+     */
+    recompute?: "true" | "false"
+  }
+  url: "/stats"
+}
+
+export type StatsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type StatsGetError = StatsGetErrors[keyof StatsGetErrors]
+
+export type StatsGetResponses = {
+  /**
+   * Stats snapshot
+   */
+  200: StatsSnapshot
+}
+
+export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
+
+export type StatsProgressData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/stats/progress"
+}
+
+export type StatsProgressResponses = {
+  /**
+   * Server-sent events containing progress and final snapshot payloads
+   */
+  200: {
+    type: "progress" | "done" | "error"
+    progress?: {
+      phase: "scan" | "digest" | "bucket" | "snapshot"
+      current: number
+      total: number
+      message?: string
+    }
+    snapshot?: {
+      overview: {
+        totalSessions: number
+        activeSessions: number
+        archivedSessions: number
+        totalMessages: number
+        totalTurns: number
+        totalDays: number
+        longestStreak: number
+        currentStreak: number
+        projectCount: number
+      }
+      tokenCost: {
+        tokens: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        cost: number
+        cacheHitRate: number
+        avgCostPerTurn: number
+        avgTokensPerTurn: number
+        dailyCost: number
+        dailyTokens: number
+      }
+      models: {
+        models: Array<{
+          providerID: string
+          modelID: string
+          messages: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          avgResponseMs: number
+        }>
+      }
+      agents: {
+        agents: Array<{
+          agent: string
+          messages: number
+          sessions: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          subagentInvocations: number
+        }>
+        totalSubagentCalls: number
+      }
+      tools: {
+        tools: Array<{
+          tool: string
+          calls: number
+          successes: number
+          errors: number
+          avgDurationMs: number
+        }>
+      }
+      codeChanges: {
+        totalAdditions: number
+        totalDeletions: number
+        totalFiles: number
+        netLines: number
+        dailyAdditions: number
+        dailyDeletions: number
+      }
+      lifecycle: {
+        pinnedCount: number
+        avgTurnsPerSession: number
+        medianTurnsPerSession: number
+        compactionCount: number
+        retryCount: number
+        errorCount: number
+        errorRate: number
+        durationBuckets: {
+          short: number
+          medium: number
+          long: number
+        }
+      }
+      channels: {
+        channels: Array<{
+          channel: string
+          sessions: number
+          messages: number
+        }>
+        interactiveSessions: number
+        unattendedSessions: number
+      }
+      timeSeries: {
+        days: Array<{
+          day: string
+          sessions: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          additions: number
+          deletions: number
+          files: number
+          toolCalls: number
+          errors: number
+        }>
+        hours: Array<{
+          hour: string
+          turns: number
+        }>
+        hourlyActivity: Array<number>
+      }
+      computedAt: number
+      watermark: number
+    }
+    message?: string
+  }
+}
+
+export type StatsProgressResponse = StatsProgressResponses[keyof StatsProgressResponses]
 
 export type HolosCredentialsStatusData = {
   body?: never
