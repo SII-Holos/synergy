@@ -57,4 +57,33 @@ describe("Intent.isValid", () => {
   test("valid for text mentioning tools in prose", () => {
     expect(Intent.isValid("Use the bash tool to check status")).toBe(true)
   })
+
+  test("invalid for oversized intent", () => {
+    const longIntent = "a".repeat(301)
+    expect(Intent.isValid(longIntent)).toBe(false)
+  })
+
+  test("invalid for excessive tool markers", () => {
+    const toolSpam = "[Tool: read] file1 [Tool: read] file2 [Tool: read] file3"
+    expect(Intent.isValid(toolSpam)).toBe(false)
+  })
+
+  test("invalid for excessive log markers", () => {
+    const logSpam = "[Log] routes [Log] request [Log] response"
+    expect(Intent.isValid(logSpam)).toBe(false)
+  })
+})
+
+describe("Intent.sanitize truncation", () => {
+  test("truncates intent exceeding max length", () => {
+    const longIntent = "Fix authentication middleware and update tests and refactor utils".padEnd(400, " x")
+    const result = Intent.sanitize(longIntent, "fallback")
+    expect(result.length).toBeLessThanOrEqual(300)
+    expect(result).not.toBe("fallback")
+  })
+
+  test("returns fallback for excessive tool output", () => {
+    const toolSpam = "Start [Tool: read] a [Tool: read] b [Tool: read] c"
+    expect(Intent.sanitize(toolSpam, "fallback")).toBe("fallback")
+  })
 })
