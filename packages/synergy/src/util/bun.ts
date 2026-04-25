@@ -6,6 +6,7 @@ import { existsSync } from "fs"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { readableStreamToText } from "bun"
 import { createRequire } from "module"
+import os from "os"
 import { Lock } from "../util/lock"
 import { PluginSpec } from "./plugin-spec"
 
@@ -132,6 +133,10 @@ export namespace BunProc {
       "--exact",
       // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
       ...(proxied ? ["--no-cache"] : []),
+      // For non-registry (git) packages, always bypass bun's global cache.
+      // Bun caches git clones internally and --force alone does not clear
+      // them, causing stale code to persist across plugin updates.
+      ...(isNonRegistry ? ["--no-cache"] : []),
       "--cwd",
       Global.Path.cache,
       target,
@@ -203,13 +208,35 @@ export namespace BunProc {
     }
 
     // Remove the actual node_modules directory so bun can't reuse stale files.
-    // Without this, bun add may silently reuse cached files even after
-    // clearing the lockfile (e.g. git repos without a valid remote).
     const isNonRegistry = pkg ? PluginSpec.isNonRegistry(pkg) : false
     const modDir = pkg ? modPath(pkg, isNonRegistry) : path.join(Global.Path.cache, "node_modules")
     if (pkg && existsSync(modDir)) {
       const { rmSync } = require("fs")
       rmSync(modDir, { recursive: true, force: true })
+    }
+
+    // Purge bun's global git cache for non-registry packages.
+    // Bun stores git-sourced packages under ~/.bun/install/cache/ with
+    // encoded names (e.g. @GH@SII-Holos-holos-research-XXXX@@@1).
+    // Without clearing this, `bun add` may reuse a stale clone even with
+    // --force, since --force only affects the registry cache.
+    if (pkg && isNonRegistry) {
+      const { rmSync: rm } = require("fs")
+      const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
+      if (existsSync(bunCacheDir)) {
+        const { readdirSync } = require("fs")
+        // Derive a prefix from the repo name to match encoded cache entries
+        const repoName =
+          pkg
+            .split("/")
+            .pop()
+            ?.replace(/\.git$/, "") ?? ""
+        for (const entry of readdirSync(bunCacheDir)) {
+          if (entry.includes(repoName)) {
+            rm(path.join(bunCacheDir, entry), { recursive: true, force: true })
+          }
+        }
+      }
     }
   }
 
