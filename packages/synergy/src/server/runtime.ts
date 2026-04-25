@@ -159,7 +159,9 @@ export async function run(options: RuntimeOptions) {
   }
 
   // Normal path (unchanged)
-  await SingleInstance.acquire()
+  if (!Hosted.enabled()) {
+    await SingleInstance.acquire()
+  }
   await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
