@@ -167,6 +167,8 @@ export namespace Plugin {
     return path.dirname(entryPath)
   }
 
+  const printedPluginIds = new Set<string>()
+
   const state = Instance.state(async () => {
     const { Server } = await import("../server/server")
     const client = createSynergyClient({
@@ -256,13 +258,20 @@ export namespace Plugin {
           skills: hooks.skills,
           agents: hooks.agents,
         })
-        UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
+
+        if (!printedPluginIds.has(pluginId)) {
+          printedPluginIds.add(pluginId)
+          UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
+        }
         log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
       }
     }
 
-    if (pluginPaths.length > 0) {
-      UI.println(`  Plugins: ${installedCount} installed, ${failedCount} failed`)
+    if (installedCount > 0 || failedCount > 0) {
+      const parts: string[] = []
+      if (installedCount > 0) parts.push(`${installedCount} installed`)
+      if (failedCount > 0) parts.push(`${failedCount} failed`)
+      UI.println(`  Plugins: ${parts.join(", ")}`)
     }
 
     return { loaded, baseInput }
