@@ -1,6 +1,7 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
+import { isHostedMode } from "@/utils/runtime"
 import { createSignal, onMount, Show, Switch, Match } from "solid-js"
 
 interface LocalCredentials {
@@ -32,6 +33,10 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
       if (res.ok) {
         const data: LocalCredentials = await res.json()
         setLocalCreds(data)
+        if (isHostedMode() && data.exists) {
+          await authenticateLocal()
+          return
+        }
       }
     } catch {
       setCredScanFailed(true)
@@ -43,6 +48,7 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
     setView("verifying")
     setError("")
     setWarning("")
+    const hosted = isHostedMode()
 
     try {
       const res = await fetch(`${props.serverUrl}/holos/verify`)
@@ -51,11 +57,19 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
         auth.loginWithToken(data.agentId, { id: data.agentId })
       } else {
         const data = await res.json().catch(() => ({}))
-        setWarning(data.message || "Credential mismatch — this identity is not recognized by Holos.")
+        if (hosted) {
+          setError(data.message || "Credential mismatch — this identity is not recognized by Holos.")
+        } else {
+          setWarning(data.message || "Credential mismatch — this identity is not recognized by Holos.")
+        }
         setView("select")
       }
     } catch {
-      setWarning("Unable to reach Holos to verify credentials. Continuing in standalone mode.")
+      if (hosted) {
+        setError("Unable to reach Holos to verify credentials.")
+      } else {
+        setWarning("Unable to reach Holos to verify credentials. Continuing in standalone mode.")
+      }
       setView("select")
     }
   }
@@ -265,17 +279,17 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
                   {identityLoading() ? "Connecting…" : "Create a new agent identity"}
                 </button>
 
-                {/* Divider */}
-                <div class="relative flex items-center py-2 my-1">
-                  <div class="flex-grow border-t border-border-weak-base"></div>
-                  <span class="shrink-0 px-4 font-sans text-xs text-text-weaker">or</span>
-                  <div class="flex-grow border-t border-border-weak-base"></div>
-                </div>
+                <Show when={!isHostedMode()}>
+                  <div class="relative flex items-center py-2 my-1">
+                    <div class="flex-grow border-t border-border-weak-base"></div>
+                    <span class="shrink-0 px-4 font-sans text-xs text-text-weaker">or</span>
+                    <div class="flex-grow border-t border-border-weak-base"></div>
+                  </div>
 
-                {/* Option 4: Proceed without Holos */}
-                <button type="button" class={btnSecondary} onClick={() => auth.loginAsGuest()}>
-                  Proceed without Holos
-                </button>
+                  <button type="button" class={btnSecondary} onClick={() => auth.loginAsGuest()}>
+                    Proceed without Holos
+                  </button>
+                </Show>
 
                 {error() && <p class="text-center text-[13px] text-red-400 mt-2">{error()}</p>}
               </div>

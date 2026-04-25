@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { SingleInstance } from "../daemon/single-instance"
 import { EOL } from "os"
+import { Flag } from "@/flag/flag"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -158,7 +159,9 @@ export async function run(options: RuntimeOptions) {
   }
 
   // Normal path (unchanged)
-  await SingleInstance.acquire()
+  if (!Flag.SYNERGY_HOSTED) {
+    await SingleInstance.acquire()
+  }
   await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
@@ -172,7 +175,9 @@ export async function run(options: RuntimeOptions) {
   //   })
   // }
 
-  Server.mountApp()
+  if (!Flag.SYNERGY_DISABLE_WEB_MOUNT) {
+    Server.mountApp()
+  }
   const server = Server.listen(options.network)
 
   await Instance.provide({

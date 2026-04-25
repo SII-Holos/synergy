@@ -19,10 +19,12 @@ import { SessionEndpoint } from "@/session/endpoint"
 import { SessionInteraction } from "@/session/interaction"
 import { MessageV2 } from "@/session/message-v2"
 import { Log } from "@/util/log"
+import { Flag } from "@/flag/flag"
 import { Contact } from "./contact"
 import { Envelope } from "./envelope"
 import { FriendRequest } from "./friend-request"
 import { HolosAuth } from "./auth"
+import { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 import { HolosLocalMeta, LocalMetaError } from "./local-meta"
 import { releaseManagedMode, HolosLocalTakeover } from "./local-takeover"
 import { HolosMessageMetadata } from "./message-metadata"
@@ -215,7 +217,15 @@ export namespace HolosRuntime {
   export async function init(): Promise<void> {
     const { Config } = await import("@/config/config")
     const cfg = await Config.get()
-    const holos = cfg.holos
+    let holos = cfg.holos
+    if ((!holos || !holos.enabled) && Flag.SYNERGY_HOSTED && (await HolosAuth.getStoredCredential())) {
+      holos = {
+        enabled: true,
+        apiUrl: HOLOS_URL,
+        wsUrl: HOLOS_WS_URL,
+        portalUrl: HOLOS_PORTAL_URL,
+      }
+    }
     const current = await state()
 
     if (current.reconnectTimer) {

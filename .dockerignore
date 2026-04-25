@@ -1,0 +1,11 @@
+.git
+.turbo
+node_modules
+packages/*/node_modules
+packages/sdk/js/node_modules
+packages/*/dist
+packages/sdk/js/dist
+dist
+logs
+*.log
+.DS_Store

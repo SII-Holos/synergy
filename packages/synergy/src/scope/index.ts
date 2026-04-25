@@ -39,7 +39,7 @@ export namespace Scope {
   }
 
   export function global(): Scope.Global {
-    const home = Global.Path.home
+    const home = Flag.SYNERGY_HOSTED ? path.resolve(Flag.SYNERGY_SCOPE_ROOT || "/workspace") : Global.Path.home
     return {
       type: "global",
       id: "global",
