@@ -1,14 +1,113 @@
 import { cmd } from "./cmd"
 import { withNetworkOptions } from "../network"
+import { UI } from "../ui"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
+import { getDevWatchdogPidFile, getDevRestartFlagFile } from "../../server/runtime"
+import { parseProcStatStarttime } from "../../util/proc"
+
+async function isWatchdogRunning(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJiffies?: number): Promise<boolean> {
+  // Verify the process at `pid` is the same one that wrote the PID file.
+  // This prevents signaling the wrong process if the PID was reused.
+  try {
+    if (process.platform === "linux" && starttimeJiffies !== undefined) {
+      // Compare the starttime jiffies from /proc/<pid>/stat with the stored value.
+      // If the PID was reused, the new process will have a different starttime.
+      const fs = await import("fs/promises")
+      const stat = await fs.readFile(`/proc/${pid}/stat`, "utf-8")
+      const currentStarttime = parseProcStatStarttime(stat)
+      if (currentStarttime === undefined) return false
+      return currentStarttime === starttimeJiffies
+    }
+    // On non-Linux, fall back to just checking if the process exists
+    // PID reuse is rare on macOS and in dev mode the risk is acceptable
+    return isWatchdogRunning(pid)
+  } catch {
+    return false
+  }
+}
 
 export const RestartCommand = cmd({
   command: "restart",
-  describe: "restart synergy background service",
+  describe: "restart synergy server",
   builder: (yargs) => withNetworkOptions(yargs),
   handler: async () => {
+    // If a dev-mode watchdog PID file exists, signal it.
+    const cwd = process.env.SYNERGY_CWD ?? process.cwd()
+    const pidFile = getDevWatchdogPidFile(cwd)
+    try {
+      const content = await Bun.file(pidFile).text()
+      let pid: number
+      let startTime: number | undefined
+      let starttimeJiffies: number | undefined
+      let storedCwd: string | undefined
+
+      // Parse PID file — may be JSON with identity token or plain PID (legacy)
+      try {
+        const data = JSON.parse(content)
+        pid = parseInt(String(data.pid), 10)
+        startTime = data.startTime
+        starttimeJiffies = data.starttimeJiffies
+        storedCwd = data.devCwd
+      } catch {
+        pid = parseInt(content.trim(), 10)
+      }
+
+      // Use the stored cwd from PID file for flag file path consistency.
+      // If the server was started from a different directory than restart,
+      // the stored cwd ensures we write the flag file to the right location.
+      const effectiveCwd = storedCwd ?? cwd
+
+      if (!isNaN(pid)) {
+        const isRunning = await isWatchdogRunning(pid)
+        if (!isRunning) {
+          UI.error(`PID ${pid} in dev-watchdog.pid is not running. Removing stale PID file.`)
+          try {
+            await Bun.file(pidFile).unlink()
+          } catch {}
+          // Fall through to daemon restart
+        } else if (startTime !== undefined && !(await verifyWatchdogIdentity(pid, startTime, starttimeJiffies))) {
+          UI.error(`PID ${pid} in dev-watchdog.pid belongs to a different process. Removing stale PID file.`)
+          try {
+            await Bun.file(pidFile).unlink()
+          } catch {}
+          // Fall through to daemon restart
+        } else {
+          try {
+            if (process.platform === "win32") {
+              // On Windows, SIGUSR1 is not available. Use a flag file
+              // that the watchdog polls to trigger a restart.
+              await Bun.write(getDevRestartFlagFile(effectiveCwd), String(Date.now()))
+              UI.println(`Restart requested for dev server (watchdog PID ${pid}).`)
+            } else {
+              process.kill(pid, "SIGUSR1")
+              UI.println(`Restarted dev server (watchdog PID ${pid}).`)
+            }
+            return
+          } catch (error) {
+            UI.error(`Dev server (PID ${pid}) is not running. Removing stale PID file.`)
+            try {
+              await Bun.file(pidFile).unlink()
+            } catch {}
+            // Fall through to daemon restart instead of exiting
+          }
+        }
+      }
+    } catch {
+      // No PID file — fall through to daemon restart.
+    }
+
+    // Restart the managed background service.
     let service: Awaited<ReturnType<typeof Daemon.restart>>["service"]
     try {
       const restarted = await Daemon.restart()

@@ -135,9 +135,9 @@ jobs:
         id: event
         run: |
           if grep -qi "LGTM" /tmp/review.txt; then
-            echo "event=APPROVE" >> "$GITHUB_OUTPUT"
+            echo "event=approve" >> "$GITHUB_OUTPUT"
           else
-            echo "event=COMMENT" >> "$GITHUB_OUTPUT"
+            echo "event=comment" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Submit Review

@@ -6,12 +6,16 @@ import { Instance } from "../scope/instance"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
 import { Log } from "../util/log"
+import { parseProcStatStarttime } from "../util/proc"
 import { InstanceBootstrap, ChannelBootstrap, HolosBootstrap } from "../project/bootstrap"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { SingleInstance } from "../daemon/single-instance"
 import { EOL } from "os"
+import path from "path"
+import crypto from "crypto"
+import { Global } from "../global"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -38,25 +42,86 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   const parentCwd = process.cwd()
 
   let shuttingDown = false
+  let devRestartRequested = false
   let crashCount = 0
+  let abortController = new AbortController()
   const crashStartTime: number[] = []
 
-  const log = Log.create({ service: "server-watchdog" })
+  const isDev = options.restartPolicy === "dev"
+  const log = Log.create({ service: isDev ? "server-dev-watchdog" : "server-watchdog" })
 
-  const onWrapperSignal = async (child: ReturnType<typeof Bun.spawn>) => {
-    if (shuttingDown) return
-    shuttingDown = true
-    log.info("received shutdown signal, forwarding to child and exiting watchdog")
+  // In dev mode, write the watchdog PID so `synergy restart` can signal us
+  // Scope the PID file by working directory to support multiple dev servers
+  // Use SYNERGY_CWD to match the directory used by the restart command
+  const devCwd = process.env.SYNERGY_CWD ?? parentCwd
+  const cwdHash = crypto.createHash("sha256").update(devCwd).digest("hex").slice(0, 12)
+  const devPidFile = isDev ? path.join(Global.Path.state, `dev-watchdog-${cwdHash}.pid`) : undefined
+  // On Windows, a flag file is used instead of SIGUSR1 for restart triggering
+  const devRestartFlag = isDev ? path.join(Global.Path.state, `dev-restart-${cwdHash}.flag`) : undefined
+  if (devPidFile) {
     try {
-      child.kill()
-    } catch {}
-    try {
-      await child.exited
+      const { mkdir } = await import("fs/promises")
+      await mkdir(path.dirname(devPidFile), { recursive: true })
+      // Store PID + startup identity for verification.
+      // On Linux, include the starttime jiffies from /proc/self/stat so
+      // restart.ts can verify the process identity without knowing CLK_TCK.
+      let identity: Record<string, unknown> = { pid: process.pid, startTime: Date.now(), devCwd }
+      if (process.platform === "linux") {
+        try {
+          const selfStat = await Bun.file("/proc/self/stat").text()
+          const starttime = parseProcStatStarttime(selfStat)
+          if (starttime !== undefined) identity.starttimeJiffies = starttime
+        } catch {}
+      }
+      await Bun.write(devPidFile, JSON.stringify(identity))
     } catch {}
   }
 
+  let child: ReturnType<typeof Bun.spawn> | undefined
+
+  const onWrapperSignal = async () => {
+    if (shuttingDown) return
+    shuttingDown = true
+    log.info("received shutdown signal, forwarding to child and exiting watchdog")
+    if (child) {
+      try {
+        child.kill()
+      } catch {}
+      try {
+        await child.exited
+      } catch {}
+    }
+    abortController.abort()
+  }
+
+  // In dev mode, SIGUSR1 triggers a restart (child exits, watchdog respawns it)
+  // We use SIGUSR1 instead of SIGHUP because SIGHUP is also sent on terminal
+  // hangup (closing the terminal), which should trigger shutdown instead.
+  const onDevRestart = () => {
+    if (shuttingDown) return
+    devRestartRequested = true
+    log.info("received SIGUSR1, restarting server")
+    // Abort backoff sleep so the watchdog respawns immediately
+    abortController.abort()
+    if (child) {
+      try {
+        child.kill("SIGTERM")
+      } catch {}
+    }
+  }
+
+  if (isDev) {
+    process.on("SIGUSR1", onDevRestart)
+  }
+
+  // Install persistent signal handlers (not removed during backoff)
+  // SIGHUP is treated the same as SIGINT/SIGTERM (shutdown)
+  process.on("SIGINT", () => onWrapperSignal())
+  process.on("SIGTERM", () => onWrapperSignal())
+  process.on("SIGHUP", () => onWrapperSignal())
+
   for (;;) {
-    const child = Bun.spawn({
+    child = Bun.spawn({
       cmd: [process.argv0, ...childArgv],
       stdin: "inherit",
       stdout: "inherit",
@@ -64,22 +129,56 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
       cwd: parentCwd,
       env: {
         ...process.env,
-        SYNERGY_RESTART_POLICY: "always",
+        SYNERGY_RESTART_POLICY: options.restartPolicy!,
       },
     })
 
     const childStartTime = Date.now()
-    const sigint = () => onWrapperSignal(child)
-    const sigterm = () => onWrapperSignal(child)
-    process.on("SIGINT", sigint)
-    process.on("SIGTERM", sigterm)
+
+    // Poll for restart flag file while child is running.
+    // This is the primary restart mechanism on Windows (no SIGUSR1),
+    // and acts as a fallback on all platforms.
+    const currentChild = child
+    let restartPoller: ReturnType<typeof setInterval> | undefined
+    if (devRestartFlag && currentChild) {
+      restartPoller = setInterval(async () => {
+        try {
+          if (await Bun.file(devRestartFlag).exists()) {
+            devRestartRequested = true
+            try {
+              await Bun.file(devRestartFlag).unlink()
+            } catch {}
+            log.info("restart flag detected, killing child for restart")
+            currentChild.kill()
+            clearInterval(restartPoller)
+          }
+        } catch {}
+      }, 1000)
+    }
 
     // Wait for child
     const exitStatus = await child.exited
 
-    // Clean up signal handlers
-    process.off("SIGINT", sigint)
-    process.off("SIGTERM", sigterm)
+    // Clean up the restart poller
+    if (restartPoller !== undefined) clearInterval(restartPoller)
+
+    // Intentional dev restarts should not count as crashes
+    if (devRestartRequested) {
+      devRestartRequested = false
+      abortController = new AbortController()
+      log.info("child exited due to dev restart, respawning immediately", {
+        exitCode: exitStatus,
+      })
+      if (shuttingDown) {
+        if (devPidFile) {
+          try {
+            await Bun.file(devPidFile).unlink()
+          } catch {}
+        }
+        process.exit(0)
+      }
+      continue
+    }
 
     // Track crash time for backoff calculation
     crashStartTime.push(childStartTime)
@@ -99,6 +198,11 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     // Decide whether to respawn
     if (shuttingDown) {
       log.info("child exited after shutdown signal, watchdog stopping")
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
       process.exit(0)
     }
 
@@ -108,20 +212,83 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         exitCode: exitStatus,
         crashCount,
       })
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
       process.exit(1)
     }
 
     // Calculate backoff delay: min(1000 * 2^(n-1), 30000)
     const backoffDelay = Math.min(1000 * Math.pow(2, crashCount - 1), 30000)
 
-    log.info("child exited unexpectedly, scheduling respawn", {
+    log.info("child exited, scheduling respawn", {
       exitCode: exitStatus,
       crashCount,
       delayMs: backoffDelay,
     })
 
     // Always delay at least 1s, and apply exponential backoff for rapid crashes
-    await Bun.sleep(backoffDelay)
+    try {
+      await Promise.race([
+        Bun.sleep(backoffDelay),
+        new Promise<void>((_, reject) => {
+          if (abortController.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"))
+            return
+          }
+          abortController.signal.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"))
+          })
+        }),
+      ])
+    } catch {
+      // sleep was aborted — by shutdown or by SIGUSR1/restart flag
+    }
+    abortController = new AbortController()
+
+    // If a restart was requested during backoff, skip to respawn immediately.
+    // The previous child exit was caused by the restart, not a crash —
+    // remove the crash entry we already pushed.
+    if (devRestartRequested) {
+      devRestartRequested = false
+      // Undo the crash entry we pushed before the sleep
+      if (crashStartTime.length > 0 && crashStartTime[crashStartTime.length - 1] === childStartTime) {
+        crashStartTime.pop()
+      }
+      log.info("restart requested during backoff, respawning immediately")
+      continue
+    }
+
+    // Check for restart flag file as a fallback (e.g., flag written
+    // while child was already exiting, or during backoff sleep)
+    if (devRestartFlag && !shuttingDown) {
+      try {
+        if (await Bun.file(devRestartFlag).exists()) {
+          try {
+            await Bun.file(devRestartFlag).unlink()
+          } catch {}
+          // Undo the crash entry we pushed before the sleep
+          if (crashStartTime.length > 0 && crashStartTime[crashStartTime.length - 1] === childStartTime) {
+            crashStartTime.pop()
+          }
+          log.info("restart flag detected during backoff, respawning immediately")
+          continue
+        }
+      } catch {}
+    }
+
+    // After aborted sleep, check if we should exit instead of respawning
+    if (shuttingDown) {
+      log.info("shutdown requested during backoff, stopping watchdog")
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
+      process.exit(0)
+    }
 
     log.info("respawning child", { crashCount, nextDelayMinMs: Math.min(1000 * Math.pow(2, crashCount), 30000) })
   }
@@ -139,7 +306,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL = 80
 
 export interface RuntimeOptions {
-  restartPolicy?: "none" | "always"
+  restartPolicy?: "none" | "always" | "dev"
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
@@ -150,10 +317,18 @@ export interface RuntimeOptions {
     cors?: string[]
   }
 }
+export function getDevWatchdogPidFile(cwd?: string) {
+  const hash = cwd ? crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12) : "unknown"
+  return path.join(Global.Path.state, `dev-watchdog-${hash}.pid`)
+}
 
+export function getDevRestartFlagFile(cwd?: string) {
+  const hash = cwd ? crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12) : "unknown"
+  return path.join(Global.Path.state, `dev-restart-${hash}.flag`)
+}
 export async function run(options: RuntimeOptions) {
-  // If user asked for always-restart, spawn a child and act as a dumb watcher
-  if (options.restartPolicy === "always") {
+  // If user asked for a restart policy, spawn a child and act as a watchdog
+  if (options.restartPolicy === "always" || options.restartPolicy === "dev") {
     return runWithRestartPolicyAlways(options)
   }
 
