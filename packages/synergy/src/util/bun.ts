@@ -201,6 +201,16 @@ export namespace BunProc {
       const { unlinkSync } = require("fs")
       unlinkSync(lockfilePath)
     }
+
+    // Remove the actual node_modules directory so bun can't reuse stale files.
+    // Without this, bun add may silently reuse cached files even after
+    // clearing the lockfile (e.g. git repos without a valid remote).
+    const isNonRegistry = pkg ? PluginSpec.isNonRegistry(pkg) : false
+    const modDir = pkg ? modPath(pkg, isNonRegistry) : path.join(Global.Path.cache, "node_modules")
+    if (pkg && existsSync(modDir)) {
+      const { rmSync } = require("fs")
+      rmSync(modDir, { recursive: true, force: true })
+    }
   }
 
   /**
