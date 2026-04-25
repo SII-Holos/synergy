@@ -2079,15 +2079,17 @@ for (const name of inspireToolNames) {
   ToolRegistry.register({
     name,
     render(props) {
-      const info = getToolInfo(name, props.input, props.metadata)
+      const info = createMemo(() =>
+        getToolInfo(name, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
+      )
       return (
         <BasicTool
           {...props}
-          icon={info.icon}
+          icon={info().icon}
           trigger={() => ({
-            title: info.title,
-            subtitle: info.subtitle || "",
-            args: info.args || [],
+            title: info().title,
+            subtitle: info().subtitle || "",
+            args: info().args || [],
           })}
         >
           <Show when={props.output}>
@@ -2121,15 +2123,17 @@ for (const name of researchToolNames) {
   ToolRegistry.register({
     name,
     render(props) {
-      const info = getToolInfo(name, props.input, props.metadata)
+      const info = createMemo(() =>
+        getToolInfo(name, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
+      )
       return (
         <BasicTool
           {...props}
-          icon={info.icon}
+          icon={info().icon}
           trigger={() => ({
-            title: info.title,
-            subtitle: info.subtitle || "",
-            args: info.args || [],
+            title: info().title,
+            subtitle: info().subtitle || "",
+            args: info().args || [],
           })}
         >
           <Show when={props.output}>

@@ -9,7 +9,7 @@ const ANIMATION_STYLE = `
 }
 `
 
-function useCountUp(target: number, duration = 800) {
+function useCountUp(target: number, duration = 1600) {
   const [value, setValue] = createSignal(0)
   onMount(() => {
     const start = performance.now()
