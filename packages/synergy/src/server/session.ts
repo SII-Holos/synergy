@@ -773,21 +773,12 @@ export const SessionRoute = new Hono()
     "/:sessionID/command",
     describeRoute({
       summary: "Send command",
-      description: "Send a new command to a session for execution by the AI assistant.",
+      description:
+        "Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.",
       operationId: "session.command",
       responses: {
-        200: {
-          description: "Created message",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  info: MessageV2.Assistant,
-                  parts: MessageV2.Part.array(),
-                }),
-              ),
-            },
-          },
+        204: {
+          description: "Command accepted",
         },
         ...errors(400, 404),
       },
@@ -802,8 +793,9 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      const msg = await SessionInvoke.command({ ...body, sessionID })
-      return c.json(msg)
+      // Fire and forget — errors are surfaced to the client via session event bus.
+      SessionInvoke.command({ ...body, sessionID }).catch(() => {})
+      return c.body(null, 204)
     },
   )
   .post(
