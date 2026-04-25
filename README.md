@@ -306,8 +306,13 @@ SYNERGY_SCOPE_ROOT=/workspace
 SYNERGY_DISABLE_WEB_MOUNT=1
 SYNERGY_AUTH_COOKIE_NAME=holos_jwt
 SYNERGY_JWT_SECRET=...
+SYNERGY_JWT_ISSUER=...
+SYNERGY_JWT_AUDIENCE=...
 HOLOS_OWNER_ID=...
 ```
+
+`SYNERGY_SCOPE_ROOT` defaults to `/workspace`, and `SYNERGY_AUTH_COOKIE_NAME` defaults to `holos_jwt`.
+`SYNERGY_JWT_ISSUER` and `SYNERGY_JWT_AUDIENCE` are optional but recommended when the JWT secret is shared with other Holos services.
 
 In hosted mode, the server defaults scope resolution to `SYNERGY_SCOPE_ROOT`, rejects directories outside that root, and validates `holos_jwt` itself before serving non-health API requests.
 

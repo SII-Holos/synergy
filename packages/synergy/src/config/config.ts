@@ -29,7 +29,6 @@ import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { ConfigSet } from "./set"
 import { RuntimeSchema } from "../runtime/schema"
-import { Hosted } from "../server/hosted"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -136,7 +135,7 @@ export namespace Config {
         }
       }
 
-      if (!Hosted.enabled()) {
+      if (!Flag.SYNERGY_HOSTED) {
         const exists = existsSync(path.join(dir, "node_modules"))
         const installing = installDependencies(dir)
         if (!exists) await installing

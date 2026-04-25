@@ -5,7 +5,7 @@ export interface AppAccess {
   callbackUrl: string
 }
 
-function trimSlashes(value: string) {
+export function trimSlashes(value: string) {
   return value.replace(/\/+$/, "")
 }
 

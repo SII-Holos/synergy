@@ -19,6 +19,11 @@ const platform: Platform = {
   fetch: ((input, init) => {
     if (!isHostedMode()) return nativeFetch(input, init)
     const request = input instanceof Request ? new Request(input, init) : new Request(input, init)
+    const url = new URL(request.url)
+    const shouldIncludeCredentials =
+      url.origin === window.location.origin || url.hostname === "holosai.io" || url.hostname.endsWith(".holosai.io")
+    if (!shouldIncludeCredentials) return nativeFetch(request)
+    // Hosted auth relies on a root-domain Holos cookie; keep the blast radius to Holos origins.
     return nativeFetch(new Request(request, { credentials: "include" }))
   }) as typeof fetch,
   openLink(url: string) {

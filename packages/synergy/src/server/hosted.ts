@@ -2,15 +2,13 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import path from "node:path"
 import z from "zod"
+import { Flag } from "@/flag/flag"
 
 type JwtPayload = Record<string, unknown> & {
   exp?: number
   nbf?: number
-}
-
-function envFlag(name: string) {
-  const value = process.env[name]?.trim().toLowerCase()
-  return value === "1" || value === "true" || value === "yes" || value === "on"
+  iss?: string
+  aud?: string | string[]
 }
 
 function decodeBase64Url(input: string) {
@@ -44,19 +42,19 @@ export namespace Hosted {
   )
 
   export function enabled() {
-    return envFlag("SYNERGY_HOSTED")
+    return Flag.SYNERGY_HOSTED
   }
 
   export function authEnabled() {
-    return enabled() || envFlag("SYNERGY_AUTH_ENABLED")
+    return enabled()
   }
 
   export function disableWebMount() {
-    return envFlag("SYNERGY_DISABLE_WEB_MOUNT")
+    return Flag.SYNERGY_DISABLE_WEB_MOUNT
   }
 
   export function scopeRoot() {
-    return path.resolve(process.env.SYNERGY_SCOPE_ROOT || "/workspace")
+    return path.resolve(Flag.SYNERGY_SCOPE_ROOT || "/workspace")
   }
 
   export function defaultDirectory() {
@@ -64,11 +62,11 @@ export namespace Hosted {
   }
 
   export function cookieName() {
-    return process.env.SYNERGY_AUTH_COOKIE_NAME || "holos_jwt"
+    return Flag.SYNERGY_AUTH_COOKIE_NAME
   }
 
   export function ownerId() {
-    return process.env.HOLOS_OWNER_ID
+    return Flag.HOLOS_OWNER_ID
   }
 
   export function readToken(input: { cookie?: string; authorization?: string }) {
@@ -89,7 +87,7 @@ export namespace Hosted {
   }
 
   export async function verifyJwt(token: string): Promise<JwtPayload> {
-    const secret = process.env.SYNERGY_JWT_SECRET
+    const secret = Flag.SYNERGY_JWT_SECRET
     if (!secret) {
       throw new Error("missing_jwt_secret")
     }
@@ -99,7 +97,15 @@ export namespace Hosted {
       throw new Error("invalid_token")
     }
 
-    const header = JSON.parse(decodeBase64Url(encodedHeader).toString("utf8")) as { alg?: string }
+    let header: { alg?: string }
+    let payload: JwtPayload
+    try {
+      header = JSON.parse(decodeBase64Url(encodedHeader).toString("utf8")) as { alg?: string }
+      payload = JSON.parse(decodeBase64Url(encodedPayload).toString("utf8")) as JwtPayload
+    } catch {
+      throw new Error("invalid_token")
+    }
+
     if (header.alg !== "HS256") {
       throw new Error("invalid_algorithm")
     }
@@ -110,13 +116,23 @@ export namespace Hosted {
       throw new Error("invalid_signature")
     }
 
-    const payload = JSON.parse(decodeBase64Url(encodedPayload).toString("utf8")) as JwtPayload
     const now = Math.floor(Date.now() / 1000)
     if (typeof payload.nbf === "number" && payload.nbf > now) {
       throw new Error("not_yet_valid")
     }
     if (typeof payload.exp === "number" && payload.exp <= now) {
       throw new Error("expired")
+    }
+
+    if (Flag.SYNERGY_JWT_ISSUER !== undefined && payload.iss !== Flag.SYNERGY_JWT_ISSUER) {
+      throw new Error("invalid_issuer")
+    }
+
+    if (Flag.SYNERGY_JWT_AUDIENCE !== undefined) {
+      const audience = Array.isArray(payload.aud) ? payload.aud : payload.aud === undefined ? [] : [payload.aud]
+      if (!audience.includes(Flag.SYNERGY_JWT_AUDIENCE)) {
+        throw new Error("invalid_audience")
+      }
     }
 
     const owner = ownerId()

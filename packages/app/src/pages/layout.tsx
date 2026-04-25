@@ -354,7 +354,8 @@ export default function Layout(props: ParentProps) {
     })
 
     if (!hosted) {
-      commands.splice(2, 0, {
+      const providerIndex = commands.findIndex((item) => item.id === "provider.connect")
+      commands.splice(providerIndex === -1 ? 1 : providerIndex + 1, 0, {
         id: "server.switch",
         title: "Switch server",
         category: "Server",

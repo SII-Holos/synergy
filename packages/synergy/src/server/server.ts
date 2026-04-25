@@ -103,9 +103,20 @@ export namespace Server {
   }
 
   function isGlobalRoute(pathname: string) {
-    return (
+    if (
       pathname === "/global" ||
       pathname.startsWith("/global/") ||
+      pathname === "/holos" ||
+      pathname.startsWith("/holos/") ||
+      pathname === "/channel" ||
+      pathname.startsWith("/channel/")
+    ) {
+      return true
+    }
+
+    if (!Hosted.enabled()) return false
+
+    return (
       pathname === "/path" ||
       pathname.startsWith("/path/") ||
       pathname === "/scope" ||
@@ -115,11 +126,7 @@ export namespace Server {
       pathname === "/config" ||
       pathname.startsWith("/config/") ||
       pathname === "/auth" ||
-      pathname.startsWith("/auth/") ||
-      pathname === "/holos" ||
-      pathname.startsWith("/holos/") ||
-      pathname === "/channel" ||
-      pathname.startsWith("/channel/")
+      pathname.startsWith("/auth/")
     )
   }
 
@@ -127,7 +134,7 @@ export namespace Server {
     let directory =
       c.req.query("directory") ||
       c.req.header("x-synergy-directory") ||
-      (Hosted.enabled() ? Hosted.defaultDirectory() : Flag.SYNERGY_CWD || process.cwd())
+      (Hosted.enabled() ? Flag.SYNERGY_CWD || Hosted.defaultDirectory() : Flag.SYNERGY_CWD || process.cwd())
     try {
       directory = decodeURIComponent(directory)
     } catch {

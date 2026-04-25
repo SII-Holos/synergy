@@ -1,7 +1,7 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { createEffect, createMemo, createSignal, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
-import { appAccessFromUrlParam, callbackUrlFor, controlApiBase, type AppAccess } from "@/utils/runtime"
+import { appAccessFromUrlParam, callbackUrlFor, controlApiBase, trimSlashes, type AppAccess } from "@/utils/runtime"
 import { AppWithAccess } from "@/app-access"
 
 interface HostedProfile {
@@ -51,10 +51,6 @@ interface HostedProfileResponse {
     logged_in?: boolean
     user_profile?: HostedProfile
   }
-}
-
-function trimSlashes(value: string) {
-  return value.replace(/\/+$/, "")
 }
 
 function endpoint(path: string) {
