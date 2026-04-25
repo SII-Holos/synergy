@@ -356,7 +356,7 @@ export namespace ExperienceEncoder {
       system: [],
       retries: ctx.learning.encoderRetries,
     })
-    return (await stream.text) ?? ""
+    return (await stream.text.catch(() => "")) ?? ""
   }
 
   async function generateIntent(ctx: AgentContext, history: string | undefined, userInput: string): Promise<string> {

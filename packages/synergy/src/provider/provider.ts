@@ -172,7 +172,7 @@ export namespace Provider {
 
       if (!profile && !awsAccessKeyId && !awsBearerToken) return { autoload: false }
 
-      const { fromNodeProviderChain } = await import(await BunProc.install("@aws-sdk/credential-providers"))
+      const { fromNodeProviderChain } = await import((await BunProc.install("@aws-sdk/credential-providers")).entryPath)
 
       // Build credential provider options (only pass profile if specified)
       const credentialProviderOptions = profile ? { profile } : {}
@@ -1043,7 +1043,7 @@ export namespace Provider {
 
       let installedPath: string
       if (!model.api.npm.startsWith("file://")) {
-        installedPath = await BunProc.install(model.api.npm, "latest")
+        installedPath = (await BunProc.install(model.api.npm, "latest")).entryPath
       } else {
         log.info("loading local provider", { pkg: model.api.npm })
         installedPath = model.api.npm

@@ -118,7 +118,7 @@ export function SessionConversation(props: {
                       (index() > 0 ? "border-t border-border-base pt-2 " : "") +
                       (!props.showTabs()
                         ? "md:max-w-200 md:mx-auto"
-                        : props.visibleUserMessages().length > 1
+                        : (props.visibleUserMessages()?.length ?? 0) > 1
                           ? "md:pr-6 md:pl-18"
                           : ""),
                   }}
@@ -152,7 +152,7 @@ export function SessionConversation(props: {
                     (index() > 0 ? "border-t border-border-base pt-2 " : "") +
                     (!props.showTabs()
                       ? "md:max-w-200 md:mx-auto"
-                      : props.visibleUserMessages().length > 1
+                      : (props.visibleUserMessages()?.length ?? 0) > 1
                         ? "md:pr-6 md:pl-18"
                         : ""),
                 }}

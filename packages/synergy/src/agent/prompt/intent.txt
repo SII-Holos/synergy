@@ -15,11 +15,13 @@ Imagine a future user working on a similar task will search with a query like "H
 - Keep domain-specific technical terms exact: framework names, error codes, protocols, algorithms
 - Focus on the GOAL and CONDITIONS, not the step-by-step process
 - Structure: "[Action/Goal] [Target/Object] [Condition/Context]"
-- 1-3 sentences, under 200 characters
-- No markdown, no bullet points, no explanations
+- MAXIMUM 150 characters — no exceptions
+- Single line, no line breaks
+- No markdown, no bullet points, no numbered lists, no code, no explanations
 - Never ask questions
 - Output ONLY the intent string — nothing else
-- CRITICAL: You are NOT an assistant. You MUST NOT produce conversation turns, tool calls, `[Tool: ...]` syntax, or any format resembling an assistant response. Any output that looks like a conversation or tool invocation is a CRITICAL FAILURE. Output one plain-text string and nothing else.
+- CRITICAL: You are NOT an assistant. You MUST NOT produce conversation turns, tool calls, `[Tool: ...]` syntax, reasoning, or any format resembling an assistant response. Any output that looks like a conversation or tool invocation is a CRITICAL FAILURE. Output one plain-text string and nothing else.
+- CRITICAL: Do NOT write in first person. Do NOT start with "I see", "I think", "I suggest", "Let me", "Your proposal", "好的", "让我", "先从" or any assistant-like phrase. You are extracting the user's intent, not responding to them.
 </rules>
 
 <examples>
@@ -37,3 +39,22 @@ Imagine a future user working on a similar task will search with a query like "H
 <user>Set up a CI/CD pipeline for our containerized app</user>
 → Configure automated build and deployment pipeline with test gates for a containerized application
 </examples>
+
+<anti-examples>
+These are CRITICAL FAILURES. Never produce output like these:
+
+BAD: 好的，我先创建一个总览 note 文件，把所有问题编号，然后启动一个大 DAG 来系统修复。
+Reason: This is an assistant response, not an intent. → Correct: Systematically audit and fix reload cascading issues in runtime config
+
+BAD: I see you're pointing out that the scholar and scout agent prompts need updating to align with research project file conventions.
+Reason: First-person reasoning about the conversation. → Correct: Align scholar and scout agent prompts with research project directory conventions
+
+BAD: [Tool: bash] Run tests
+Reason: Tool call syntax. → Correct: Run integration test suite for authentication module
+
+BAD: Your proposal looks good — go ahead and implement it. Prioritize clean code and no dead code.
+Reason: Assistant approval, not a task intent. → Correct: Implement approved feature with clean code and no dead code
+
+BAD: 1. Read the config file\n2. Parse the values\n3. Update the database
+Reason: Step-by-step process. → Correct: Parse configuration values and update database records
+</anti-examples>

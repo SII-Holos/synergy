@@ -231,16 +231,18 @@ export default function Page() {
 
   const renderedUserMessages = createMemo(() => {
     const msgs = visibleUserMessages()
+    if (!msgs) return emptyUserMessages
     const start = store.turnStart
     if (start <= 0) return msgs
     if (start >= msgs.length) return emptyUserMessages
-    return msgs.slice(start)
+    return msgs.slice(start) as UserMessage[]
   }, emptyUserMessages)
 
   const emptyTimeline: Message[] = []
 
   const timeline = createMemo(() => {
     const turns = renderedUserMessages() as Message[]
+    if (!turns || turns.length === 0) return emptyTimeline
     const firstID = turns[0]?.id
     const mailbox: Message[] = []
     for (const msg of messages()) {
@@ -249,7 +251,7 @@ export default function Page() {
       if (firstID && msg.id < firstID) continue
       mailbox.push(msg)
     }
-    if (mailbox.length === 0) return turns.length > 0 ? turns : emptyTimeline
+    if (mailbox.length === 0) return turns
     const result = [...turns, ...mailbox]
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result

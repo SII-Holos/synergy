@@ -7,8 +7,22 @@ import {
 } from "@ericsanchezok/synergy-plugin/hooks"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
+import { BunProc } from "../../util/bun"
+import { PluginSpec } from "../../util/plugin-spec"
+import { Config } from "../../config/config"
+import { Global } from "../../global"
+import { Instance } from "../../scope/instance"
+import { Scope } from "@/scope"
 import { EOL } from "os"
+import path from "path"
+import { existsSync } from "fs"
+import * as prompts from "@clack/prompts"
 import type { Argv } from "yargs"
+
+function isPluginInstalled(pkg: string): boolean {
+  const modDir = PluginSpec.isNonRegistry(pkg) ? BunProc.resolvePkgName(pkg) : pkg
+  return existsSync(path.join(Global.Path.cache, "node_modules", modDir))
+}
 
 function formatCategory(category: HookCategory) {
   return category.padEnd(12)
@@ -28,7 +42,6 @@ function printHookList(category?: HookCategory) {
     for (const hook of groupHooks) {
       const mutates = hook.mutatesOutput ? "mutates" : "observe"
       process.stdout.write(`  ${hook.name.padEnd(38)} ${mutates.padEnd(8)} ${hook.summary}` + EOL)
-      // Expand the event hook to show all observable bus event names
       if (hook.name === "event") {
         for (const eventName of BUS_EVENT_NAMES) {
           process.stdout.write(`    ${eventName}` + EOL)
@@ -84,9 +97,95 @@ export const PluginHooksCommand = cmd({
   },
 })
 
+export const PluginUpdateCommand = cmd({
+  command: "update [plugin]",
+  describe: "re-install plugins to get the latest version",
+  builder: (yargs: Argv) =>
+    yargs.positional("plugin", {
+      type: "string",
+      describe: "specific plugin spec to update (e.g. github:SII-Holos/holos-inspire)",
+    }),
+  async handler(args) {
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const config = await Config.get()
+        const plugins = config.plugin ?? []
+
+        if (plugins.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
+          return
+        }
+
+        const toUpdate = args.plugin ? [args.plugin as string] : plugins
+
+        if (args.plugin && !plugins.includes(args.plugin as string)) {
+          UI.error(`Plugin "${args.plugin}" is not in your configuration.`)
+          return
+        }
+
+        let succeeded = 0
+        let failed = 0
+
+        for (const pluginSpec of toUpdate) {
+          const { pkg, version } = PluginSpec.parse(pluginSpec)
+          const spinner = prompts.spinner()
+          spinner.start(`Updating ${pluginSpec}`)
+
+          try {
+            await BunProc.invalidateCache(pkg)
+            await BunProc.install(pkg, version)
+            spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            succeeded++
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e)
+            spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
+            failed++
+          }
+        }
+
+        UI.println(
+          `${UI.Style.TEXT_DIM}Updated ${succeeded} plugin${succeeded !== 1 ? "s" : ""}${failed > 0 ? `, ${failed} failed` : ""}${UI.Style.TEXT_NORMAL}`,
+        )
+      },
+    })
+  },
+})
+
+export const PluginListCommand = cmd({
+  command: "list",
+  describe: "list configured plugins and their install status",
+  builder: (yargs: Argv) => yargs,
+  async handler() {
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const config = await Config.get()
+        const plugins = config.plugin ?? []
+
+        if (plugins.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
+          return
+        }
+
+        for (const pluginSpec of plugins) {
+          const { pkg } = PluginSpec.parse(pluginSpec)
+          const installed = isPluginInstalled(pkg)
+          const status = installed
+            ? `${UI.Style.TEXT_SUCCESS}✔ installed${UI.Style.TEXT_NORMAL}`
+            : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
+          UI.println(`${pluginSpec.padEnd(36)} ${status}`)
+        }
+      },
+    })
+  },
+})
+
 export const PluginCommand = cmd({
   command: "plugin",
   describe: "inspect plugin capabilities and metadata",
-  builder: (yargs: Argv) => yargs.command(PluginHooksCommand).demandCommand(),
+  builder: (yargs: Argv) =>
+    yargs.command(PluginHooksCommand).command(PluginUpdateCommand).command(PluginListCommand).demandCommand(),
   async handler() {},
 })
