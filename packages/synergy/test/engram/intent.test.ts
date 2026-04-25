@@ -87,3 +87,38 @@ describe("Intent.sanitize truncation", () => {
     expect(Intent.sanitize(toolSpam, "fallback")).toBe("fallback")
   })
 })
+
+describe("Intent.sanitize assistant reasoning", () => {
+  test("returns fallback for Chinese assistant reasoning", () => {
+    expect(Intent.sanitize("好的，我先创建一个总览 note 文件", "fallback")).toBe("fallback")
+    expect(Intent.sanitize("让我来分析这个问题", "fallback")).toBe("fallback")
+    expect(Intent.sanitize("我觉得应该从底层开始重构", "fallback")).toBe("fallback")
+  })
+
+  test("returns fallback for English assistant reasoning", () => {
+    expect(Intent.sanitize("I see you're pointing out that the prompts need updating", "fallback")).toBe("fallback")
+    expect(Intent.sanitize("Let me check the code first", "fallback")).toBe("fallback")
+    expect(Intent.sanitize("Your proposal looks good, go ahead", "fallback")).toBe("fallback")
+  })
+
+  test("preserves normal intent that starts with a verb", () => {
+    expect(Intent.sanitize("Refactor authentication middleware to use JWT tokens", "fallback")).toBe(
+      "Refactor authentication middleware to use JWT tokens",
+    )
+    expect(Intent.sanitize("Add dark mode support to the React app", "fallback")).toBe(
+      "Add dark mode support to the React app",
+    )
+  })
+})
+
+describe("Intent.isValid assistant reasoning", () => {
+  test("invalid for Chinese assistant reasoning", () => {
+    expect(Intent.isValid("好的，我先创建一个总览 note 文件")).toBe(false)
+    expect(Intent.isValid("让我来分析这个问题")).toBe(false)
+  })
+
+  test("invalid for English assistant reasoning", () => {
+    expect(Intent.isValid("I see you're pointing out that the prompts need updating")).toBe(false)
+    expect(Intent.isValid("Your proposal looks good, go ahead")).toBe(false)
+  })
+})

@@ -234,4 +234,29 @@ export const migrations: Migration[] = [
       if (removed > 0) log.info("purged oversized/tool-log experiences", { removed, scanned: rows.length })
     },
   },
+  {
+    id: "20260425b-engram-purge-assistant-reasoning-intents",
+    description: "Remove experiences whose intent is assistant reasoning rather than a compact user intent",
+    async up(progress) {
+      const conn = EngramDB.connection()
+
+      progress(1, 3)
+      const rows = conn.prepare("SELECT id, intent FROM experience").all() as {
+        id: string
+        intent: string
+      }[]
+
+      progress(2, 3)
+      let removed = 0
+      for (const row of rows) {
+        if (!Intent.isValid(row.intent)) {
+          EngramDB.Experience.remove(row.id)
+          removed++
+        }
+      }
+
+      progress(3, 3)
+      if (removed > 0) log.info("purged assistant-reasoning intents", { removed, scanned: rows.length })
+    },
+  },
 ]
