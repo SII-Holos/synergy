@@ -193,53 +193,55 @@ export namespace Plugin {
       pluginPaths.push(...BUILTIN)
     }
 
-    let freshCount = 0
+    let installedCount = 0
     let failedCount = 0
 
-    for (let pluginPath of pluginPaths) {
-      log.info("loading plugin", { path: pluginPath })
-      const name = PluginSpec.displayName(pluginPath)
-      const freshPath = !printedPluginPaths.has(pluginPath)
+    for (const configPath of pluginPaths) {
+      log.info("loading plugin", { path: configPath })
+      const name = PluginSpec.displayName(configPath)
+      const showInstallUI = !printedPluginPaths.has(configPath)
+
+      let importPath: string
       let pluginDir: string
 
-      if (!pluginPath.startsWith("file://")) {
-        const { pkg, version, nonRegistry } = PluginSpec.parse(pluginPath)
-        const builtin = BUILTIN.some((x) => x.startsWith(pkg + "@"))
+      if (!configPath.startsWith("file://")) {
+        const { pkg, version } = PluginSpec.parse(configPath)
 
-        if (freshPath) {
+        if (showInstallUI) {
           UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
         }
 
         const result = await BunProc.install(pkg, version).catch((err) => {
-          if (freshPath) {
+          if (showInstallUI) {
             UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
           }
           failedCount++
-          if (builtin) return null
           throw err
         })
         if (!result) continue
 
-        if (freshPath) {
-          freshCount++
+        if (showInstallUI) {
+          installedCount++
           UI.println(
             result.cached
               ? `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} ${UI.Style.TEXT_DIM}(cached)${UI.Style.TEXT_NORMAL}`
               : `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} installed`,
           )
         }
-        pluginPath = result.entryPath
-        pluginDir = findPackageRoot(pluginPath)
+        importPath = result.entryPath
+        pluginDir = findPackageRoot(importPath)
       } else {
-        const filePath = pluginPath.slice("file://".length)
-        if (!path.isAbsolute(filePath)) {
-          pluginPath = "file://" + path.resolve(Instance.directory, filePath)
-        }
-        const resolved = pluginPath.startsWith("file://") ? pluginPath.slice("file://".length) : pluginPath
-        pluginDir = findPackageRoot(resolved)
+        const filePath = configPath.slice("file://".length)
+        const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(Instance.directory, filePath)
+        importPath = absolute
+        pluginDir = findPackageRoot(absolute)
       }
 
-      const mod = await import(pluginPath)
+      if (showInstallUI) {
+        printedPluginPaths.add(configPath)
+      }
+
+      const mod = await import(importPath)
       const seen = new Set<PluginDescriptor>()
 
       for (const [, descriptor] of Object.entries<PluginDescriptor>(mod)) {
@@ -248,7 +250,7 @@ export namespace Plugin {
         seen.add(descriptor)
 
         const pluginId = descriptor.id
-        const freshId = !printedPluginIds.has(pluginId)
+        const showLoadedUI = !printedPluginIds.has(pluginId)
 
         const input: PluginInput = {
           ...baseInput,
@@ -269,21 +271,17 @@ export namespace Plugin {
           agents: hooks.agents,
         })
 
-        if (freshId) {
+        if (showLoadedUI) {
           printedPluginIds.add(pluginId)
           UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
         }
         log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
       }
-
-      if (freshPath) {
-        printedPluginPaths.add(pluginPath)
-      }
     }
 
-    if (freshCount > 0 || failedCount > 0) {
+    if (installedCount > 0 || failedCount > 0) {
       const parts: string[] = []
-      if (freshCount > 0) parts.push(`${freshCount} installed`)
+      if (installedCount > 0) parts.push(`${installedCount} installed`)
       if (failedCount > 0) parts.push(`${failedCount} failed`)
       UI.println(`  Plugins: ${parts.join(", ")}`)
     }
