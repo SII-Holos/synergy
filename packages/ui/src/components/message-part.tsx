@@ -671,7 +671,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.target_phase)
       pushArg(args, input.participation_mode)
-      return { icon: "sigma", title: "Research State", subtitle: input.summary || input.action, args }
+      return { icon: "sigma", title: "Research State", subtitle: input.summary, args }
     }
     case "research_idea": {
       const args: string[] = []
@@ -721,14 +721,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.relevance)
-      return { icon: "telescope", title: "Wiki", subtitle: input.title || input.query || input.action, args }
+      return { icon: "telescope", title: "Wiki", subtitle: input.title || input.query, args }
     }
     case "research_timeline": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.last ? `last ${input.last}` : undefined)
       pushArg(args, input.event_type)
-      return { icon: "clock", title: "Timeline", subtitle: input.summary || input.action, args }
+      return { icon: "clock", title: "Timeline", subtitle: input.summary, args }
     }
     case "profile_get":
       return {
