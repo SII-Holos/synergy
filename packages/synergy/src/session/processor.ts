@@ -329,7 +329,7 @@ export namespace SessionProcessor {
                   SessionSummary.summarize({
                     sessionID: input.sessionID,
                     messageID: input.assistantMessage.parentID,
-                  })
+                  }).catch(() => {})
                   break
 
                 case "text-start":
