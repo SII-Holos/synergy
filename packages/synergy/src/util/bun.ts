@@ -216,23 +216,27 @@ export namespace BunProc {
     }
 
     // Purge bun's global git cache for non-registry packages.
-    // Bun stores git-sourced packages under ~/.bun/install/cache/ with
-    // encoded names (e.g. @GH@SII-Holos-holos-research-XXXX@@@1).
-    // Without clearing this, `bun add` may reuse a stale clone even with
-    // --force, since --force only affects the registry cache.
+    // Bun caches git clones as bare repos under ~/.bun/install/cache/<hash>.git
+    // and extracted packages under names like @GH@owner-repo-hash@@@N.
+    // Without clearing these, `bun add` may reuse stale clones even with
+    // --force and --no-cache, because bun checks out from the cached bare
+    // repo and may pick a stale default branch (e.g. master vs main).
     if (pkg && isNonRegistry) {
-      const { rmSync: rm } = require("fs")
+      const { readdirSync, rmSync: rm } = require("fs")
       const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
       if (existsSync(bunCacheDir)) {
-        const { readdirSync } = require("fs")
-        // Derive a prefix from the repo name to match encoded cache entries
         const repoName =
           pkg
             .split("/")
             .pop()
             ?.replace(/\.git$/, "") ?? ""
         for (const entry of readdirSync(bunCacheDir)) {
-          if (entry.includes(repoName)) {
+          // Match both encoded package names (@GH@...repo...) and bare git
+          // repos (<hash>.git). Bare repos use hash names with no repo info,
+          // so we clear ALL .git entries to guarantee a fresh clone.
+          const isGitCache = entry.endsWith(".git")
+          const matchesRepo = repoName && entry.includes(repoName)
+          if (isGitCache || matchesRepo) {
             rm(path.join(bunCacheDir, entry), { recursive: true, force: true })
           }
         }
