@@ -149,7 +149,7 @@ export namespace Agenda {
       AgendaClock.unload(item.id)
     }
     AgendaWatcher.unregister(item.id)
-    AgendaWatcher.register(item.id, scopeID, item.triggers)
+    AgendaWatcher.register(item.id, scopeID, item.triggers, { autoDone: item.autoDone })
     AgendaWebhook.unregister(item.id)
     AgendaWebhook.register(item.id, scopeID, item.triggers)
   }

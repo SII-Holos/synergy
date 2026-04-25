@@ -21,6 +21,9 @@ export namespace AgendaWatcher {
     itemID: string
     command: string
     timer: Timer
+    autoDone: boolean
+    checkCount: number
+    maxChecks: number
   }
 
   interface FileEntry {
@@ -37,6 +40,9 @@ export namespace AgendaWatcher {
     tool: string
     args?: Record<string, unknown>
     timer: Timer
+    autoDone: boolean
+    checkCount: number
+    maxChecks: number
   }
 
   const polls = new Map<string, PollEntry[]>()
@@ -93,8 +99,15 @@ export namespace AgendaWatcher {
     handler = null
   }
 
-  export function register(itemID: string, scopeID: string, triggers: AgendaTypes.Trigger[]): void {
+  export function register(
+    itemID: string,
+    scopeID: string,
+    triggers: AgendaTypes.Trigger[],
+    opts?: { autoDone?: boolean; maxChecks?: number },
+  ): void {
     unregister(itemID)
+    const autoDone = opts?.autoDone ?? false
+    const maxChecks = opts?.maxChecks ?? 0
 
     const newPolls: PollEntry[] = []
     const newFiles: FileEntry[] = []
@@ -114,6 +127,9 @@ export namespace AgendaWatcher {
           matchRegex: watch.match ? new RegExp(watch.match) : undefined,
           lastOutput: undefined,
           timer: setInterval(() => executePoll(entry), intervalMs),
+          autoDone,
+          checkCount: 0,
+          maxChecks,
         }
         newPolls.push(entry)
       } else if (watch.kind === "file") {
@@ -136,6 +152,9 @@ export namespace AgendaWatcher {
           matchRegex: watch.match ? new RegExp(watch.match) : undefined,
           lastOutput: undefined,
           timer: setInterval(() => executeToolPoll(entry), intervalMs),
+          autoDone,
+          checkCount: 0,
+          maxChecks,
         }
         newTools.push(entry)
       }
@@ -239,6 +258,13 @@ export namespace AgendaWatcher {
   async function executePoll(entry: PollEntry): Promise<void> {
     if (!started || !handler) return
 
+    entry.checkCount++
+    if (entry.maxChecks > 0 && entry.checkCount > entry.maxChecks) {
+      log.info("max checks reached, auto-completing", { itemID: entry.itemID, checks: entry.checkCount })
+      await autoComplete(entry, "max_checks_reached", `Watch timed out after ${entry.checkCount} checks`)
+      return
+    }
+
     try {
       const proc = Bun.spawn(["sh", "-c", entry.command], { stdout: "pipe", stderr: "pipe" })
       const timeout = setTimeout(() => proc.kill(), 30_000)
@@ -255,6 +281,10 @@ export namespace AgendaWatcher {
         timestamp: Date.now(),
       }
       await handler(signal, entry.scopeID)
+
+      if (entry.autoDone) {
+        await autoComplete(entry, "condition_met", trimmed)
+      }
     } catch (err) {
       log.error("poll execution failed", {
         itemID: entry.itemID,
@@ -265,6 +295,13 @@ export namespace AgendaWatcher {
 
   async function executeToolPoll(entry: ToolEntry): Promise<void> {
     if (!started || !handler) return
+
+    entry.checkCount++
+    if (entry.maxChecks > 0 && entry.checkCount > entry.maxChecks) {
+      log.info("max checks reached, auto-completing", { itemID: entry.itemID, checks: entry.checkCount })
+      await autoComplete(entry, "max_checks_reached", `Watch timed out after ${entry.checkCount} checks`)
+      return
+    }
 
     try {
       const { ToolRegistry } = await import("../tool/registry")
@@ -293,10 +330,31 @@ export namespace AgendaWatcher {
         timestamp: Date.now(),
       }
       await handler(signal, entry.scopeID)
+
+      if (entry.autoDone) {
+        await autoComplete(entry, "condition_met", trimmed)
+      }
     } catch (err) {
       log.error("tool poll execution failed", {
         itemID: entry.itemID,
         tool: entry.tool,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+    }
+  }
+
+  async function autoComplete(
+    entry: { itemID: string; scopeID: string },
+    reason: string,
+    output: string,
+  ): Promise<void> {
+    unregister(entry.itemID)
+    try {
+      await AgendaStore.update(entry.scopeID, entry.itemID, { status: "done" })
+      log.info("auto-done", { itemID: entry.itemID, reason })
+    } catch (err) {
+      log.error("failed to auto-done", {
+        itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),
       })
     }

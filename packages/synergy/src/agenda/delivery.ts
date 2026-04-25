@@ -1,6 +1,5 @@
 import { SessionManager } from "../session/manager"
 import { Identifier } from "../id/id"
-import { AppChannel } from "../channel/app"
 import { Log } from "../util/log"
 import { AgendaTypes } from "./types"
 
@@ -17,7 +16,11 @@ export namespace AgendaDelivery {
     if (input.item.silent) return
 
     const text = input.lastMessage ?? `Agenda task "${input.item.title}" completed.`
-    const target = input.item.origin.endpoint ?? AppChannel.endpoint()
+    const target = input.item.origin.endpoint
+    if (!target) {
+      log.info("no delivery target — origin endpoint missing, suppressing delivery", { itemID: input.item.id })
+      return
+    }
     const type = input.item.wake !== false ? "user" : "assistant"
 
     try {
