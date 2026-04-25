@@ -19,6 +19,7 @@ export namespace Flag {
   export const SYNERGY_FAKE_VCS = process.env["SYNERGY_FAKE_VCS"]
   export const SYNERGY_CLIENT = process.env["SYNERGY_CLIENT"] ?? "cli"
   export const SYNERGY_CWD = process.env["SYNERGY_CWD"]
+  export const SYNERGY_ROOT = process.env["SYNERGY_ROOT"]
   export const SYNERGY_HOSTED = truthy("SYNERGY_HOSTED")
   export const SYNERGY_SCOPE_ROOT = process.env["SYNERGY_SCOPE_ROOT"]
   export const SYNERGY_DISABLE_WEB_MOUNT = truthy("SYNERGY_DISABLE_WEB_MOUNT")

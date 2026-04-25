@@ -11,12 +11,13 @@ RUN bun install --frozen-lockfile
 
 ENV NODE_ENV=production
 ENV HOME=/workspace
+ENV SYNERGY_ROOT=/workspace/.synergy
 ENV SYNERGY_HOSTED=1
 ENV SYNERGY_SCOPE_ROOT=/workspace
 ENV SYNERGY_DISABLE_WEB_MOUNT=1
 
-RUN mkdir -p /workspace/schema
-RUN cp /app/packages/synergy/schema/config.schema.json /workspace/schema/config.schema.json
+RUN mkdir -p /workspace/.synergy/schema
+RUN cp /app/packages/synergy/schema/config.schema.json /workspace/.synergy/schema/config.schema.json
 
 EXPOSE 4096
 

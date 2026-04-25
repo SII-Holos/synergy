@@ -302,6 +302,7 @@ Hosted backend containers should receive owner and auth configuration from the c
 
 ```bash
 SYNERGY_HOSTED=1
+SYNERGY_ROOT=/workspace/.synergy
 SYNERGY_SCOPE_ROOT=/workspace
 SYNERGY_DISABLE_WEB_MOUNT=1
 SYNERGY_AUTH_COOKIE_NAME=holos_jwt
@@ -311,10 +312,12 @@ SYNERGY_JWT_AUDIENCE=...
 HOLOS_OWNER_ID=...
 ```
 
+`SYNERGY_ROOT` is the exact Synergy data root and defaults to the normal `$HOME/.synergy` path when unset. In the hosted image it is set to `/workspace/.synergy`, so mounting `/data/synergy-workspace/{agent_id}` to `/workspace` keeps Synergy state under `/data/synergy-workspace/{agent_id}/.synergy`.
 `SYNERGY_SCOPE_ROOT` defaults to `/workspace`, and `SYNERGY_AUTH_COOKIE_NAME` defaults to `holos_jwt`.
 `SYNERGY_JWT_ISSUER` and `SYNERGY_JWT_AUDIENCE` are optional but recommended when the JWT secret is shared with other Holos services.
 
 In hosted mode, the server defaults scope resolution to `SYNERGY_SCOPE_ROOT`, rejects directories outside that root, and validates `holos_jwt` itself before serving non-health API requests.
+With the hosted image defaults, the credential store lives at `/workspace/.synergy/data/auth/api-key.json`.
 
 ## Development
 

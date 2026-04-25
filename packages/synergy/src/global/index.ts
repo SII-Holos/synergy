@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import os from "os"
+import { Flag } from "../flag/flag"
 
 const app = "synergy"
 
@@ -10,6 +11,7 @@ function homeDir() {
 }
 
 function root() {
+  if (Flag.SYNERGY_ROOT) return path.resolve(Flag.SYNERGY_ROOT)
   return path.join(homeDir(), "." + app)
 }
 
