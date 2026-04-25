@@ -194,6 +194,13 @@ export type ToolTriggerInfo = ToolInfo & {
   args?: string[]
 }
 
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
 function shortToken(value: unknown, max = 16) {
   if (typeof value !== "string" || !value) return undefined
   return value.length > max ? `${value.slice(0, max - 1)}…` : value
@@ -206,6 +213,80 @@ function pushArg(args: string[], value: unknown) {
 
 function qzScopeLabel(input: any = {}) {
   return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
+}
+
+function titleFromToolResult(metadata: any = {}) {
+  return firstString(metadata.title, metadata.resultTitle, metadata.display?.title)
+}
+
+function subtitleFromToolResult(metadata: any = {}, fallback?: unknown) {
+  return firstString(
+    metadata.display?.subtitle,
+    metadata.title,
+    metadata.summary,
+    metadata.name,
+    metadata.label,
+    fallback,
+  )
+}
+
+function pushUniqueArg(args: string[], value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : value == null ? "" : String(value)
+  if (!normalized || args.includes(normalized)) return
+  args.push(normalized)
+}
+
+function researchObjectSubtitle(input: any = {}, metadata: any = {}) {
+  return subtitleFromToolResult(metadata, firstString(input.title, input.id))
+}
+
+function researchStateSubtitle(input: any = {}, metadata: any = {}) {
+  return subtitleFromToolResult(
+    metadata,
+    firstString(input.summary, input.reason, input.blocked_on, input.target_phase),
+  )
+}
+
+function researchWikiSubtitle(input: any = {}, metadata: any = {}) {
+  const action = input.action as string | undefined
+  if (action === "ingest_paper") {
+    const ingestedTitle = titleFromToolResult(metadata)?.replace(/^Paper ingested:\s*/, "")
+    return firstString(input.title, metadata.paperTitle, ingestedTitle, input.arxiv, input.doi, metadata.slug)
+  }
+  if (action === "link") {
+    return firstString(metadata.title, input.evidence, [input.from, input.to].filter(Boolean).join(" → "))
+  }
+  if (action === "register_gap") {
+    return firstString(input.description, titleFromToolResult(metadata), metadata.id)
+  }
+  if (action === "update_entry") {
+    return firstString(input.target_id, titleFromToolResult(metadata))
+  }
+  if (action === "query") {
+    return firstString(titleFromToolResult(metadata), "LIT_CONTEXT.md")
+  }
+  return subtitleFromToolResult(
+    metadata,
+    firstString(input.title, input.query, input.target_id, input.source_paper, input.arxiv, input.doi),
+  )
+}
+
+function researchWikiArgs(input: any = {}, metadata: any = {}) {
+  const args: string[] = []
+  pushUniqueArg(args, input.action)
+  pushUniqueArg(args, input.relevance)
+  pushUniqueArg(args, metadata.source)
+  if (input.action === "link") pushUniqueArg(args, input.edge_type ?? metadata.type)
+  if (input.action === "update_entry") pushUniqueArg(args, input.field ?? metadata.field)
+  if (input.action === "query") {
+    const papers = metadata.papers
+    const gaps = metadata.gaps
+    const edges = metadata.edges
+    if (typeof papers === "number") pushUniqueArg(args, `${papers} papers`)
+    if (typeof gaps === "number") pushUniqueArg(args, `${gaps} gaps`)
+    if (typeof edges === "number") pushUniqueArg(args, `${edges} edges`)
+  }
+  return args
 }
 
 // TODO: legacy qzcli tool info — remove when qzcli MCP integration is fully replaced by native inspire tools
@@ -671,64 +752,62 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.target_phase)
       pushArg(args, input.participation_mode)
-      return { icon: "sigma", title: "Research State", subtitle: input.summary, args }
+      return { icon: "sigma", title: "Research State", subtitle: researchStateSubtitle(input, metadata), args }
     }
     case "research_idea": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.round ? `round ${input.round}` : undefined)
-      return { icon: "lightbulb", title: "Idea", subtitle: input.title || input.id, args }
+      return { icon: "lightbulb", title: "Idea", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_plan": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.idea)
-      return { icon: "map", title: "Plan", subtitle: input.title || input.id, args }
+      return { icon: "map", title: "Plan", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_experiment": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.group)
       pushArg(args, input.backend)
-      return { icon: "microscope", title: "Experiment", subtitle: input.title || input.id, args }
+      return { icon: "microscope", title: "Experiment", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_claim": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.paper_section)
-      return { icon: "scale", title: "Claim", subtitle: input.title || input.id, args }
+      return { icon: "scale", title: "Claim", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_exhibit": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.kind)
-      return { icon: "image", title: "Exhibit", subtitle: input.title || input.id, args }
+      return { icon: "image", title: "Exhibit", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_paper": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.venue)
-      return { icon: "scroll-text", title: "Paper", subtitle: input.title || input.id, args }
+      return { icon: "scroll-text", title: "Paper", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_submission": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.venue)
       pushArg(args, input.outcome)
-      return { icon: "send", title: "Submission", subtitle: input.title || input.id, args }
+      return { icon: "send", title: "Submission", subtitle: researchObjectSubtitle(input, metadata), args }
     }
     case "research_wiki": {
-      const args: string[] = []
-      pushArg(args, input.action)
-      pushArg(args, input.relevance)
-      return { icon: "telescope", title: "Wiki", subtitle: input.title || input.query, args }
+      const args = researchWikiArgs(input, metadata)
+      return { icon: "telescope", title: "Wiki", subtitle: researchWikiSubtitle(input, metadata), args }
     }
     case "research_timeline": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.last ? `last ${input.last}` : undefined)
       pushArg(args, input.event_type)
-      return { icon: "clock", title: "Timeline", subtitle: input.summary, args }
+      return { icon: "clock", title: "Timeline", subtitle: subtitleFromToolResult(metadata, input.summary), args }
     }
     case "profile_get":
       return {
@@ -1326,6 +1405,7 @@ export interface ToolProps {
   input: Record<string, any>
   metadata: Record<string, any>
   tool: string
+  title?: string
   output?: string
   status?: string
   raw?: string
@@ -1436,6 +1516,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     <SmartTool
       tool={p.tool}
       input={p.input}
+      title={p.title}
       output={p.output}
       status={p.status}
       metadata={p.metadata}
@@ -1478,6 +1559,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             input={input()}
             tool={part().tool}
             metadata={metadata()}
+            title={part().state.status === "completed" ? (part().state as ToolStateCompleted).title : undefined}
             // @ts-expect-error — output exists on completed state
             output={part().state.output}
             status={part().state.status}

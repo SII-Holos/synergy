@@ -2079,7 +2079,7 @@ for (const name of inspireToolNames) {
   ToolRegistry.register({
     name,
     render(props) {
-      const info = getToolInfo(name, props.input, props.metadata)
+      const info = getToolInfo(name, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title })
       return (
         <BasicTool
           {...props}
@@ -2121,7 +2121,7 @@ for (const name of researchToolNames) {
   ToolRegistry.register({
     name,
     render(props) {
-      const info = getToolInfo(name, props.input, props.metadata)
+      const info = getToolInfo(name, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title })
       return (
         <BasicTool
           {...props}
