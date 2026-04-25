@@ -277,6 +277,40 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/met
 
 The installer places the binary under `~/.meta-synergy/bin/` and optionally adds it to your `PATH`.
 
+## Hosted Deployment
+
+Synergy can run as a hosted backend container while the Web UI is served separately from static hosting such as S3 and CloudFront.
+
+Build the hosted frontend with explicit environment flags:
+
+```bash
+VITE_SYNERGY_HOSTED=1 \
+VITE_SYNERGY_ALLOW_DEBUG_URL=0 \
+VITE_SYNERGY_CONTROL_API_BASE=https://api.holosai.io \
+bun run --cwd packages/app build
+```
+
+Use `VITE_SYNERGY_ALLOW_DEBUG_URL=1` only for test builds where `?url=` backend overrides are intended.
+
+Build the hosted backend image:
+
+```bash
+docker build -f Dockerfile.hosted -t synergy-hosted:latest .
+```
+
+Hosted backend containers should receive owner and auth configuration from the control plane:
+
+```bash
+SYNERGY_HOSTED=1
+SYNERGY_SCOPE_ROOT=/workspace
+SYNERGY_DISABLE_WEB_MOUNT=1
+SYNERGY_AUTH_COOKIE_NAME=holos_jwt
+SYNERGY_JWT_SECRET=...
+HOLOS_OWNER_ID=...
+```
+
+In hosted mode, the server defaults scope resolution to `SYNERGY_SCOPE_ROOT`, rejects directories outside that root, and validates `holos_jwt` itself before serving non-health API requests.
+
 ## Development
 
 ### Prerequisites

@@ -19,6 +19,7 @@ import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from 
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
 import { useServer } from "@/context/server"
+import { isHostedMode } from "@/utils/runtime"
 import { HeaderBar } from "@/components/header-bar"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { EngramPanel } from "@/components/engram"
@@ -45,6 +46,7 @@ export default function Layout(props: ParentProps) {
   const dialog = useDialog()
   const command = useCommand()
   const theme = useTheme()
+  const hosted = isHostedMode()
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeLabel: Record<ColorScheme, string> = {
     system: "System",
@@ -285,12 +287,6 @@ export default function Layout(props: ParentProps) {
         onSelect: () => connectProvider(),
       },
       {
-        id: "server.switch",
-        title: "Switch server",
-        category: "Server",
-        onSelect: () => openServer(),
-      },
-      {
         id: "session.previous",
         title: "Previous session",
         category: "Session",
@@ -356,6 +352,15 @@ export default function Layout(props: ParentProps) {
       keybind: "mod+shift+s",
       onSelect: () => cycleColorScheme(1),
     })
+
+    if (!hosted) {
+      commands.splice(2, 0, {
+        id: "server.switch",
+        title: "Switch server",
+        category: "Server",
+        onSelect: () => openServer(),
+      })
+    }
 
     for (const scheme of colorSchemeOrder) {
       commands.push({

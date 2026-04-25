@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { SingleInstance } from "../daemon/single-instance"
 import { EOL } from "os"
+import { Hosted } from "./hosted"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -172,7 +173,9 @@ export async function run(options: RuntimeOptions) {
   //   })
   // }
 
-  Server.mountApp()
+  if (!Hosted.disableWebMount()) {
+    Server.mountApp()
+  }
   const server = Server.listen(options.network)
 
   await Instance.provide({
