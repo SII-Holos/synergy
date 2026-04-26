@@ -197,7 +197,8 @@ describe("PID file identity token", () => {
 
     // The PID file should contain an identity token (e.g. startup timestamp)
     // that can be verified before signaling, preventing PID reuse attacks
-    const pidFileWriteSection = runtimeSource.substring(runtimeSource.indexOf("Bun.write(devPidFile")).substring(0, 200)
+    const writeIdx = runtimeSource.indexOf("Bun.write(devPidFile")
+    const pidFileWriteSection = writeIdx >= 0 ? runtimeSource.substring(writeIdx, writeIdx + 200) : ""
 
     // Should write more than just process.pid — e.g. JSON with {pid, startTime}
     const writesJustPid = /Bun\.write\(devPidFile,\s*String\(process\.pid\)\)/.test(pidFileWriteSection)

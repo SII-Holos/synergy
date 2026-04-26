@@ -65,8 +65,12 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
                   }
                 }
               }
+              // If wmic returned empty/unparsable output, fall through to PowerShell
             } catch {
-              // wmic not available (deprecated on newer Windows) — fall back to PowerShell
+              // wmic not available (deprecated on newer Windows) — fall through to PowerShell
+            }
+            // Try PowerShell if wmic didn't produce a valid procStart
+            if (procStart === undefined) {
               try {
                 const psOutput = execWin(`powershell -NoProfile -Command "(Get-Process -Id ${pid}).StartTime" 2>nul`, {
                   encoding: "utf-8",
@@ -78,7 +82,7 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
                   }
                 }
               } catch {
-                // Neither wmic nor PowerShell worked
+                // PowerShell also failed
               }
             }
             if (procStart !== undefined) {
@@ -180,9 +184,14 @@ export const RestartCommand = cmd({
         }
       }
     } catch {
-      // No PID file at all — fall through to daemon restart.
-      // Don't block daemon fallback here: if the PID file never existed,
-      // the user may be using daemon mode (not dev mode).
+      // No PID file at all.
+      if (process.env.SYNERGY_CWD) {
+        // Dev mode but no PID file — the watchdog PID write may have failed,
+        // or the dev server was never started. Warn but fall through to daemon
+        // since we can't know for sure.
+        UI.error("Warning: no dev watchdog PID file found. Falling back to daemon restart.")
+        UI.error("If the dev server is running but the PID file was lost, restart it manually.")
+      }
     }
 
     // Restart the managed background service.
