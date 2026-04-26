@@ -86,7 +86,9 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
               return Math.abs(procStart - storedStart) <= 2
             }
           }
-          return isWatchdogRunning(pid)
+          // Couldn't verify identity via wmic or PowerShell — fail closed
+          // rather than accepting any process with this PID
+          return false
         }
       } catch {
         return false
