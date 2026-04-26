@@ -167,6 +167,9 @@ export namespace Plugin {
     return path.dirname(entryPath)
   }
 
+  const printedPluginIds = new Set<string>()
+  const printedPluginPaths = new Set<string>()
+
   const state = Instance.state(async () => {
     const { Server } = await import("../server/server")
     const client = createSynergyClient({
@@ -193,43 +196,52 @@ export namespace Plugin {
     let installedCount = 0
     let failedCount = 0
 
-    for (let pluginPath of pluginPaths) {
-      log.info("loading plugin", { path: pluginPath })
-      const name = PluginSpec.displayName(pluginPath)
+    for (const configPath of pluginPaths) {
+      log.info("loading plugin", { path: configPath })
+      const name = PluginSpec.displayName(configPath)
+      const showInstallUI = !printedPluginPaths.has(configPath)
+
+      let importPath: string
       let pluginDir: string
 
-      if (!pluginPath.startsWith("file://")) {
-        const { pkg, version, nonRegistry } = PluginSpec.parse(pluginPath)
-        const builtin = BUILTIN.some((x) => x.startsWith(pkg + "@"))
+      if (!configPath.startsWith("file://")) {
+        const { pkg, version } = PluginSpec.parse(configPath)
 
-        UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
+        if (showInstallUI) {
+          UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
+        }
 
         const result = await BunProc.install(pkg, version).catch((err) => {
-          UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
+          if (showInstallUI) {
+            UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
+          }
           failedCount++
-          if (builtin) return null
           throw err
         })
         if (!result) continue
 
-        installedCount++
-        pluginPath = result.entryPath
-        UI.println(
-          result.cached
-            ? `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} ${UI.Style.TEXT_DIM}(cached)${UI.Style.TEXT_NORMAL}`
-            : `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} installed`,
-        )
-        pluginDir = findPackageRoot(pluginPath)
-      } else {
-        const filePath = pluginPath.slice("file://".length)
-        if (!path.isAbsolute(filePath)) {
-          pluginPath = "file://" + path.resolve(Instance.directory, filePath)
+        if (showInstallUI) {
+          installedCount++
+          UI.println(
+            result.cached
+              ? `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} ${UI.Style.TEXT_DIM}(cached)${UI.Style.TEXT_NORMAL}`
+              : `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} installed`,
+          )
         }
-        const resolved = pluginPath.startsWith("file://") ? pluginPath.slice("file://".length) : pluginPath
-        pluginDir = findPackageRoot(resolved)
+        importPath = result.entryPath
+        pluginDir = findPackageRoot(importPath)
+      } else {
+        const filePath = configPath.slice("file://".length)
+        const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(Instance.directory, filePath)
+        importPath = absolute
+        pluginDir = findPackageRoot(absolute)
       }
 
-      const mod = await import(pluginPath)
+      if (showInstallUI) {
+        printedPluginPaths.add(configPath)
+      }
+
+      const mod = await import(importPath)
       const seen = new Set<PluginDescriptor>()
 
       for (const [, descriptor] of Object.entries<PluginDescriptor>(mod)) {
@@ -238,6 +250,8 @@ export namespace Plugin {
         seen.add(descriptor)
 
         const pluginId = descriptor.id
+        const showLoadedUI = !printedPluginIds.has(pluginId)
+
         const input: PluginInput = {
           ...baseInput,
           pluginDir,
@@ -256,13 +270,20 @@ export namespace Plugin {
           skills: hooks.skills,
           agents: hooks.agents,
         })
-        UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
+
+        if (showLoadedUI) {
+          printedPluginIds.add(pluginId)
+          UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
+        }
         log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
       }
     }
 
-    if (pluginPaths.length > 0) {
-      UI.println(`  Plugins: ${installedCount} installed, ${failedCount} failed`)
+    if (installedCount > 0 || failedCount > 0) {
+      const parts: string[] = []
+      if (installedCount > 0) parts.push(`${installedCount} installed`)
+      if (failedCount > 0) parts.push(`${failedCount} failed`)
+      UI.println(`  Plugins: ${parts.join(", ")}`)
     }
 
     return { loaded, baseInput }

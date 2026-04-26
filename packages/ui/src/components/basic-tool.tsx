@@ -153,12 +153,15 @@ export function GenericTool(props: { tool: string; hideDetails?: boolean }) {
 export function SmartTool(props: {
   tool: string
   input: Record<string, any>
+  title?: string
   output?: string
   status?: string
   hideDetails?: boolean
   metadata?: Record<string, any>
 }) {
-  const classified = createMemo(() => classifyTool(props.tool, props.input, props.metadata ?? {}))
+  const classified = createMemo(() =>
+    classifyTool(props.tool, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
+  )
 
   return (
     <BasicTool

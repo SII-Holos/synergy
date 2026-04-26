@@ -132,8 +132,11 @@ export namespace SessionSummary {
         system: [],
         retries: 3,
       })
-      const result = await stream.text
-      log.info("title", { title: result })
+      const result = await stream.text.catch((err) => {
+        log.error("failed to generate summary title", { error: err })
+        return undefined
+      })
+      if (result) log.info("title", { title: result })
       return result
     }
 
@@ -169,7 +172,10 @@ export namespace SessionSummary {
         system: [],
         retries: 3,
       })
-      return stream.text
+      return stream.text.catch((err) => {
+        log.error("failed to generate summary body", { error: err })
+        return undefined
+      })
     }
 
     const [title, body] = await Promise.all([generateTitle(), generateBody()])

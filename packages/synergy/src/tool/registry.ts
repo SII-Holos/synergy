@@ -26,6 +26,7 @@ import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
 import { AgendaCreateTool } from "./agenda-create"
 import { AgendaListTool } from "./agenda-list"
+import { AgendaWatchTool } from "./agenda-watch"
 import { AgendaUpdateTool } from "./agenda-update"
 import { AgendaDeleteTool } from "./agenda-delete"
 import { AgendaTriggerTool } from "./agenda-trigger"
@@ -202,6 +203,7 @@ export namespace ToolRegistry {
       SessionSendTool,
       SessionControlTool,
       AgendaCreateTool,
+      AgendaWatchTool,
       AgendaListTool,
       AgendaUpdateTool,
       AgendaDeleteTool,

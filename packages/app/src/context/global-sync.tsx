@@ -892,6 +892,40 @@ function createGlobalSync() {
             }),
           )
         })
+        const sdk = createSynergyClient({
+          baseUrl: globalSDK.url,
+          directory,
+          throwOnError: true,
+        })
+        retry(() => sdk.session.messages({ sessionID, limit: 200 }))
+          .then((result) => {
+            const items = (result.data ?? []).filter((x) => !!x?.info?.id)
+            const all = items
+              .map((x) => x.info)
+              .filter((m) => !!m?.id)
+              .slice()
+              .sort((a, b) => a.id.localeCompare(b.id))
+            const keep = all.length > 500 ? all.slice(-500) : all
+            batch(() => {
+              setStore("message", sessionID, reconcile(keep, { key: "id" }))
+              const keepIds = new Set(keep.map((m) => m.id))
+              for (const item of items) {
+                if (!keepIds.has(item.info.id)) continue
+                setStore(
+                  "part",
+                  item.info.id,
+                  reconcile(
+                    item.parts
+                      .filter((p) => !!p?.id)
+                      .slice()
+                      .sort((a, b) => a.id.localeCompare(b.id)),
+                    { key: "id" },
+                  ),
+                )
+              }
+            })
+          })
+          .catch(() => {})
         break
       }
     }

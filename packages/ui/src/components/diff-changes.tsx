@@ -9,13 +9,13 @@ export function DiffChanges(props: {
 
   const additions = createMemo(() =>
     Array.isArray(props.changes)
-      ? props.changes.reduce((acc, diff) => acc + (diff.additions ?? 0), 0)
-      : props.changes.additions,
+      ? props.changes.reduce((acc, diff) => acc + (diff?.additions ?? 0), 0)
+      : (props.changes?.additions ?? 0),
   )
   const deletions = createMemo(() =>
     Array.isArray(props.changes)
-      ? props.changes.reduce((acc, diff) => acc + (diff.deletions ?? 0), 0)
-      : props.changes.deletions,
+      ? props.changes.reduce((acc, diff) => acc + (diff?.deletions ?? 0), 0)
+      : (props.changes?.deletions ?? 0),
   )
   const total = createMemo(() => (additions() ?? 0) + (deletions() ?? 0))
 

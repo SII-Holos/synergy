@@ -137,8 +137,10 @@ export const PluginUpdateCommand = cmd({
             await BunProc.install(pkg, version)
             spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
             succeeded++
-          } catch {
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e)
             spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
             failed++
           }
         }

@@ -6,6 +6,7 @@ import { existsSync } from "fs"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { readableStreamToText } from "bun"
 import { createRequire } from "module"
+import os from "os"
 import { Lock } from "../util/lock"
 import { PluginSpec } from "./plugin-spec"
 
@@ -132,6 +133,10 @@ export namespace BunProc {
       "--exact",
       // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
       ...(proxied ? ["--no-cache"] : []),
+      // For non-registry (git) packages, always bypass bun's global cache.
+      // Bun caches git clones internally and --force alone does not clear
+      // them, causing stale code to persist across plugin updates.
+      ...(isNonRegistry ? ["--no-cache"] : []),
       "--cwd",
       Global.Path.cache,
       target,
@@ -200,6 +205,41 @@ export namespace BunProc {
     if (existsSync(lockfilePath)) {
       const { unlinkSync } = require("fs")
       unlinkSync(lockfilePath)
+    }
+
+    // Remove the actual node_modules directory so bun can't reuse stale files.
+    const isNonRegistry = pkg ? PluginSpec.isNonRegistry(pkg) : false
+    const modDir = pkg ? modPath(pkg, isNonRegistry) : path.join(Global.Path.cache, "node_modules")
+    if (pkg && existsSync(modDir)) {
+      const { rmSync } = require("fs")
+      rmSync(modDir, { recursive: true, force: true })
+    }
+
+    // Purge bun's entire package manager cache for non-registry packages.
+    // Bun has a known bug (oven-sh/bun#18947) where `--no-cache` and `--force`
+    // do NOT cause it to re-fetch git dependencies. The only reliable way to
+    // force a fresh clone is to clear the global cache entirely via
+    // `bun pm cache rm`. This is safe because the cache is purely a download
+    // cache — it will be repopulated on next install. We only do this for
+    // non-registry (git) packages during explicit updates, so the blast radius
+    // is limited.
+    if (pkg && isNonRegistry) {
+      try {
+        await BunProc.run(["pm", "cache", "rm"], { cwd: Global.Path.cache })
+      } catch {
+        // Best-effort: if bun pm cache rm fails (e.g. no cache exists yet),
+        // fall back to manually removing likely stale entries.
+        const { readdirSync, rmSync: rm } = require("fs")
+        const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
+        if (existsSync(bunCacheDir)) {
+          for (const entry of readdirSync(bunCacheDir)) {
+            const isGitCache = entry.endsWith(".git")
+            if (isGitCache) {
+              rm(path.join(bunCacheDir, entry), { recursive: true, force: true })
+            }
+          }
+        }
+      }
     }
   }
 
