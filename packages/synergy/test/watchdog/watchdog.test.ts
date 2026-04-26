@@ -596,3 +596,68 @@ describe("Windows PID identity verification", () => {
     expect(onlyChecksExistence).toBe(false)
   })
 })
+
+describe("snapshot revert path separator safety", () => {
+  test("revert should normalize path separators to forward slashes for git commands", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/session/snapshot.ts"), "utf-8")
+
+    // On Windows, path.relative() produces backslash paths like "sub\file.txt"
+    // but git tree paths always use forward slashes like "sub/file.txt".
+    // Without normalization, git ls-tree won't find the file, and revert()
+    // would delete it instead of restoring it — a data-loss bug.
+    const revertFn = source.substring(source.indexOf("async function revert"), source.indexOf("async function diff"))
+
+    // The relativePath passed to git ls-tree and git checkout must be
+    // normalized to forward slashes. Check for:
+    // 1. replaceAll with backslash -> forward slash
+    // 2. Or splitting on path.sep and joining with "/"
+    const normalizesPathSeparators =
+      /replaceAll/.test(revertFn) && /\\\\/.test(revertFn) && /\/["']\s*\)/.test(revertFn)
+
+    expect(normalizesPathSeparators).toBe(true)
+  })
+})
+
+describe("non-Linux PID identity check robustness", () => {
+  test("macOS identity check should handle ps lstart parse failure gracefully", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // Find the macOS branch
+    const identityFn = source.substring(
+      source.indexOf("async function verifyWatchdogIdentity"),
+      source.indexOf("export const RestartCommand"),
+    )
+
+    const darwinIdx = identityFn.indexOf("darwin")
+    if (darwinIdx === -1) return // No macOS branch
+
+    const darwinBlock = identityFn.substring(darwinIdx, darwinIdx + 600)
+
+    // Should have explicit error handling when Date.parse fails or returns NaN
+    // (ps -o lstart output varies by locale and can be unparseable)
+    const hasNanCheck = /isNaN|NaN/.test(darwinBlock)
+
+    expect(hasNanCheck).toBe(true)
+  })
+
+  test("Windows identity check should fall back to PowerShell if wmic is unavailable", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    const identityFn = source.substring(
+      source.indexOf("async function verifyWatchdogIdentity"),
+      source.indexOf("export const RestartCommand"),
+    )
+
+    const win32Idx = identityFn.indexOf("win32")
+    if (win32Idx === -1) return
+
+    const win32Block = identityFn.substring(win32Idx, win32Idx + 800)
+
+    // wmic is deprecated on newer Windows. Should have a fallback path
+    // (e.g., PowerShell Get-Process, or tasklist)
+    // Check that there's more than one verification approach on Windows
+    const hasWmicFallback = /PowerShell|Get-Process|tasklist|fallback/.test(win32Block)
+
+    expect(hasWmicFallback).toBe(true)
+  })
+})

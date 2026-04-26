@@ -39,30 +39,52 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
           const lstart = execSync(`ps -p ${pid} -o lstart= 2>/dev/null`, { encoding: "utf-8" }).trim()
           if (!lstart) return false
           // Convert both times to epoch for comparison (allow 2s tolerance)
-          const procStart = Math.floor(new Date(lstart).getTime() / 1000)
+          const procStartMs = new Date(lstart).getTime()
+          if (isNaN(procStartMs)) return false
+          const procStart = Math.floor(procStartMs / 1000)
           const storedStart = Math.floor(startTime / 1000)
           return Math.abs(procStart - storedStart) <= 2
         } else if (process.platform === "win32") {
-          // Windows: use wmic to check process start time (CreationDate)
-          // This catches PID reuse where a different process took the same PID.
+          // Windows: check process start time via wmic or PowerShell fallback
           if (startTime !== undefined) {
             const { execSync: execWin } = await import("child_process")
-            const creationDate = execWin(`wmic process where processid=${pid} get CreationDate /value 2>nul`, {
-              encoding: "utf-8",
-            }).trim()
-            if (!creationDate || !creationDate.includes("=")) return false
-            // CreationDate format: 20260426143025.123456+060
-            // Parse to epoch and compare with stored startTime (2s tolerance)
-            const dateStr = creationDate.split("=")[1]?.trim()
-            if (!dateStr) return false
-            // Extract the date portion: YYYYMMDDHHmmss
-            const match = dateStr.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/)
-            if (!match) return false
-            const procStart = Math.floor(
-              new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]).getTime() / 1000,
-            )
-            const storedStart = Math.floor(startTime / 1000)
-            return Math.abs(procStart - storedStart) <= 2
+            let procStart: number | undefined
+            try {
+              // Try wmic first (available on older Windows)
+              const creationDate = execWin(`wmic process where processid=${pid} get CreationDate /value 2>nul`, {
+                encoding: "utf-8",
+              }).trim()
+              if (creationDate && creationDate.includes("=")) {
+                const dateStr = creationDate.split("=")[1]?.trim()
+                if (dateStr) {
+                  const match = dateStr.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/)
+                  if (match) {
+                    procStart = Math.floor(
+                      new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]).getTime() / 1000,
+                    )
+                  }
+                }
+              }
+            } catch {
+              // wmic not available (deprecated on newer Windows) — fall back to PowerShell
+              try {
+                const psOutput = execWin(`powershell -NoProfile -Command "(Get-Process -Id ${pid}).StartTime" 2>nul`, {
+                  encoding: "utf-8",
+                }).trim()
+                if (psOutput) {
+                  const psMs = new Date(psOutput).getTime()
+                  if (!isNaN(psMs)) {
+                    procStart = Math.floor(psMs / 1000)
+                  }
+                }
+              } catch {
+                // Neither wmic nor PowerShell worked
+              }
+            }
+            if (procStart !== undefined) {
+              const storedStart = Math.floor(startTime / 1000)
+              return Math.abs(procStart - storedStart) <= 2
+            }
           }
           return isWatchdogRunning(pid)
         }

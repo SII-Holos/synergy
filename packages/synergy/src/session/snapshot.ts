@@ -98,7 +98,7 @@ export namespace Snapshot {
       for (const file of item.files) {
         if (files.has(file)) continue
         log.info("reverting", { file, hash: item.hash })
-        const relativePath = path.relative(Instance.directory, file)
+        const relativePath = path.relative(Instance.directory, file).replaceAll("\\", "/")
         const checkTree =
           await $`git --git-dir ${git} --work-tree ${Instance.directory} ls-tree ${item.hash} -- ${relativePath}`
             .quiet()
