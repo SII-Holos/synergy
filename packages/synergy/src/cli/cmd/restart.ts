@@ -43,8 +43,27 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
           const storedStart = Math.floor(startTime / 1000)
           return Math.abs(procStart - storedStart) <= 2
         } else if (process.platform === "win32") {
-          // Windows: wmic can give CreationDate but it's unreliable for short-lived PIDs.
-          // Fall back to existence check — PID reuse is rare on Windows.
+          // Windows: use wmic to check process start time (CreationDate)
+          // This catches PID reuse where a different process took the same PID.
+          if (startTime !== undefined) {
+            const { execSync: execWin } = await import("child_process")
+            const creationDate = execWin(`wmic process where processid=${pid} get CreationDate /value 2>nul`, {
+              encoding: "utf-8",
+            }).trim()
+            if (!creationDate || !creationDate.includes("=")) return false
+            // CreationDate format: 20260426143025.123456+060
+            // Parse to epoch and compare with stored startTime (2s tolerance)
+            const dateStr = creationDate.split("=")[1]?.trim()
+            if (!dateStr) return false
+            // Extract the date portion: YYYYMMDDHHmmss
+            const match = dateStr.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/)
+            if (!match) return false
+            const procStart = Math.floor(
+              new Date(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]).getTime() / 1000,
+            )
+            const storedStart = Math.floor(startTime / 1000)
+            return Math.abs(procStart - storedStart) <= 2
+          }
           return isWatchdogRunning(pid)
         }
       } catch {

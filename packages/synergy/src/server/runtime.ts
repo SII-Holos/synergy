@@ -111,7 +111,10 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   }
 
   if (isDev) {
-    process.on("SIGUSR1", onDevRestart)
+    // SIGUSR1 is not available on Windows — rely on flag-file polling instead
+    if (process.platform !== "win32") {
+      process.on("SIGUSR1", onDevRestart)
+    }
     Bun.stderr.write(DIM + "  ⚡ Dev watchdog active (bun dev restart to restart)" + RESET + EOL)
   }
 

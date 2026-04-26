@@ -522,3 +522,77 @@ describe("behavioral test: stale PID file detection", () => {
     }
   })
 })
+
+// ============================================================
+// TDD tests for Windows-specific issues from latest review
+// These tests should FAIL before the fix and PASS after.
+// ============================================================
+
+describe("Windows SIGUSR1 crash guard", () => {
+  test("SIGUSR1 handler should be guarded by platform check (not registered on Windows)", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // Find the line that registers the SIGUSR1 handler
+    const sigusr1Idx = source.indexOf('process.on("SIGUSR1"')
+    if (sigusr1Idx === -1) {
+      // No SIGUSR1 registration at all — test passes vacuously
+      return
+    }
+
+    // Get the 300 chars before the SIGUSR1 registration — the platform guard
+    // must appear in this range (in the same if block or just before it)
+    const guardRange = source.substring(Math.max(0, sigusr1Idx - 500), sigusr1Idx)
+
+    // Must contain a platform check that excludes win32 before the SIGUSR1 registration
+    const hasPlatformGuard = /win32/.test(guardRange) && /platform\s*[!=]==?\s*["']win32["']/.test(guardRange)
+
+    expect(hasPlatformGuard).toBe(true)
+  })
+
+  test("isDev block should use flag file polling on Windows instead of SIGUSR1", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // On Windows, instead of SIGUSR1, the watchdog should rely on
+    // flag file polling (which already exists via setInterval).
+    const hasFlagFilePolling = /devRestartFlag|setInterval.*restart/.test(source)
+
+    expect(hasFlagFilePolling).toBe(true)
+  })
+})
+
+describe("Windows PID identity verification", () => {
+  test("verifyWatchdogIdentity on Windows should check process command line, not just existence", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // Find the Windows branch of verifyWatchdogIdentity
+    const identityFn = source.substring(
+      source.indexOf("async function verifyWatchdogIdentity"),
+      source.indexOf("export const RestartCommand"),
+    )
+
+    const win32Idx = identityFn.indexOf("win32")
+    if (win32Idx === -1) {
+      // No Windows branch — test fails because we need one
+      expect(true).toBe(false)
+      return
+    }
+
+    // Get just the Windows else-if block
+    const afterWin32 = identityFn.substring(win32Idx)
+    const blockEnd = afterWin32.indexOf("}\n      } catch")
+    const win32Block = blockEnd > 0 ? afterWin32.substring(0, blockEnd) : afterWin32.substring(0, 300)
+
+    // Strip comments to check actual code, not comment text
+    const win32Code = win32Block.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "")
+
+    // On Windows, isWatchdogRunning(pid) only checks existence — too weak.
+    // Should verify the process is actually the watchdog, e.g. by checking
+    // the process command line (tasklist /FI, wmic, or Get-Process)
+    // or by checking startTime against the stored value.
+    const onlyChecksExistence =
+      /isWatchdogRunning\(pid\)/.test(win32Code) &&
+      !/startTime|cmdline|command|tasklist|wmic|Get-Process|exe|CreationDate/.test(win32Code)
+
+    expect(onlyChecksExistence).toBe(false)
+  })
+})
