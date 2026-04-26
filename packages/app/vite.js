@@ -15,6 +15,11 @@ const sdkDistComplete =
   fs.existsSync(path.join(sdkRoot, "dist/client.js")) &&
   fs.existsSync(path.join(sdkRoot, "dist/server.js"))
 
+// Check that the generated source files exist — without them, the aliases
+// would point to source files that import from ./gen/ which doesn't exist
+// on a fresh checkout before `bun dev prepare` is run.
+const sdkGenSourceExists = fs.existsSync(path.join(sdkRoot, "src/gen/sdk.gen.ts"))
+
 /**
  * Fallback aliases for the SDK — only active when dist/ hasn't been built yet.
  * In production (where dist/ exists), Vite resolves normally via package.json exports.
@@ -23,13 +28,14 @@ const sdkDistComplete =
  * restart the dev server to switch back to normal package resolution.
  * @type {import("vite").Alias[]}
  */
-const sdkAliases = sdkDistComplete
-  ? []
-  : [
-      { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
-      { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
-      { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
-    ]
+const sdkAliases =
+  sdkDistComplete || !sdkGenSourceExists
+    ? []
+    : [
+        { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
+        { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
+        { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
+      ]
 
 /**
  * @type {import("vite").PluginOption}

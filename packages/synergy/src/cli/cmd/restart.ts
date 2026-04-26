@@ -178,13 +178,9 @@ export const RestartCommand = cmd({
         }
       }
     } catch {
-      // No PID file — check if we're in dev mode before falling through to daemon.
-      // If SYNERGY_CWD is set (dev script sets it), the user expected a dev server.
-      if (process.env.SYNERGY_CWD) {
-        UI.error("No dev watchdog server is running. Start one with: bun dev server")
-        process.exit(1)
-      }
-      // Otherwise fall through to daemon restart
+      // No PID file at all — fall through to daemon restart.
+      // Don't block daemon fallback here: if the PID file never existed,
+      // the user may be using daemon mode (not dev mode).
     }
 
     // Restart the managed background service.

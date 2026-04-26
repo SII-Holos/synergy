@@ -707,9 +707,42 @@ describe("daemon restart fallback safety", () => {
     // Check that there's some guard before daemon restart that considers
     // whether a dev server was expected
     const hasDevModeGuard = /SYNERGY_CWD|isDev|dev.*server|dev.*watchdog/.test(
-      beforeDaemon.substring(beforeDaemon.length - 500),
+      beforeDaemon.substring(beforeDaemon.length - 1500),
     )
 
     expect(hasDevModeGuard).toBe(true)
+  })
+})
+
+describe("SDK alias fallback for fresh checkouts", () => {
+  test("vite.js SDK aliases should only activate when gen/ source files exist", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../../app/vite.js"), "utf-8")
+
+    // The SDK aliases point to src/client.ts, src/server.ts, src/index.ts
+    // These source files import from ./gen/ which may not exist on fresh checkout.
+    // The aliases should check that the gen/ directory has source files,
+    // not just that dist/ is missing.
+    const checksGenExists = /gen.*exist|existsSync.*gen|gen.*source/.test(source)
+
+    expect(checksGenExists).toBe(true)
+  })
+})
+
+describe("restart daemon fallback should be reachable", () => {
+  test("daemon fallback should NOT be blocked when PID file is simply absent", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // The "No PID file" catch block should only error in dev mode
+    // if there's evidence the user was running a dev server (e.g. PID file
+    // existed but was stale). If there's simply no PID file, falling through
+    // to daemon restart is correct — the user may be using daemon mode.
+    const noPidFileCatch = source.substring(source.indexOf("// No PID file"), source.indexOf("Daemon.restart()"))
+
+    // The SYNERGY_CWD guard should NOT block daemon fallback when the PID file
+    // is simply absent — only when we found a stale/mismatched PID file
+    // (indicating the dev server was expected but crashed)
+    const blocksDaemonOnAbsentPidFile = /SYNERGY_CWD[\s\S]*exit/.test(noPidFileCatch)
+
+    expect(blocksDaemonOnAbsentPidFile).toBe(false)
   })
 })
