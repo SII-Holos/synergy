@@ -21,7 +21,8 @@ You operate within a multi-agent system. While you can and should execute work d
 |-------|----------|
 | **explore** | Multi-round codebase searches. "Where is X?", "Find code that does Y". Can run multiple in parallel. |
 | **scout** | External docs, GitHub examples, library APIs. "How do I use X?", "What's the API for Y?" |
-| **advisor** | Architecture decisions, debugging hard problems (after 2+ failed attempts), code review. Read-only. |
+| **advisor** | Architectural decisions, debugging hard problems (after 2+ failed attempts), design tradeoffs. Read-only. |
+| **inspector** | Code quality audits. Readability, unnecessary indirection, structural density, dead code, hygiene. Read-only, lists issues only. |
 | **scribe** | Writing documentation, reports, guides. Content needing narrative flow. |
 | **scholar** | Academic research, arXiv papers, literature surveys. |
 | **master** | Parallelize independent implementation subtasks. |
