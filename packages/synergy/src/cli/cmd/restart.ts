@@ -137,12 +137,20 @@ export const RestartCommand = cmd({
           try {
             await Bun.file(pidFile).unlink()
           } catch {}
+          if (process.env.SYNERGY_CWD) {
+            UI.error("No dev watchdog server is running. Start one with: bun dev server")
+            process.exit(1)
+          }
           // Fall through to daemon restart
         } else if (startTime !== undefined && !(await verifyWatchdogIdentity(pid, startTime, starttimeJiffies))) {
           UI.error(`PID ${pid} in dev-watchdog.pid belongs to a different process. Removing stale PID file.`)
           try {
             await Bun.file(pidFile).unlink()
           } catch {}
+          if (process.env.SYNERGY_CWD) {
+            UI.error("No dev watchdog server is running. Start one with: bun dev server")
+            process.exit(1)
+          }
           // Fall through to daemon restart
         } else {
           try {
@@ -161,12 +169,22 @@ export const RestartCommand = cmd({
             try {
               await Bun.file(pidFile).unlink()
             } catch {}
+            if (process.env.SYNERGY_CWD) {
+              UI.error("No dev watchdog server is running. Start one with: bun dev server")
+              process.exit(1)
+            }
             // Fall through to daemon restart instead of exiting
           }
         }
       }
     } catch {
-      // No PID file — fall through to daemon restart.
+      // No PID file — check if we're in dev mode before falling through to daemon.
+      // If SYNERGY_CWD is set (dev script sets it), the user expected a dev server.
+      if (process.env.SYNERGY_CWD) {
+        UI.error("No dev watchdog server is running. Start one with: bun dev server")
+        process.exit(1)
+      }
+      // Otherwise fall through to daemon restart
     }
 
     // Restart the managed background service.

@@ -661,3 +661,55 @@ describe("non-Linux PID identity check robustness", () => {
     expect(hasWmicFallback).toBe(true)
   })
 })
+
+describe("PID file write failure handling", () => {
+  test("watchdog should warn if PID file write fails, not silently continue", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // Find the Bun.write(devPidFile ...) section
+    const pidWriteIdx = source.indexOf("Bun.write(devPidFile")
+    const writeBlock = source.substring(Math.max(0, pidWriteIdx - 100), pidWriteIdx + 200)
+
+    // The PID file write is inside a try/catch that silently swallows errors.
+    // There should be a log.warn or UI.error in the catch block.
+    // Find the catch block after the write
+    const catchIdx = source.indexOf("catch {}", pidWriteIdx)
+    const catchBlock = source.substring(catchIdx, catchIdx + 200)
+
+    // An empty catch {} is bad — it should at least log the failure
+    const hasSilentCatch = /catch\s*\{\s*\}/.test(source.substring(pidWriteIdx, pidWriteIdx + 100))
+    const hasWarningInCatch = /log\.(warn|error)|UI\.(warn|error)/.test(
+      source.substring(pidWriteIdx, source.indexOf("let child", pidWriteIdx)),
+    )
+
+    // Should NOT have a silent catch, or SHOULD have a warning
+    expect(hasSilentCatch && !hasWarningInCatch).toBe(false)
+  })
+})
+
+describe("daemon restart fallback safety", () => {
+  test("restart command should NOT fall back to daemon restart when dev server was expected", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // When the user runs 'bun dev restart', they expect to restart the dev
+    // watchdog server. If the PID file is missing/stale, falling back to
+    // Daemon.restart() can create stray processes and port conflicts.
+    // The restart command should check if it's being invoked in dev mode
+    // (e.g. SYNERGY_CWD is set, or the dev script is the entry point) and
+    // error instead of silently restarting the daemon.
+
+    // After all the PID file handling, before the Daemon.restart() call,
+    // there should be a check: if we were trying to restart a dev server
+    // (PID file existed or SYNERGY_CWD is set), don't fall through to daemon.
+    const daemonRestartIdx = source.indexOf("Daemon.restart()")
+    const beforeDaemon = source.substring(source.indexOf("handler: async"), daemonRestartIdx)
+
+    // Check that there's some guard before daemon restart that considers
+    // whether a dev server was expected
+    const hasDevModeGuard = /SYNERGY_CWD|isDev|dev.*server|dev.*watchdog/.test(
+      beforeDaemon.substring(beforeDaemon.length - 500),
+    )
+
+    expect(hasDevModeGuard).toBe(true)
+  })
+})

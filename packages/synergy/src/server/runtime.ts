@@ -74,7 +74,12 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
         } catch {}
       }
       await Bun.write(devPidFile, JSON.stringify(identity))
-    } catch {}
+    } catch (err) {
+      log.error("failed to write dev watchdog PID file", {
+        path: devPidFile,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   let child: ReturnType<typeof Bun.spawn> | undefined
