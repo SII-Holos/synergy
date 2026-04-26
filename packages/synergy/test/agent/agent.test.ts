@@ -49,7 +49,7 @@ test("master agent has correct default properties", async () => {
   })
 })
 
-test("explore agent denies edit and write", async () => {
+test("explore agent allows edit and write but denies todowrite", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
@@ -57,8 +57,8 @@ test("explore agent denies edit and write", async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
       expect(explore?.mode).toBe("subagent")
-      expect(evalPerm(explore, "edit")).toBe("deny")
-      expect(evalPerm(explore, "write")).toBe("deny")
+      expect(evalPerm(explore, "edit")).toBe("allow")
+      expect(evalPerm(explore, "write")).toBe("allow")
       expect(evalPerm(explore, "todoread")).toBe("deny")
       expect(evalPerm(explore, "todowrite")).toBe("deny")
     },
