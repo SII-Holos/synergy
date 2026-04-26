@@ -201,6 +201,10 @@ export namespace AgendaTypes {
       // Notification behavior
       wake: z.boolean().default(true).describe("Whether to wake the origin session's agent on completion"),
       silent: z.boolean().default(false).describe("Whether to suppress result delivery entirely"),
+      autoDone: z
+        .boolean()
+        .default(false)
+        .describe("If true, automatically set status to done after first successful fire. Used by agenda_watch."),
 
       origin: Origin.describe("Context captured at creation time"),
       createdBy: z.enum(["user", "agent"]),
@@ -323,6 +327,7 @@ export namespace AgendaTypes {
       global: z.boolean().optional(),
       wake: z.boolean().optional(),
       silent: z.boolean().optional(),
+      autoDone: z.boolean().optional(),
       agent: z.string().optional(),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
       sessionRefs: z.array(SessionRef).optional(),

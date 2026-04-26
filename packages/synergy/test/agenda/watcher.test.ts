@@ -78,6 +78,7 @@ function makeItem(id: string, triggers: AgendaTypes.Trigger[], scopeID = "scope-
     prompt: "test",
     wake: true,
     silent: false,
+    autoDone: false,
     origin: {
       scope: {
         type: "project",

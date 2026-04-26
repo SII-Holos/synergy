@@ -1,0 +1,22 @@
+Set up a watch that monitors a condition by periodically calling a Synergy tool, and wakes you up in THIS session when the condition is met. The watch automatically stops after firing — you don't need to clean it up.
+
+This is the right tool when you need to wait for something to happen:
+- An experiment to finish: watch inspire_jobs until status changes
+- A training metric to hit a threshold: watch inspire_metrics until loss matches a pattern
+- A file to appear: watch a tool that checks file existence
+
+How it works:
+1. The system calls the specified tool every `interval` (default: 5 minutes)
+2. No agent is involved in checking — it's mechanical, zero token cost
+3. When the tool output CHANGES from the previous check (default), or MATCHES a regex you specify, the watch fires
+4. You get woken up in this session with the tool output as a message
+5. The watch automatically marks itself as "done" — no cleanup needed
+
+If the watch never fires, it times out after `timeout` (default: 24 hours) or `max_checks` (default: 100), and wakes you with a timeout notification so you can decide what to do.
+
+After being woken up, if you need to keep watching (e.g. the change was irrelevant), create a new watch. Each watch is a one-shot — fire once, deliver, done.
+
+Related tools:
+- Use `agenda_list` to see your active watches
+- Use `agenda_cancel` to stop a watch before it fires
+- Use `agenda_create` instead if you need a RECURRING schedule (cron/every) that runs a prompt repeatedly — that's a different use case

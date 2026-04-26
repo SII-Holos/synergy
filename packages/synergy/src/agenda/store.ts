@@ -115,6 +115,7 @@ export namespace AgendaStore {
       timeout: input.timeout,
       wake: input.wake ?? true,
       silent: input.silent ?? false,
+      autoDone: input.autoDone ?? false,
       origin: { scope, sessionID: input.sessionID, endpoint: input.endpoint },
       createdBy: input.createdBy ?? "user",
       state: {

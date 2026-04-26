@@ -101,8 +101,9 @@ export const PART_MAPPING: Record<string, PartComponent | undefined> = {}
 
 const TEXT_RENDER_THROTTLE_MS = 100
 
-function same<T>(a: readonly T[], b: readonly T[]) {
+function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
+  if (!a || !b) return false
   if (a.length !== b.length) return false
   return a.every((x, i) => x === b[i])
 }
