@@ -355,8 +355,7 @@ describe("dev watchdog banner notification", () => {
 
     // When restartPolicy === "dev", the user should be informed.
     // Check for a banner or log message that indicates watchdog mode is active.
-    const hasWatchdogBanner =
-      /watchdog.*active|dev.*watchdog.*active|dev restart.*active|Dev watchdog/i.test(source)
+    const hasWatchdogBanner = /watchdog.*active|dev.*watchdog.*active|dev restart.*active|Dev watchdog/i.test(source)
 
     expect(hasWatchdogBanner).toBe(true)
   })
@@ -415,10 +414,7 @@ describe("snapshot revert data safety", () => {
     const source = fs.readFileSync(path.join(__dirname, "../../src/session/snapshot.ts"), "utf-8")
 
     // Find the revert function
-    const revertFn = source.substring(
-      source.indexOf("async function revert"),
-      source.indexOf("async function diff"),
-    )
+    const revertFn = source.substring(source.indexOf("async function revert"), source.indexOf("async function diff"))
 
     // When ls-tree fails, we should NOT delete the file.
     // The code should check exitCode === 0 BEFORE deciding to delete.
