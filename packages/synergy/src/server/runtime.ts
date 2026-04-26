@@ -112,6 +112,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
 
   if (isDev) {
     process.on("SIGUSR1", onDevRestart)
+    Bun.stderr.write(DIM + "  ⚡ Dev watchdog active (bun dev restart to restart)" + RESET + EOL)
   }
 
   // Install persistent signal handlers (not removed during backoff)

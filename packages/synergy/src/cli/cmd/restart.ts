@@ -29,8 +29,29 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
       if (currentStarttime === undefined) return false
       return currentStarttime === starttimeJiffies
     }
-    // On non-Linux, fall back to just checking if the process exists
-    // PID reuse is rare on macOS and in dev mode the risk is acceptable
+    // On non-Linux (macOS, Windows), use `ps` to check the process start time.
+    // This is a weaker check than Linux's /proc but still catches most PID reuse.
+    if (startTime !== undefined) {
+      const { execSync } = await import("child_process")
+      try {
+        if (process.platform === "darwin") {
+          // macOS: ps -p <pid> -o lstart= gives the process start time
+          const lstart = execSync(`ps -p ${pid} -o lstart= 2>/dev/null`, { encoding: "utf-8" }).trim()
+          if (!lstart) return false
+          // Convert both times to epoch for comparison (allow 2s tolerance)
+          const procStart = Math.floor(new Date(lstart).getTime() / 1000)
+          const storedStart = Math.floor(startTime / 1000)
+          return Math.abs(procStart - storedStart) <= 2
+        } else if (process.platform === "win32") {
+          // Windows: wmic can give CreationDate but it's unreliable for short-lived PIDs.
+          // Fall back to existence check — PID reuse is rare on Windows.
+          return isWatchdogRunning(pid)
+        }
+      } catch {
+        return false
+      }
+    }
+    // No startTime available — just check if the process exists
     return isWatchdogRunning(pid)
   } catch {
     return false

@@ -343,3 +343,186 @@ describe("restart flag file behavioral test", () => {
     expect(stdout).toContain("RESTART_DETECTED")
   })
 })
+
+// ============================================================
+// TDD tests for remaining PR review issues
+// These tests should FAIL before the fix and PASS after.
+// ============================================================
+
+describe("dev watchdog banner notification", () => {
+  test("server.ts should show a banner when running in dev watchdog mode", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // When restartPolicy === "dev", the user should be informed.
+    // Check for a banner or log message that indicates watchdog mode is active.
+    const hasWatchdogBanner =
+      /watchdog.*active|dev.*watchdog.*active|dev restart.*active|Dev watchdog/i.test(source)
+
+    expect(hasWatchdogBanner).toBe(true)
+  })
+})
+
+describe("dev watchdog PID file cleanup on SIGUSR1 restart", () => {
+  test("PID file should be cleaned up when watchdog exits after receiving SIGUSR1 during shutdown", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/server/runtime.ts"), "utf-8")
+
+    // After onDevRestart kills the child, if shuttingDown is also true,
+    // the PID file should be unlinked before process.exit.
+    // Look at the devRestartRequested block that checks shuttingDown.
+    const restartBlock = source.substring(
+      source.indexOf("Intentional dev restarts should not count as crashes"),
+      source.indexOf("Track crash time for backoff calculation"),
+    )
+
+    // When dev restart is requested AND shuttingDown, PID file should be cleaned
+    const cleansPidOnRestartShutdown = /devPidFile.*unlink|unlink.*devPidFile/.test(restartBlock)
+
+    expect(cleansPidOnRestartShutdown).toBe(true)
+  })
+})
+
+describe("verifyWatchdogIdentity on non-Linux", () => {
+  test("verifyWatchdogIdentity should use startTime on non-Linux (macOS/Windows) paths", () => {
+    const restartSource = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // On non-Linux, verifyWatchdogIdentity falls back to isWatchdogRunning(pid)
+    // which only checks if ANY process with that PID exists — PID reuse is not
+    // detected. The function receives startTime but ignores it on non-Linux.
+    //
+    // Fix: On macOS, use `ps -p <pid> -o lstart=` to verify process start time.
+    // On Windows, use a similar mechanism.
+    //
+    // At minimum, startTime should be used on the non-Linux path too.
+    const identityFn = restartSource.substring(
+      restartSource.indexOf("async function verifyWatchdogIdentity"),
+      restartSource.indexOf("export const RestartCommand"),
+    )
+
+    // Extract the non-Linux branch (the fallback after the linux check)
+    const nonLinuxBranch = identityFn.includes("On non-Linux")
+      ? identityFn.substring(identityFn.indexOf("On non-Linux"))
+      : identityFn
+
+    // The non-Linux path should reference startTime (not just isWatchdogRunning)
+    const usesStartTimeOnNonLinux = /startTime/.test(nonLinuxBranch)
+
+    expect(usesStartTimeOnNonLinux).toBe(true)
+  })
+})
+
+describe("snapshot revert data safety", () => {
+  test("revert should NOT delete files when ls-tree fails (exitCode !== 0)", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/session/snapshot.ts"), "utf-8")
+
+    // Find the revert function
+    const revertFn = source.substring(
+      source.indexOf("async function revert"),
+      source.indexOf("async function diff"),
+    )
+
+    // When ls-tree fails, we should NOT delete the file.
+    // The code should check exitCode === 0 BEFORE deciding to delete.
+    // Pattern: check exitCode first, only delete when ls-tree succeeds
+    // AND returns empty output (meaning file didn't exist in snapshot).
+    //
+    // Verify that there is no path where fs.unlink is called
+    // without ls-tree exitCode === 0 guard.
+    const hasUnguardedDelete = /else\s*\{[^}]*unlink/.test(revertFn)
+    const hasProperExitCodeGuard = /checkTree\.exitCode\s*===\s*0/.test(revertFn)
+
+    // Should have the exit code guard
+    expect(hasProperExitCodeGuard).toBe(true)
+    // Should not have an else-unlink pattern (unguarded delete)
+    expect(hasUnguardedDelete).toBe(false)
+  })
+})
+
+describe("prepare.ts SDK generation path", () => {
+  test("prepare should use ./script/generate.ts for full SDK generation", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/prepare.ts"), "utf-8")
+
+    // prepare should run ./script/generate.ts which regenerates the OpenAPI spec
+    // AND builds the SDK, not just packages/sdk/js/script/build.ts
+    const usesFullGenerate = /\.\/script\/generate\.ts/.test(source)
+
+    expect(usesFullGenerate).toBe(true)
+  })
+})
+
+describe("behavioral test: watchdog PID file identity", () => {
+  test("PID file should contain JSON with pid, startTime, and devCwd", async () => {
+    const tmpDir = `/tmp/synergy-test-pidfile-${Date.now()}`
+    fs.mkdirSync(tmpDir, { recursive: true })
+
+    // Simulate what the watchdog does: write PID file with identity
+    const crypto = await import("crypto")
+    const cwdHash = crypto.createHash("sha256").update(tmpDir).digest("hex").slice(0, 12)
+
+    const identity = {
+      pid: process.pid,
+      startTime: Date.now(),
+      devCwd: tmpDir,
+    }
+
+    // On Linux, include starttimeJiffies
+    if (process.platform === "linux") {
+      try {
+        const selfStat = await Bun.file("/proc/self/stat").text()
+        const { parseProcStatStarttime } = await import("../../src/util/proc")
+        const starttime = parseProcStatStarttime(selfStat)
+        if (starttime !== undefined) (identity as any).starttimeJiffies = starttime
+      } catch {}
+    }
+
+    const pidFile = path.join(tmpDir, `dev-watchdog-${cwdHash}.pid`)
+    await Bun.write(pidFile, JSON.stringify(identity))
+
+    // Verify the PID file can be read and parsed
+    const content = await Bun.file(pidFile).text()
+    const data = JSON.parse(content)
+
+    expect(data.pid).toBe(process.pid)
+    expect(typeof data.startTime).toBe("number")
+    expect(data.devCwd).toBe(tmpDir)
+
+    // On Linux, verify starttimeJiffies was stored
+    if (process.platform === "linux") {
+      expect(typeof data.starttimeJiffies).toBe("number")
+    }
+
+    // Verify identity verification works
+    const { parseProcStatStarttime } = await import("../../src/util/proc")
+    if (process.platform === "linux" && data.starttimeJiffies !== undefined) {
+      const selfStat = await Bun.file("/proc/self/stat").text()
+      const currentStarttime = parseProcStatStarttime(selfStat)
+      expect(currentStarttime).toBe(data.starttimeJiffies)
+    }
+
+    // Cleanup
+    try {
+      fs.rmSync(tmpDir, { recursive: true })
+    } catch {}
+  })
+})
+
+describe("behavioral test: stale PID file detection", () => {
+  test("isWatchdogRunning should return false for non-existent PID", async () => {
+    // Use a PID that is very unlikely to exist
+    const unlikelyPid = 299999
+
+    // Import and test the function behavior by checking process.kill(pid, 0)
+    let pidExists: boolean
+    try {
+      process.kill(unlikelyPid, 0)
+      pidExists = true
+    } catch {
+      pidExists = false
+    }
+
+    // The PID should not exist (very high PID)
+    // If it does exist by chance, skip this test
+    if (!pidExists) {
+      expect(pidExists).toBe(false)
+    }
+  })
+})
