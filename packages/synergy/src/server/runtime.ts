@@ -129,6 +129,15 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
   process.on("SIGTERM", () => onWrapperSignal())
   process.on("SIGHUP", () => onWrapperSignal())
 
+  // Clear any stale restart flag from a previous watchdog run.
+  // Without this, a leftover flag file from a crashed watchdog would
+  // cause an unexpected restart on the next startup.
+  if (devRestartFlag) {
+    try {
+      await Bun.file(devRestartFlag).unlink()
+    } catch {}
+  }
+
   for (;;) {
     child = Bun.spawn({
       cmd: [process.argv0, ...childArgv],

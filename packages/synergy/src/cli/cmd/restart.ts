@@ -35,15 +35,22 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
       const { execSync } = await import("child_process")
       try {
         if (process.platform === "darwin") {
-          // macOS: ps -p <pid> -o lstart= gives the process start time
-          const lstart = execSync(`ps -p ${pid} -o lstart= 2>/dev/null`, { encoding: "utf-8" }).trim()
-          if (!lstart) return false
-          // Convert both times to epoch for comparison (allow 2s tolerance)
-          const procStartMs = new Date(lstart).getTime()
-          if (isNaN(procStartMs)) return false
-          const procStart = Math.floor(procStartMs / 1000)
-          const storedStart = Math.floor(startTime / 1000)
-          return Math.abs(procStart - storedStart) <= 2
+          // macOS: use ps -o etimes= to get elapsed seconds since process start.
+          // This is locale-independent (always outputs seconds as a number)
+          // and avoids the fragile Date parsing of lstart output.
+          const { execSync } = await import("child_process")
+          try {
+            const etimes = execSync(`ps -p ${pid} -o etimes= 2>/dev/null`, { encoding: "utf-8" }).trim()
+            if (!etimes) return false
+            const elapsedSec = parseInt(etimes, 10)
+            if (isNaN(elapsedSec)) return false
+            // Verify: stored startTime + elapsed ≈ now (allow 2s tolerance)
+            const expectedNow = Math.floor(startTime / 1000) + elapsedSec
+            const actualNow = Math.floor(Date.now() / 1000)
+            return Math.abs(actualNow - expectedNow) <= 2
+          } catch {
+            return false
+          }
         } else if (process.platform === "win32") {
           // Windows: check process start time via wmic or PowerShell fallback
           if (startTime !== undefined) {
@@ -70,15 +77,20 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
               // wmic not available (deprecated on newer Windows) — fall through to PowerShell
             }
             // Try PowerShell if wmic didn't produce a valid procStart
+            // Use elapsed seconds (locale-independent) instead of parsing StartTime
             if (procStart === undefined) {
               try {
-                const psOutput = execWin(`powershell -NoProfile -Command "(Get-Process -Id ${pid}).StartTime" 2>nul`, {
-                  encoding: "utf-8",
-                }).trim()
+                const psOutput = execWin(
+                  `powershell -NoProfile -Command "try { (Get-Process -Id ${pid}).StartTime | Get-Date -UFormat '%s' } catch {}" 2>nul`,
+                  { encoding: "utf-8" },
+                ).trim()
                 if (psOutput) {
-                  const psMs = new Date(psOutput).getTime()
-                  if (!isNaN(psMs)) {
-                    procStart = Math.floor(psMs / 1000)
+                  const psEpoch = parseInt(psOutput, 10)
+                  if (!isNaN(psEpoch)) {
+                    const storedStart = Math.floor(startTime / 1000)
+                    if (Math.abs(psEpoch - storedStart) <= 2) {
+                      procStart = storedStart // mark as verified
+                    }
                   }
                 }
               } catch {
