@@ -266,6 +266,18 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     }
     abortController = new AbortController()
 
+    // If shutdown was requested during backoff, exit immediately.
+    // This must be checked before devRestartRequested to prevent
+    // spawning a new child after the user asked to shut down.
+    if (shuttingDown) {
+      if (devPidFile) {
+        try {
+          await Bun.file(devPidFile).unlink()
+        } catch {}
+      }
+      process.exit(0)
+    }
+
     // If a restart was requested during backoff, skip to respawn immediately.
     // The previous child exit was caused by the restart, not a crash —
     // remove the crash entry we already pushed.

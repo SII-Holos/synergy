@@ -41,8 +41,9 @@ export const ServerCommand = cmd({
       const managedService = args.managedService
 
       await runServerRuntime({
-        restartPolicy:
-          (args.restart as "none" | "always" | "dev" | undefined) ?? (Installation.isLocal() ? "dev" : "none"),
+        restartPolicy: managedService
+          ? "none"
+          : ((args.restart as "none" | "always" | "dev" | undefined) ?? (Installation.isLocal() ? "dev" : "none")),
         interactive: !(managedService || args.nonInteractive),
         printBanner: args.banner,
         printChannelStatus: !managedService,
