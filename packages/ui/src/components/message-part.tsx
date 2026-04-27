@@ -1242,22 +1242,15 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const attachments = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
-      const mime = f.mime
-      return (
-        mime.startsWith("image/") ||
-        mime === "application/pdf" ||
-        mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-        mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-        mime === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-      )
+      if (f.source?.text?.start !== undefined) return false
+      return true
     }),
   )
 
   const inlineFiles = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
-      const mime = f.mime
-      return !mime.startsWith("image/") && mime !== "application/pdf" && f.source?.text?.start !== undefined
+      return f.source?.text?.start !== undefined
     }),
   )
 
