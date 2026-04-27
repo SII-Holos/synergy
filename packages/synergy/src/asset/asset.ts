@@ -12,6 +12,20 @@ const MIME_TO_EXT: Record<string, string> = {
   "audio/mpeg": "mp3",
   "audio/wav": "wav",
   "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/markdown": "md",
+  "text/html": "html",
+  "text/css": "css",
+  "text/csv": "csv",
+  "text/xml": "xml",
+  "text/yaml": "yaml",
+  "text/x-python": "py",
+  "text/x-shellscript": "sh",
+  "application/json": "json",
+  "application/xml": "xml",
+  "application/javascript": "js",
+  "application/typescript": "ts",
+  "application/x-yaml": "yaml",
 }
 
 const EXT_TO_MIME: Record<string, string> = {
@@ -26,6 +40,19 @@ const EXT_TO_MIME: Record<string, string> = {
   mp3: "audio/mpeg",
   wav: "audio/wav",
   pdf: "application/pdf",
+  txt: "text/plain",
+  md: "text/markdown",
+  html: "text/html",
+  css: "text/css",
+  csv: "text/csv",
+  xml: "text/xml",
+  yaml: "text/yaml",
+  yml: "text/yaml",
+  py: "text/x-python",
+  sh: "text/x-shellscript",
+  json: "application/json",
+  js: "application/javascript",
+  ts: "application/typescript",
 }
 
 export namespace Asset {
@@ -50,14 +77,14 @@ export namespace Asset {
     return resolved
   }
 
-  export function generateId(buffer: Buffer, mime: string): string {
+  export function generateId(buffer: Buffer, mime: string, filename?: string): string {
     const hash = new Bun.CryptoHasher("sha256").update(buffer).digest("hex").slice(0, 16)
-    const ext = MIME_TO_EXT[mime] ?? "bin"
+    const ext = MIME_TO_EXT[mime] ?? (filename ? extFromName(filename) : undefined) ?? "bin"
     return `${hash}.${ext}`
   }
 
-  export async function write(buffer: Buffer, mime: string): Promise<string> {
-    const id = generateId(buffer, mime)
+  export async function write(buffer: Buffer, mime: string, filename?: string): Promise<string> {
+    const id = generateId(buffer, mime, filename)
     await Bun.write(filePath(id), buffer)
     return id
   }
