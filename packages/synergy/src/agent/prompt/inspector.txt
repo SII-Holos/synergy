@@ -15,6 +15,7 @@ Evaluate code along three primary axes and one hygiene axis:
 - Does the code wrap logic in layers of functions, wrappers, or adapters that add callsite depth without adding clarity or reuse?
 - Every layer must justify itself: if stripping it preserves behavior and improves navigability, flag it.
 - Watch for passthrough functions that merely delegate to a single callee, wrapper types that add no fields or behavior, and adapter chains that transform data into the same shape.
+- Circular or tangled import dependencies between modules — A imports B which imports A, or import chains that create hidden coupling. These make the module graph harder to reason about and prevent independent testing or replacement.
 
 ### 3. Structural Density
 - Are files bloated with thousands of lines mixing unrelated responsibilities?
