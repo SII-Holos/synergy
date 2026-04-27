@@ -51,11 +51,12 @@ function computeLayout(nodes: DagNode[], containerWidth: number) {
   function depth(id: string): number {
     if (layers.has(id)) return layers.get(id)!
     const node = map.get(id)
-    if (!node || node.deps.length === 0) {
+    const deps = node?.deps
+    if (!node || !deps || deps.length === 0) {
       layers.set(id, 0)
       return 0
     }
-    const max = Math.max(...node.deps.map((d) => depth(d)))
+    const max = Math.max(...deps.map((d) => depth(d)))
     const val = max + 1
     layers.set(id, val)
     return val
@@ -111,7 +112,7 @@ function computeLayout(nodes: DagNode[], containerWidth: number) {
 
   const edges: LayoutEdge[] = []
   for (const ln of laid) {
-    for (const dep of ln.node.deps) {
+    for (const dep of ln.node.deps ?? []) {
       const from = byId.get(dep)
       if (from) edges.push({ from, to: ln })
     }
