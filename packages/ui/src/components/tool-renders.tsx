@@ -1245,7 +1245,7 @@ ToolRegistry.register({
         icon="sparkles"
         trigger={() => ({
           title: "Skill",
-          subtitle: props.input.name || "",
+          subtitle: props.input.name + (props.input.reference ? ` (${props.input.reference})` : "") || "",
         })}
       >
         <Show when={props.output}>

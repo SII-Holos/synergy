@@ -574,7 +574,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "sparkles",
         title: "Skill",
-        subtitle: input.name,
+        subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
       }
     case "arxiv_search":
       return {
