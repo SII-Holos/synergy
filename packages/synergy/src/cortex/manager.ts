@@ -260,6 +260,10 @@ export namespace Cortex {
             synthetic: true,
           },
         ],
+        metadata: {
+          mailbox: true,
+          sourceSessionID: task.sessionID,
+        },
       },
     })
   }
