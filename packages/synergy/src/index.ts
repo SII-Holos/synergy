@@ -33,6 +33,7 @@ import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
+import { registerPluginCommands } from "./cli/plugin-dispatch"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -135,6 +136,11 @@ const cli = yargs(hideBin(process.argv))
   .command(PluginCommand)
   .command(DataCommand)
   .command(MigrateCommand)
+
+// Register CLI commands from installed plugins (e.g. `synergy inspire login`)
+await registerPluginCommands(cli)
+
+cli
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
