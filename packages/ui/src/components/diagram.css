@@ -5,7 +5,7 @@
   [data-slot="diagram-scroll"] {
     position: relative;
     width: 100%;
-    max-height: 480px;
+    max-height: 560px;
     overflow: auto;
     scrollbar-width: thin;
 
@@ -28,24 +28,18 @@
         linear-gradient(to right, black 0%, black 92%, transparent 100%);
       -webkit-mask-composite: source-in;
     }
-
-    /* remove masks on scroll to end */
-    &[data-overflow-x="end"] {
-      mask-image: none;
-      -webkit-mask-image: none;
-    }
-    &[data-overflow-y="end"] {
-      mask-image: none;
-      -webkit-mask-image: none;
-    }
   }
 
   [data-slot="diagram-canvas"] {
     position: relative;
     min-width: 100%;
-    background-image: radial-gradient(circle, var(--border-weak-base) 0.5px, transparent 0.5px);
-    background-size: 16px 16px;
-    background-position: 8px 8px;
+    background-image: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--border-weak-base) 72%, transparent) 0.7px,
+      transparent 0.7px
+    );
+    background-size: 20px 20px;
+    background-position: 10px 10px;
     border-radius: var(--radius-lg);
   }
 
@@ -58,39 +52,42 @@
 
   [data-slot="diagram-edge"] {
     fill: none;
-    stroke: var(--text-weaker);
-    stroke-width: 1.2;
+    stroke: color-mix(in srgb, var(--text-weak) 84%, transparent);
+    stroke-width: 1.45;
     stroke-linecap: round;
   }
 
   [data-slot="diagram-edge-label"] {
     font-family: var(--font-family-sans);
-    font-size: 10px;
-    fill: var(--text-weaker);
+    font-size: 11px;
+    font-weight: 500;
+    fill: var(--text-weak);
     text-anchor: middle;
     dominant-baseline: central;
   }
 
   [data-slot="diagram-edge-label-bg"] {
-    fill: var(--surface-base);
+    fill: color-mix(in srgb, var(--surface-base) 94%, transparent);
+    stroke: color-mix(in srgb, var(--border-weak-base) 75%, transparent);
+    stroke-width: 1;
     rx: 8;
     ry: 8;
   }
 
   [data-slot="diagram-node"] {
     position: absolute;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-weak-base);
-    background: var(--surface-base);
-    padding: 10px 14px;
+    border-radius: calc(var(--radius-lg) + 2px);
+    border: 1px solid color-mix(in srgb, var(--border-base) 78%, transparent);
+    background: color-mix(in srgb, var(--surface-base) 92%, var(--surface-raised-base) 8%);
+    padding: 14px 18px;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 3px;
+    gap: 6px;
     overflow: hidden;
-    text-align: center;
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-base, #000) 8%, transparent);
+    text-align: left;
+    box-shadow: 0 6px 18px -14px color-mix(in srgb, var(--shadow-base, #000) 28%, transparent);
     transition:
       border-color 0.15s ease,
       box-shadow 0.15s ease;
@@ -113,45 +110,41 @@
 
   [data-slot="diagram-node-label"] {
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.3;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.45;
     color: var(--text-base);
-    word-break: break-word;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   [data-slot="diagram-node-desc"] {
     font-family: var(--font-family-sans);
-    font-size: 11px;
-    line-height: 1.3;
+    font-size: 13px;
+    line-height: 1.5;
     color: var(--text-weak);
-    word-break: break-word;
-  }
-
-  [data-slot="diagram-node-group"] {
-    font-family: var(--font-family-sans);
-    font-size: 10px;
-    font-weight: var(--font-weight-medium);
-    letter-spacing: 0.04em;
-    color: var(--text-weaker);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   [data-slot="diagram-group-bg"] {
     position: absolute;
-    border-radius: var(--radius-lg);
-    border: 1px dashed var(--border-weak-base);
-    background: color-mix(in srgb, var(--surface-raised-base) 40%, transparent);
+    border-radius: calc(var(--radius-lg) + 2px);
+    border: 1px dashed color-mix(in srgb, var(--border-base) 68%, transparent);
+    background: color-mix(in srgb, var(--surface-raised-base) 46%, transparent);
     pointer-events: none;
   }
 
   [data-slot="diagram-group-label"] {
     position: absolute;
     font-family: var(--font-family-sans);
-    font-size: 10px;
-    font-weight: var(--font-weight-medium);
-    letter-spacing: 0.05em;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--text-weaker);
+    color: var(--text-weak);
     text-align: center;
   }
 }

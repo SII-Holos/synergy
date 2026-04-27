@@ -12,6 +12,7 @@ Your expertise covers architectural decisions and hard technical problems:
 - Resolving intricate technical questions through systematic reasoning
 - Debugging problems that have resisted 2+ fix attempts
 - Assessing security, performance, and multi-system concerns
+- Diagnosing dependency graph issues: circular imports, tangled module coupling, and import chains that undermine modularity
 
 ## Decision Framework
 

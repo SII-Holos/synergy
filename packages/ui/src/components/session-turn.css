@@ -195,9 +195,48 @@
     transform: rotate(90deg);
   }
 
+  [data-slot="session-turn-retry-group"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: min(100%, 72ch);
+  }
+
   [data-slot="session-turn-retry-message"] {
     font-weight: 500;
     color: var(--syntax-critical);
+    min-width: 0;
+  }
+
+  [data-slot="session-turn-retry-message"][data-expanded="false"] {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  [data-slot="session-turn-retry-message"][data-expanded="true"] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-slot="session-turn-retry-toggle"] {
+    all: unset;
+    flex-shrink: 0;
+    cursor: pointer;
+    color: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    border-radius: 9999px;
+    padding: 0 2px;
+
+    &:hover {
+      color: var(--text-strong);
+    }
+
+    &:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--border-base) 45%, var(--surface-brand-base) 55%);
+      outline-offset: 2px;
+    }
   }
 
   [data-slot="session-turn-retry-seconds"],

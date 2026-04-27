@@ -27,6 +27,8 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 **Precedence** (low → high): remote/well-known → global → project → `SYNERGY_CONFIG_CONTENT` env var.
 
+**Note:** If the `SYNERGY_HOME` environment variable is set, the base directory for all data and config paths below is `$SYNERGY_HOME/.synergy/` instead of `~/.synergy/`. Always check `echo $SYNERGY_HOME` first — if empty, use `~/.synergy/` as normal.
+
 ### Key data paths
 
 | What | Path |

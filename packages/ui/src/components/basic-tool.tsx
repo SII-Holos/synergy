@@ -34,6 +34,7 @@ export interface BasicToolProps {
   forceOpen?: boolean
   status?: string
   countdown?: number
+  charsReceived?: number
   onSubtitleClick?: () => void
 }
 
@@ -49,6 +50,11 @@ export function BasicTool(props: BasicToolProps) {
     const t = props.trigger
     if (typeof t === "function") return (t as () => TriggerTitleObject)()
     return isTriggerTitle(t) ? (t as TriggerTitleObject) : undefined
+  })
+
+  const charsLabel = createMemo(() => {
+    if (props.status !== "generating" || !props.charsReceived) return null
+    return `${props.charsReceived.toLocaleString()} chars`
   })
 
   return (
@@ -113,6 +119,9 @@ export function BasicTool(props: BasicToolProps) {
           </div>
           <Switch>
             <Match when={active()}>
+              <Show when={charsLabel()}>
+                <span data-slot="basic-tool-chars">{charsLabel()}</span>
+              </Show>
               <Show when={props.countdown != null}>
                 <Countdown seconds={props.countdown!} active={active()} />
               </Show>
@@ -156,6 +165,7 @@ export function SmartTool(props: {
   title?: string
   output?: string
   status?: string
+  charsReceived?: number
   hideDetails?: boolean
   metadata?: Record<string, any>
 }) {
@@ -167,6 +177,7 @@ export function SmartTool(props: {
     <BasicTool
       icon={classified().spec.icon}
       status={props.status}
+      charsReceived={props.charsReceived}
       trigger={() => ({
         title: classified().title,
         subtitle: classified().subtitle,

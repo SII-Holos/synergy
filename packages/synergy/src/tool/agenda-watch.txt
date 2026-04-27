@@ -1,9 +1,12 @@
 Set up a watch that monitors a condition by periodically calling a Synergy tool, and wakes you up in THIS session when the condition is met. The watch automatically stops after firing — you don't need to clean it up.
 
+IMPORTANT: The tool must be one that exists in the current environment. Check available tools before choosing — do not invent tool names.
+
 This is the right tool when you need to wait for something to happen:
-- An experiment to finish: watch inspire_jobs until status changes
-- A training metric to hit a threshold: watch inspire_metrics until loss matches a pattern
-- A file to appear: watch a tool that checks file existence
+- A process to finish: watch bash with a command like 'ps aux | grep my_job' until output changes
+- A remote API to become available: watch bash with 'curl -s https://api.example.com/health' until it returns 200
+- A file to appear or change: watch bash with 'ls -la /path/to/file' until output changes
+- A remote job to finish: watch inspire_jobs until status changes
 
 How it works:
 1. The system calls the specified tool every `interval` (default: 5 minutes)

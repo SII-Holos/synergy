@@ -210,8 +210,8 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
-            edit: "allow",
-            write: "allow",
+            edit: "ask",
+            write: "ask",
             runtime_reload: "deny",
             skill: {
               "agent-browser": "allow",
@@ -269,8 +269,8 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
-            edit: "allow",
-            write: "allow",
+            edit: "ask",
+            write: "ask",
             skill: {
               "agent-browser": "allow",
               "frontend-design": "deny",
@@ -307,8 +307,8 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
-            edit: "allow",
-            write: "allow",
+            edit: "ask",
+            write: "ask",
             skill: {
               "agent-browser": "allow",
               "frontend-design": "allow",
@@ -343,8 +343,8 @@ export namespace Agent {
             glob: "allow",
             list: "allow",
             bash: "allow",
-            edit: "allow",
-            write: "allow",
+            edit: "ask",
+            write: "ask",
             external_directory: {
               "*": "ask",
               [Truncate.DIR]: "allow",

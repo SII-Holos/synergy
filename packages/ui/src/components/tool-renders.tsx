@@ -27,20 +27,6 @@ import {
   type ToolProps,
 } from "./message-part"
 
-function generatingTrigger(
-  title: string,
-  input: Record<string, any>,
-  charsReceived?: number,
-): { title: string; subtitle: string; args: string[] } {
-  const filePath = input.filePath as string | undefined
-  const chars = charsReceived ? `${charsReceived.toLocaleString()} chars` : ""
-  return {
-    title,
-    subtitle: filePath ? getDirectory(filePath) + getFilename(filePath) : `Generating ${title.toLowerCase()}…`,
-    args: chars ? [chars] : [],
-  }
-}
-
 ToolRegistry.register({
   name: "read",
   render(props) {
@@ -654,26 +640,22 @@ ToolRegistry.register({
         {...props}
         icon="pen-line"
         trigger={
-          props.status === "generating" ? (
-            () => generatingTrigger("Edit", props.input, props.charsReceived)
-          ) : (
-            <div data-component="edit-trigger">
-              <div data-slot="message-part-title-area">
-                <div data-slot="message-part-title">Edit</div>
-                <div data-slot="message-part-path">
-                  <Show when={props.input.filePath?.includes("/")}>
-                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                  </Show>
-                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-                </div>
-              </div>
-              <div data-slot="message-part-actions">
-                <Show when={props.metadata.filediff}>
-                  <DiffChanges changes={props.metadata.filediff} />
+          <div data-component="edit-trigger">
+            <div data-slot="message-part-title-area">
+              <div data-slot="message-part-title">Edit</div>
+              <div data-slot="message-part-path">
+                <Show when={props.input.filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
                 </Show>
+                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
             </div>
-          )
+            <div data-slot="message-part-actions">
+              <Show when={props.metadata.filediff}>
+                <DiffChanges changes={props.metadata.filediff} />
+              </Show>
+            </div>
+          </div>
         }
       >
         <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
@@ -709,22 +691,18 @@ ToolRegistry.register({
         {...props}
         icon="text-select"
         trigger={
-          props.status === "generating" ? (
-            () => generatingTrigger("Write", props.input, props.charsReceived)
-          ) : (
-            <div data-component="write-trigger">
-              <div data-slot="message-part-title-area">
-                <div data-slot="message-part-title">Write</div>
-                <div data-slot="message-part-path">
-                  <Show when={props.input.filePath?.includes("/")}>
-                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                  </Show>
-                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-                </div>
+          <div data-component="write-trigger">
+            <div data-slot="message-part-title-area">
+              <div data-slot="message-part-title">Write</div>
+              <div data-slot="message-part-path">
+                <Show when={props.input.filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                </Show>
+                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
-              <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
             </div>
-          )
+            <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
+          </div>
         }
       >
         <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
@@ -1133,21 +1111,17 @@ ToolRegistry.register({
         {...props}
         icon="pen-line"
         trigger={
-          props.status === "generating" ? (
-            () => generatingTrigger("Multi Edit", props.input, props.charsReceived)
-          ) : (
-            <div data-component="edit-trigger">
-              <div data-slot="message-part-title-area">
-                <div data-slot="message-part-title">Multi Edit</div>
-                <div data-slot="message-part-path">
-                  <Show when={props.input.filePath?.includes("/")}>
-                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                  </Show>
-                  <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-                </div>
+          <div data-component="edit-trigger">
+            <div data-slot="message-part-title-area">
+              <div data-slot="message-part-title">Multi Edit</div>
+              <div data-slot="message-part-path">
+                <Show when={props.input.filePath?.includes("/")}>
+                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                </Show>
+                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
               </div>
             </div>
-          )
+          </div>
         }
       >
         <Show when={props.status !== "generating" && props.metadata.results}>
@@ -1193,7 +1167,6 @@ ToolRegistry.register({
         trigger={() => ({
           title: "Patch",
           subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
-          args: props.status === "generating" && props.charsReceived ? [`${props.charsReceived} chunks`] : [],
         })}
       >
         <Show when={props.output}>
@@ -1245,7 +1218,7 @@ ToolRegistry.register({
         icon="sparkles"
         trigger={() => ({
           title: "Skill",
-          subtitle: props.input.name || "",
+          subtitle: props.input.name + (props.input.reference ? ` (${props.input.reference})` : "") || "",
         })}
       >
         <Show when={props.output}>
@@ -1369,7 +1342,15 @@ ToolRegistry.register({
           subtitle: "Visible background tasks",
           args: count() != null ? [`${count()} task${count() === 1 ? "" : "s"}`] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -1396,7 +1377,15 @@ ToolRegistry.register({
           subtitle: description() || shortId(),
           args: description() ? [shortId()] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -1418,7 +1407,15 @@ ToolRegistry.register({
           subtitle: description() || shortId(),
           args: description() ? [shortId()] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })

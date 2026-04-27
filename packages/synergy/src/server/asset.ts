@@ -36,7 +36,7 @@ export const AssetRoute = new Hono()
         if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
         const buffer = Buffer.from(await file.arrayBuffer())
         const mime = file.type || "application/octet-stream"
-        const id = await Asset.write(buffer, mime)
+        const id = await Asset.write(buffer, mime, file.name)
         return c.json({
           id,
           url: `asset://${id}`,

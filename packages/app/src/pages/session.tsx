@@ -172,7 +172,7 @@ export default function Page() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
-  const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
+  const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
   const holosReplyToMessage = createMemo(() => {
     const replyToMessageId = store.holosReplyToMessageId
     if (!replyToMessageId) return undefined
@@ -408,7 +408,7 @@ export default function Page() {
   })
   const holosReplyMappingKey = createMemo(() => {
     if (!isHolosConversation() || !params.id) return undefined
-    const msgCount = messages().length
+    const msgCount = messages()?.length ?? 0
     return { sessionId: params.id, msgCount }
   })
   const [holosReplyMappings] = createResource(holosReplyMappingKey, async (key) => {
@@ -556,7 +556,9 @@ export default function Page() {
   const reviewTab = createMemo(() => hasReview() || tabs().active() === "review")
   const mobileReview = createMemo(() => !isDesktop() && hasReview() && store.mobileTab === "review")
 
-  const showTabs = createMemo(() => layout.review.opened() && (hasReview() || tabs().all().length > 0 || contextOpen()))
+  const showTabs = createMemo(
+    () => layout.review.opened() && (hasReview() || (tabs().all()?.length ?? 0) > 0 || contextOpen()),
+  )
 
   const activeTab = createMemo(() => {
     const active = tabs().active()
@@ -619,7 +621,7 @@ export default function Page() {
         if (hydratedSessions.has(id)) return
         hydratedSessions.add(id)
 
-        const len = visibleUserMessages().length
+        const len = visibleUserMessages()?.length ?? 0
         const start = len > turnInit ? len - turnInit : 0
         setStore("turnStart", start)
       },
@@ -1003,16 +1005,16 @@ export default function Page() {
               classList={{
                 "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-4 md:px-0 pointer-events-none": true,
                 "pt-12 pb-4 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent":
-                  messages().length > 0,
-                "pb-4": messages().length === 0,
+                  (messages()?.length ?? 0) > 0,
+                "pb-4": (messages()?.length ?? 0) === 0,
               }}
               style={{
-                transform: messages().length === 0 ? "translateY(-35vh)" : "translateY(0)",
+                transform: (messages()?.length ?? 0) === 0 ? "translateY(-35vh)" : "translateY(0)",
                 transition: "transform 400ms ease-out",
               }}
             >
               <div class="w-full md:px-6 md:max-w-200 pointer-events-auto">
-                <Show when={messages().length === 0}>
+                <Show when={(messages()?.length ?? 0) === 0}>
                   <HolosGreeting contactName={holosContact()!.name} />
                 </Show>
                 <HolosPromptInput

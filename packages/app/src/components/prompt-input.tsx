@@ -43,8 +43,7 @@ import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { ModelSelectorPopover, DialogSelectModelUnpaid } from "@/components/dialog"
-import { useProviders } from "@/hooks/use-providers"
+import { ModelSelectorPopover } from "@/components/dialog"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
@@ -303,7 +302,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const layout = useLayout()
   const params = useParams()
   const dialog = useDialog()
-  const providers = useProviders()
   const command = useCommand()
   const permission = usePermission()
   let editorRef!: HTMLDivElement
@@ -2193,41 +2191,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         </Tooltip>
                       }
                     >
-                      <Show
-                        when={providers.paid().length > 0}
-                        fallback={
-                          <TooltipKeybind
-                            placement="top"
-                            title="Choose model"
-                            keybind={command.keybind("model.choose")}
+                      <ModelSelectorPopover>
+                        <TooltipKeybind placement="top" title="Choose model" keybind={command.keybind("model.choose")}>
+                          <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
                           >
-                            <button
-                              type="button"
-                              class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
-                              onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
-                            >
-                              <span>{local.model.current()?.name ?? "Select model"}</span>
-                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
-                            </button>
-                          </TooltipKeybind>
-                        }
-                      >
-                        <ModelSelectorPopover>
-                          <TooltipKeybind
-                            placement="top"
-                            title="Choose model"
-                            keybind={command.keybind("model.choose")}
-                          >
-                            <button
-                              type="button"
-                              class="flex items-center gap-1 px-2.5 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
-                            >
-                              <span>{local.model.current()?.name ?? "Select model"}</span>
-                              <Icon name="chevron-down" size="small" class="text-icon-weak" />
-                            </button>
-                          </TooltipKeybind>
-                        </ModelSelectorPopover>
-                      </Show>
+                            <span>{local.model.current()?.name ?? "Select model"}</span>
+                            <Icon name="chevron-down" size="small" class="text-icon-weak" />
+                          </button>
+                        </TooltipKeybind>
+                      </ModelSelectorPopover>
                     </Show>
                     <Show when={local.model.variant.list().length > 0}>
                       <TooltipKeybind

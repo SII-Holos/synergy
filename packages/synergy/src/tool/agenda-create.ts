@@ -1,7 +1,9 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
+import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-create.txt"
 
 const parameters = z.object({
@@ -11,7 +13,7 @@ const parameters = z.object({
     .array(AgendaTypes.Trigger)
     .optional()
     .describe(
-      "Activation conditions. Examples: {type:'cron',expr:'0 9 * * *',tz:'Asia/Shanghai'}, {type:'every',interval:'30m'}, {type:'at',at:1742569200000}, {type:'delay',delay:'2h'}, {type:'watch',watch:{kind:'poll',command:'git status',interval:'5m',trigger:'change'}}, {type:'watch',watch:{kind:'tool',tool:'inspire_jobs',args:{status:'running'},interval:'5m',trigger:'change'}}, {type:'webhook'}",
+      "Activation conditions. Examples: {type:'cron',expr:'0 9 * * *',tz:'Asia/Shanghai'}, {type:'every',interval:'30m'}, {type:'at',at:1742569200000}, {type:'delay',delay:'2h'}, {type:'watch',watch:{kind:'poll',command:'git status',interval:'5m',trigger:'change'}}, {type:'watch',watch:{kind:'tool',tool:'bash',args:{command:'curl -s https://api.example.com/health'},interval:'5m',trigger:'change'}}, {type:'watch',watch:{kind:'tool',tool:'inspire_jobs',args:{status:'running'},interval:'5m',trigger:'change'}}, {type:'webhook'}",
     ),
   description: z.string().optional().describe("Longer description of the agenda item"),
   tags: z.array(z.string()).optional().describe("Tags for organization and filtering"),
@@ -37,6 +39,21 @@ export const AgendaCreateTool = Tool.define("agenda_create", {
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
+
+    const conflicts = await AgendaDedup.findConflicts(
+      Instance.scope.id,
+      params.title,
+      params.triggers ?? [],
+      params.global,
+    )
+
+    if (conflicts.length > 0) {
+      return {
+        title: "agenda_create",
+        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_create"),
+        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+      }
+    }
 
     const item = await Agenda.create({
       title: params.title,

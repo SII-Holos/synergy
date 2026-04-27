@@ -3,17 +3,13 @@ import type { IconName } from "./icon"
 /**
  * Semantic tool classification system.
  *
- * Instead of hardcoding every tool name in a giant switch/case, we classify
- * tools by what they *do* — read files, execute commands, search, etc.
+ * Self-contained flat mapping from tool name → SemanticCategory.
  *
  * The pipeline:
- *   1. Exact name match against registered patterns (cheap, covers 95% of known tools)
- *   2. Regex pattern matching against the tool name
- *   3. Input field heuristics (if input has `filePath` + `content` → probably a write)
+ *   1. Exact name lookup in TOOL_CATEGORIES
+ *   2. Pattern fallback (regex on tool name)
+ *   3. Input-shape heuristic (parameter names)
  *   4. Fallback to "generic"
- *
- * This means external agent tools (codex shell, cline execute_command, gemini read_file)
- * automatically get reasonable icons and subtitle extraction — zero new code needed.
  */
 
 export type SemanticCategory =
@@ -159,147 +155,61 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   },
 }
 
-// ── Layer 1: Exact name → category ──────────────────────────────────
-// Covers all known Synergy native tools and common external tool names.
-// Cheap O(1) lookup.
+// ── Flat tool name → category map ────────────────────────────────────
 
-const EXACT_MAP: Record<string, SemanticCategory> = {
-  // file-read
-  read: "file-read",
-  list: "file-read",
-  cat: "file-read",
-  head: "file-read",
-  tail: "file-read",
-  read_file: "file-read",
-  ReadFile: "file-read",
-  readFile: "file-read",
-  list_dir: "file-read",
-  list_directory: "file-read",
-
-  // file-write
-  edit: "file-write",
-  multiedit: "file-write",
-  write: "file-write",
-  patch: "file-write",
-  write_file: "file-write",
-  WriteFile: "file-write",
-  writeFile: "file-write",
-  create_file: "file-write",
-  insert_content: "file-write",
-  replace_in_file: "file-write",
-  apply_diff: "file-write",
-  editFile: "file-write",
-
-  // shell
-  bash: "shell",
-  shell: "shell",
-  process: "shell",
-  execute_command: "shell",
-  run_command: "shell",
-  exec: "shell",
-  terminal: "shell",
-  run_terminal_command: "shell",
-  executeCommand: "shell",
-
+const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   // search
-  grep: "search",
-  glob: "search",
-  ast_grep: "search",
-  find: "search",
-  ripgrep: "search",
-  search_files: "search",
-  codebase_search: "search",
-  file_search: "search",
-
-  // web
   websearch: "web",
   webfetch: "web",
-  fetch: "web",
-  browse: "web",
-  curl: "web",
-  browser_action: "web",
-
-  // memory
+  arxiv_search: "search",
+  arxiv_download: "search",
+  grep: "search",
+  ast_grep: "search",
+  glob: "search",
+  session_search: "session",
+  note_search: "note",
   memory_search: "memory",
   memory_get: "memory",
+
+  // code
+  read: "file-read",
+  list: "file-read",
+  look_at: "analyze",
+  edit: "file-write",
+  write: "file-write",
+  bash: "shell",
+  process: "shell",
+  lsp: "analyze",
+
+  // knowledge
   memory_write: "memory",
   memory_edit: "memory",
-
-  // note
+  note_write: "note",
   note_list: "note",
   note_read: "note",
-  note_search: "note",
-  note_write: "note",
+  skill: "skill",
 
-  // task
+  // orchestration
   task: "task",
   task_list: "task",
   task_output: "task",
   task_cancel: "task",
-
-  // dag
   dagwrite: "dag",
   dagread: "dag",
   dagpatch: "dag",
   todowrite: "dag",
   todoread: "dag",
-
-  // schedule
+  session_list: "session",
+  session_read: "session",
+  session_send: "session",
+  session_control: "session-control",
   agenda_create: "schedule",
+  agenda_watch: "schedule",
   agenda_list: "schedule",
   agenda_update: "schedule",
   agenda_delete: "schedule",
   agenda_trigger: "schedule",
   agenda_logs: "schedule",
-
-  // session
-  session_list: "session",
-  session_read: "session",
-  session_search: "session",
-  session_send: "session",
-  session_control: "session-control",
-
-  // community
-  agora_search: "community",
-  agora_read: "community",
-  agora_post: "community",
-  agora_join: "community",
-  agora_sync: "community",
-  agora_submit: "community",
-  agora_accept: "community",
-  agora_comment: "community",
-
-  // network
-  connect: "network",
-  remote_session: "network",
-
-  // analyze
-  look_at: "analyze",
-  analyze: "analyze",
-  vision: "analyze",
-
-  // config
-  runtime_reload: "config",
-  profile_get: "config",
-  profile_update: "config",
-
-  // communication
-  email: "communication",
-  send_message: "communication",
-
-  // skill
-  skill: "skill",
-
-  // web (more specific tools)
-  question: "communication",
-  diagram: "analyze",
-  attach: "communication",
-
-  // arXiv
-  arxiv_search: "search",
-  arxiv_download: "file-read",
-
-  // research (holos-research plugin)
   research_init: "research",
   research_state: "research",
   research_idea: "research",
@@ -312,14 +222,43 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
   research_wiki: "research",
   research_timeline: "research",
 
-  // context7 / MCP common
-  "context7_resolve-library-id": "search",
-  "context7_query-docs": "web",
+  // platform
+  runtime_reload: "config",
+  profile_get: "config",
+  profile_update: "config",
+  connect: "network",
+  remote_session: "network",
+  inspire_status: "config",
+  inspire_config: "config",
+  inspire_submit: "shell",
+  inspire_submit_hpc: "shell",
+  inspire_jobs: "analyze",
+  inspire_job_detail: "analyze",
+  inspire_logs: "analyze",
+  inspire_metrics: "analyze",
+  inspire_stop: "shell",
+  inspire_images: "analyze",
+  inspire_image_push: "shell",
+  inspire_notebook: "shell",
+  inspire_models: "analyze",
+  inspire_inference: "shell",
+  agora_search: "community",
+  agora_read: "community",
+  agora_post: "community",
+  agora_join: "community",
+  agora_sync: "community",
+  agora_submit: "community",
+  agora_accept: "community",
+  agora_comment: "community",
 
-  // lsp
-  lsp: "analyze",
+  // communication
+  question: "communication",
+  email: "communication",
+  email_read: "communication",
+  diagram: "analyze",
+  attach: "communication",
 
-  // qzcli — 启智平台
+  // qzcli / MCP tools
   qzcli_qz_auth_login: "config",
   qzcli_qz_set_cookie: "config",
   qzcli_qz_list_workspaces: "config",
@@ -335,78 +274,55 @@ const EXACT_MAP: Record<string, SemanticCategory> = {
   qzcli_qz_create_job: "shell",
   qzcli_qz_create_hpc_job: "shell",
   qzcli_qz_get_hpc_usage: "analyze",
+  "context7_resolve-library-id": "search",
+  "context7_query-docs": "web",
 }
 
-// ── Layer 2: Regex pattern → category ───────────────────────────────
-// For tools that follow naming conventions across different agents.
+// ── Pattern fallbacks ────────────────────────────────────────────────
+// When a tool isn't in TOOL_CATEGORIES, infer category from name.
 // Checked in order; first match wins.
 
-const PATTERN_RULES: { pattern: RegExp; category: SemanticCategory }[] = [
-  // file operations
-  { pattern: /^(read|get|load|fetch|cat|view)[-_]?file/i, category: "file-read" },
-  { pattern: /^(list|ls|dir)[-_]?(dir|files|folder)?$/i, category: "file-read" },
+const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
+  { pattern: /^(web)?search/i, category: "web" },
+  { pattern: /^(web)?fetch/i, category: "web" },
+  { pattern: /^arxiv/i, category: "search" },
+  {
+    pattern: /^(grep|glob|find|ripgrep|rg|search[-_]?files?|codebase[-_]?search|file[-_]?search)/i,
+    category: "search",
+  },
+  { pattern: /^(read|get|load|fetch|cat|view|head|tail)[-_]?file/i, category: "file-read" },
+  { pattern: /^(list|ls|dir)[-_]?(dir|files?|folder)?$/i, category: "file-read" },
   { pattern: /^(write|create|edit|update|patch|modify|replace|insert|append)[-_]?file/i, category: "file-write" },
   { pattern: /^(apply[-_]?diff|save[-_]?file)/i, category: "file-write" },
-
-  // shell / execution
   { pattern: /^(run|exec|execute|shell|bash|sh|cmd|terminal|command)/i, category: "shell" },
   { pattern: /[-_](command|exec|shell|terminal)$/i, category: "shell" },
-
-  // search
-  { pattern: /^(search|find|grep|glob|rg|ripgrep|lookup)/i, category: "search" },
-  { pattern: /(search|find|query)[-_]?(files?|code|text)?$/i, category: "search" },
-
-  // web
-  { pattern: /^(web|http|fetch|browse|curl|download)/i, category: "web" },
-  { pattern: /[-_](url|web|http|fetch|browse)$/i, category: "web" },
-
-  // memory
-  { pattern: /^(memory|engram|remember|recall|forget)/i, category: "memory" },
-
-  // note
-  { pattern: /^note[-_]/i, category: "note" },
-
-  // task / delegation
-  { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },
-
-  // dag / plan
-  { pattern: /^(dag|plan|todo)/i, category: "dag" },
-
-  // schedule
-  { pattern: /^(agenda|schedule|cron|timer|remind)/i, category: "schedule" },
-
-  // session
-  { pattern: /^session[-_]/i, category: "session" },
-
-  // community
-  { pattern: /^agora[-_]/i, category: "community" },
-
-  // analyze / vision
   { pattern: /^(look|analyze|vision|describe|inspect|examine)/i, category: "analyze" },
-
-  // config
-  { pattern: /^(config|setting|profile|runtime)/i, category: "config" },
-
-  // communication
-  { pattern: /^(email|mail|send|notify|message)/i, category: "communication" },
-
-  // research
+  { pattern: /^(memory|engram|remember|recall)/i, category: "memory" },
+  { pattern: /^note[-_]/i, category: "note" },
+  { pattern: /^skill/i, category: "skill" },
+  { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },
+  { pattern: /^(dag|plan)/i, category: "dag" },
+  { pattern: /^todo/i, category: "dag" },
+  { pattern: /^session[-_]/i, category: "session" },
+  { pattern: /^(agenda|schedule|cron|timer|remind)/i, category: "schedule" },
   { pattern: /^research[-_]/i, category: "research" },
+  { pattern: /^(config|setting|profile|runtime)/i, category: "config" },
+  { pattern: /^inspire[-_]/i, category: "shell" },
+  { pattern: /^agora[-_]/i, category: "community" },
+  { pattern: /^(email|mail)/i, category: "communication" },
+  { pattern: /^(send|notify|message)/i, category: "communication" },
+  { pattern: /^question/i, category: "communication" },
+  { pattern: /^diagram/i, category: "analyze" },
+  { pattern: /^attach/i, category: "communication" },
 ]
 
-// ── Layer 3: Input heuristic → category ─────────────────────────────
-// When name-based matching fails, inspect the input shape.
+// ── Input-shape heuristics ───────────────────────────────────────────
 
 const INPUT_HEURISTICS: { keys: string[]; writeHint?: string[]; category: SemanticCategory }[] = [
-  // If input has a command/cmd field → shell
   { keys: ["command", "cmd", "script"], category: "shell" },
-  // If input has file path + content/newString → write
   { keys: ["filePath", "file_path"], writeHint: ["content", "newString", "oldString", "diff"], category: "file-write" },
-  // If input has file path alone → read
   { keys: ["filePath", "file_path", "path"], category: "file-read" },
-  // If input has query/pattern → search
   { keys: ["query", "pattern", "regex", "search"], category: "search" },
-  // If input has url → web
   { keys: ["url", "href", "endpoint"], category: "web" },
 ]
 
@@ -431,12 +347,12 @@ export function classifyTool(
   input: Record<string, any> = {},
   metadata: Record<string, any> = {},
 ): ClassifiedTool {
-  // Layer 1: exact name
-  let category = EXACT_MAP[toolName]
+  // Layer 1: flat lookup
+  let category: SemanticCategory | undefined = TOOL_CATEGORIES[toolName]
 
-  // Layer 2: pattern match
+  // Layer 2: pattern fallback
   if (!category) {
-    for (const rule of PATTERN_RULES) {
+    for (const rule of PATTERN_FALLBACKS) {
       if (rule.pattern.test(toolName)) {
         category = rule.category
         break
@@ -452,15 +368,10 @@ export function classifyTool(
 
       if (rule.writeHint) {
         const hasWriteHint = rule.writeHint.some((k) => input[k] !== undefined)
-        if (hasWriteHint) {
-          category = rule.category
-          break
-        }
-        // Has file path but no write-specific fields → could be read
-        category = "file-read"
-        break
+        category = hasWriteHint ? rule.category : "file-read"
+      } else {
+        category = rule.category
       }
-      category = rule.category
       break
     }
   }
@@ -470,13 +381,10 @@ export function classifyTool(
 
   const spec = CATEGORIES[category]
 
-  // Extract title — humanize the tool name
-  const title = humanizeToolName(toolName, spec)
+  const title = humanizeToolName(toolName, category, spec)
 
-  // Extract subtitle from metadata first (often has richer info), then input
   const subtitle = extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys)
 
-  // Build args: explicit category args + metadata-derived badges
   const args = buildArgs(input, metadata, spec)
 
   return { category, spec, title, subtitle, args }
@@ -491,11 +399,10 @@ export function classifyTool(
  *   "bash" → "Shell"  (uses category label when it's more descriptive)
  *   "my_custom_tool" → "My Custom Tool"
  */
-function humanizeToolName(name: string, spec: CategorySpec): string {
-  // If the category has a label and the name is a single word that matches
-  // a well-known tool, prefer the label
-  if (spec.label && EXACT_MAP[name]) {
-    // For tools with very short names, use the category label
+function humanizeToolName(name: string, category: SemanticCategory, spec: CategorySpec): string {
+  // If the category has a label and the tool is a known short name,
+  // prefer the label
+  if (spec.label && TOOL_CATEGORIES[name]) {
     if (name.length <= 6) return spec.label
   }
 
@@ -556,7 +463,6 @@ function buildArgs(
   // Metadata status/action label
   const status = metadata.status ?? metadata.action
   if (typeof status === "string" && status.length > 0 && status.length < 20) {
-    // Capitalize first letter
     args.push(status.charAt(0).toUpperCase() + status.slice(1))
   }
 

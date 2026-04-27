@@ -61,6 +61,8 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   return a.every((x, i) => x === b[i])
 }
 
+const RETRY_PREVIEW_CHAR_LIMIT = 96
+
 function AssistantMessageItem(props: {
   message: AssistantMessage
   responsePartId: string | undefined
@@ -343,6 +345,14 @@ export function SessionTurn(
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
   const hideResponsePart = createMemo(() => !working() && !!responsePartId())
+  const retryMessage = createMemo(() => retry()?.message ?? "")
+  const retryMessageId = createMemo(() => `session-turn-retry-message-${props.messageID}`)
+  const retryPreview = createMemo(() => {
+    const message = retryMessage()
+    if (message.length <= RETRY_PREVIEW_CHAR_LIMIT) return message
+    return message.slice(0, RETRY_PREVIEW_CHAR_LIMIT).trimEnd() + "…"
+  })
+  const retryExpandable = createMemo(() => retryMessage().length > RETRY_PREVIEW_CHAR_LIMIT)
 
   const chroniclerSessionID = createMemo(() => {
     const msg = lastAssistantMessage()
@@ -374,6 +384,7 @@ export function SessionTurn(
 
   const [store, setStore] = createStore({
     retrySeconds: 0,
+    retryExpanded: false,
     diffsOpen: [] as string[],
     diffLimit: diffInit,
     status: rawStatus(),
@@ -422,6 +433,16 @@ export function SessionTurn(
     const timer = setInterval(updateSeconds, 1000)
     onCleanup(() => clearInterval(timer))
   })
+
+  createEffect(
+    on(
+      retryMessage,
+      () => {
+        setStore("retryExpanded", false)
+      },
+      { defer: true },
+    ),
+  )
 
   createEffect(() => {
     const timer = setInterval(() => {
@@ -511,21 +532,41 @@ export function SessionTurn(
                       <div data-slot="session-turn-steps-row">
                         <div
                           data-slot="session-turn-steps-trigger"
-                          data-expandable={hasSteps() && assistantMessages().length > 0}
+                          data-expandable={!working() && hasSteps() && assistantMessages().length > 0}
                           data-expanded={hasSteps() && props.stepsExpanded}
-                          onClick={hasSteps() ? (props.onStepsExpandedToggle ?? (() => {})) : () => {}}
+                          onClick={!working() && hasSteps() ? (props.onStepsExpandedToggle ?? (() => {})) : () => {}}
                         >
                           <Show when={working()}>
                             <Spinner />
                           </Show>
                           <Switch>
                             <Match when={retry()}>
-                              <span data-slot="session-turn-retry-message">
-                                {(() => {
-                                  const r = retry()
-                                  if (!r) return ""
-                                  return r.message.length > 60 ? r.message.slice(0, 60) + "..." : r.message
-                                })()}
+                              <span data-slot="session-turn-retry-group">
+                                <span
+                                  id={retryMessageId()}
+                                  data-slot="session-turn-retry-message"
+                                  data-expanded={store.retryExpanded || !retryExpandable()}
+                                  title={retryExpandable() && !store.retryExpanded ? retryMessage() : undefined}
+                                >
+                                  {store.retryExpanded || !retryExpandable() ? retryMessage() : retryPreview()}
+                                </span>
+                                <Show when={retryExpandable()}>
+                                  <button
+                                    type="button"
+                                    data-slot="session-turn-retry-toggle"
+                                    aria-controls={retryMessageId()}
+                                    aria-expanded={store.retryExpanded}
+                                    aria-label={
+                                      store.retryExpanded ? "Hide full retry message" : "Show full retry message"
+                                    }
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setStore("retryExpanded", (value) => !value)
+                                    }}
+                                  >
+                                    {store.retryExpanded ? "less" : "more"}
+                                  </button>
+                                </Show>
                               </span>
                               <span data-slot="session-turn-retry-seconds">
                                 · retrying {store.retrySeconds > 0 ? `in ${store.retrySeconds}s ` : ""}

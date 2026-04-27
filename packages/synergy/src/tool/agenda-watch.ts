@@ -1,8 +1,10 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
+import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
 import { AgendaStore } from "../agenda/store"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-watch.txt"
 
 const parameters = z.object({
@@ -12,13 +14,13 @@ const parameters = z.object({
       tool: z
         .string()
         .describe(
-          "Synergy tool to call for each check. Example: 'inspire_jobs', 'inspire_metrics', 'inspire_logs'. The tool is called with `args` and its output is compared against the trigger condition.",
+          "Synergy tool to call for each check. Must be a tool available in the current environment. Most common: 'bash' to run a shell command and check its output. Other examples: 'inspire_jobs', 'inspire_metrics'. The tool is called with `args` and its output is compared against the trigger condition.",
         ),
       args: z
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          "Arguments passed to the tool on each check. Example: {job_id: 'job-xxx'} for inspire_jobs, or {status: 'running'} for filtering.",
+          "Arguments passed to the tool on each check. Example: {command: 'curl -s https://api.example.com/status'} for bash, {job_id: 'job-xxx'} for inspire_jobs.",
         ),
       interval: z
         .string()
@@ -73,6 +75,16 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
         trigger: triggerMode,
         ...(triggerMode === "match" && params.match ? { match: params.match } : {}),
       },
+    }
+
+    const conflicts = await AgendaDedup.findConflicts(Instance.scope.id, params.title, [watchTrigger])
+
+    if (conflicts.length > 0) {
+      return {
+        title: "agenda_watch",
+        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_watch"),
+        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+      }
     }
 
     const item = await Agenda.create({
