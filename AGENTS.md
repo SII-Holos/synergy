@@ -273,7 +273,27 @@ When editing tool definitions:
 
 ## Testing and Verification
 
-After making code changes:
+### Test philosophy
+
+- **Test invariants, not implementations.** A good test verifies a behavioral contract
+  that survives refactoring — if you rewrote the code differently, the test should still
+  pass. A bad test breaks when internals change but behavior doesn't. Example:
+  `Intent.sanitize` tests check that hallucinated tool calls produce fallbacks; this
+  invariant holds regardless of how sanitization is implemented.
+
+- **Write the test first when adding behavior or fixing bugs.** The test captures what
+  "correct" means before you're biased by the implementation. For pure refactoring
+  (behavior unchanged), no new tests are needed.
+
+- **Avoid testing source text.** Checking that source code contains or lacks specific
+  strings (e.g., verifying a flag is absent from a command) is brittle — it couples
+  the test to implementation wording rather than behavior. Prefer calling the function
+  and checking the result.
+
+- **Test location:** `packages/synergy/test/{domain}/`, mirroring the `src/` directory
+  structure. Shared fixtures go in `test/fixture/`.
+
+### After making code changes
 
 - run the narrowest relevant test first
 - expand verification if the change affects shared abstractions
