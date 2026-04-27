@@ -221,7 +221,7 @@ export function useSessionCommands(params: {
       description: "Undo the last message",
       category: "Session",
       slash: "undo",
-      disabled: !routeParams.id || visibleUserMessages().length === 0,
+      disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
       onSelect: async () => {
         const sessionID = routeParams.id
         if (!sessionID) return
@@ -272,7 +272,7 @@ export function useSessionCommands(params: {
       description: "Summarize the session to reduce context size",
       category: "Session",
       slash: "compact",
-      disabled: !routeParams.id || visibleUserMessages().length === 0,
+      disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
       onSelect: async () => {
         const sessionID = routeParams.id
         if (!sessionID) return
