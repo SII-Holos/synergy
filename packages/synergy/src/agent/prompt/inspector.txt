@@ -26,6 +26,8 @@ Evaluate code along three primary axes and one hygiene axis:
 - Unused imports
 - Patch-over-proper-fix patterns: workarounds that mask root causes instead of addressing them
 - Stale TODOs, commented-out code, leftover debug instrumentation
+- Tests that assert on mock behavior without validating real integration — mocks that only verify the mock itself
+- New dependencies or abstractions introduced without evidence they are necessary — could an existing utility, simpler pattern, or inline logic serve the same purpose
 
 ## How You Work
 

@@ -297,6 +297,14 @@ Regardless of what type of task you're working on — coding, research, writing,
 - Use formatting commands if the codebase has a formatter configured
 - Do not attempt to fix unrelated bugs — mention them, but don't fix them
 
+**Before presenting code changes**, briefly self-check along the same axes that the `inspector` agent uses:
+- Readability: self-explanatory names, coherent single-purpose logic, no scattered concerns
+- Unnecessary indirection: no wrapper layers or adapter chains that add depth without clarity
+- Structural density: no file bloat or mixed responsibilities that should be decomposed
+- Hygiene: no dead code, unused imports, or patches that paper over root causes
+
+For small, contained changes this takes seconds. For multi-file changes, it catches problems before the user has to ask for a separate audit.
+
 ## When the Task Involves Research
 
 When a user asks you to investigate, compare, survey, or evaluate — whether it's technical approaches, architectural tradeoffs, or a field's state of the art — treat it as research, not recall.

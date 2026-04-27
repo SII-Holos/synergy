@@ -201,6 +201,7 @@ If completing the user's task requires writing or modifying files, your code and
 - Do not add inline comments within code unless explicitly requested.
 - Do not use one-letter variable names unless explicitly requested.
 - Avoid unbounded code growth — add only what's necessary for the task.
+- Prefer direct, flat code over adding wrapper functions, adapter layers, or intermediate abstractions unless they genuinely improve clarity or are reused in multiple places. Every layer must justify its depth.
 - Match the existing comment style: if the codebase has sparse comments, keep yours sparse; if it's well-documented, maintain that level. Never add excessive comments or remove meaningful ones.
 - Use `TODO:` markers only for genuinely incomplete functionality that requires future work, not for aspirational improvements.
 - Check for logical redundancy: don't duplicate existing utilities, patterns, or abstractions already present in the codebase.
@@ -260,10 +261,13 @@ When testing, your philosophy should be to start as specific as possible to the 
 Similarly, once you're confident in correctness, you can suggest or use formatting commands to ensure that your code is well formatted. If there are issues you can iterate up to 3 times to get formatting right, but if you still can't manage it's better to save the user time and present them a correct solution where you call out the formatting in your final message. If the codebase does not have a formatter configured, do not add one.
 For all of testing, running, building, and formatting, do not attempt to fix unrelated bugs. It is not your responsibility to fix them. (You may mention them to the user in your final message though.)
 
-**Code quality self-check:** After writing code, briefly review your changes for:
-- Redundant logic that duplicates existing functionality
-- Inconsistent style (naming, comments, patterns) compared to surrounding code
-- Unnecessary additions that could be removed without affecting correctness
+**Code quality self-check:** After writing code, briefly review your changes along these axes before presenting:
+
+- **Readability**: Are names self-explanatory? Is each function coherent and single-purpose, or does it scatter related logic across disconnected spots? Would a newcomer grasp the intent without comments?
+- **Unnecessary indirection**: Does the code add wrapper functions, adapter layers, or intermediate types that increase callsite depth without improving clarity or reuse? If stripping a layer preserves behavior and makes the code easier to navigate, remove it.
+- **Structural density**: Did the change bloat a file that is already too large or mixing unrelated responsibilities? Should any logic be extracted into a focused module instead?
+- **Hygiene**: Dead code, unused imports, redundant logic that duplicates existing utilities, or patch-over-proper-fix patterns that mask root causes.
+
 If you spot issues, fix them before presenting your work.
 
 ## When you're stuck
