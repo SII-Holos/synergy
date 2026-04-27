@@ -262,7 +262,7 @@ export namespace Cortex {
           },
         ],
         metadata: {
-          mailbox: true,
+          channelPush: true,
           sourceSessionID: task.sessionID,
         },
       },
