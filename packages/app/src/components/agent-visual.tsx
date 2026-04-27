@@ -11,13 +11,14 @@ export interface AgentVisual {
 const VISUALS: Record<string, AgentVisual> = {
   synergy: { emoji: "😌", label: "Synergy", color: "rgba(99, 102, 241, 0.35)" },
   master: { emoji: "😎", label: "Master", color: "rgba(59, 130, 246, 0.35)" },
-  explore: { emoji: "🤨", label: "Explore", color: "rgba(168, 85, 247, 0.35)" },
-  scribe: { emoji: "😏", label: "Scribe", color: "rgba(34, 197, 94, 0.35)" },
+  explore: { emoji: "🥸", label: "Explore", color: "rgba(168, 85, 247, 0.35)" },
+  scribe: { emoji: "🤭", label: "Scribe", color: "rgba(34, 197, 94, 0.35)" },
   scholar: { emoji: "🤓", label: "Scholar", color: "rgba(245, 158, 11, 0.35)" },
   scout: { emoji: "🤩", label: "Scout", color: "rgba(6, 182, 212, 0.35)" },
   advisor: { emoji: "🧐", label: "Advisor", color: "rgba(236, 72, 153, 0.35)" },
+  inspector: { emoji: "😤", label: "Inspector", color: "rgba(139, 92, 246, 0.35)" },
   codex: { emoji: "🫡", label: "Codex", color: "rgba(14, 165, 233, 0.35)", external: true },
-  "claude-code": { emoji: "🥸", label: "Claude Code", color: "rgba(249, 115, 22, 0.35)", external: true },
+  "claude-code": { emoji: "🤨", label: "Claude Code", color: "rgba(249, 115, 22, 0.35)", external: true },
   openclaw: { emoji: "🤯", label: "OpenClaw", color: "rgba(16, 185, 129, 0.35)", external: true },
 }
 
