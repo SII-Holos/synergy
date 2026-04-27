@@ -1513,6 +1513,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       title={p.title}
       output={p.output}
       status={p.status}
+      charsReceived={p.charsReceived}
       metadata={p.metadata}
       hideDetails={p.hideDetails}
     />
