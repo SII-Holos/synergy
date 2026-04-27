@@ -12,13 +12,13 @@ const parameters = z.object({
       tool: z
         .string()
         .describe(
-          "Synergy tool to call for each check. Example: 'inspire_jobs', 'inspire_metrics', 'inspire_logs'. The tool is called with `args` and its output is compared against the trigger condition.",
+          "Synergy tool to call for each check. Must be a tool available in the current environment. Most common: 'bash' to run a shell command and check its output. Other examples: 'inspire_jobs', 'inspire_metrics'. The tool is called with `args` and its output is compared against the trigger condition.",
         ),
       args: z
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          "Arguments passed to the tool on each check. Example: {job_id: 'job-xxx'} for inspire_jobs, or {status: 'running'} for filtering.",
+          "Arguments passed to the tool on each check. Example: {command: 'curl -s https://api.example.com/status'} for bash, {job_id: 'job-xxx'} for inspire_jobs.",
         ),
       interval: z
         .string()
