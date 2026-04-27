@@ -1,8 +1,10 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
+import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
 import { AgendaStore } from "../agenda/store"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-watch.txt"
 
 const parameters = z.object({
@@ -73,6 +75,16 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
         trigger: triggerMode,
         ...(triggerMode === "match" && params.match ? { match: params.match } : {}),
       },
+    }
+
+    const conflicts = await AgendaDedup.findConflicts(Instance.scope.id, params.title, [watchTrigger])
+
+    if (conflicts.length > 0) {
+      return {
+        title: "agenda_watch",
+        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_watch"),
+        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+      }
     }
 
     const item = await Agenda.create({

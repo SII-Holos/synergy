@@ -1,7 +1,9 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
+import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
+import { Instance } from "../scope/instance"
 import DESCRIPTION from "./agenda-create.txt"
 
 const parameters = z.object({
@@ -37,6 +39,21 @@ export const AgendaCreateTool = Tool.define("agenda_create", {
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
+
+    const conflicts = await AgendaDedup.findConflicts(
+      Instance.scope.id,
+      params.title,
+      params.triggers ?? [],
+      params.global,
+    )
+
+    if (conflicts.length > 0) {
+      return {
+        title: "agenda_create",
+        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_create"),
+        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+      }
+    }
 
     const item = await Agenda.create({
       title: params.title,
