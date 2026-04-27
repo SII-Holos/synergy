@@ -82,12 +82,14 @@ export namespace ExperienceEncoder {
 
     try {
       const userInfo = userMsg.info as MessageV2.User
-      const intentCtx = await buildIntentContext(sessionID, userInfo, learning)
+
+      const intentModel = await Provider.getModel(userInfo.model.providerID, userInfo.model.modelID)
+      const intentCtx: AgentContext = { sessionID, userMsg: userInfo, model: intentModel, learning }
       const history = buildIntentHistory(msgs, userMessageID)
       const intent = Intent.sanitize(await generateIntent(intentCtx, history, userText), userText)
       const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
 
-      const extracted = await TurnDigest.extractSingle(sessionID, userMessageID, {
+      const extracted = TurnDigest.extractSingle(session, msgs, userMessageID, {
         toolOutputBudget: learning.digestToolOutputBudget,
       })
       if (!extracted || extracted.digest.segments.length === 0) {
@@ -96,8 +98,16 @@ export namespace ExperienceEncoder {
 
       const { digest, turn } = extracted
       const sourceAssistant = turn.assistants.at(-1)
-      const scriptCtx = await buildScriptContext(sessionID, turn, digest, learning)
-      const script = await generateScript(scriptCtx)
+
+      const scriptContent = buildScriptContent(digest, learning)
+      const assistantInfo = turn.assistants.find((m) => m.info.role === "assistant")?.info as
+        | MessageV2.Assistant
+        | undefined
+      const scriptModel = assistantInfo
+        ? await Provider.getModel(assistantInfo.providerID, assistantInfo.modelID)
+        : undefined
+      const scriptCtx: AgentContext = { sessionID, userMsg: userInfo, model: scriptModel, learning }
+      const script = await generateScript(scriptCtx, scriptContent)
       const scriptEmbedding = script
         ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
         : undefined
@@ -271,9 +281,9 @@ export namespace ExperienceEncoder {
     const model = assistantMsg ? await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID) : undefined
 
     const rewardContent = buildRewardContent(msgs, turns, turnIdx)
-    const ctx: AgentContext = { sessionID, userMsg, content: rewardContent, model, learning }
+    const ctx: AgentContext = { sessionID, userMsg, model, learning }
 
-    const rewards = await generateRewards(ctx)
+    const rewards = await generateRewards(ctx, rewardContent)
     if (!rewards) {
       log.warn("no rewards generated", { id: exp.id })
       return
@@ -290,50 +300,15 @@ export namespace ExperienceEncoder {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Agent invocation
+  // ---------------------------------------------------------------------------
+
   interface AgentContext {
     sessionID: string
     userMsg: MessageV2.User
-    content: string
     model: Provider.Model | undefined
     learning: Required<Config.Learning>
-  }
-
-  async function buildIntentContext(
-    sessionID: string,
-    userMsg: MessageV2.User,
-    learning: Required<Config.Learning>,
-  ): Promise<AgentContext> {
-    const model = await Provider.getModel(userMsg.model.providerID, userMsg.model.modelID)
-    return { sessionID, userMsg, content: "", model, learning }
-  }
-
-  async function buildScriptContext(
-    sessionID: string,
-    turn: Turn.Raw,
-    digest: TurnDigest.Info,
-    learning: Required<Config.Learning>,
-  ): Promise<AgentContext> {
-    const userMsg = turn.user.info as MessageV2.User
-
-    const textContent = digest.segments
-      .filter((s): s is TurnDigest.Segment & { type: "text" } => s.type === "text")
-      .map((s) => s.text)
-      .join("\n")
-
-    const toolSummary = buildToolDetails(digest, learning)
-    const changeSummary = buildChangeSummary(digest)
-
-    const parts = ["<user>", digest.input, "</user>", "<assistant>", textContent]
-    if (toolSummary) parts.push(toolSummary)
-    if (changeSummary) parts.push(changeSummary)
-    parts.push("</assistant>")
-
-    const assistantMsg = turn.assistants.find((m) => m.info.role === "assistant")?.info as
-      | MessageV2.Assistant
-      | undefined
-    const model = assistantMsg ? await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID) : undefined
-
-    return { sessionID, userMsg, content: parts.join("\n"), model, learning }
   }
 
   async function callAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
@@ -366,13 +341,13 @@ export namespace ExperienceEncoder {
     return callAgent("intent", ctx, parts.join("\n"))
   }
 
-  async function generateScript(ctx: AgentContext): Promise<string> {
-    return callAgent("script", ctx, ctx.content)
+  async function generateScript(ctx: AgentContext, content: string): Promise<string> {
+    return callAgent("script", ctx, content)
   }
 
-  async function generateRewards(ctx: AgentContext): Promise<EngramDB.Experience.Rewards | undefined> {
+  async function generateRewards(ctx: AgentContext, content: string): Promise<EngramDB.Experience.Rewards | undefined> {
     try {
-      const result = await callAgent("reward", ctx, ctx.content)
+      const result = await callAgent("reward", ctx, content)
       const trimmed = result.trim()
 
       const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
@@ -416,6 +391,27 @@ export namespace ExperienceEncoder {
     return 0
   }
 
+  // ---------------------------------------------------------------------------
+  // Script agent input: full tool details from digest segments
+  // ---------------------------------------------------------------------------
+
+  function buildScriptContent(digest: TurnDigest.Info, learning: Required<Config.Learning>): string {
+    const textContent = digest.segments
+      .filter((s): s is TurnDigest.Segment & { type: "text" } => s.type === "text")
+      .map((s) => s.text)
+      .join("\n")
+
+    const toolSummary = buildToolDetails(digest, learning)
+    const changeSummary = buildChangeSummary(digest)
+
+    const parts = ["<user>", digest.input, "</user>", "<assistant>", textContent]
+    if (toolSummary) parts.push(toolSummary)
+    if (changeSummary) parts.push(changeSummary)
+    parts.push("</assistant>")
+
+    return parts.join("\n")
+  }
+
   function buildToolDetails(digest: TurnDigest.Info, learning: Required<Config.Learning>): string | undefined {
     const toolSegments = digest.segments.filter((s): s is TurnDigest.Segment & { type: "tool" } => s.type === "tool")
     if (toolSegments.length === 0) return undefined
@@ -454,35 +450,9 @@ export namespace ExperienceEncoder {
     return value.slice(0, maxChars) + ` [truncated, ${value.length} chars]`
   }
 
-  function buildHistory(msgs: MessageV2.WithParts[], currentUserMsgId: string): string | undefined {
-    const turns = Turn.collect(msgs, { skipSynthetic: true })
-    const currentIdx = turns.findIndex((t) => t.user.info.id === currentUserMsgId)
-    if (currentIdx <= 0) return undefined
-
-    return turns
-      .slice(0, currentIdx)
-      .map((turn) => {
-        const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
-
-        const assistantLines: string[] = []
-        for (const msg of turn.assistants) {
-          for (const part of msg.parts) {
-            if (part.type === "text" && !part.synthetic && part.text.trim()) {
-              assistantLines.push(part.text.trim())
-            } else if (part.type === "tool" && part.state.status === "completed") {
-              assistantLines.push(`[Tool: ${part.tool}] ${part.state.title}`)
-            } else if (part.type === "tool" && part.state.status === "error") {
-              assistantLines.push(`[Tool: ${part.tool}] (error)`)
-            }
-          }
-        }
-
-        const lines = [`User: ${userInput}`]
-        if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("\n")}`)
-        return lines.join("\n")
-      })
-      .join("\n\n")
-  }
+  // ---------------------------------------------------------------------------
+  // Intent agent input: lightweight history using TurnDigest.summarizeTurn
+  // ---------------------------------------------------------------------------
 
   function buildIntentHistory(msgs: MessageV2.WithParts[], currentUserMsgId: string): string | undefined {
     const turns = Turn.collect(msgs, { skipSynthetic: true })
@@ -492,69 +462,29 @@ export namespace ExperienceEncoder {
     return turns
       .slice(0, currentIdx)
       .map((turn) => {
-        const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
-
-        const assistantLines: string[] = []
-        for (const msg of turn.assistants) {
-          for (const part of msg.parts) {
-            if (part.type === "text" && !part.synthetic && part.text.trim()) {
-              assistantLines.push(part.text.trim())
-            } else if (part.type === "tool" && part.state.status === "completed") {
-              assistantLines.push(`(used ${part.tool}: ${part.state.title})`)
-            } else if (part.type === "tool" && part.state.status === "error") {
-              assistantLines.push(`(used ${part.tool}: error)`)
-            }
-          }
-        }
-
-        const lines = [`User: ${userInput}`]
-        if (assistantLines.length > 0) lines.push(`Assistant: ${assistantLines.join("; ")}`)
+        const summary = TurnDigest.summarizeTurn(turn, msgs)
+        const lines = [`User: ${summary.user}`]
+        if (summary.assistant) lines.push(`Assistant: ${summary.assistant.replaceAll("\n", "; ")}`)
         return lines.join("\n")
       })
       .join("\n\n")
   }
 
+  // ---------------------------------------------------------------------------
+  // Reward agent input: current turn + subsequent turns
+  // ---------------------------------------------------------------------------
+
   function buildRewardContent(msgs: MessageV2.WithParts[], turns: Turn.Raw[], turnIdx: number): string {
-    const turn = turns[turnIdx]
-
-    const userInput = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
-
-    const assistantLines: string[] = []
-    for (const msg of turn.assistants) {
-      for (const part of msg.parts) {
-        if (part.type === "text" && !part.synthetic && part.text.trim()) {
-          assistantLines.push(part.text.trim())
-        } else if (part.type === "tool" && part.state.status === "completed") {
-          assistantLines.push(`[Tool: ${part.tool}] ${part.state.title}`)
-        } else if (part.type === "tool" && part.state.status === "error") {
-          assistantLines.push(`[Tool: ${part.tool}] (error)`)
-        }
-      }
-    }
-
-    const parts = ["<user>", userInput, "</user>", "<assistant>", assistantLines.join("\n"), "</assistant>"]
+    const current = TurnDigest.summarizeTurn(turns[turnIdx], msgs)
+    const parts = ["<user>", current.user, "</user>", "<assistant>", current.assistant, "</assistant>"]
 
     const subsequentTurns = turns.slice(turnIdx + 1)
     if (subsequentTurns.length > 0) {
       const subsequent = subsequentTurns
         .map((t) => {
-          const uInput = Turn.resolveUserText(msgs, t.user.info.id) ?? ""
-
-          const aLines: string[] = []
-          for (const msg of t.assistants) {
-            for (const part of msg.parts) {
-              if (part.type === "text" && !part.synthetic && part.text.trim()) {
-                aLines.push(part.text.trim())
-              } else if (part.type === "tool" && part.state.status === "completed") {
-                aLines.push(`[Tool: ${part.tool}] ${part.state.title}`)
-              } else if (part.type === "tool" && part.state.status === "error") {
-                aLines.push(`[Tool: ${part.tool}] (error)`)
-              }
-            }
-          }
-
-          const lines = [`User: ${uInput}`]
-          if (aLines.length > 0) lines.push(`Assistant: ${aLines.join("\n")}`)
+          const summary = TurnDigest.summarizeTurn(t, msgs)
+          const lines = [`User: ${summary.user}`]
+          if (summary.assistant) lines.push(`Assistant: ${summary.assistant}`)
           return lines.join("\n")
         })
         .join("\n\n")
@@ -568,7 +498,6 @@ export namespace ExperienceEncoder {
   function shouldSupersede(duplicate: EngramDB.Experience.DuplicateInfo, qInit: number): boolean {
     if (duplicate.rewardStatus === "encoding_failed") return true
     if (duplicate.rewardStatus === "pending") return true
-    // Evaluated experience: only supersede if its verified Q is not better than a fresh start
     return duplicate.compositeQ <= qInit
   }
 }
