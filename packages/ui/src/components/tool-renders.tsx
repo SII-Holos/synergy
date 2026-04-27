@@ -1369,7 +1369,15 @@ ToolRegistry.register({
           subtitle: "Visible background tasks",
           args: count() != null ? [`${count()} task${count() === 1 ? "" : "s"}`] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -1396,7 +1404,15 @@ ToolRegistry.register({
           subtitle: description() || shortId(),
           args: description() ? [shortId()] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -1418,7 +1434,15 @@ ToolRegistry.register({
           subtitle: description() || shortId(),
           args: description() ? [shortId()] : [],
         })}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
