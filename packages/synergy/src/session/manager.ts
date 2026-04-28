@@ -315,25 +315,29 @@ export namespace SessionManager {
       }
     } catch (e) {
       if (!(e instanceof Context.NotFound)) throw e
-      void requireSession(runtime.sessionID).then((session) => {
-        const scope = session.scope as Scope
-        GlobalBus.emit("event", {
-          directory: scope.directory,
-          payload: {
-            type: "session.status",
-            properties: payload,
-          },
-        })
-        if (status.type === "idle") {
+      void requireSession(runtime.sessionID)
+        .then((session) => {
+          const scope = session.scope as Scope
           GlobalBus.emit("event", {
             directory: scope.directory,
             payload: {
-              type: "session.idle",
-              properties: { sessionID: runtime.sessionID },
+              type: "session.status",
+              properties: payload,
             },
           })
-        }
-      })
+          if (status.type === "idle") {
+            GlobalBus.emit("event", {
+              directory: scope.directory,
+              payload: {
+                type: "session.idle",
+                properties: { sessionID: runtime.sessionID },
+              },
+            })
+          }
+        })
+        .catch(() => {
+          // Session was cleaned up before the async fallback ran — safe to ignore.
+        })
     }
   }
 }
