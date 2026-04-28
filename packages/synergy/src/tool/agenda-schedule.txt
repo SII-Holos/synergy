@@ -1,0 +1,14 @@
+Create a scheduled task that runs in a new session each time it fires. Use for recurring jobs (cron, every) or one-off future tasks that don't need the current conversation's context.
+
+The prompt should be a complete, self-contained brief — the executing agent starts a fresh session with no access to this conversation.
+
+Provide a trigger to set the schedule:
+- {type:"cron", expr:"0 9 * * *"} — recurring cron schedule. Add tz for timezone, e.g. tz:"Asia/Shanghai"
+- {type:"every", interval:"30m"} — recurring at a fixed interval, e.g. "30m", "6h", "1d"
+- {type:"at", at:1742569200000} — one-time at an absolute Unix timestamp (ms)
+- {type:"delay", delay:"2h"} — one-time after a relative delay
+
+By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery, or wake=false to deliver without waking.
+
+Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
+If you need to pause and resume later in THIS session, use agenda_watch instead.

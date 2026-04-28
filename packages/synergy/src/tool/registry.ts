@@ -24,11 +24,11 @@ import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
-import { AgendaCreateTool } from "./agenda-create"
-import { AgendaListTool } from "./agenda-list"
+import { AgendaScheduleTool } from "./agenda-schedule"
 import { AgendaWatchTool } from "./agenda-watch"
+import { AgendaListTool } from "./agenda-list"
 import { AgendaUpdateTool } from "./agenda-update"
-import { AgendaDeleteTool } from "./agenda-delete"
+import { AgendaCancelTool } from "./agenda-cancel"
 import { AgendaTriggerTool } from "./agenda-trigger"
 import { AgendaLogsTool } from "./agenda-logs"
 import { AgoraSearchTool } from "./agora-search"
@@ -202,11 +202,11 @@ export namespace ToolRegistry {
       SessionSearchTool,
       SessionSendTool,
       SessionControlTool,
-      AgendaCreateTool,
+      AgendaScheduleTool,
       AgendaWatchTool,
       AgendaListTool,
       AgendaUpdateTool,
-      AgendaDeleteTool,
+      AgendaCancelTool,
       AgendaTriggerTool,
       AgendaLogsTool,
       AgoraSearchTool,

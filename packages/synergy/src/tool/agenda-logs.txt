@@ -1,5 +1,5 @@
-View execution history for an agenda item. Returns run logs sorted by most recent first.
+View execution history for an agenda item. Shows recent runs with status, duration, and timing.
 
-Each log entry includes a session ID — use `session_read` with that ID to see the full execution conversation, including what the agent did and its final output.
+Each run includes a session ID — use session_read(target=sessionID) to see what the agent did.
 
-Use `offset` and `limit` for pagination when there are many runs.
+Use agenda_list to find the item ID first.

@@ -1,25 +1,12 @@
-Set up a watch that monitors a condition by periodically calling a Synergy tool, and wakes you up in THIS session when the condition is met. The watch automatically stops after firing — you don't need to clean it up.
+Set a one-time wake-up in THIS session. Use when you need to pause and come back later — e.g. wait for a deploy, let a process run, or check results after a delay.
 
-IMPORTANT: The tool must be one that exists in the current environment. Check available tools before choosing — do not invent tool names.
+When the time comes, you are woken up in this session with the prompt as your instruction. No new session is created. The watch auto-completes after firing.
 
-This is the right tool when you need to wait for something to happen:
-- A process to finish: watch bash with a command like 'ps aux | grep my_job' until output changes
-- A remote API to become available: watch bash with 'curl -s https://api.example.com/health' until it returns 200
-- A file to appear or change: watch bash with 'ls -la /path/to/file' until output changes
-- A remote job to finish: watch inspire_jobs until status changes
+Examples:
+- "Check pipeline health in 30 minutes": agenda_watch(title="Check pipeline", delay="30m", prompt="Check if...")
+- "Revisit in 2 hours": agenda_watch(title="Revisit analysis", delay="2h", prompt="Continue the analysis...")
 
-How it works:
-1. The system calls the specified tool every `interval` (default: 5 minutes)
-2. No agent is involved in checking — it's mechanical, zero token cost
-3. When the tool output CHANGES from the previous check (default), or MATCHES a regex you specify, the watch fires
-4. You get woken up in this session with the tool output as a message
-5. The watch automatically marks itself as "done" — no cleanup needed
+After the watch fires, you continue working in this session with full conversation history.
 
-If the watch never fires, it times out after `timeout` (default: 24 hours) or `max_checks` (default: 100), and wakes you with a timeout notification so you can decide what to do.
-
-After being woken up, if you need to keep watching (e.g. the change was irrelevant), create a new watch. Each watch is a one-shot — fire once, deliver, done.
-
-Related tools:
-- Use `agenda_list` to see your active watches
-- Use `agenda_cancel` to stop a watch before it fires
-- Use `agenda_create` instead if you need a RECURRING schedule (cron/every) that runs a prompt repeatedly — that's a different use case
+Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires.
+If you need a RECURRING task (cron, every), use agenda_schedule instead.

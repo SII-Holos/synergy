@@ -15,21 +15,54 @@ const parameters = z.object({
     ),
 })
 
+function formatTrigger(triggers: AgendaTypes.Trigger[]): string {
+  if (triggers.length === 0) return "manual"
+  const t = triggers[0]
+  switch (t.type) {
+    case "cron":
+      return `cron "${t.expr}"${t.tz ? ` (${t.tz})` : ""}`
+    case "every":
+      return `every ${t.interval}`
+    case "at":
+      return `at ${new Date(t.at).toISOString()}`
+    case "delay":
+      return `delay ${t.delay}`
+    case "watch":
+      return `watch (${t.watch.kind})`
+    case "webhook":
+      return "webhook"
+    default:
+      return triggers.map((tr) => tr.type).join(", ")
+  }
+}
+
+function statusIcon(status: string): string {
+  switch (status) {
+    case "active":
+      return "🟢"
+    case "paused":
+      return "⏸"
+    case "done":
+      return "✅"
+    case "cancelled":
+      return "⛔"
+    default:
+      return "⏳"
+  }
+}
+
 function formatItem(item: AgendaTypes.Item): string {
-  const parts = [`- [${item.id}] "${item.title}" — ${item.status}`]
+  const parts = [`${statusIcon(item.status)} [${item.id}] "${item.title}" — ${item.status}`]
+  parts.push(`  Schedule: ${formatTrigger(item.triggers)}`)
   if (item.global) parts.push(`  Scope: global`)
   if (item.tags?.length) parts.push(`  Tags: ${item.tags.join(", ")}`)
-  if (item.triggers.length) {
-    const types = item.triggers.map((t) => t.type).join(", ")
-    parts.push(`  Triggers: ${types}`)
-  }
   if (item.state.nextRunAt) parts.push(`  Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
   if (item.state.lastRunAt) {
     const status = item.state.lastRunStatus ?? "unknown"
-    parts.push(`  Last run: ${new Date(item.state.lastRunAt).toISOString()} (${status})`)
+    parts.push(
+      `  Last run: ${new Date(item.state.lastRunAt).toISOString()} (${status}${item.state.runCount > 0 ? `, ${item.state.runCount} total` : ""})`,
+    )
   }
-  if (item.state.runCount > 0) parts.push(`  Runs: ${item.state.runCount}`)
-  parts.push(`  Created: ${new Date(item.time.created).toISOString()}`)
   return parts.join("\n")
 }
 
@@ -75,11 +108,11 @@ export const AgendaListTool = Tool.define("agenda_list", {
     }
 
     const output = items.map(formatItem).join("\n\n")
-    const header = `Found ${items.length} agenda item${items.length === 1 ? "" : "s"}:`
+    const header = `${items.length} agenda item${items.length === 1 ? "" : "s"}:`
 
     return {
       title: `${items.length} item${items.length === 1 ? "" : "s"}`,
-      output: `${header}\n\n${output}`,
+      output: `${header}\n\n${output}\n\nActions: agenda_update(id, ...) to modify, agenda_cancel(id) to stop, agenda_trigger(id) to run now, agenda_logs(id) for history.`,
       metadata: { count: items.length } as Record<string, any>,
     }
   },

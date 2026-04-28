@@ -56,23 +56,13 @@ export namespace AgendaPrompt {
           break
         case "watch": {
           const w = trigger.watch
-          switch (w.kind) {
-            case "poll": {
-              const mode = w.trigger === "match" ? `match /${w.match}/` : "change"
-              parts.push(`poll "${w.command}" every ${w.interval ?? "1m"} (${mode})`)
-              break
-            }
-            case "file": {
-              const filter = w.event ? ` on ${w.event}` : ""
-              const debounce = w.debounce ? ` (debounce ${w.debounce})` : ""
-              parts.push(`file watch "${w.glob}"${filter}${debounce}`)
-              break
-            }
-            case "tool": {
-              const mode = w.trigger === "match" ? `match /${w.match}/` : "change"
-              parts.push(`tool "${w.tool}" every ${w.interval ?? "5m"} (${mode})`)
-              break
-            }
+          // Only file watch kind is active
+          if (w.kind === "file") {
+            const filter = w.event ? ` on ${w.event}` : ""
+            const debounce = w.debounce ? ` (debounce ${w.debounce})` : ""
+            parts.push(`file watch "${w.glob}"${filter}${debounce}`)
+          } else {
+            parts.push(`watch (${w.kind})`)
           }
           break
         }
