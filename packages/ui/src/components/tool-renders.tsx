@@ -811,13 +811,13 @@ ToolRegistry.register({
       if (readyIds.length > 0) {
         const node = nodes().find((n) => n.id === readyIds[0])
         if (node) {
-          const text = node.content
+          const text = node.content ?? ""
           return text.length > 30 ? text.slice(0, 27) + "…" : text
         }
       }
       const pending = nodes().find((n) => n.status === "pending" || n.status === "running")
       if (pending) {
-        const text = pending.content
+        const text = pending.content ?? ""
         return text.length > 30 ? text.slice(0, 27) + "…" : text
       }
       return ""

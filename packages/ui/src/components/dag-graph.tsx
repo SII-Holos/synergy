@@ -35,28 +35,39 @@ const CARD_PAD_Y = 14
 const CARD_GAP = 3
 const CHAR_W = 7.2
 
-function estimateCardH(content: string, cardW: number): number {
+function estimateCardH(content: string | undefined, cardW: number): number {
+  const text = content ?? ""
   const textW = Math.max(1, cardW - 20)
   const charsPerLine = Math.max(1, Math.floor(textW / CHAR_W))
-  const numLines = Math.max(1, Math.ceil(content.length / charsPerLine))
+  const numLines = Math.max(1, Math.ceil(text.length / charsPerLine))
   return CARD_PAD_Y + HEADER_H + CARD_GAP + numLines * LINE_H
 }
 
-function computeLayout(nodes: DagNode[], containerWidth: number) {
+export function computeLayout(rawNodes: DagNode[], containerWidth: number) {
+  // Filter out partially-hydrated nodes from SolidJS store reconciliation
+  const nodes = rawNodes.filter((n) => n.id && n.status)
   if (nodes.length === 0) return { laid: [] as LayoutNode[], edges: [] as LayoutEdge[], width: 0, height: 0, cardW: 0 }
 
   const map = new Map(nodes.map((n) => [n.id, n]))
 
   const layers = new Map<string, number>()
+  const visiting = new Set<string>()
   function depth(id: string): number {
     if (layers.has(id)) return layers.get(id)!
-    const node = map.get(id)
-    const deps = node?.deps
-    if (!node || !deps || deps.length === 0) {
+    if (visiting.has(id)) {
+      // Cycle detected — treat as root to break the loop
       layers.set(id, 0)
       return 0
     }
+    const node = map.get(id)
+    const deps = node?.deps
+    if (!node || !Array.isArray(deps) || deps.length === 0) {
+      layers.set(id, 0)
+      return 0
+    }
+    visiting.add(id)
     const max = Math.max(...deps.map((d) => depth(d)))
+    visiting.delete(id)
     const val = max + 1
     layers.set(id, val)
     return val
