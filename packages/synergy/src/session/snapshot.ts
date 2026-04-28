@@ -106,7 +106,7 @@ export namespace Snapshot {
             .nothrow()
         if (checkTree.exitCode === 0 && checkTree.text().trim()) {
           const result =
-            await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${file}`
+            await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${relativePath}`
               .quiet()
               .cwd(Instance.directory)
               .nothrow()
