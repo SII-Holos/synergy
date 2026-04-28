@@ -38,9 +38,14 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
           return `delay ${t.delay}`
         case "watch": {
           const w = t.watch
-          if (w.kind === "poll") return `poll: ${w.command}`
-          if (w.kind === "tool") return `tool: ${w.tool}`
-          return `watch: ${w.glob}`
+          switch (w.kind) {
+            case "poll":
+              return `poll: ${w.command}`
+            case "tool":
+              return `tool: ${w.tool}`
+            case "file":
+              return `watch: ${w.glob}`
+          }
         }
         default:
           return "unknown"
