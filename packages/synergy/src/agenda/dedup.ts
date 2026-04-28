@@ -33,23 +33,13 @@ export namespace AgendaDedup {
         const bw = b as Extract<typeof b, { type: "watch" }>
         if (a.watch.kind !== bw.watch.kind) return false
 
-        switch (a.watch.kind) {
-          case "poll": {
-            const aw = a.watch as Extract<typeof a.watch, { kind: "poll" }>
-            const bww = bw.watch as Extract<typeof bw.watch, { kind: "poll" }>
-            return aw.command === bww.command
-          }
-          case "tool": {
-            const aw = a.watch as Extract<typeof a.watch, { kind: "tool" }>
-            const bww = bw.watch as Extract<typeof bw.watch, { kind: "tool" }>
-            if (aw.tool !== bww.tool) return false
-            return JSON.stringify(aw.args ?? {}) === JSON.stringify(bww.args ?? {})
-          }
-          case "file": {
-            const aw = a.watch as Extract<typeof a.watch, { kind: "file" }>
-            const bww = bw.watch as Extract<typeof bw.watch, { kind: "file" }>
-            return aw.glob === bww.glob && aw.event === bww.event
-          }
+        // TODO: poll and tool watch kinds are disabled. Only file is active.
+        // When re-enabling, add back structural comparison for poll (command)
+        // and tool (tool name + args). See git history.
+        if (a.watch.kind === "file") {
+          const aw = a.watch as Extract<typeof a.watch, { kind: "file" }>
+          const bww = bw.watch as Extract<typeof bw.watch, { kind: "file" }>
+          return aw.glob === bww.glob && aw.event === bww.event
         }
         break
       }
@@ -130,17 +120,13 @@ export namespace AgendaDedup {
 
   function formatTriggerSummary(trigger: AgendaTypes.Trigger): string {
     if (trigger.type === "watch") {
-      switch (trigger.watch.kind) {
-        case "poll":
-          return `watch: ${trigger.watch.command}`
-        case "tool":
-          return `watch: ${trigger.watch.tool}${trigger.watch.args ? ` ${JSON.stringify(trigger.watch.args)}` : ""}`
-        case "file":
-          return `watch: ${trigger.watch.glob}`
-      }
+      // Only file watch kind is active
+      if (trigger.watch.kind === "file") return `watch: ${trigger.watch.glob}`
+      return `watch: ${trigger.watch.kind}`
     }
     if (trigger.type === "cron") return `cron: ${trigger.expr}`
     if (trigger.type === "every") return `every: ${trigger.interval}`
+    if (trigger.type === "delay") return `delay: ${trigger.delay}`
     return trigger.type
   }
 

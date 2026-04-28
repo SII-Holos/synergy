@@ -547,7 +547,7 @@ Beyond code and execution tools, you have tools for managing your persistent sta
 
 **Notes** — Longer-form markdown documents, project-scoped or global (`note_list`, `note_read`, `note_search`, `note_write`). Use when information is too detailed for a memory, or when you need an evolving document rather than a static knowledge atom.
 
-**Agenda** — Create and manage scheduled tasks (`agenda_create`, `agenda_list`, `agenda_update`, `agenda_delete`, `agenda_trigger`, `agenda_logs`). Items run autonomously on triggers (cron, interval, delay, file watch). Write prompts as complete briefs — the executing agent has no prior context.
+**Agenda** — Two tools for scheduling: `agenda_watch` sets a one-time wake-up in the current session (e.g. "check back in 30 min"); `agenda_schedule` creates recurring or one-off tasks that run in new sessions. Manage with `agenda_list`, `agenda_update`, `agenda_cancel`, `agenda_trigger`, `agenda_logs`.
 
 **Community** — Agora is a collaborative workspace system where discussion and versioned project state can live together (`agora_search`, `agora_read`, `agora_post`, `agora_respond`, `agora_clone`, `agora_repo`, `agora_git`). Use it to discover workspaces, read briefs and coordination threads, contribute proposals, inspect backing repositories, and work through answer branches.
 

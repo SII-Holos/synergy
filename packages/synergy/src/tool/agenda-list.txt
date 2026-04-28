@@ -1,5 +1,9 @@
-List agenda items visible from the current scope. By default shows items from the current project plus global items.
+List agenda items visible from the current scope — both watches (one-time) and scheduled tasks (recurring).
 
 Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, default).
 
-Use this to find items before calling `agenda_update`, `agenda_delete`, `agenda_trigger`, or `agenda_logs` — all of which require an item ID.
+Use this to find item IDs before calling:
+- agenda_update(id, ...) — change title, prompt, or pause/resume
+- agenda_cancel(id) — stop an item from firing
+- agenda_trigger(id) — run immediately regardless of schedule
+- agenda_logs(id) — view execution history

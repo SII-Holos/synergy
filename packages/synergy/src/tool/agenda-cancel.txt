@@ -1,0 +1,4 @@
+Cancel an agenda item. The item will no longer fire, but its configuration and execution history are preserved.
+
+Use agenda_list to find the item ID.
+To temporarily pause without cancelling, use agenda_update(id, status="paused") instead — a paused item can be resumed with agenda_update(id, status="active").

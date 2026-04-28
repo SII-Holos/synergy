@@ -125,8 +125,10 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "profile_get":
       case "profile_update":
         return "Updating profile"
-      case "email":
+      case "email_send":
         return "Sending email"
+      case "email_read":
+        return "Reading email"
       case "attach":
         return "Preparing files"
       case "diagram":

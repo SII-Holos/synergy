@@ -803,6 +803,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         extensions: [
           StarterKit.configure({
             codeBlock: false,
+            link: false,
           }),
           Placeholder.configure({
             placeholder: "Type / for commands...",

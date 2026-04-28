@@ -271,6 +271,18 @@ When editing tool definitions:
 - preserve permission expectations
 - consider SDK and route implications if tool shapes become API-visible
 
+### Tool frontend registration
+
+Adding a new tool requires registering it in **four** places for full UI support:
+
+1. **`packages/ui/src/components/icon.tsx`** — import the Lucide icon component and add it to the `icons` map. Pick an icon not used by any existing tool.
+2. **`packages/ui/src/components/message-part.tsx`** — add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives the tool card display for both direct renders and the task summary list.
+3. **`packages/ui/src/components/tool-renders.tsx`** — append the tool name to its group array (e.g. `inspireToolNames`, `researchToolNames`) so `ToolRegistry.register` picks it up with the shared render logic.
+4. **`packages/synergy/src/tool/taxonomy.ts`** — add an entry with the correct domain kind and traits (`stateful`, `externalIO`).
+5. **`packages/ui/src/components/semantic-tool-classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
+
+Skipping any of these causes the tool to fall back to a generic icon and label, or to miss permission/state tracking.
+
 ## Testing and Verification
 
 ### Test philosophy

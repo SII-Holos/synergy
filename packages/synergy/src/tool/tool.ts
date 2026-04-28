@@ -48,11 +48,23 @@ export namespace Tool {
     id: string,
     init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
   ): Info<Parameters, Result> {
+    // When `init` is a plain object (not a factory function), the same object
+    // is returned on every init() call. The wrapper below replaces
+    // toolInfo.execute each time — but if we read `execute` from the (already
+    // mutated) object, we chain wrapper(wrapper(wrapper(…original…))).
+    // After ~15 000 init() calls across all sessions the async wrapper chain
+    // exceeds the call-stack limit and every tool call throws
+    // "RangeError: Maximum call stack size exceeded".
+    //
+    // Fix: capture the original execute once at define-time so the wrapper
+    // always calls it directly — no stacking, no accumulation.
+    const originalExecute = init instanceof Function ? undefined : init.execute
+
     return {
       id,
       init: async (initCtx) => {
         const toolInfo = init instanceof Function ? await init(initCtx) : init
-        const execute = toolInfo.execute
+        const execute = originalExecute ?? toolInfo.execute
         toolInfo.execute = async (args, ctx) => {
           let parsed: typeof args
           try {
@@ -67,7 +79,6 @@ export namespace Tool {
             )
           }
           const result = await execute(parsed, ctx)
-          // skip truncation for tools that handle it themselves
           if (result.metadata.truncated !== undefined) {
             return result
           }

@@ -6,20 +6,6 @@ import { AgendaTypes } from "../../src/agenda/types"
 // Helpers
 // ---------------------------------------------------------------------------
 
-function watchPoll(command: string): AgendaTypes.Trigger {
-  return {
-    type: "watch",
-    watch: { kind: "poll", command, interval: "5m", trigger: "change" },
-  }
-}
-
-function watchTool(tool: string, args?: Record<string, unknown>): AgendaTypes.Trigger {
-  return {
-    type: "watch",
-    watch: { kind: "tool", tool, args, interval: "5m", trigger: "change" },
-  }
-}
-
 function watchFile(glob: string, event?: "add" | "change" | "unlink"): AgendaTypes.Trigger {
   return {
     type: "watch",
@@ -37,9 +23,6 @@ function everyTrigger(interval: string): AgendaTypes.Trigger {
 
 // ---------------------------------------------------------------------------
 // Title similarity (Token Jaccard)
-//
-// The question: "When should two titles be considered similar enough to warn?"
-// Answer: When they share a majority of tokens — not just one word overlap.
 // ---------------------------------------------------------------------------
 
 describe("title similarity", () => {
@@ -52,13 +35,11 @@ describe("title similarity", () => {
   })
 
   test("partial overlap crosses threshold", () => {
-    // "Monitor exp_007" vs "Monitor exp_007 results" — 2/3 overlap = 0.67
     const sim = AgendaDedup.titleSimilarity("Monitor exp_007", "Monitor exp_007 results")
     expect(sim).toBeGreaterThanOrEqual(0.5)
   })
 
   test("single shared word with very different titles → low", () => {
-    // "Monitor experiment" vs "System monitor" — 1/3 overlap = 0.33
     const sim = AgendaDedup.titleSimilarity("Monitor experiment", "System monitor")
     expect(sim).toBeLessThan(0.5)
   })
@@ -83,60 +64,13 @@ describe("title similarity", () => {
     const short = "Check health"
     const long = "Check health endpoint every 5 minutes and alert on failure"
     const sim = AgendaDedup.titleSimilarity(short, long)
-    // 2 tokens overlap out of ~10 total → well below threshold
     expect(sim).toBeLessThan(0.5)
   })
 })
 
 // ---------------------------------------------------------------------------
 // Trigger structural matching
-//
-// The question: "When are two triggers doing the same work?"
-// Answer: When they would produce identical side effects if both active.
 // ---------------------------------------------------------------------------
-
-describe("trigger conflict: watch(poll)", () => {
-  test("same command → conflict", () => {
-    expect(AgendaDedup.triggersConflict(watchPoll("ps aux | grep train"), watchPoll("ps aux | grep train"))).toBe(true)
-  })
-
-  test("different command → no conflict", () => {
-    expect(AgendaDedup.triggersConflict(watchPoll("ps aux | grep train"), watchPoll("ps aux | grep web"))).toBe(false)
-  })
-})
-
-describe("trigger conflict: watch(tool)", () => {
-  test("same tool + same args → conflict", () => {
-    expect(
-      AgendaDedup.triggersConflict(
-        watchTool("inspire_jobs", { status: "running" }),
-        watchTool("inspire_jobs", { status: "running" }),
-      ),
-    ).toBe(true)
-  })
-
-  test("same tool + different args → no conflict (different job)", () => {
-    expect(
-      AgendaDedup.triggersConflict(
-        watchTool("inspire_jobs", { job_id: "job-111" }),
-        watchTool("inspire_jobs", { job_id: "job-222" }),
-      ),
-    ).toBe(false)
-  })
-
-  test("different tool → no conflict", () => {
-    expect(
-      AgendaDedup.triggersConflict(
-        watchTool("inspire_jobs", { status: "running" }),
-        watchTool("inspire_metrics", { job_id: "job-111" }),
-      ),
-    ).toBe(false)
-  })
-
-  test("same tool + no args on both → conflict", () => {
-    expect(AgendaDedup.triggersConflict(watchTool("agenda_list"), watchTool("agenda_list"))).toBe(true)
-  })
-})
 
 describe("trigger conflict: watch(file)", () => {
   test("same glob + same event → conflict", () => {
@@ -153,16 +87,6 @@ describe("trigger conflict: watch(file)", () => {
 
   test("different glob → no conflict", () => {
     expect(AgendaDedup.triggersConflict(watchFile("src/**/*.ts"), watchFile("test/**/*.ts"))).toBe(false)
-  })
-})
-
-describe("trigger conflict: across watch kinds", () => {
-  test("poll vs tool → no conflict (different mechanisms)", () => {
-    expect(AgendaDedup.triggersConflict(watchPoll("ps aux"), watchTool("bash", { command: "ps aux" }))).toBe(false)
-  })
-
-  test("poll vs file → no conflict", () => {
-    expect(AgendaDedup.triggersConflict(watchPoll("ls"), watchFile("*.ts"))).toBe(false)
   })
 })
 
@@ -199,7 +123,7 @@ describe("trigger conflict: every", () => {
 
 describe("trigger conflict: across types", () => {
   test("watch vs cron → no conflict", () => {
-    expect(AgendaDedup.triggersConflict(watchPoll("echo"), cronTrigger("0 9 * * *"))).toBe(false)
+    expect(AgendaDedup.triggersConflict(watchFile("*.ts"), cronTrigger("0 9 * * *"))).toBe(false)
   })
 
   test("cron vs every → no conflict", () => {
@@ -209,8 +133,6 @@ describe("trigger conflict: across types", () => {
 
 // ---------------------------------------------------------------------------
 // Conflict message formatting
-//
-// The question: "Does the message give the agent enough info to decide?"
 // ---------------------------------------------------------------------------
 
 describe("conflict message", () => {
@@ -245,7 +167,7 @@ describe("conflict message", () => {
   test("includes item ID so agent can reference it in agenda_update", () => {
     const msg = AgendaDedup.formatConflictMessage(
       [{ item: makeItem({ id: "agd_999", title: "X" }), reason: "trigger" }],
-      "agenda_create",
+      "agenda_schedule",
     )
     expect(msg).toContain("agd_999")
     expect(msg).toContain("agenda_update")
@@ -259,23 +181,6 @@ describe("conflict message", () => {
     expect(msg).toContain("agenda_watch")
   })
 
-  test("trigger conflict shows the watch target", () => {
-    const msg = AgendaDedup.formatConflictMessage(
-      [
-        {
-          item: makeItem({
-            id: "agd_1",
-            title: "X",
-            triggers: [watchTool("bash", { command: "curl -s http://example.com" })],
-          }),
-          reason: "trigger",
-        },
-      ],
-      "agenda_watch",
-    )
-    expect(msg).toContain("bash")
-  })
-
   test("cron conflict shows the expression", () => {
     const msg = AgendaDedup.formatConflictMessage(
       [
@@ -284,7 +189,7 @@ describe("conflict message", () => {
           reason: "trigger",
         },
       ],
-      "agenda_create",
+      "agenda_schedule",
     )
     expect(msg).toContain("cron: 0 9 * * *")
   })
@@ -292,7 +197,7 @@ describe("conflict message", () => {
   test("recent item shows 'just now'", () => {
     const msg = AgendaDedup.formatConflictMessage(
       [{ item: makeItem({ id: "agd_1", title: "X" }), reason: "trigger" }],
-      "agenda_create",
+      "agenda_schedule",
     )
     expect(msg).toContain("just now")
   })

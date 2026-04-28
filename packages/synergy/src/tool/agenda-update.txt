@@ -1,11 +1,11 @@
 Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged.
 
-Use `agenda_list` to find the item ID first.
+Use agenda_list to find the item ID first.
 
-Status changes control execution behavior:
-- "active": Enables automatic execution based on triggers
-- "paused": Suspends execution (re-activate with "active")
-- "done": Marks as completed
-- "cancelled": Marks as cancelled
+Common actions:
+- Pause: agenda_update(id="agd_xxx", status="paused")
+- Resume: agenda_update(id="agd_xxx", status="active")  
+- Mark done: agenda_update(id="agd_xxx", status="done")
+- Change prompt: agenda_update(id="agd_xxx", prompt="new instructions...")
 
-Updating `triggers` recalculates the next scheduled run time. Updating `prompt` modifies the execution instruction.
+To change the trigger/schedule itself, use agenda_cancel + agenda_schedule (or agenda_watch) to recreate.

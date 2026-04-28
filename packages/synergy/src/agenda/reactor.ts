@@ -58,13 +58,9 @@ export namespace AgendaReactor {
 
     const item = before.item
 
-    if (item.autoDone && signal.type === "watch") {
-      log.info("autoDone watch fired — direct delivery, no session", { itemID: item.id })
+    if (item.autoDone) {
+      log.info("autoDone item fired — direct delivery to origin session, no new session", { itemID: item.id })
       const startTime = Date.now()
-      const watchOutput = (signal.payload as Record<string, unknown> | undefined)?.output as string | undefined
-      const message = watchOutput
-        ? `Watch "${item.title}" triggered.\n\n${watchOutput}`
-        : `Watch "${item.title}" triggered.`
 
       await AgendaStore.appendRun(scopeID, {
         id: Identifier.ascending("agenda"),
@@ -75,7 +71,7 @@ export namespace AgendaReactor {
         time: { started: startTime, completed: startTime },
       }).catch(() => {})
 
-      await AgendaDelivery.deliver({ item, sessionID: "", lastMessage: message })
+      await AgendaDelivery.deliver({ item, sessionID: "", lastMessage: item.prompt })
       return { nextRunAt: undefined, sessionID: undefined }
     }
 

@@ -822,10 +822,16 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Update Profile",
         subtitle: input.name,
       }
-    case "agenda_create":
+    case "agenda_schedule":
       return {
         icon: "calendar-days",
-        title: "Create Agenda",
+        title: "Schedule Agenda",
+        subtitle: input.title,
+      }
+    case "agenda_watch":
+      return {
+        icon: "eye",
+        title: "Watch",
         subtitle: input.title,
       }
     case "agenda_list":
@@ -840,10 +846,10 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Update Agenda",
         subtitle: input.id,
       }
-    case "agenda_delete":
+    case "agenda_cancel":
       return {
         icon: "trash-2",
-        title: "Delete Agenda",
+        title: "Cancel Agenda",
         subtitle: input.id,
       }
     case "agenda_trigger":
@@ -929,12 +935,30 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Memory Edit",
         subtitle: input.title,
       }
-    case "email":
+    case "email_send":
       return {
         icon: "mail",
-        title: "Email",
+        title: "Send Email",
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
       }
+    case "email_read": {
+      const args: string[] = []
+      pushArg(args, input.folder && input.folder !== "INBOX" ? input.folder : undefined)
+      pushArg(args, input.search?.unseen ? "unread" : undefined)
+      return {
+        icon: "mail-search",
+        title:
+          input.action === "search"
+            ? "Search Email"
+            : input.action === "read"
+              ? "Read Email"
+              : input.action === "markSeen"
+                ? "Mark Read"
+                : "Email Inbox",
+        subtitle: input.search?.from || input.search?.subject || input.folder || "INBOX",
+        args,
+      }
+    }
     case "runtime_reload": {
       const target = Array.isArray(input.target)
         ? input.target.length <= 3
@@ -1060,6 +1084,17 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "sliders-horizontal",
         title: input.action === "set" ? "Set Default" : "SII Defaults",
         subtitle: input.key,
+        args,
+      }
+    }
+    case "inspire_login": {
+      const args: string[] = []
+      pushArg(args, input.target)
+      pushArg(args, input.target === "harbor" ? input.registry : undefined)
+      return {
+        icon: "lock-keyhole",
+        title: input.target === "harbor" ? "Harbor Login" : "SII Login",
+        subtitle: input.username,
         args,
       }
     }

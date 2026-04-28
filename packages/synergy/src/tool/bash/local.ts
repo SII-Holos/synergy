@@ -62,47 +62,51 @@ export const LocalBashBackend: BashBackend = {
     if (!Instance.contains(cwd)) directories.add(cwd)
     const patterns = new Set<string>()
 
-    for (const node of tree.rootNode.descendantsOfType("command")) {
-      if (!node) continue
-      const command = []
-      for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i)
-        if (!child) continue
-        if (
-          child.type !== "command_name" &&
-          child.type !== "word" &&
-          child.type !== "string" &&
-          child.type !== "raw_string" &&
-          child.type !== "concatenation"
-        ) {
-          continue
-        }
-        command.push(child.text)
-      }
-
-      if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
-        for (const arg of command.slice(1)) {
-          if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-          let resolved: string | undefined
-          try {
-            resolved = realpathSync(path.resolve(cwd, arg))
-          } catch {
-            // path doesn't exist — skip
+    try {
+      for (const node of tree.rootNode.descendantsOfType("command")) {
+        if (!node) continue
+        const command = []
+        for (let i = 0; i < node.childCount; i++) {
+          const child = node.child(i)
+          if (!child) continue
+          if (
+            child.type !== "command_name" &&
+            child.type !== "word" &&
+            child.type !== "string" &&
+            child.type !== "raw_string" &&
+            child.type !== "concatenation"
+          ) {
+            continue
           }
-          log.info("resolved path", { arg, resolved })
-          if (resolved) {
-            const normalized =
-              process.platform === "win32" && resolved.match(/^\/[a-z]\//)
-                ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
-                : resolved
-            if (!Instance.contains(normalized)) directories.add(normalized)
+          command.push(child.text)
+        }
+
+        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
+          for (const arg of command.slice(1)) {
+            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
+            let resolved: string | undefined
+            try {
+              resolved = realpathSync(path.resolve(cwd, arg))
+            } catch {
+              // path doesn't exist — skip
+            }
+            log.info("resolved path", { arg, resolved })
+            if (resolved) {
+              const normalized =
+                process.platform === "win32" && resolved.match(/^\/[a-z]\//)
+                  ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
+                  : resolved
+              if (!Instance.contains(normalized)) directories.add(normalized)
+            }
           }
         }
-      }
 
-      if (command.length && command[0] !== "cd") {
-        patterns.add(command.join(" "))
+        if (command.length && command[0] !== "cd") {
+          patterns.add(command.join(" "))
+        }
       }
+    } finally {
+      tree.delete()
     }
 
     if (directories.size > 0) {
@@ -146,9 +150,16 @@ export const LocalBashBackend: BashBackend = {
       },
     })
 
-    const append = (chunk: Buffer) => {
-      const text = chunk.toString()
-      ProcessRegistry.appendOutput(regProc, text)
+    const METADATA_THROTTLE_MS = 500
+    let metadataTimer: ReturnType<typeof setTimeout> | null = null
+    let metadataDirty = false
+
+    const flushMetadata = () => {
+      if (metadataTimer) {
+        clearTimeout(metadataTimer)
+        metadataTimer = null
+      }
+      metadataDirty = false
       ctx.metadata({
         metadata: {
           output: truncateMetadataOutput(regProc.output),
@@ -157,10 +168,24 @@ export const LocalBashBackend: BashBackend = {
       })
     }
 
+    const scheduleMetadata = () => {
+      metadataDirty = true
+      if (!metadataTimer) {
+        metadataTimer = setTimeout(flushMetadata, METADATA_THROTTLE_MS)
+      }
+    }
+
+    const append = (chunk: Buffer) => {
+      const text = chunk.toString()
+      ProcessRegistry.appendOutput(regProc, text)
+      scheduleMetadata()
+    }
+
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
     child.once("exit", (code, signal) => {
+      if (metadataDirty) flushMetadata()
       if (params.background || regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, signal)
       } else {
