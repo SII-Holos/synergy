@@ -58,23 +58,6 @@ export namespace AgendaReactor {
 
     const item = before.item
 
-    if (item.autoDone) {
-      log.info("autoDone item fired — direct delivery to origin session, no new session", { itemID: item.id })
-      const startTime = Date.now()
-
-      await AgendaStore.appendRun(scopeID, {
-        id: Identifier.ascending("agenda"),
-        itemID: item.id,
-        status: "ok",
-        trigger: { type: signal.type, source: signal.source },
-        duration: 0,
-        time: { started: startTime, completed: startTime },
-      }).catch(() => {})
-
-      await AgendaDelivery.deliver({ item, sessionID: "", lastMessage: item.prompt })
-      return { nextRunAt: undefined, sessionID: undefined }
-    }
-
     if (item.state.consecutiveErrors >= 5) {
       log.warn("auto-pausing item due to consecutive errors", {
         itemID: item.id,
@@ -84,40 +67,62 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined, deactivated: true }
     }
 
-    const scope = item.origin.scope ?? Scope.global()
-    const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
-    const contextMode = AgendaTypes.inferContextMode(sessionMode)
-    const persistent = sessionMode === "persistent"
+    // -----------------------------------------------------------------------
+    // Execute — autoDone items deliver directly, others create a new session
+    // -----------------------------------------------------------------------
+
     const startTime = Date.now()
     let sessionID: string | undefined
     let error: Error | undefined
+    let lastMessage: string | undefined
 
-    await Instance.provide({
-      scope,
-      fn: async () => {
-        sessionID = persistent
-          ? await resolveOrCreateSession(item, scope, scopeID)
-          : await createEphemeralSession(item, scope)
+    if (item.autoDone) {
+      // Direct delivery to origin session — no new session, no invoke.
+      // Used by agenda_watch: the prompt IS the message the agent sees.
+      log.info("autoDone item fired — direct delivery, no new session", { itemID: item.id })
+      lastMessage = item.prompt
+    } else {
+      // Normal path — create session, run prompt via SessionInvoke
+      const scope = item.origin.scope ?? Scope.global()
+      const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
+      const contextMode = AgendaTypes.inferContextMode(sessionMode)
+      const persistent = sessionMode === "persistent"
 
-        const promptText = AgendaPrompt.build(item, signal, contextMode)
+      await Instance.provide({
+        scope,
+        fn: async () => {
+          sessionID = persistent
+            ? await resolveOrCreateSession(item, scope, scopeID)
+            : await createEphemeralSession(item, scope)
 
-        try {
-          await withTimeout(
-            SessionInvoke.invoke({
-              sessionID: sessionID!,
-              agent: item.agent,
-              model: item.model,
-              parts: [{ type: "text", text: promptText }],
-            }),
-            item.timeout ?? DEFAULT_TIMEOUT,
-          )
-        } catch (err) {
-          error = err instanceof Error ? err : new Error(String(err))
-        }
-      },
-    })
+          const promptText = AgendaPrompt.build(item, signal, contextMode)
+
+          try {
+            await withTimeout(
+              SessionInvoke.invoke({
+                sessionID: sessionID!,
+                agent: item.agent,
+                model: item.model,
+                parts: [{ type: "text", text: promptText }],
+              }),
+              item.timeout ?? DEFAULT_TIMEOUT,
+            )
+          } catch (err) {
+            error = err instanceof Error ? err : new Error(String(err))
+          }
+        },
+      })
+
+      if (sessionID && !error) {
+        lastMessage = await extractLastAssistantMessage(sessionID)
+      }
+    }
 
     const duration = Date.now() - startTime
+
+    // -----------------------------------------------------------------------
+    // State management — always runs, regardless of autoDone
+    // -----------------------------------------------------------------------
 
     const runLog: AgendaTypes.RunLog = {
       id: Identifier.ascending("agenda"),
@@ -158,39 +163,26 @@ export namespace AgendaReactor {
         itemID: item.id,
         error: err instanceof Error ? err : new Error(String(err)),
       })
-      // Fallback: compute nextRunAt locally for recurring triggers so the
-      // clock entry is not lost. One-off triggers (at/delay) that already
-      // fired will correctly resolve to undefined.
       nextRunAt = AgendaStore.computeNextRunAt(item.triggers)
     }
 
+    // -----------------------------------------------------------------------
+    // Plugin hooks — always fire
+    // -----------------------------------------------------------------------
+
     if (error) {
-      await Plugin.trigger(
-        "agenda.run.error",
-        {
-          signal,
-          item,
-          scopeID,
-          error: error.message,
-          sessionID,
-        },
-        {},
-      )
+      await Plugin.trigger("agenda.run.error", { signal, item, scopeID, error: error.message, sessionID }, {})
     } else {
-      await Plugin.trigger(
-        "agenda.run.after",
-        {
-          signal,
-          item,
-          run: runLog,
-          scopeID,
-        },
-        {},
-      )
+      await Plugin.trigger("agenda.run.after", { signal, item, run: runLog, scopeID }, {})
     }
 
-    if (sessionID && !error) {
-      await deliverResult(item, sessionID).catch((err) => {
+    // -----------------------------------------------------------------------
+    // Delivery — send result/prompt to origin session
+    // -----------------------------------------------------------------------
+
+    if (!error) {
+      const sourceSessionID = sessionID ?? item.origin.sessionID ?? ""
+      await AgendaDelivery.deliver({ item, sessionID: sourceSessionID, lastMessage }).catch((err) => {
         log.error("delivery failed", { itemID: item.id, error: err instanceof Error ? err : new Error(String(err)) })
       })
     }
@@ -229,11 +221,6 @@ export namespace AgendaReactor {
       timer = setTimeout(() => reject(new Error("Execution timed out")), timeoutMs)
     })
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!))
-  }
-
-  async function deliverResult(item: AgendaTypes.Item, sessionID: string): Promise<void> {
-    const lastMessage = await extractLastAssistantMessage(sessionID)
-    await AgendaDelivery.deliver({ item, sessionID, lastMessage })
   }
 
   async function extractLastAssistantMessage(sessionID: string): Promise<string | undefined> {
