@@ -1673,16 +1673,41 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agenda_create",
+  name: "agenda_schedule",
   render(props) {
     return (
       <BasicTool
         {...props}
         icon="calendar-days"
         trigger={() => ({
-          title: "Create Agenda",
+          title: "Schedule Agenda",
           subtitle: (props.metadata?.title || props.input.title || "") as string,
           args: props.metadata?.status ? [props.metadata.status as string] : [],
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "agenda_watch",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="eye"
+        trigger={() => ({
+          title: "Watch",
+          subtitle: (props.input.title || "") as string,
+          args: props.input.delay ? [props.input.delay as string] : [],
         })}
       >
         <Show when={props.output}>
@@ -1749,14 +1774,14 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "agenda_delete",
+  name: "agenda_cancel",
   render(props) {
     return (
       <BasicTool
         {...props}
         icon="trash-2"
         trigger={() => ({
-          title: "Delete Agenda",
+          title: "Cancel Agenda",
           subtitle: (props.input.id || "") as string,
         })}
       >
@@ -1892,6 +1917,42 @@ ToolRegistry.register({
           subtitle: recipients(),
           args: props.input.subject && recipients() ? [props.input.subject as string] : [],
         })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "email_read",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        icon="mail-search"
+        trigger={() => {
+          const action = props.input.action as string
+          const folder = props.input.folder as string
+          return {
+            title:
+              action === "search"
+                ? "Search Email"
+                : action === "read"
+                  ? "Read Email"
+                  : action === "markSeen"
+                    ? "Mark Read"
+                    : "Email Inbox",
+            subtitle: (props.input.search?.from || props.input.search?.subject || folder || "INBOX") as string,
+            args: folder && folder !== "INBOX" ? [folder] : [],
+          }
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -2058,6 +2119,7 @@ for (const name of qzToolNames) {
 const inspireToolNames = [
   "inspire_status",
   "inspire_config",
+  "inspire_login",
   "inspire_images",
   "inspire_image_push",
   "inspire_submit",
