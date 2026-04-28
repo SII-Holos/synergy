@@ -935,10 +935,10 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Memory Edit",
         subtitle: input.title,
       }
-    case "email":
+    case "email_send":
       return {
         icon: "mail",
-        title: "Email",
+        title: "Send Email",
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
       }
     case "email_read": {

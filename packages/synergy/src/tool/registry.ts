@@ -62,7 +62,7 @@ import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 import { DiagramTool } from "./diagram"
-import { EmailTool } from "./email"
+import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
 
@@ -219,7 +219,7 @@ export namespace ToolRegistry {
       AgoraCommentTool,
       AttachTool,
       DiagramTool,
-      EmailTool,
+      EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),

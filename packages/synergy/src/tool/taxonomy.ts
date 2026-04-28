@@ -170,7 +170,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
 
   // communication
   question: entry("communication.question"),
-  email: entry("communication.email", { stateful: true, externalIO: true }),
+  email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
   diagram: entry("communication.visual"),
   attach: entry("communication.deliver"),

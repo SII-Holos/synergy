@@ -1901,7 +1901,7 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "email",
+  name: "email_send",
   render(props) {
     const recipients = () => {
       const to = props.input.to
@@ -1913,7 +1913,7 @@ ToolRegistry.register({
         {...props}
         icon="mail"
         trigger={() => ({
-          title: "Email",
+          title: "Send Email",
           subtitle: recipients(),
           args: props.input.subject && recipients() ? [props.input.subject as string] : [],
         })}

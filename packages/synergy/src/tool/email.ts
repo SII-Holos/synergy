@@ -12,7 +12,7 @@ const parameters = z.object({
   html: z.string().optional().describe("Optional HTML version of the email body for rich formatting"),
 })
 
-export const EmailTool = Tool.define("email", {
+export const EmailSendTool = Tool.define("email_send", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {

@@ -254,7 +254,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
 
   // communication
   question: "communication",
-  email: "communication",
+  email_send: "communication",
   email_read: "communication",
   diagram: "analyze",
   attach: "communication",
