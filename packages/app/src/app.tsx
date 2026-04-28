@@ -1,5 +1,15 @@
 import "@/index.css"
-import { ErrorBoundary, Show, Switch, Match, lazy, createMemo, createSignal, type ParentProps } from "solid-js"
+import {
+  ErrorBoundary,
+  Show,
+  Switch,
+  Match,
+  lazy,
+  createEffect,
+  createMemo,
+  createSignal,
+  type ParentProps,
+} from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@ericsanchezok/synergy-ui/font"
@@ -138,11 +148,21 @@ function ConnectedApp() {
   const onboarding = useOnboarding()
   const server = useServer()
   const [setupConnectionFailed, setSetupConnectionFailed] = createSignal(false)
+  const [wasReady, setWasReady] = createSignal(false)
+
+  // Once the app has reached "ready", never regress to the error page due
+  // to a transient health-check failure.  The running app can survive brief
+  // disconnects — the WebSocket reconnects automatically, and a reconnect
+  // banner will inform the user.  Only show the hard error page before the
+  // first successful startup.
+  createEffect(() => {
+    if (onboarding.phase === "ready") setWasReady(true)
+  })
 
   const startupView = createMemo<"loading" | "connection-error" | "setup" | "ready">(() => {
     const healthy = server.healthy()
     if (healthy === undefined) return "loading"
-    if (healthy === false || setupConnectionFailed()) return "connection-error"
+    if (!wasReady() && (healthy === false || setupConnectionFailed())) return "connection-error"
     if (onboarding.phase === "ready") return "ready"
     return "setup"
   })

@@ -47,7 +47,7 @@ function defaultRecallMode(category: EngramDB.Memory.Category): EngramDB.Memory.
   return "contextual"
 }
 
-describe("engram migrations", () => {
+describe.serial("engram migrations", () => {
   beforeEach(() => {
     EngramDB.Experience.removeAll()
     EngramDB.Memory.removeAll()

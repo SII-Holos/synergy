@@ -355,14 +355,14 @@ function createGlobalSync() {
     await Promise.all([...globalPromises, ...perScopePromises])
   }
 
-  async function loadSessions(directory: string) {
-    const [_, setStore] = child(directory)
-    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
-    return sdk.session
+  async function loadSessions(directory: string, sdk?: ReturnType<typeof createSynergyClient>) {
+    const client = sdk ?? createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+    return client.session
       .list({ parentOnly: false })
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
+        const [, setStore] = children[directory]
         batch(() => {
           setStore("session", reconcile(sessions, { key: "id" }))
           setStore("sessionTotal", result.total)
@@ -370,9 +370,82 @@ function createGlobalSync() {
       })
       .catch((err) => {
         console.error("Failed to load sessions", err)
-        const project = getFilename(directory)
-        showToast({ title: `Failed to load sessions for ${project}`, description: err.message })
+        if (!sdk) {
+          const project = getFilename(directory)
+          showToast({ title: `Failed to load sessions for ${project}`, description: err.message })
+        }
       })
+  }
+
+  function syncBySession<T extends { id?: string; sessionID?: string }>(
+    setStore: (path1: string, path2: string, value: any) => void,
+    storeKey: keyof Pick<State, "permission" | "question">,
+    currentKeys: Iterable<string>,
+    items: T[],
+  ) {
+    const grouped: Record<string, T[]> = {}
+    for (const item of items) {
+      if (!item?.id || !item.sessionID) continue
+      const existing = grouped[item.sessionID]
+      if (existing) {
+        existing.push(item)
+        continue
+      }
+      grouped[item.sessionID] = [item]
+    }
+
+    batch(() => {
+      for (const sessionID of currentKeys) {
+        if (grouped[sessionID]) continue
+        setStore(storeKey, sessionID, [])
+      }
+      for (const [sessionID, entries] of Object.entries(grouped)) {
+        setStore(
+          storeKey,
+          sessionID,
+          reconcile(
+            entries
+              .filter((e) => !!e?.id)
+              .slice()
+              .sort((a, b) => a.id!.localeCompare(b.id!)),
+            { key: "id" },
+          ),
+        )
+      }
+    })
+  }
+
+  async function resyncInstance(directory: string) {
+    if (!directory || !children[directory]) return
+    const [store, setStore] = children[directory]
+    if (store.status === "loading") return
+    const isGlobal = isGlobalScope(directory)
+    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+
+    await Promise.all([
+      loadSessions(directory, sdk),
+      sdk.session.status().then((x) => setStore("session_status", x.data!)),
+      sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
+      sdk.agenda.list().then((x) =>
+        setStore(
+          "agenda",
+          reconcile(
+            (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
+            { key: "id" },
+          ),
+        ),
+      ),
+      sdk.permission
+        .list()
+        .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
+      sdk.question.list().then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
+      ...(!isGlobal
+        ? [
+            sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
+            sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
+          ]
+        : []),
+    ])
   }
 
   async function bootstrapInstance(directory: string) {
@@ -412,7 +485,7 @@ function createGlobalSync() {
           sdk.path.get().then((x) => setStore("path", x.data!)),
           sdk.command.list().then((x) => setStore("command", x.data ?? [])),
           sdk.session.status().then((x) => setStore("session_status", x.data!)),
-          loadSessions(directory),
+          loadSessions(directory, sdk),
           sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
           sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
           sdk.agenda.list().then((x) =>
@@ -424,70 +497,12 @@ function createGlobalSync() {
               ),
             ),
           ),
-          sdk.permission.list().then((x) => {
-            const grouped: Record<string, PermissionRequest[]> = {}
-            for (const perm of x.data ?? []) {
-              if (!perm?.id || !perm.sessionID) continue
-              const existing = grouped[perm.sessionID]
-              if (existing) {
-                existing.push(perm)
-                continue
-              }
-              grouped[perm.sessionID] = [perm]
-            }
-
-            batch(() => {
-              for (const sessionID of Object.keys(store.permission)) {
-                if (grouped[sessionID]) continue
-                setStore("permission", sessionID, [])
-              }
-              for (const [sessionID, permissions] of Object.entries(grouped)) {
-                setStore(
-                  "permission",
-                  sessionID,
-                  reconcile(
-                    permissions
-                      .filter((p) => !!p?.id)
-                      .slice()
-                      .sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
-              }
-            })
-          }),
-          sdk.question.list().then((x) => {
-            const grouped: Record<string, QuestionRequest[]> = {}
-            for (const req of x.data ?? []) {
-              if (!req?.id || !req.sessionID) continue
-              const existing = grouped[req.sessionID]
-              if (existing) {
-                existing.push(req)
-                continue
-              }
-              grouped[req.sessionID] = [req]
-            }
-
-            batch(() => {
-              for (const sessionID of Object.keys(store.question)) {
-                if (grouped[sessionID]) continue
-                setStore("question", sessionID, [])
-              }
-              for (const [sessionID, questions] of Object.entries(grouped)) {
-                setStore(
-                  "question",
-                  sessionID,
-                  reconcile(
-                    questions
-                      .filter((q) => !!q?.id)
-                      .slice()
-                      .sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
-              }
-            })
-          }),
+          sdk.permission
+            .list()
+            .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
+          sdk.question
+            .list()
+            .then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
         ]
         if (!isGlobal) {
           requests.push(sdk.lsp.status().then((x) => setStore("lsp", x.data!)))
@@ -953,66 +968,56 @@ function createGlobalSync() {
 
     if (isConnected && !wasConnected && globalStore.ready) {
       for (const directory of Object.keys(children)) {
-        const [, setStore] = child(directory)
+        // Full resync of volatile state to recover from lost WS events.
+        resyncInstance(directory).catch(() => {})
+
+        // Additionally reconcile message parts for sessions that were busy
+        // at disconnect time — resyncInstance doesn't cover message/part data.
+        const [store, setStore] = children[directory]
+        const busyIds = disconnectedBusy.get(directory)
+        disconnectedBusy.delete(directory)
+        if (!busyIds || busyIds.size === 0) continue
+
+        // resyncInstance already fetched session_status into the store.
+        // Merge sessions that were busy at disconnect + sessions busy now.
+        const toReconcile = new Set(busyIds)
+        for (const [id, status] of Object.entries(store.session_status)) {
+          if (status?.type === "busy" || status?.type === "retry") toReconcile.add(id)
+        }
+        if (toReconcile.size === 0) continue
+
         const scopeSdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
-
-        // Refresh status first — it's the authoritative source of truth.
-        scopeSdk.session
-          .status()
-          .then((x) => {
-            const fresh = x.data!
-            setStore("session_status", fresh)
-            return fresh
-          })
-          .then((fresh) => {
-            // Merge sessions that were busy at disconnect + sessions busy now.
-            const toReconcile = new Set(disconnectedBusy.get(directory))
-            for (const [id, status] of Object.entries(fresh)) {
-              if (status.type === "busy" || status.type === "retry") toReconcile.add(id)
-            }
-            disconnectedBusy.delete(directory)
-            if (toReconcile.size === 0) return
-
-            // Reconcile parts for each affected session by fetching the
-            // latest messages from the server. This closes the gap left by
-            // WS events that were lost during the disconnect.
-            for (const sessionID of toReconcile) {
-              scopeSdk.session
-                .messages({ sessionID, limit: 2 })
-                .then((result) => {
-                  const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-                  const latest = items
-                    .filter((x) => x.info.role === "assistant")
-                    .sort((a, b) => b.info.id.localeCompare(a.info.id))[0]
-                  if (!latest) return
-                  batch(() => {
-                    setStore(
-                      "message",
-                      sessionID,
-                      produce((draft) => {
-                        const idx = draft.findIndex((m) => m.id === latest.info.id)
-                        if (idx === -1) draft.push(latest.info)
-                        else draft[idx] = latest.info
-                      }),
-                    )
-                    setStore(
-                      "part",
-                      latest.info.id,
-                      reconcile(
-                        latest.parts.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
-                        { key: "id" },
-                      ),
-                    )
-                  })
-                })
-                .catch(() => {})
-            }
-          })
-          .catch(() => {
-            disconnectedBusy.delete(directory)
-          })
-
-        loadSessions(directory)
+        for (const sessionID of toReconcile) {
+          scopeSdk.session
+            .messages({ sessionID, limit: 2 })
+            .then((result) => {
+              const items = (result.data ?? []).filter((x) => !!x?.info?.id)
+              const latest = items
+                .filter((x) => x.info.role === "assistant")
+                .sort((a, b) => b.info.id.localeCompare(a.info.id))[0]
+              if (!latest) return
+              batch(() => {
+                setStore(
+                  "message",
+                  sessionID,
+                  produce((draft) => {
+                    const idx = draft.findIndex((m) => m.id === latest.info.id)
+                    if (idx === -1) draft.push(latest.info)
+                    else draft[idx] = latest.info
+                  }),
+                )
+                setStore(
+                  "part",
+                  latest.info.id,
+                  reconcile(
+                    latest.parts.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
+                    { key: "id" },
+                  ),
+                )
+              })
+            })
+            .catch(() => {})
+        }
       }
       loadGlobalAgenda()
     }

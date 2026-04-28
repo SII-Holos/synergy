@@ -39,7 +39,7 @@ afterAll(() => {
   process.env.SYNERGY_OAUTH_CALLBACK_PORT = originalOAuthCallbackPort
 })
 
-describe("McpOAuthProvider", () => {
+describe.serial("McpOAuthProvider", () => {
   let backup: string | undefined
 
   beforeEach(async () => {
@@ -365,7 +365,7 @@ describe("McpOAuthProvider", () => {
   })
 })
 
-describe("McpOAuthCallback", () => {
+describe.serial("McpOAuthCallback", () => {
   afterEach(async () => {
     await McpOAuthCallback.stop()
   })

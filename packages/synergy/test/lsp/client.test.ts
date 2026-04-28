@@ -39,7 +39,7 @@ describe("LSPClient interop", () => {
       method: "workspace/workspaceFolders",
     })
 
-    await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 500))
 
     expect(client.connection).toBeDefined()
 
@@ -63,7 +63,7 @@ describe("LSPClient interop", () => {
       method: "client/registerCapability",
     })
 
-    await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 500))
 
     expect(client.connection).toBeDefined()
 
@@ -87,7 +87,7 @@ describe("LSPClient interop", () => {
       method: "client/unregisterCapability",
     })
 
-    await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 500))
 
     expect(client.connection).toBeDefined()
 

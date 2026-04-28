@@ -16,16 +16,24 @@ export namespace AgendaDelivery {
     if (input.item.silent) return
 
     const text = input.lastMessage ?? `Agenda task "${input.item.title}" completed.`
-    const target = input.item.origin.endpoint
+    const target = input.item.origin.endpoint ?? input.item.origin.sessionID
     if (!target) {
-      log.info("no delivery target — origin endpoint missing, suppressing delivery", { itemID: input.item.id })
+      log.warn("no delivery target — origin endpoint and sessionID both missing, suppressing delivery", {
+        itemID: input.item.id,
+      })
       return
     }
     const type = input.item.wake !== false ? "user" : "assistant"
 
     try {
       const session = await SessionManager.getSession(target)
-      if (!session) return
+      if (!session) {
+        log.warn("delivery target session not found", {
+          itemID: input.item.id,
+          target: typeof target === "string" ? target : "endpoint",
+        })
+        return
+      }
 
       await SessionManager.deliver({
         target: session.id,

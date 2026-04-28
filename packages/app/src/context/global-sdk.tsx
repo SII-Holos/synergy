@@ -5,9 +5,9 @@ import { batch, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 
-const PING_INTERVAL = 15_000
-const PONG_TIMEOUT = 5_000
-const MAX_MISSED_PONGS = 2
+const PING_INTERVAL = 20_000
+const PONG_TIMEOUT = 10_000
+const MAX_MISSED_PONGS = 3
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
@@ -65,6 +65,19 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let pongTimer: ReturnType<typeof setTimeout> | undefined
     let missedPongs = 0
     const [connected, setConnected] = createSignal(false)
+    // undefined = initial state (never connected yet)
+    // number   = timestamp when the connection was last lost
+    const [disconnectedAt, setDisconnectedAt] = createSignal<number | undefined>(undefined)
+
+    const markConnected = () => {
+      setConnected(true)
+      setDisconnectedAt(undefined)
+    }
+
+    const markDisconnected = () => {
+      setConnected(false)
+      setDisconnectedAt(Date.now())
+    }
 
     const clearPingTimers = () => {
       if (pingTimer) clearInterval(pingTimer)
@@ -102,7 +115,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       socket.onopen = () => {
         reconnectDelay = 1000
         missedPongs = 0
-        setConnected(true)
+        markConnected()
         startPing()
       }
 
@@ -141,12 +154,14 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
       socket.onclose = () => {
         clearPingTimers()
-        setConnected(false)
+        markDisconnected()
         if (disposed) return
+        // Apply ±50% jitter to avoid thundering-herd reconnections.
+        const jittered = reconnectDelay * (0.5 + Math.random())
         reconnectTimer = setTimeout(() => {
           reconnectDelay = Math.min(reconnectDelay * 2, 30000)
           connect()
-        }, reconnectDelay)
+        }, jittered)
       }
 
       socket.onerror = () => {
@@ -171,6 +186,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       throwOnError: true,
     })
 
-    return { url: server.url, client: sdk, event: emitter, connected }
+    return { url: server.url, client: sdk, event: emitter, connected, disconnectedAt }
   },
 })

@@ -400,6 +400,18 @@ export namespace SessionCompaction {
 
     if (!compactionOk) return "stop"
 
+    // Ensure the compaction assistant message is marked as finished even if the
+    // processor didn't emit a finish-step event (e.g. stream was interrupted).
+    // Without this, filterCompacted can't identify the compaction boundary and
+    // the loop may incorrectly break on the next user message.
+    if (!msg.finish) {
+      msg.finish = "stop"
+    }
+    if (!msg.time.completed) {
+      msg.time.completed = Date.now()
+    }
+    await Session.updateMessage(msg)
+
     if (input.auto) {
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),

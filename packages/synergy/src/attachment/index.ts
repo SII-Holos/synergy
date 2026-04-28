@@ -89,8 +89,32 @@ export namespace Attachment {
     }
   }
 
+  /** MIME types under `application/` that are actually human-readable text. */
+  const TEXT_APPLICATION_TYPES = new Set([
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/typescript",
+    "application/x-yaml",
+    "application/yaml",
+    "application/toml",
+    "application/x-sh",
+    "application/x-shellscript",
+    "application/sql",
+    "application/graphql",
+    "application/x-httpd-php",
+    "application/xhtml+xml",
+  ])
+
+  /** RFC 6838 structured syntax suffixes that indicate text-based content. */
+  const TEXT_SUFFIXES = ["+json", "+xml", "+yaml", "+csv"]
+
   export function isText(mime: string): boolean {
-    return mime.startsWith("text/")
+    if (mime.startsWith("text/")) return true
+    if (TEXT_APPLICATION_TYPES.has(mime)) return true
+    // e.g. application/ld+json, application/vnd.api+json, application/atom+xml
+    if (TEXT_SUFFIXES.some((suffix) => mime.endsWith(suffix))) return true
+    return false
   }
 
   export function decodeDataUrl(url: string) {

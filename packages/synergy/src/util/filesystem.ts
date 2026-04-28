@@ -3,6 +3,16 @@ import { dirname, join, relative } from "path"
 
 export namespace Filesystem {
   /**
+   * Strip null bytes and other control characters that some runtimes
+   * (notably Bun on Linux) occasionally inject into OS-level path results
+   * like `os.tmpdir()`, `os.homedir()`, or `fs.realpath()`.
+   */
+  export function sanitizePath(p: string): string {
+    // eslint-disable-next-line no-control-regex
+    return p.replace(/[\x00-\x08\x0e-\x1f]/g, "")
+  }
+
+  /**
    * On Windows, normalize a path to its canonical casing using the filesystem.
    * This is needed because Windows paths are case-insensitive but LSP servers
    * may return paths with different casing than what we send them.
