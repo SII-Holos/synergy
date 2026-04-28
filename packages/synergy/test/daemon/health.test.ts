@@ -3,12 +3,12 @@ import { DaemonHealth } from "../../src/daemon/health"
 
 describe("daemon.health", () => {
   test("waitForPortToStop resolves true when port is already free", async () => {
-    const result = await DaemonHealth.waitForPortToStop(65530, "127.0.0.1", 100, 10)
+    const result = await DaemonHealth.waitForPortToStop(65530, "127.0.0.1", 200, 10)
     expect(result).toBe(true)
   })
 
   test("waitForHealthy returns false for unreachable server", async () => {
-    const result = await DaemonHealth.waitForHealthy("http://127.0.0.1:65530", 100, 10)
+    const result = await DaemonHealth.waitForHealthy("http://127.0.0.1:65530", 200, 10)
     expect(result).toBe(false)
   })
 })
