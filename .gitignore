@@ -67,3 +67,6 @@ qzcli_tool/
 # SII-Holos plugin repos (separate git repos, not part of synergy)
 holos-inspire/
 holos-research/
+
+# External local repos / sandboxes
+faro-web/
