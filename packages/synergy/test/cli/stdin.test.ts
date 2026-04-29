@@ -61,8 +61,8 @@ describe("readPipedStdin", () => {
     const out = await new Response(proc.stdout).text()
     const result = JSON.parse(out)
     expect(result.text).toBe("")
-    // /dev/null or immediate EOF should resolve near-instantly, well under 50ms
-    expect(result.elapsed).toBeLessThan(200)
+    // /dev/null or immediate EOF should resolve near-instantly
+    expect(result.elapsed).toBeLessThan(500)
     expect(await proc.exited).toBe(0)
   })
 

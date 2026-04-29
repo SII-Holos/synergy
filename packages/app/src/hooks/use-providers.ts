@@ -17,17 +17,11 @@ export function useProviders() {
     return globalSync.data.provider
   })
   const connected = createMemo(() => providers().all.filter((p) => providers().connected.includes(p.id)))
-  const paid = createMemo(() =>
-    connected().filter((p) =>
-      Object.values(p.models).some((m) => (m.cost?.input ?? 0) > 0 || (m.cost?.output ?? 0) > 0),
-    ),
-  )
   const popular = createMemo(() => providers().all.filter((p) => popularProviders.includes(p.id)))
   return {
     all: createMemo(() => providers().all),
     default: createMemo(() => providers().default),
     popular,
     connected,
-    paid,
   }
 }

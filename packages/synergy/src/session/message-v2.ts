@@ -14,6 +14,7 @@ import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
+import { Attachment } from "@/attachment"
 
 export namespace MessageV2 {
   async function requireSession(sessionID: string) {
@@ -469,7 +470,7 @@ export namespace MessageV2 {
               text: part.text,
             })
           // text files and directories are converted into text parts, ignore them
-          if (part.type === "file" && !part.mime.startsWith("text/") && part.mime !== "application/x-directory") {
+          if (part.type === "file" && !Attachment.isText(part.mime) && part.mime !== "application/x-directory") {
             if (part.localPath) {
               userMessage.parts.push({
                 type: "text",

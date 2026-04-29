@@ -10,10 +10,6 @@ const parameters = z.object({
   description: z.string().optional().describe("New description"),
   status: AgendaTypes.ItemStatus.optional().describe("New status: pending, active, paused, done, cancelled"),
   tags: z.array(z.string()).optional().describe("New tags (replaces existing)"),
-  triggers: z
-    .array(AgendaTypes.Trigger)
-    .optional()
-    .describe("New triggers (replaces existing). Recalculates next run time."),
   prompt: z.string().optional().describe("New execution prompt"),
   wake: z.boolean().optional().describe("Whether to wake the origin session on completion"),
   silent: z.boolean().optional().describe("Whether to suppress result delivery"),
@@ -29,7 +25,6 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     if (params.description !== undefined) patch.description = params.description
     if (params.status !== undefined) patch.status = params.status
     if (params.tags !== undefined) patch.tags = params.tags
-    if (params.triggers !== undefined) patch.triggers = params.triggers
     if (params.prompt !== undefined) patch.prompt = params.prompt
     if (params.wake !== undefined) patch.wake = params.wake
     if (params.silent !== undefined) patch.silent = params.silent

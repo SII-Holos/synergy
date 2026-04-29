@@ -353,6 +353,8 @@ export namespace SessionInvoke {
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 
+        const userMetadata = (lastUser.metadata ?? undefined) as Record<string, unknown> | undefined
+        const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
@@ -377,6 +379,7 @@ export namespace SessionInvoke {
               created: Date.now(),
             },
             sessionID,
+            ...(channelPush ? { metadata: { channelPush: true } } : {}),
           })) as MessageV2.Assistant,
           sessionID: sessionID,
           model,

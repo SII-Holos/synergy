@@ -25,16 +25,43 @@ describe("Asset", () => {
       expect(Asset.generateId(Buffer.from("x"), "image/webp")).toEndWith(".webp")
       expect(Asset.generateId(Buffer.from("x"), "video/mp4")).toEndWith(".mp4")
       expect(Asset.generateId(Buffer.from("x"), "application/pdf")).toEndWith(".pdf")
+      expect(Asset.generateId(Buffer.from("x"), "text/markdown")).toEndWith(".md")
+      expect(Asset.generateId(Buffer.from("x"), "text/plain")).toEndWith(".txt")
+      expect(Asset.generateId(Buffer.from("x"), "application/json")).toEndWith(".json")
+      expect(Asset.generateId(Buffer.from("x"), "application/typescript")).toEndWith(".ts")
+      expect(Asset.generateId(Buffer.from("x"), "text/x-python")).toEndWith(".py")
     })
 
-    test("falls back to .bin for unknown mime", () => {
-      const id = Asset.generateId(Buffer.from("x"), "application/unknown")
-      expect(id).toEndWith(".bin")
+    test("falls back to filename extension when mime is unknown", () => {
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "readme.md")).toEndWith(".md")
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "data.rs")).toEndWith(".rs")
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "config.toml")).toEndWith(".toml")
+    })
+
+    test("falls back to .bin when both mime and filename are unresolvable", () => {
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown")).toEndWith(".bin")
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "noext")).toEndWith(".bin")
     })
 
     test("id format is 16-char hex + dot + extension", () => {
       const id = Asset.generateId(Buffer.from("test"), "image/png")
       expect(id).toMatch(/^[a-f0-9]{16}\.png$/)
+    })
+
+    test("stored extension is recoverable via extFromId for downstream type detection", () => {
+      const cases: Array<{ mime: string; filename: string; expectedExt: string }> = [
+        { mime: "text/markdown", filename: "notes.md", expectedExt: "md" },
+        { mime: "application/json", filename: "config.json", expectedExt: "json" },
+        { mime: "application/typescript", filename: "app.tsx", expectedExt: "ts" },
+        { mime: "text/x-python", filename: "train.py", expectedExt: "py" },
+        { mime: "text/csv", filename: "data.csv", expectedExt: "csv" },
+        { mime: "application/octet-stream", filename: "module.rs", expectedExt: "rs" },
+        { mime: "application/octet-stream", filename: "Makefile", expectedExt: "bin" },
+      ]
+      for (const { mime, filename, expectedExt } of cases) {
+        const id = Asset.generateId(Buffer.from("content"), mime, filename)
+        expect(Asset.extFromId(id)).toBe(expectedExt)
+      }
     })
   })
 
@@ -91,6 +118,10 @@ describe("Asset", () => {
       expect(Asset.mimeFromExt("gif")).toBe("image/gif")
       expect(Asset.mimeFromExt("svg")).toBe("image/svg+xml")
       expect(Asset.mimeFromExt("mp4")).toBe("video/mp4")
+      expect(Asset.mimeFromExt("md")).toBe("text/markdown")
+      expect(Asset.mimeFromExt("json")).toBe("application/json")
+      expect(Asset.mimeFromExt("ts")).toBe("application/typescript")
+      expect(Asset.mimeFromExt("py")).toBe("text/x-python")
     })
 
     test("mimeFromExt falls back to octet-stream", () => {
@@ -101,6 +132,9 @@ describe("Asset", () => {
       expect(Asset.extFromMime("image/png")).toBe("png")
       expect(Asset.extFromMime("image/jpeg")).toBe("jpg")
       expect(Asset.extFromMime("video/mp4")).toBe("mp4")
+      expect(Asset.extFromMime("text/markdown")).toBe("md")
+      expect(Asset.extFromMime("application/json")).toBe("json")
+      expect(Asset.extFromMime("application/typescript")).toBe("ts")
     })
 
     test("extFromMime returns undefined for unknown mime", () => {

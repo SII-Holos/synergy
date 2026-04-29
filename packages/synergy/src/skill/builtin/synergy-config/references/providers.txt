@@ -6,7 +6,7 @@ When a user wants to connect a provider (e.g., "configure MiniMax", "add my Open
 
 ### Step 1: Check the Models.dev registry (MANDATORY)
 
-Before writing ANY provider config, you MUST first check whether the provider already exists in the Models.dev registry. Fetch `https://models.dev/api.json` (use `webfetch`) and search for the provider by name or ID. If the online fetch fails, fall back to reading the local cache at `~/.synergy/cache/models.json`.
+Before writing ANY provider config, you MUST first check whether the provider already exists in the Models.dev registry. Fetch `https://models.dev/api.json` (use `webfetch`) and search for the provider by name or ID. If the online fetch fails or returns truncated output, fall back to searching the local cache at `~/.synergy/cache/models.json`.
 
 The registry contains most popular providers — including many you might not expect. Do NOT assume a provider needs custom config just because you haven't seen it configured before.
 
@@ -16,7 +16,28 @@ IMPORTANT: A single provider may have **multiple variants** in the registry (e.g
 - **Plan type**: Coding Plan / Token Plan keys (often prefixed `sk-cp-`) need the `-coding-plan` variant. Pay-as-you-go keys use the base variant.
 - **Region**: `-cn` variants use Chinese endpoints (e.g., `minimaxi.com`), base variants use international endpoints (e.g., `minimax.io`). Region usually CANNOT be determined from the key alone — ask the user which platform they registered on if multiple region variants exist.
 
+**Search tips:**
+- Try multiple keywords — a provider may be listed under a different name than you expect (e.g., "Kimi" is listed as `moonshot` and `kimi`; "MiniMax" has `minimax`, `minimax-coding-plan`, `minimax-cn`, etc.)
+- Search both provider ID (top-level key) and provider `name` field for matches
+
 The provider ID you choose here is the exact key you MUST use in the credential store.
+
+**Cache structure:** The local cache (`~/.synergy/cache/models.json`) is a **flat dictionary** keyed by provider ID — NOT a nested list. Structure: `{ "<provider-id>": { "id": "...", "name": "...", "api": "...", "env": [...], "npm": "...", "models": {...} }, ... }`. Search by iterating top-level keys, NOT `data["providers"]`.
+
+**Fallback search command** (use when webfetch fails or is truncated):
+```bash
+python3 -c "
+import json, sys
+with open('$HOME/.synergy/cache/models.json') as f:
+    data = json.load(f)
+query = sys.argv[1].lower()
+for pid, p in data.items():
+    if query in pid.lower() or query in p.get('name', '').lower():
+        print(f'FOUND: {pid} — {p.get(\"name\", \"\")} — {p.get(\"api\", \"\")}')
+"
+```
+
+**If webfetch returns truncated output:** the full output is saved to a temporary file (path shown in the webfetch result). Use the `grep` tool to search that file for the provider name, or fall back to the local cache search above.
 
 **If found → go to Step 2a. If NOT found → go to Step 2b.**
 
@@ -36,6 +57,17 @@ IMPORTANT: Do NOT write provider config to `synergy.jsonc` for built-in provider
 ```
 
 ### Step 2b: Provider is NOT in registry → write config + save API key
+
+⚠️ **Before proceeding to Step 2b, double-check your search:**
+1. Did you search with multiple keywords? (e.g., "kimi" AND "moonshot", "minimax" AND "minimax-cn")
+2. If using the local cache, did you search top-level keys of the flat dict — NOT `data["providers"]`?
+3. If webfetch was truncated, did you grep the full output file or use the fallback search command?
+4. Only proceed if you are confident the provider is truly absent from the registry.
+
+**CRITICAL:** `synergy.jsonc` is a core configuration file. Incorrect modifications can prevent Synergy from starting.
+- NEVER overwrite the entire file — always use surgical edit (`oldString`/`newString` via the `edit` tool)
+- For built-in providers (found in registry), ONLY save API key to `api-key.json` — do NOT add provider config to `synergy.jsonc`
+- Read the file FIRST before any edit, and preserve all existing content including comments
 
 If the provider is not in the registry (e.g., a local vLLM server, a private proxy, a niche provider), you need BOTH credential store entry AND provider config in `synergy.jsonc`:
 

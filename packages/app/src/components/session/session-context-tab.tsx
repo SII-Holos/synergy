@@ -120,7 +120,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
   const breakdown = createMemo(
     on(
-      () => [ctx()?.message.id, ctx()?.input, props.messages().length, systemPrompt()],
+      () => [ctx()?.message.id, ctx()?.input, props.messages()?.length ?? 0, systemPrompt()],
       () => {
         const c = ctx()
         if (!c) return []
@@ -344,7 +344,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
   createEffect(
     on(
-      () => props.messages().length,
+      () => props.messages()?.length ?? 0,
       () => {
         requestAnimationFrame(restoreScroll)
       },

@@ -8,6 +8,7 @@ import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { CortexTypes } from "./types"
+import { Trajectory } from "./trajectory"
 import { CortexConcurrency } from "./concurrency"
 import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
@@ -141,7 +142,7 @@ export namespace Cortex {
     const parts = await resolveInputParts(task.prompt)
 
     try {
-      const result = await SessionInvoke.invoke({
+      await SessionInvoke.invoke({
         sessionID: task.sessionID,
         model: resolvedModel,
         agent: task.agent,
@@ -150,8 +151,8 @@ export namespace Cortex {
 
       unsub()
 
-      const textPart = result.parts.findLast((p: MessageV2.Part) => p.type === "text")
-      updateTaskStatus(task.id, "completed", undefined, textPart?.text)
+      const summary = await Trajectory.summarize(task.sessionID)
+      updateTaskStatus(task.id, "completed", undefined, summary || undefined)
     } catch (error) {
       unsub()
       log.error("task execution failed", { taskID: task.id, error })
@@ -260,6 +261,10 @@ export namespace Cortex {
             synthetic: true,
           },
         ],
+        metadata: {
+          channelPush: true,
+          sourceSessionID: task.sessionID,
+        },
       },
     })
   }

@@ -186,10 +186,14 @@ export const MemorySearchTool = Tool.define("memory_search", {
     }
 
     if (results.length === 0) {
+      const vecReady = EngramDB.isMemoryVecReady()
+      const output = vecReady
+        ? "No memories found."
+        : "No memories found. (Vector search is currently unavailable — memory recall may be degraded.)"
       return {
         title: "memory_search",
-        output: "No memories found.",
-        metadata: { count: 0 } as Record<string, any>,
+        output,
+        metadata: { count: 0, degraded: !vecReady } as Record<string, any>,
       }
     }
 

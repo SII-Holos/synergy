@@ -98,8 +98,8 @@ If you've already written today's journal, use `note_write` in `append` mode. Se
 
 ### Agenda Housekeeping
 
-- `agenda_update` — Adjust triggers, prompts, or status.
-- `agenda_delete` — Remove stale items.
+- `agenda_update` — Adjust prompts, status, or tags.
+- `agenda_cancel` — Cancel stale items.
 
 ## Agenda Orchestration — Your Core Power
 

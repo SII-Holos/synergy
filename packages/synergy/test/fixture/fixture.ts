@@ -4,11 +4,7 @@ import os from "os"
 import path from "path"
 import type { Config } from "../../src/config/config"
 import { Scope } from "../../src/scope"
-
-// Strip null bytes from paths (defensive fix for CI environment issues)
-function sanitizePath(p: string): string {
-  return p.replace(/\0/g, "")
-}
+import { Filesystem } from "../../src/util/filesystem"
 
 type TmpDirOptions<T> = {
   git?: boolean
@@ -17,7 +13,7 @@ type TmpDirOptions<T> = {
   dispose?: (dir: string) => Promise<T>
 }
 export async function tmpdir<T>(options?: TmpDirOptions<T>) {
-  const dirpath = sanitizePath(path.join(os.tmpdir(), "synergy-test-" + Math.random().toString(36).slice(2)))
+  const dirpath = Filesystem.sanitizePath(path.join(os.tmpdir(), "synergy-test-" + Math.random().toString(36).slice(2)))
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) {
     await $`git init`.cwd(dirpath).quiet()
@@ -38,7 +34,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   const extra = await options?.init?.(dirpath)
   // Pre-create node_modules in .synergy so Config.installDependencies skips the await
   await fs.mkdir(path.join(dirpath, ".synergy", "node_modules"), { recursive: true }).catch(() => {})
-  const realpath = sanitizePath(await fs.realpath(dirpath))
+  const realpath = Filesystem.sanitizePath(await fs.realpath(dirpath))
   const result = {
     [Symbol.asyncDispose]: async () => {
       await options?.dispose?.(dirpath)

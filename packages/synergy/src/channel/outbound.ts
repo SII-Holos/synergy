@@ -24,7 +24,7 @@ export namespace ChannelOutbound {
       if (!assistant.time.completed) return
 
       const metadata = (assistant.metadata ?? undefined) as Record<string, unknown> | undefined
-      if (!metadata?.mailbox) return
+      if (!metadata?.mailbox && !metadata?.channelPush) return
 
       if (metadata.channelOutboundSent) return
 

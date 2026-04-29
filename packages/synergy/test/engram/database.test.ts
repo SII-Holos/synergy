@@ -46,7 +46,7 @@ function makeMemory(id: string, overrides: Partial<Parameters<typeof EngramDB.Me
   )
 }
 
-describe("EngramDB", () => {
+describe.serial("EngramDB", () => {
   beforeEach(() => {
     EngramDB.Experience.removeAll()
     EngramDB.Memory.removeAll()

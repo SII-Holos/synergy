@@ -2,11 +2,12 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import os from "os"
+import { Filesystem } from "../util/filesystem"
 
 const app = "synergy"
 
 function homeDir() {
-  return process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME || os.homedir()
+  return Filesystem.sanitizePath(process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME || os.homedir())
 }
 
 function root() {

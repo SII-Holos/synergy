@@ -379,7 +379,7 @@ export function HolosConversation(props: {
             <HolosConversationHeader
               contactName={props.contactName}
               contactBio={props.contactBio}
-              messageCount={props.messages().length}
+              messageCount={props.messages()?.length ?? 0}
               branchCount={branchCount()}
             />
           </div>

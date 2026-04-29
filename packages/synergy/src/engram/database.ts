@@ -11,7 +11,41 @@ const log = Log.create({ service: "engram.db" })
 let db: Database | undefined
 
 let embeddingDimensions: number | undefined
-let vecTablesExist = false
+interface VecTableState {
+  ready: boolean
+  failAt: number | undefined
+  tableName: string
+}
+
+const vecExperience: VecTableState = { ready: false, failAt: undefined, tableName: "vec_experience" }
+const vecMemory: VecTableState = { ready: false, failAt: undefined, tableName: "vec_memory" }
+
+const VEC_RETRY_MS = 60_000
+
+function tryRecoverVec(state: VecTableState): boolean {
+  if (!state.failAt) return state.ready
+  const elapsed = Date.now() - state.failAt
+  if (elapsed <= VEC_RETRY_MS) return false
+  const conn = open()
+  state.ready = hasVecTable(conn, state.tableName)
+  if (state.ready) state.failAt = undefined
+  return state.ready
+}
+
+function safeVecOp<T>(state: VecTableState, fn: () => T, fallback: T): T {
+  if (state.failAt && !tryRecoverVec(state)) return fallback
+  if (!state.ready) return fallback
+  try {
+    return fn()
+  } catch (e) {
+    state.ready = false
+    state.failAt = Date.now()
+    log.warn(`${state.tableName} operation failed, disabling vector search`, {
+      error: e instanceof Error ? e.message : String(e),
+    })
+    return fallback
+  }
+}
 
 const MEMORY_CATEGORIES = [
   "user",
@@ -91,13 +125,9 @@ function open(): Database {
   return conn
 }
 
-function hasVecTables(conn: Database): boolean {
-  const rows = conn
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('vec_experience', 'vec_memory') ORDER BY name",
-    )
-    .all() as { name: string }[]
-  return rows.length === 2
+function hasVecTable(conn: Database, name: string): boolean {
+  const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1").get(name)
+  return row !== undefined
 }
 
 function initialize(conn: Database) {
@@ -119,7 +149,8 @@ function initialize(conn: Database) {
     embeddingDimensions = row.embedding_dimensions
   }
 
-  vecTablesExist = hasVecTables(conn)
+  vecExperience.ready = hasVecTable(conn, "vec_experience")
+  vecMemory.ready = hasVecTable(conn, "vec_memory")
 
   conn.exec(`
     CREATE TABLE IF NOT EXISTS experience (
@@ -181,18 +212,14 @@ function initialize(conn: Database) {
   log.info("schema ready")
 }
 
-function ensureVecTables(dimensions: number) {
+function ensureExperienceVecTable(dimensions: number) {
   const conn = open()
-  if (embeddingDimensions === dimensions && vecTablesExist) return
+  if (embeddingDimensions === dimensions && vecExperience.ready) return
 
-  if (embeddingDimensions !== undefined && vecTablesExist && embeddingDimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec tables", {
-      old: embeddingDimensions,
-      new: dimensions,
-    })
+  if (embeddingDimensions !== undefined && vecExperience.ready && embeddingDimensions !== dimensions) {
+    log.info("embedding dimensions changed, rebuilding vec_experience", { old: embeddingDimensions, new: dimensions })
     conn.exec("DROP TABLE IF EXISTS vec_experience")
-    conn.exec("DROP TABLE IF EXISTS vec_memory")
-    vecTablesExist = false
+    vecExperience.ready = false
   }
 
   try {
@@ -205,7 +232,26 @@ function ensureVecTables(dimensions: number) {
         script_embedding float[${dimensions}] distance_metric=cosine
       )
     `)
+    vecExperience.ready = true
+    vecExperience.failAt = undefined
+    log.info("vec_experience table ready", { dimensions })
+  } catch (e) {
+    vecExperience.ready = hasVecTable(conn, "vec_experience")
+    log.warn("vec_experience creation failed", { error: e instanceof Error ? e.message : String(e) })
+  }
+}
 
+function ensureMemoryVecTable(dimensions: number) {
+  const conn = open()
+  if (embeddingDimensions === dimensions && vecMemory.ready) return
+
+  if (embeddingDimensions !== undefined && vecMemory.ready && embeddingDimensions !== dimensions) {
+    log.info("embedding dimensions changed, rebuilding vec_memory", { old: embeddingDimensions, new: dimensions })
+    conn.exec("DROP TABLE IF EXISTS vec_memory")
+    vecMemory.ready = false
+  }
+
+  try {
     conn.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS vec_memory USING vec0(
         memory_id TEXT PRIMARY KEY,
@@ -213,34 +259,31 @@ function ensureVecTables(dimensions: number) {
         embedding float[${dimensions}] distance_metric=cosine
       )
     `)
+    vecMemory.ready = true
+    vecMemory.failAt = undefined
+    log.info("vec_memory table ready", { dimensions })
+  } catch (e) {
+    vecMemory.ready = hasVecTable(conn, "vec_memory")
+    log.warn("vec_memory creation failed", { error: e instanceof Error ? e.message : String(e) })
+  }
+}
 
+function ensureVecTables(dimensions: number) {
+  ensureExperienceVecTable(dimensions)
+  ensureMemoryVecTable(dimensions)
+  if (vecExperience.ready || vecMemory.ready) {
     embeddingDimensions = dimensions
-    vecTablesExist = true
+    const conn = open()
     conn.prepare("UPDATE schema_version SET embedding_dimensions = ?1").run(dimensions)
-    log.info("vec tables ready", { dimensions })
-  } catch (e) {
-    vecTablesExist = hasVecTables(conn)
-    log.warn("vec tables creation failed, vector search will be unavailable", {
-      error: e instanceof Error ? e.message : String(e),
-    })
   }
 }
 
-function vecTablesReady(): boolean {
-  return vecTablesExist
+function safeVecExperienceOp<T>(fn: () => T, fallback: T): T {
+  return safeVecOp(vecExperience, fn, fallback)
 }
 
-function safeVecOp<T>(fn: () => T, fallback: T): T {
-  if (!vecTablesExist) return fallback
-  try {
-    return fn()
-  } catch (e) {
-    vecTablesExist = false
-    log.warn("vec table operation failed, disabling vector search for this process", {
-      error: e instanceof Error ? e.message : String(e),
-    })
-    return fallback
-  }
+function safeVecMemoryOp<T>(fn: () => T, fallback: T): T {
+  return safeVecOp(vecMemory, fn, fallback)
 }
 
 function toFloat32(vector: number[]): Float32Array {
@@ -253,7 +296,10 @@ export function closeDB() {
     db = undefined
   }
   embeddingDimensions = undefined
-  vecTablesExist = false
+  vecExperience.ready = false
+  vecMemory.ready = false
+  vecExperience.failAt = undefined
+  vecMemory.failAt = undefined
   log.info("closed")
 }
 
@@ -264,6 +310,10 @@ export namespace EngramDB {
 
   export function connection(): Database {
     return open()
+  }
+
+  export function isMemoryVecReady(): boolean {
+    return vecMemory.ready
   }
 
   // ---------------------------------------------------------------------------
@@ -424,7 +474,7 @@ export namespace EngramDB {
       const conn = open()
       conn.prepare("DELETE FROM experience WHERE id = ?1").run(id)
       conn.prepare("DELETE FROM experience_content WHERE id = ?1").run(id)
-      safeVecOp(() => conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id), undefined)
+      safeVecExperienceOp(() => conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(id), undefined)
       log.info("experience.remove", { id })
     }
 
@@ -455,7 +505,7 @@ export namespace EngramDB {
       const conn = open()
       const r1 = conn.prepare("DELETE FROM experience").run()
       conn.prepare("DELETE FROM experience_content").run()
-      safeVecOp(() => conn.prepare("DELETE FROM vec_experience").run(), undefined)
+      safeVecExperienceOp(() => conn.prepare("DELETE FROM vec_experience").run(), undefined)
       log.info("experience.removeAll", { deleted: r1.changes })
       return r1.changes
     }
@@ -464,7 +514,7 @@ export namespace EngramDB {
       const conn = open()
       const r1 = conn.prepare("DELETE FROM experience WHERE scope_id = ?1").run(scopeID)
       conn.prepare("DELETE FROM experience_content WHERE scope_id = ?1").run(scopeID)
-      safeVecOp(() => {
+      safeVecExperienceOp(() => {
         conn.prepare("DELETE FROM vec_experience WHERE scope_id = ?1").run(scopeID)
       }, undefined)
       log.info("experience.removeByScope", { scopeID, deleted: r1.changes })
@@ -488,8 +538,7 @@ export namespace EngramDB {
       rewardWeights?: Record<string, number>,
     ): DuplicateInfo | null {
       const conn = open()
-      if (!vecTablesReady()) return null
-      const row = safeVecOp(
+      const row = safeVecExperienceOp(
         () =>
           conn
             .prepare(
@@ -517,7 +566,7 @@ export namespace EngramDB {
           : null
       }
 
-      const scriptResults = safeVecOp(
+      const scriptResults = safeVecExperienceOp(
         () =>
           conn
             .prepare(
@@ -566,8 +615,7 @@ export namespace EngramDB {
 
     export function searchByIntent(scopeID: string, queryVector: number[], topK: number): KNNResult[] {
       const conn = open()
-      if (!vecTablesReady()) return []
-      return safeVecOp(
+      return safeVecExperienceOp(
         () =>
           conn
             .prepare(
@@ -582,8 +630,7 @@ export namespace EngramDB {
 
     export function searchByIntentAll(queryVector: number[], topK: number): KNNResult[] {
       const conn = open()
-      if (!vecTablesReady()) return []
-      return safeVecOp(
+      return safeVecExperienceOp(
         () =>
           conn
             .prepare(
@@ -631,7 +678,7 @@ export namespace EngramDB {
         )
         .run(compositeReward, JSON.stringify(rewards), Date.now(), id)
 
-      safeVecOp(
+      safeVecExperienceOp(
         () => conn.prepare("UPDATE vec_experience SET reward_status = 'evaluated' WHERE experience_id = ?1").run(id),
         undefined,
       )
@@ -795,7 +842,7 @@ export namespace EngramDB {
         )
 
       ensureVecTables(dimensions)
-      safeVecOp(() => {
+      safeVecExperienceOp(() => {
         conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(input.id)
         conn
           .prepare(
@@ -878,7 +925,7 @@ export namespace EngramDB {
         )
 
       ensureVecTables(dimensions)
-      safeVecOp(() => {
+      safeVecExperienceOp(() => {
         conn.prepare("DELETE FROM vec_experience WHERE experience_id = ?1").run(existingID)
         conn
           .prepare(
@@ -968,7 +1015,7 @@ export namespace EngramDB {
         .run(input.id, input.title, input.content, input.category, input.recallMode, embedding.model, now, now)
 
       ensureVecTables(embedding.vector.length)
-      safeVecOp(
+      safeVecMemoryOp(
         () =>
           conn
             .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
@@ -1009,7 +1056,7 @@ export namespace EngramDB {
       if (result.changes === 0) return null
 
       ensureVecTables(embedding.vector.length)
-      safeVecOp(() => {
+      safeVecMemoryOp(() => {
         conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(input.id)
         conn
           .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
@@ -1078,9 +1125,8 @@ export namespace EngramDB {
 
     export function searchByVector(queryVector: number[], topK: number, category?: Category): KNNResult[] {
       const conn = open()
-      if (!vecTablesReady()) return []
       if (category) {
-        return safeVecOp(
+        return safeVecMemoryOp(
           () =>
             conn
               .prepare(
@@ -1092,7 +1138,7 @@ export namespace EngramDB {
           [] as KNNResult[],
         )
       }
-      return safeVecOp(
+      return safeVecMemoryOp(
         () =>
           conn
             .prepare(
@@ -1108,14 +1154,14 @@ export namespace EngramDB {
     export function remove(id: string) {
       const conn = open()
       conn.prepare("DELETE FROM memory WHERE id = ?1").run(id)
-      safeVecOp(() => conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id), undefined)
+      safeVecMemoryOp(() => conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(id), undefined)
       log.info("memory.remove", { id })
     }
 
     export function removeAll(): number {
       const conn = open()
       const result = conn.prepare("DELETE FROM memory").run()
-      safeVecOp(() => conn.prepare("DELETE FROM vec_memory").run(), undefined)
+      safeVecMemoryOp(() => conn.prepare("DELETE FROM vec_memory").run(), undefined)
       log.info("memory.removeAll", { deleted: result.changes })
       return result.changes
     }

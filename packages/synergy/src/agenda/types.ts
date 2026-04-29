@@ -49,16 +49,26 @@ export namespace AgendaTypes {
     .object({
       type: z.literal("watch"),
       watch: z.discriminatedUnion("kind", [
-        z.object({
-          kind: z.literal("poll"),
-          command: z.string().describe("Shell command to execute periodically"),
-          interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '1m'"),
-          trigger: z
-            .enum(["change", "match"])
-            .default("change")
-            .describe("'change': fire when output differs from previous; 'match': fire when output matches pattern"),
-          match: z.string().optional().describe("Regex pattern, required when trigger is 'match'"),
-        }),
+        // TODO: poll and tool watch kinds are disabled until we design a stable
+        // condition-checking mechanism. The current approach (agent guesses tool
+        // output format) is too fragile for production use. Re-enable after
+        // designing a proper condition evaluation system.
+        //
+        // z.object({
+        //   kind: z.literal("poll"),
+        //   command: z.string().describe("Shell command to execute periodically"),
+        //   interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '1m'"),
+        //   trigger: z.enum(["change", "match"]).default("change"),
+        //   match: z.string().optional(),
+        // }),
+        // z.object({
+        //   kind: z.literal("tool"),
+        //   tool: z.string().describe("Synergy tool name to call"),
+        //   args: z.record(z.string(), z.unknown()).optional(),
+        //   interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '5m'"),
+        //   trigger: z.enum(["change", "match"]).default("change"),
+        //   match: z.string().optional(),
+        // }),
         z.object({
           kind: z.literal("file"),
           glob: z.string().describe("File glob pattern to watch for changes, e.g. 'src/**/*.ts'"),
@@ -70,17 +80,6 @@ export namespace AgendaTypes {
             .string()
             .optional()
             .describe("Debounce window before firing, e.g. '500ms', '2s'. Default: '500ms'"),
-        }),
-        z.object({
-          kind: z.literal("tool"),
-          tool: z.string().describe("Synergy tool name to call, e.g. 'inspire_jobs'"),
-          args: z.record(z.string(), z.unknown()).optional().describe("Arguments to pass to the tool"),
-          interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '5m'"),
-          trigger: z
-            .enum(["change", "match"])
-            .default("change")
-            .describe("'change': fire when tool output differs; 'match': fire when output matches pattern"),
-          match: z.string().optional().describe("Regex pattern, required when trigger is 'match'"),
         }),
       ]),
     })
@@ -97,6 +96,12 @@ export namespace AgendaTypes {
     .discriminatedUnion("type", [TriggerAt, TriggerCron, TriggerEvery, TriggerDelay, TriggerWatch, TriggerWebhook])
     .meta({ ref: "AgendaTrigger" })
   export type Trigger = z.infer<typeof Trigger>
+
+  /** Trigger types exposed via the agenda_schedule tool. No watch or webhook. */
+  export const ScheduleTrigger = z
+    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay])
+    .meta({ ref: "AgendaScheduleTrigger" })
+  export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
 
   // ---------------------------------------------------------------------------
   // Session mode — inferred internally, not user-facing

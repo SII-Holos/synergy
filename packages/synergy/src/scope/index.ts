@@ -66,7 +66,8 @@ export namespace Scope {
     await Storage.write(StoragePath.scope(pid(data.id)), data)
   }
 
-  export async function fromDirectory(directory: string): Promise<{ scope: Scope; sandbox: string }> {
+  export async function fromDirectory(input: string): Promise<{ scope: Scope; sandbox: string }> {
+    const directory = Filesystem.sanitizePath(input)
     log.info("fromDirectory", { directory })
 
     if (!existsSync(directory)) {

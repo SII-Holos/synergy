@@ -154,41 +154,116 @@ interface IndexedEdge {
   label?: string
 }
 
-const CARD_PAD_X = 14
-const CARD_PAD_Y = 10
-const LABEL_LINE_H = 18
-const DESC_LINE_H = 15
-const CHAR_W_LATIN = 7
-const CHAR_W_CJK = 12
-const MAX_CARD_W = 192
-const MIN_CARD_W = 100
-const GAP_X = 24
-const GAP_Y = 40
-const PAD = 16
-const GROUP_PAD = 10
-const GROUP_LABEL_H = 18
+const CARD_PAD_X = 18
+const CARD_PAD_Y = 14
+const LABEL_LINE_H = 22
+const DESC_LINE_H = 18
+const MAX_CARD_W = 280
+const MIN_CARD_W = 156
+const GAP_X = 44
+const GAP_Y = 56
+const PAD = 24
+const GROUP_PAD = 14
+const GROUP_LABEL_H = 22
 const EDGE_ARROW_ID = "diagram-graph-arrowhead"
-const LOOP_EDGE_BASE = 28
-const LOOP_EDGE_GAP = 34
-const BETWEEN_LANE_GAP = 20
+const LOOP_EDGE_BASE = 36
+const LOOP_EDGE_GAP = 40
+const BETWEEN_LANE_GAP = 24
+const LABEL_FONT_SIZE = 15
+const DESC_FONT_SIZE = 13
+const LABEL_FONT_WEIGHT = 600
+const DESC_FONT_WEIGHT = 400
+const FALLBACK_FONT_FAMILY =
+  'Inter, "SF Pro Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
 
-function estimateTextWidth(text: string): number {
-  let w = 0
-  for (const ch of text) {
-    w += ch.charCodeAt(0) > 0x2e7f ? CHAR_W_CJK : CHAR_W_LATIN
-  }
-  return w
+let measureContext: CanvasRenderingContext2D | undefined
+let resolvedSansFontFamily: string | undefined
+const textMeasureCache = new Map<string, number>()
+
+function getMeasureContext() {
+  if (typeof document === "undefined") return undefined
+  if (measureContext) return measureContext
+  const canvas = document.createElement("canvas")
+  measureContext = canvas.getContext("2d") ?? undefined
+  return measureContext
 }
 
-function estimateNodeH(node: NormalizedNode, cardW: number): number {
+function getSansFontFamily() {
+  if (resolvedSansFontFamily) return resolvedSansFontFamily
+  if (typeof document === "undefined") return FALLBACK_FONT_FAMILY
+  const computed = getComputedStyle(document.documentElement).getPropertyValue("--font-family-sans").trim()
+  resolvedSansFontFamily = computed || FALLBACK_FONT_FAMILY
+  return resolvedSansFontFamily
+}
+
+function getMeasureFont(size: number, weight: number) {
+  return `${weight} ${size}px ${getSansFontFamily()}`
+}
+
+function estimateTextWidth(text: string, font: string): number {
+  const key = `${font}::${text}`
+  const cached = textMeasureCache.get(key)
+  if (cached !== undefined) return cached
+
+  const ctx = getMeasureContext()
+  if (!ctx) return text.length * 8
+  ctx.font = font
+  const width = ctx.measureText(text).width
+  if (textMeasureCache.size > 2000) textMeasureCache.clear()
+  textMeasureCache.set(key, width)
+  return width
+}
+
+function tokenizeText(text: string) {
+  return text
+    .replace(/([/→:,()\[\]-])/g, "$1 ")
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function estimateWrappedLines(text: string, width: number, font: string) {
+  const available = Math.max(1, width)
+  const tokens = tokenizeText(text)
+  if (tokens.length === 0) return 1
+
+  let lines = 1
+  let lineWidth = 0
+
+  for (const token of tokens) {
+    const tokenWidth = estimateTextWidth(token, font)
+    const spaceWidth = lineWidth === 0 ? 0 : estimateTextWidth(" ", font)
+
+    if (tokenWidth <= available) {
+      if (lineWidth > 0 && lineWidth + spaceWidth + tokenWidth > available) {
+        lines += 1
+        lineWidth = tokenWidth
+      } else {
+        lineWidth += (lineWidth > 0 ? spaceWidth : 0) + tokenWidth
+      }
+      continue
+    }
+
+    for (const char of token) {
+      const charWidth = estimateTextWidth(char, font)
+      if (lineWidth > 0 && lineWidth + charWidth > available) {
+        lines += 1
+        lineWidth = charWidth
+      } else {
+        lineWidth += charWidth
+      }
+    }
+  }
+
+  return lines
+}
+
+function estimateNodeH(node: NormalizedNode, cardW: number) {
   const textW = Math.max(1, cardW - 2 * CARD_PAD_X)
-  const labelW = estimateTextWidth(node.label)
-  const labelLines = Math.max(1, Math.ceil(labelW / textW))
+  const labelLines = estimateWrappedLines(node.label, textW, getMeasureFont(LABEL_FONT_SIZE, LABEL_FONT_WEIGHT))
   let h = 2 * CARD_PAD_Y + labelLines * LABEL_LINE_H
   if (node.description) {
-    const descW = estimateTextWidth(node.description)
-    const descLines = Math.max(1, Math.ceil(descW / textW))
-    h += descLines * DESC_LINE_H + 2
+    const descLines = estimateWrappedLines(node.description, textW, getMeasureFont(DESC_FONT_SIZE, DESC_FONT_WEIGHT))
+    h += descLines * DESC_LINE_H + 6
   }
   return h
 }
@@ -795,7 +870,7 @@ export function DiagramGraph(props: { document: GraphDocument }) {
                       <path d={geometry.path} data-slot="diagram-edge" marker-end={`url(#${EDGE_ARROW_ID})`} />
                       <Show when={edge.label}>
                         {(label) => {
-                          const tw = estimateTextWidth(label()) * 0.62 + 12
+                          const tw = estimateTextWidth(label(), getMeasureFont(DESC_FONT_SIZE, DESC_FONT_WEIGHT)) + 16
                           return (
                             <>
                               <rect
@@ -884,7 +959,7 @@ const SEQ_SIDE_PAD = 32
 const SEQ_ARROW_ID = "diagram-sequence-arrowhead"
 
 function estimateActorWidth(label: string): number {
-  return Math.max(60, estimateTextWidth(label) * 0.72 + 28)
+  return Math.max(60, estimateTextWidth(label, getMeasureFont(LABEL_FONT_SIZE, LABEL_FONT_WEIGHT)) * 0.72 + 28)
 }
 
 function sequenceStepHeight(step: NormalizedStep): number {

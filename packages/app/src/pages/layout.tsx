@@ -27,6 +27,7 @@ import { NotePanel } from "@/components/note-panel"
 import { ScopesPanel } from "@/components/scopes"
 import { HolosPanel } from "@/components/contacts"
 import { LucidPanel } from "@/components/lucid-panel"
+import { ConnectionBanner } from "@/components/connection-banner"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -486,6 +487,7 @@ function LayoutContent(props: ParentProps) {
       <Show when={!isHome()}>
         <HeaderBar />
       </Show>
+      <ConnectionBanner />
       <div class="flex-1 min-h-0 flex overflow-hidden">
         <main
           class="flex-1 min-h-0 overflow-x-hidden flex flex-col contain-strict"

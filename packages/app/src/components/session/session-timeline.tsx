@@ -21,7 +21,9 @@ export function SessionTimeline(props: SessionTimelineProps) {
   const activeIndex = createMemo(() => {
     const activeId = props.currentMessage?.()?.id
     if (!activeId) return total() - 1
-    const idx = messages().findIndex((m) => m.id === activeId)
+    const msgs = messages()
+    if (!msgs) return total() - 1
+    const idx = msgs.findIndex((m) => m.id === activeId)
     return idx === -1 ? total() - 1 : idx
   })
 

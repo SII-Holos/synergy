@@ -1,6 +1,6 @@
 import z from "zod"
 import { MessageV2 } from "../session/message-v2"
-import { Session } from "../session"
+import type { Session } from "../session"
 import { Scope } from "../scope"
 import { Turn } from "../session/turn"
 import { Token } from "../util/token"
@@ -105,36 +105,74 @@ export namespace TurnDigest {
     .meta({ ref: "TurnDigest" })
   export type Info = z.infer<typeof Info>
 
-  function fromTurn(session: Session.Info, turn: Turn.Raw, options?: Options): Info {
-    return build(session, turn.user, turn.assistants, options)
-  }
-
-  export async function extract(sessionID: string, options?: Options): Promise<Info[]> {
-    const session = await Session.get(sessionID)
-    const msgs = await Session.messages({ sessionID })
-    const turns = Turn.collect(msgs)
-    return turns.filter((turn) => turn.assistants.length > 0).map((turn) => fromTurn(session, turn, options))
-  }
-
   export interface ExtractedTurn {
     digest: Info
     turn: Turn.Raw
   }
 
-  export async function extractSingle(
-    sessionID: string,
+  export function extractSingle(
+    session: Session.Info,
+    msgs: MessageV2.WithParts[],
     userMessageID: string,
     options?: Options,
-  ): Promise<ExtractedTurn | undefined> {
-    const session = await Session.get(sessionID)
-    const msgs = await Session.messages({ sessionID })
-
+  ): ExtractedTurn | undefined {
     const rootID = Turn.resolveRealUser(msgs, userMessageID)
     const turn = rootID === userMessageID ? Turn.collectOne(msgs, userMessageID) : collectChain(msgs, rootID)
     if (!turn) return undefined
     if (turn.assistants.length === 0) return undefined
-    return { digest: fromTurn(session, turn, options), turn }
+    return { digest: build(session, turn.user, turn.assistants, options), turn }
   }
+
+  // ---------------------------------------------------------------------------
+  // Lightweight turn summary — for intent history and reward context
+  // ---------------------------------------------------------------------------
+
+  export interface TurnSummary {
+    user: string
+    assistant: string
+  }
+
+  export function summarizeTurn(turn: Turn.Raw, msgs: MessageV2.WithParts[]): TurnSummary {
+    const user = Turn.resolveUserText(msgs, turn.user.info.id) ?? ""
+
+    const lines: string[] = []
+    for (const msg of turn.assistants) {
+      for (const part of msg.parts) {
+        if (part.type === "text" && !part.synthetic && part.text.trim()) {
+          lines.push(part.text.trim())
+        } else if (part.type === "tool" && part.state.status === "completed") {
+          lines.push(`[Tool: ${part.tool}] ${part.state.title}`)
+        } else if (part.type === "tool" && part.state.status === "error") {
+          lines.push(`[Tool: ${part.tool}] (error)`)
+        }
+      }
+    }
+
+    return { user, assistant: lines.join("\n") }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Full-fidelity rendering
+  // ---------------------------------------------------------------------------
+
+  export function renderToText(digest: Info): string {
+    const parts: string[] = []
+    if (digest.input) parts.push(`### User\n${digest.input}`)
+    const rendered = digest.segments.map(renderSegmentToText).filter(Boolean)
+    if (rendered.length > 0) parts.push(`### Response\n${rendered.join("\n\n")}`)
+    if (digest.changes.files.length > 0) {
+      parts.push(
+        `### Changes\nModified: ${digest.changes.files.join(", ")}` +
+          `\n+${digest.changes.additions} -${digest.changes.deletions} lines`,
+      )
+    }
+    if (digest.body) parts.push(`### Summary\n${digest.body}`)
+    return parts.join("\n\n")
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal
+  // ---------------------------------------------------------------------------
 
   function collectChain(msgs: MessageV2.WithParts[], rootUserID: string): Turn.Raw | undefined {
     const rootIdx = msgs.findIndex((m) => m.info.id === rootUserID && m.info.role === "user")
@@ -150,21 +188,6 @@ export namespace TurnDigest {
     }
 
     return { user, assistants }
-  }
-
-  export function renderToText(digest: Info): string {
-    const parts: string[] = []
-    if (digest.input) parts.push(`### User\n${digest.input}`)
-    const rendered = digest.segments.map(renderSegmentToText).filter(Boolean)
-    if (rendered.length > 0) parts.push(`### Response\n${rendered.join("\n\n")}`)
-    if (digest.changes.files.length > 0) {
-      parts.push(
-        `### Changes\nModified: ${digest.changes.files.join(", ")}` +
-          `\n+${digest.changes.additions} -${digest.changes.deletions} lines`,
-      )
-    }
-    if (digest.body) parts.push(`### Summary\n${digest.body}`)
-    return parts.join("\n\n")
   }
 
   function build(

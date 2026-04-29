@@ -7,6 +7,9 @@ import { Persist, persisted } from "@/utils/persist"
 
 type StoredScope = { worktree: string; expanded: boolean }
 
+const HEALTH_TIMEOUT = 8000
+const CONSECUTIVE_FAILURES_TO_UNHEALTHY = 2
+
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
   if (!trimmed) return
@@ -98,7 +101,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       const sdk = createSynergyClient({
         baseUrl: url,
         fetch: platform.fetch,
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT),
       })
       return sdk.global
         .health()
@@ -115,6 +118,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
       let alive = true
       let busy = false
+      let consecutiveFailures = 0
 
       const run = () => {
         if (busy) return
@@ -122,7 +126,15 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         void check(url)
           .then((next) => {
             if (!alive) return
-            setHealthy(next)
+            if (next) {
+              consecutiveFailures = 0
+              setHealthy(true)
+            } else {
+              consecutiveFailures++
+              if (consecutiveFailures >= CONSECUTIVE_FAILURES_TO_UNHEALTHY) {
+                setHealthy(false)
+              }
+            }
           })
           .finally(() => {
             busy = false

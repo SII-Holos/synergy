@@ -6,7 +6,7 @@ import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
 
-describe("McpAuth", () => {
+describe.serial("McpAuth", () => {
   let backup: string | undefined
 
   beforeEach(async () => {

@@ -271,9 +271,41 @@ When editing tool definitions:
 - preserve permission expectations
 - consider SDK and route implications if tool shapes become API-visible
 
+### Tool frontend registration
+
+Adding a new tool requires registering it in **four** places for full UI support:
+
+1. **`packages/ui/src/components/icon.tsx`** — import the Lucide icon component and add it to the `icons` map. Pick an icon not used by any existing tool.
+2. **`packages/ui/src/components/message-part.tsx`** — add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives the tool card display for both direct renders and the task summary list.
+3. **`packages/ui/src/components/tool-renders.tsx`** — append the tool name to its group array (e.g. `inspireToolNames`, `researchToolNames`) so `ToolRegistry.register` picks it up with the shared render logic.
+4. **`packages/synergy/src/tool/taxonomy.ts`** — add an entry with the correct domain kind and traits (`stateful`, `externalIO`).
+5. **`packages/ui/src/components/semantic-tool-classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
+
+Skipping any of these causes the tool to fall back to a generic icon and label, or to miss permission/state tracking.
+
 ## Testing and Verification
 
-After making code changes:
+### Test philosophy
+
+- **Test invariants, not implementations.** A good test verifies a behavioral contract
+  that survives refactoring — if you rewrote the code differently, the test should still
+  pass. A bad test breaks when internals change but behavior doesn't. Example:
+  `Intent.sanitize` tests check that hallucinated tool calls produce fallbacks; this
+  invariant holds regardless of how sanitization is implemented.
+
+- **Write the test first when adding behavior or fixing bugs.** The test captures what
+  "correct" means before you're biased by the implementation. For pure refactoring
+  (behavior unchanged), no new tests are needed.
+
+- **Avoid testing source text.** Checking that source code contains or lacks specific
+  strings (e.g., verifying a flag is absent from a command) is brittle — it couples
+  the test to implementation wording rather than behavior. Prefer calling the function
+  and checking the result.
+
+- **Test location:** `packages/synergy/test/{domain}/`, mirroring the `src/` directory
+  structure. Shared fixtures go in `test/fixture/`.
+
+### After making code changes
 
 - run the narrowest relevant test first
 - expand verification if the change affects shared abstractions

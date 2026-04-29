@@ -19,6 +19,7 @@ import { buildScribePrompt } from "./prompt/scribe/builder"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_ADVISOR from "./prompt/advisor.txt"
+import PROMPT_INSPECTOR from "./prompt/inspector.txt"
 import { buildScholarPrompt } from "./prompt/scholar/builder"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
@@ -209,6 +210,8 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
+            edit: "ask",
+            write: "ask",
             runtime_reload: "deny",
             skill: {
               "agent-browser": "allow",
@@ -266,6 +269,8 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
+            edit: "ask",
+            write: "ask",
             skill: {
               "agent-browser": "allow",
               "frontend-design": "deny",
@@ -286,7 +291,7 @@ export namespace Agent {
       advisor: {
         name: "advisor",
         description:
-          "Read-only strategic advisor for complex architectural decisions, debugging hard problems, and code review. Consult when: 2+ fix attempts failed, unfamiliar code patterns, security/performance concerns, multi-system tradeoffs, or after completing significant work for review.",
+          "Read-only strategic advisor for complex architectural decisions, debugging hard problems, and design tradeoffs. Consult when: 2+ fix attempts failed, unfamiliar code patterns, security/performance concerns, multi-system tradeoffs, or when you need a second opinion on a significant design decision.",
         prompt: PROMPT_ADVISOR,
         options: {},
         permission: PermissionNext.merge(
@@ -302,12 +307,44 @@ export namespace Agent {
             bash: "allow",
             websearch: "allow",
             webfetch: "allow",
+            edit: "ask",
+            write: "ask",
             skill: {
               "agent-browser": "allow",
               "frontend-design": "allow",
               "git-guide": "allow",
               "skill-creator": "allow",
             },
+            external_directory: {
+              "*": "ask",
+              [Truncate.DIR]: "allow",
+            },
+          }),
+          user,
+        ),
+        mode: "subagent",
+        native: true,
+        model: role("thinking"),
+      },
+      inspector: {
+        name: "inspector",
+        description:
+          "Read-only code quality auditor. Evaluates readability, unnecessary indirection, structural density, and hygiene (dead code, unused imports, patch-over-fix patterns). Use after completing significant work for a quality check, or to audit recent changes before committing. Lists issues only — does NOT fix them.",
+        prompt: PROMPT_INSPECTOR,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            read: "allow",
+            lookat: "allow",
+            grep: "allow",
+            ast_grep: "allow",
+            glob: "allow",
+            list: "allow",
+            bash: "allow",
+            edit: "ask",
+            write: "ask",
             external_directory: {
               "*": "ask",
               [Truncate.DIR]: "allow",

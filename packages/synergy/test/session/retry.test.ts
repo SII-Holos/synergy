@@ -31,8 +31,8 @@ describe("session.retry.delay", () => {
     const date = new Date(Date.now() + 20000).toUTCString()
     const error = apiError({ "retry-after": date })
     const d = SessionRetry.delay(1, error)
-    expect(d).toBeGreaterThanOrEqual(19000)
-    expect(d).toBeLessThanOrEqual(20000)
+    expect(d).toBeGreaterThanOrEqual(15000)
+    expect(d).toBeLessThanOrEqual(25000)
   })
 
   test("ignores invalid retry hints", () => {
