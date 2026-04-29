@@ -15,10 +15,13 @@ const sdkDistComplete =
   fs.existsSync(path.join(sdkRoot, "dist/client.js")) &&
   fs.existsSync(path.join(sdkRoot, "dist/server.js"))
 
-// Check that the generated source files exist — without them, the aliases
-// would point to source files that import from ./gen/ which doesn't exist
-// on a fresh checkout before `bun dev prepare` is run.
-const sdkGenSourceExists = fs.existsSync(path.join(sdkRoot, "src/gen/sdk.gen.ts"))
+// Check that all generated source files exist — partial/interrupted SDK
+// generation (e.g. missing types.gen.ts or client.gen.ts) can break the
+// frontend build. Only activate aliases when all critical gen files are present.
+const sdkGenSourceExists =
+  fs.existsSync(path.join(sdkRoot, "src/gen/sdk.gen.ts")) &&
+  fs.existsSync(path.join(sdkRoot, "src/gen/types.gen.ts")) &&
+  fs.existsSync(path.join(sdkRoot, "src/gen/client/client.gen.ts"))
 
 /**
  * Fallback aliases for the SDK — only active when dist/ hasn't been built yet.

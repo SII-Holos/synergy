@@ -206,10 +206,11 @@ export const RestartCommand = cmd({
               // that the watchdog polls to trigger a restart.
               const flagFile = getDevRestartFlagFile(effectiveCwd)
               await Bun.write(flagFile, String(Date.now()))
-              // Wait up to 3s for the watchdog to consume the flag file.
-              // If it doesn't, the watchdog may have exited — report a warning.
+              // Wait up to 35s for the watchdog to consume the flag file.
+              // The watchdog polls every 1s, but after a crash it may be in
+              // backoff sleep (up to 30s). A 35s timeout covers the worst case.
               let consumed = false
-              for (let i = 0; i < 30; i++) {
+              for (let i = 0; i < 350; i++) {
                 await Bun.sleep(100)
                 if (!(await Bun.file(flagFile).exists())) {
                   consumed = true

@@ -4,6 +4,24 @@ import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 
+/**
+ * Resolve the monorepo root. If run from a subdirectory (e.g. packages/synergy),
+ * walk up to find the root (identified by the presence of the monorepo package.json
+ * with workspaces, or the turbo.json file).
+ */
+function resolveRepoRoot(cwd: string): string {
+  let dir = cwd
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, "turbo.json")) && fs.existsSync(path.join(dir, "packages"))) {
+      return dir
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return cwd
+}
+
 function requireSourceCheckout(repoRoot: string): void {
   const generateScript = path.join(repoRoot, "script", "generate.ts")
   const appDir = path.join(repoRoot, "packages", "app")
@@ -19,7 +37,7 @@ export const PrepareCommand = cmd({
   command: "prepare",
   describe: "one-time dev setup: install deps, generate SDK, build frontend",
   handler: async () => {
-    const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
+    const repoRoot = resolveRepoRoot(process.env.SYNERGY_CWD ?? process.cwd())
     requireSourceCheckout(repoRoot)
 
     UI.println("📦 Installing dependencies...")
@@ -51,7 +69,7 @@ export const BuildCommand = cmd({
   command: "build",
   describe: "rebuild the web frontend",
   handler: async () => {
-    const repoRoot = process.env.SYNERGY_CWD ?? process.cwd()
+    const repoRoot = resolveRepoRoot(process.env.SYNERGY_CWD ?? process.cwd())
     requireSourceCheckout(repoRoot)
 
     UI.println("🏗️  Building web frontend...")
