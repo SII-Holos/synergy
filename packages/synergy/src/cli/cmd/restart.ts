@@ -175,8 +175,26 @@ export const RestartCommand = cmd({
             if (process.platform === "win32") {
               // On Windows, SIGUSR1 is not available. Use a flag file
               // that the watchdog polls to trigger a restart.
-              await Bun.write(getDevRestartFlagFile(effectiveCwd), String(Date.now()))
-              UI.println(`Restart requested for dev server (watchdog PID ${pid}).`)
+              const flagFile = getDevRestartFlagFile(effectiveCwd)
+              await Bun.write(flagFile, String(Date.now()))
+              // Wait up to 3s for the watchdog to consume the flag file.
+              // If it doesn't, the watchdog may have exited — report a warning.
+              let consumed = false
+              for (let i = 0; i < 30; i++) {
+                await Bun.sleep(100)
+                if (!(await Bun.file(flagFile).exists())) {
+                  consumed = true
+                  break
+                }
+              }
+              if (consumed) {
+                UI.println(`Restarted dev server (watchdog PID ${pid}).`)
+              } else {
+                UI.error(`Restart flag was not consumed by watchdog (PID ${pid}). The server may have exited.`)
+                try {
+                  await Bun.file(flagFile).unlink()
+                } catch {}
+              }
             } else {
               process.kill(pid, "SIGUSR1")
               UI.println(`Restarted dev server (watchdog PID ${pid}).`)
