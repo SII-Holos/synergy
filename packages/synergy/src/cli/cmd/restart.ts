@@ -7,6 +7,35 @@ import { DaemonService } from "../../daemon/service"
 import { getDevWatchdogPidFile, getDevRestartFlagFile } from "../../server/runtime"
 import { parseProcStatStarttime } from "../../util/proc"
 
+/**
+ * Parse BSD/macOS `ps -o etime=` output into total seconds.
+ * Format: "[[dd-]hh:]mm:ss" e.g. "1-03:45:22" or "12:34" or "1:23:45"
+ */
+function parseEtime(etime: string): number | undefined {
+  const trimmed = etime.trim()
+  // Split on colons and dashes to get [days,] [hours,] minutes, seconds
+  const dashParts = trimmed.split("-")
+  let days = 0
+  let timeStr = trimmed
+  if (dashParts.length === 2) {
+    days = parseInt(dashParts[0], 10)
+    timeStr = dashParts[1]
+  }
+  const parts = timeStr.split(":").map((p) => parseInt(p, 10))
+  if (parts.some((p) => isNaN(p))) return undefined
+  let seconds = 0
+  if (parts.length === 3) {
+    // hh:mm:ss
+    seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+  } else if (parts.length === 2) {
+    // mm:ss
+    seconds = parts[0] * 60 + parts[1]
+  } else {
+    return undefined
+  }
+  return days * 86400 + seconds
+}
+
 async function isWatchdogRunning(pid: number): Promise<boolean> {
   try {
     process.kill(pid, 0)
@@ -35,15 +64,15 @@ async function verifyWatchdogIdentity(pid: number, startTime: number, starttimeJ
       const { execSync } = await import("child_process")
       try {
         if (process.platform === "darwin") {
-          // macOS: use ps -o etimes= to get elapsed seconds since process start.
-          // This is locale-independent (always outputs seconds as a number)
-          // and avoids the fragile Date parsing of lstart output.
+          // macOS: use ps -o etime= to get elapsed time since process start.
+          // BSD ps uses "etime" (not "etimes" which is Linux-only).
+          // Format: [[dd-]hh:]mm:ss — always locale-independent.
           const { execSync } = await import("child_process")
           try {
-            const etimes = execSync(`ps -p ${pid} -o etimes= 2>/dev/null`, { encoding: "utf-8" }).trim()
-            if (!etimes) return false
-            const elapsedSec = parseInt(etimes, 10)
-            if (isNaN(elapsedSec)) return false
+            const etime = execSync(`ps -p ${pid} -o etime= 2>/dev/null`, { encoding: "utf-8" }).trim()
+            if (!etime) return false
+            const elapsedSec = parseEtime(etime)
+            if (elapsedSec === undefined) return false
             // Verify: stored startTime + elapsed ≈ now (allow 2s tolerance)
             const expectedNow = Math.floor(startTime / 1000) + elapsedSec
             const actualNow = Math.floor(Date.now() / 1000)

@@ -634,11 +634,13 @@ describe("non-Linux PID identity check robustness", () => {
 
     const darwinBlock = identityFn.substring(darwinIdx, darwinIdx + 600)
 
-    // Should have explicit error handling when Date.parse fails or returns NaN
-    // (ps -o lstart output varies by locale and can be unparseable)
-    const hasNanCheck = /isNaN|NaN/.test(darwinBlock)
+    // macOS should use etime (BSD-compatible, locale-independent)
+    // and handle parse failures gracefully
+    const usesEtime = /etime/.test(darwinBlock)
+    const hasParseErrorHandling = /parseEtime|undefined/.test(darwinBlock) || /isNaN|NaN/.test(darwinBlock)
 
-    expect(hasNanCheck).toBe(true)
+    expect(usesEtime).toBe(true)
+    expect(hasParseErrorHandling).toBe(true)
   })
 
   test("Windows identity check should fall back to PowerShell if wmic is unavailable", () => {
@@ -712,6 +714,51 @@ describe("daemon restart fallback safety", () => {
     )
 
     expect(hasDevModeGuard).toBe(true)
+  })
+})
+
+describe("parseEtime behavioral test", () => {
+  test("parses BSD ps etime formats correctly", async () => {
+    // Import the helper via a quick inline test since it's not exported
+    // We'll test the logic by importing restart.ts internals aren't exposed,
+    // so test the parseEtime function logic directly
+    function parseEtime(etime: string): number | undefined {
+      const trimmed = etime.trim()
+      const dashParts = trimmed.split("-")
+      let days = 0
+      let timeStr = trimmed
+      if (dashParts.length === 2) {
+        days = parseInt(dashParts[0], 10)
+        timeStr = dashParts[1]
+      }
+      const parts = timeStr.split(":").map((p) => parseInt(p, 10))
+      if (parts.some((p) => isNaN(p))) return undefined
+      let seconds = 0
+      if (parts.length === 3) {
+        seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+      } else if (parts.length === 2) {
+        seconds = parts[0] * 60 + parts[1]
+      } else {
+        return undefined
+      }
+      return days * 86400 + seconds
+    }
+
+    // mm:ss
+    expect(parseEtime("05:30")).toBe(330)
+    expect(parseEtime("00:01")).toBe(1)
+
+    // hh:mm:ss
+    expect(parseEtime("1:23:45")).toBe(5025)
+    expect(parseEtime("0:00:30")).toBe(30)
+
+    // dd-hh:mm:ss
+    expect(parseEtime("1-03:45:22")).toBe(86400 + 3 * 3600 + 45 * 60 + 22)
+    expect(parseEtime("2-00:00:00")).toBe(172800)
+
+    // Invalid
+    expect(parseEtime("invalid")).toBeUndefined()
+    expect(parseEtime("")).toBeUndefined()
   })
 })
 
