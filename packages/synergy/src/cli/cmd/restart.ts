@@ -169,7 +169,16 @@ export const RestartCommand = cmd({
         starttimeJiffies = data.starttimeJiffies
         storedCwd = data.devCwd
       } catch {
+        // Legacy plain-PID format — no identity token available.
+        // Without startTime, we can't verify the PID belongs to the watchdog,
+        // so refuse to signal it (PID reuse risk).
         pid = parseInt(content.trim(), 10)
+        UI.error("PID file uses legacy format (no identity token). Cannot verify process identity.")
+        UI.error("Restart the dev server to generate a new PID file.")
+        try {
+          await Bun.file(pidFile).unlink()
+        } catch {}
+        process.exit(1)
       }
 
       // Use the stored cwd from PID file for flag file path consistency.
@@ -224,6 +233,7 @@ export const RestartCommand = cmd({
                 try {
                   await Bun.file(flagFile).unlink()
                 } catch {}
+                process.exit(1)
               }
             } else {
               process.kill(pid, "SIGUSR1")
