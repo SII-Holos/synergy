@@ -400,6 +400,8 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/.gitignore`, "*.ignored")
         await Bun.write(`${tmp.path}/test.ignored`, "ignored content")
         await Bun.write(`${tmp.path}/normal.txt`, "normal content")
+        // Ensure git picks up the new .gitignore before diffing
+        await $`git add .`.cwd(tmp.path).quiet().nothrow()
 
         const patch = await Snapshot.patch(before!)
 
