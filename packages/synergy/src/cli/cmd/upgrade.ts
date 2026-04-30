@@ -63,9 +63,9 @@ export const UpgradeCommand = {
     }
     spinner.stop("Upgrade complete")
 
-    // If this CLI is running under an --restart=always watchdog, we need to
+    // If this CLI is running under an --restart=always or --restart=dev watchdog, we need to
     // stop this server child so the wrapper can respawn with the new binary.
-    if (process.env.SYNERGY_RESTART_POLICY === "always") {
+    if (process.env.SYNERGY_RESTART_POLICY === "always" || process.env.SYNERGY_RESTART_POLICY === "dev") {
       prompts.outro("Done — restarting server with new binary")
       // Short delay to let any output finish flushing
       setTimeout(() => process.exit(0), 300)

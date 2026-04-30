@@ -29,13 +29,24 @@ cd synergy
 bun install
 ```
 
-Start the dev server, then connect a client from a second terminal:
+First-time setup:
 
 ```bash
-bun run --cwd packages/app build   # build the frontend (required before first run)
-bun dev                             # start the server
-bun dev web --dev                   # open the web UI with hot-reload (separate terminal)
-bun dev send "hello"                # or send a one-off prompt
+bun dev prepare        # install deps, generate SDK, build frontend
+```
+
+Start the dev server:
+
+```bash
+bun dev server         # start the server
+bun dev web --dev      # open the web UI (separate terminal)
+```
+
+After editing code:
+
+```bash
+bun dev build          # rebuild frontend (after app changes)
+bun dev restart        # restart the server
 ```
 
 See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.
