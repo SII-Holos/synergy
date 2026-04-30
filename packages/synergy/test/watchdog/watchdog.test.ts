@@ -776,21 +776,34 @@ describe("SDK alias fallback for fresh checkouts", () => {
   })
 })
 
-describe("restart daemon fallback should be reachable", () => {
-  test("daemon fallback should NOT be blocked when PID file is simply absent", () => {
+describe("restart daemon fallback safety in dev mode", () => {
+  test("missing PID file in dev mode (SYNERGY_CWD set) should exit with error, not fall through to daemon", () => {
     const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
 
-    // The "No PID file" catch block should only error in dev mode
-    // if there's evidence the user was running a dev server (e.g. PID file
-    // existed but was stale). If there's simply no PID file, falling through
-    // to daemon restart is correct — the user may be using daemon mode.
+    // When SYNERGY_CWD is set, the user ran `bun dev restart` and expects
+    // to restart the dev server. If the PID file is absent, falling through
+    // to Daemon.restart() would restart the managed background service instead,
+    // creating port conflicts and stray processes. The command must exit(1).
     const noPidFileCatch = source.substring(source.indexOf("// No PID file"), source.indexOf("Daemon.restart()"))
 
-    // The SYNERGY_CWD guard should NOT block daemon fallback when the PID file
-    // is simply absent — only when we found a stale/mismatched PID file
-    // (indicating the dev server was expected but crashed)
-    const blocksDaemonOnAbsentPidFile = /SYNERGY_CWD[\s\S]*exit/.test(noPidFileCatch)
+    // In dev mode (SYNERGY_CWD set), should call process.exit(1)
+    const exitsInDevMode = /SYNERGY_CWD[\s\S]*exit\s*\(\s*1\s*\)/.test(noPidFileCatch)
 
-    expect(blocksDaemonOnAbsentPidFile).toBe(false)
+    expect(exitsInDevMode).toBe(true)
+  })
+
+  test("missing PID file without SYNERGY_CWD should fall through to daemon restart", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../src/cli/cmd/restart.ts"), "utf-8")
+
+    // When SYNERGY_CWD is NOT set, the user is in daemon mode, and a missing
+    // PID file just means no dev server is running. Falling through to
+    // Daemon.restart() is correct.
+    const noPidFileCatch = source.substring(source.indexOf("// No PID file"), source.indexOf("Daemon.restart()"))
+
+    // The SYNERGY_CWD check should be a conditional guard, not an unconditional exit
+    // There should be a path that does NOT call exit (falls through to daemon)
+    const hasConditionalExit = /if\s*\(\s*process\.env\.SYNERGY_CWD/.test(noPidFileCatch)
+
+    expect(hasConditionalExit).toBe(true)
   })
 })

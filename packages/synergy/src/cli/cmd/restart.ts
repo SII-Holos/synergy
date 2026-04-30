@@ -257,11 +257,15 @@ export const RestartCommand = cmd({
       // No PID file at all.
       if (process.env.SYNERGY_CWD) {
         // Dev mode but no PID file — the watchdog PID write may have failed,
-        // or the dev server was never started. Warn but fall through to daemon
-        // since we can't know for sure.
-        UI.error("Warning: no dev watchdog PID file found. Falling back to daemon restart.")
-        UI.error("If the dev server is running but the PID file was lost, restart it manually.")
+        // or the dev server was never started. Do NOT fall through to daemon
+        // restart — that would restart the managed service instead of the dev
+        // server, creating port conflicts and stray processes.
+        UI.error("No dev watchdog PID file found. Cannot restart dev server.")
+        UI.error("If the dev server is running but the PID file was lost, stop it manually and start a new one.")
+        UI.error("If no dev server is running, start one with: bun dev server")
+        process.exit(1)
       }
+      // No SYNERGY_CWD — not in dev mode. Fall through to daemon restart.
     }
 
     // Restart the managed background service.
