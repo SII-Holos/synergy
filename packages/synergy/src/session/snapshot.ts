@@ -98,26 +98,38 @@ export namespace Snapshot {
       for (const file of item.files) {
         if (files.has(file)) continue
         log.info("reverting", { file, hash: item.hash })
-        const relativePath = path.relative(Instance.directory, file)
+        const relativePath = path.relative(Instance.directory, file).replaceAll("\\", "/")
         const checkTree =
           await $`git --git-dir ${git} --work-tree ${Instance.directory} ls-tree ${item.hash} -- ${relativePath}`
             .quiet()
             .cwd(Instance.directory)
             .nothrow()
-        if (checkTree.exitCode === 0 && checkTree.text().trim()) {
-          const result =
-            await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${relativePath}`
-              .quiet()
-              .cwd(Instance.directory)
-              .nothrow()
-          if (result.exitCode !== 0) {
-            log.info("file existed in snapshot but checkout failed, keeping", {
-              file,
-            })
+        if (checkTree.exitCode === 0) {
+          if (checkTree.text().trim()) {
+            // File existed in snapshot — restore it
+            const result =
+              await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${item.hash} -- ${relativePath}`
+                .quiet()
+                .cwd(Instance.directory)
+                .nothrow()
+            if (result.exitCode !== 0) {
+              log.warn("file existed in snapshot but checkout failed", {
+                file,
+                stderr: result.stderr.toString(),
+              })
+            }
+          } else {
+            // ls-tree succeeded but returned empty — file did not exist in snapshot
+            log.info("file did not exist in snapshot, deleting", { file })
+            await fs.unlink(file).catch(() => {})
           }
         } else {
-          log.info("file did not exist in snapshot, deleting", { file })
-          await fs.unlink(file).catch(() => {})
+          // ls-tree failed — don't delete; we can't confirm the file's status
+          log.warn("ls-tree failed, skipping revert for file", {
+            file,
+            exitCode: checkTree.exitCode,
+            stderr: checkTree.stderr.toString(),
+          })
         }
         files.add(file)
       }

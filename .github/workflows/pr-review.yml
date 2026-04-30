@@ -2,7 +2,7 @@ name: PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 permissions:
   pull-requests: write
@@ -95,7 +95,17 @@ jobs:
             --format json \
             --model "sii-openai/GPT-5.4" \
             --title "PR Review #${{ github.event.pull_request.number }}" \
-            "Review this PR diff carefully.
+            "Review this PR carefully.
+
+          DIFF INTERPRETATION RULES (CRITICAL — read before reviewing):
+          1. Lines starting with '-' (minus) are REMOVED code — they NO LONGER EXIST.
+             NEVER flag a bug or issue in a removed line. That code is gone.
+          2. Lines starting with '+' (plus) are ADDED code — this is current. Flag issues here.
+          3. Lines with no prefix are context — they exist before AND after. Only flag if the
+             diff changes make the existing code incorrect.
+          4. If the diff REMOVES a buggy pattern and REPLACES it with a fix, do NOT flag the old
+             bug as if it still exists. Only flag if the replacement is also wrong.
+          5. Do NOT re-flag issues from previous reviews on this PR. Only report NEW findings.
 
           PR: ${{ github.event.pull_request.title }}
           ${{ github.event.pull_request.body || '' }}
@@ -125,7 +135,7 @@ jobs:
           if [ ! -s /tmp/review.txt ]; then
             synergy send \
               --model "sii-openai/GPT-5.4" \
-              "Review this PR diff. Report bugs, security issues, performance problems, and missing error handling as 🔴/🟡/🔵 items with file:line. End with LGTM or Needs Changes. PR: ${{ github.event.pull_request.title }}" \
+              "Review this PR diff. Report bugs, security issues, performance problems, and missing error handling as 🔴/🟡/🔵 items with file:line. End with **LGTM** or **Needs Changes**. PR: ${{ github.event.pull_request.title }}" \
               --file /tmp/pr.diff > /tmp/review.txt 2>&1
           fi
         env:
@@ -134,10 +144,10 @@ jobs:
       - name: Determine review event
         id: event
         run: |
-          if grep -qi "LGTM" /tmp/review.txt; then
-            echo "event=APPROVE" >> "$GITHUB_OUTPUT"
+          if grep -qiE '^\*\*LGTM\*\*' /tmp/review.txt; then
+            echo "event=approve" >> "$GITHUB_OUTPUT"
           else
-            echo "event=COMMENT" >> "$GITHUB_OUTPUT"
+            echo "event=comment" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Submit Review

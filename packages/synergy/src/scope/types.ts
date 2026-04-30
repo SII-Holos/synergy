@@ -24,6 +24,8 @@ export type Scope = Global | Project
 export const Info = z
   .object({
     id: z.string(),
+    type: z.enum(["global", "project"]),
+    directory: z.string(),
     worktree: z.string(),
     vcs: z.literal("git").optional(),
     name: z.string().optional(),

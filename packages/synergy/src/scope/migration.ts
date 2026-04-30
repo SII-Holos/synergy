@@ -22,6 +22,26 @@ const RECLAIMED_SCOPE_ID = "__reclaimed__"
 
 export const migrations: Migration[] = [
   {
+    id: "20260430-scope-add-type-directory",
+    description: "Add type and directory fields to scope records that predate these schema fields",
+    async up(progress) {
+      const ids = await Storage.scan(StoragePath.scopeRoot())
+      let done = 0
+      for (const rawID of ids) {
+        const scopePath = StoragePath.scope(Identifier.asScopeID(rawID))
+        const data = await Storage.read<Record<string, unknown>>(scopePath).catch(() => undefined)
+        if (data && !data.type) {
+          await Storage.update(scopePath, (draft: Record<string, unknown>) => {
+            draft.type = "project"
+            draft.directory = draft.directory ?? draft.worktree
+          })
+        }
+        done++
+        progress(done, ids.length)
+      }
+    },
+  },
+  {
     id: "20260424-scope-reclaim-orphans",
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
