@@ -280,6 +280,8 @@ export namespace Scope {
     if (!existing) {
       existing = {
         id,
+        type: "project" as const,
+        directory: sandbox,
         worktree,
         vcs: vcs as Scope.Project["vcs"],
         sandboxes: [],
@@ -294,6 +296,8 @@ export namespace Scope {
 
     const persisted: z.infer<typeof Info> = {
       ...existing,
+      type: "project" as const,
+      directory: sandbox,
       worktree,
       vcs: vcs as Scope.Project["vcs"],
       time: { ...existing.time },
@@ -348,7 +352,7 @@ export namespace Scope {
     return valid.map((data) => ({
       type: "project" as const,
       id: data.id,
-      directory: data.worktree,
+      directory: data.directory ?? data.worktree,
       worktree: data.worktree,
       vcs: data.vcs,
       name: data.name,
