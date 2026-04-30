@@ -66,6 +66,16 @@ export namespace Scope {
     await Storage.write(StoragePath.scope(pid(data.id)), data)
   }
 
+  async function findByWorktree(worktree: string): Promise<z.infer<typeof Info> | undefined> {
+    const resolved = path.resolve(worktree)
+    for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
+      const data = await readPersisted(rawID).catch(() => undefined)
+      if (!data || data.time?.archived) continue
+      if (path.resolve(data.worktree) === resolved) return data
+    }
+    return undefined
+  }
+
   export async function fromDirectory(input: string): Promise<{ scope: Scope; sandbox: string }> {
     const directory = Filesystem.sanitizePath(input)
     log.info("fromDirectory", { directory })
@@ -226,6 +236,31 @@ export namespace Scope {
     const { id, sandbox, worktree, vcs } = resolved
 
     let existing = await readPersisted(id)
+
+    // If the derived ID doesn't match any existing scope, check whether this
+    // worktree already has a scope under a different ID. This happens when
+    // directory characteristics change (e.g. git init adds a commit-based ID
+    // to a directory that was previously tracked by path hash). Rather than
+    // creating a second scope and fragmenting data, we reuse the existing one
+    // and update its metadata.
+    if (!existing) {
+      const byWorktree = await findByWorktree(worktree)
+      if (byWorktree) {
+        existing = byWorktree
+        log.info("reusing existing scope for worktree", {
+          existingID: existing.id,
+          derivedID: id,
+          worktree,
+        })
+        // Cache the stable scope ID in .git/synergy so future lookups are instant
+        const gitDir = path.join(worktree, ".git")
+        if (existsSync(gitDir)) {
+          void Bun.file(path.join(gitDir, "synergy"))
+            .write(existing.id)
+            .catch(() => undefined)
+        }
+      }
+    }
 
     if (existing?.time?.archived) {
       const scope: Scope.Project = {
