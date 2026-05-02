@@ -157,8 +157,10 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       if (params.reference) {
         const refName = params.reference
 
-        if (skill.references && !skill.location.startsWith("/")) {
-          // In-memory skill (builtin or plugin): serve reference from memory
+        if (skill.references) {
+          // In-memory references present (builtin or plugin): serve from memory
+          // Plugin skills pre-load all references/ files at registration time (resolvePluginSkill),
+          // so disk location is irrelevant — use the in-memory map.
           const content = resolveBuiltinReference(skill.references, refName)
           if (!content) {
             const available = Object.keys(skill.references).join(", ")
