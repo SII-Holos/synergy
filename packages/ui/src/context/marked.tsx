@@ -407,6 +407,7 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
       },
       markedKatex({
         throwOnError: false,
+        nonStandard: true,
       }),
       markedShiki({
         container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
