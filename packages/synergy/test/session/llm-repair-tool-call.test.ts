@@ -25,7 +25,11 @@ import { LLM } from "../../src/session/llm"
  */
 
 const helpers = {
-  toolCall(toolName: string, input: string, overrides: Partial<Parameters<typeof LLM.repairToolCall>[0]["toolCall"]> = {}) {
+  toolCall(
+    toolName: string,
+    input: string,
+    overrides: Partial<Parameters<typeof LLM.repairToolCall>[0]["toolCall"]> = {},
+  ) {
     return {
       type: "tool-call" as const,
       toolCallId: "call_test",
@@ -51,10 +55,7 @@ const helpers = {
 
 describe("I1: tool name case-folding", () => {
   test("UpperCase tool name is folded to matching lowercase tool", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("Bash", `{"command": "ls"}`),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("Bash", `{"command": "ls"}`), helpers.names("bash"))
     expect(out).not.toBeNull()
     expect(out!.toolName).toBe("bash")
     // Input is preserved as-is when only a name fix is needed
@@ -71,19 +72,13 @@ describe("I1: tool name case-folding", () => {
   })
 
   test("Already-lowercase tool name is not touched", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", `{"command": "ls"}`),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", `{"command": "ls"}`), helpers.names("bash"))
     // Already valid JSON + existing tool = nothing to repair
     expect(out).toBeNull()
   })
 
   test("UpperCase tool name where lowercase also doesn't exist is NOT a case-fold match", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("TotallyFakeTool", `{"x": 1}`),
-      helpers.names("bash", "read"),
-    )
+    const out = LLM.repairToolCall(helpers.args("TotallyFakeTool", `{"x": 1}`), helpers.names("bash", "read"))
     expect(out).toBeNull()
   })
 })
@@ -105,10 +100,7 @@ describe("I2a: resolved tool must exist before JSON recovery", () => {
 
 describe("I2b: input must be a non-empty string", () => {
   test("Empty-string input returns null (nothing to recover)", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", ""),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", ""), helpers.names("bash"))
     expect(out).toBeNull()
   })
 })
@@ -130,47 +122,32 @@ describe("I2c: only engage recovery when native JSON.parse fails", () => {
     // Naive JSON.stringify(JSON.parse(x)) changes formatting; guarding against
     // this is important so we don't rewrite identical-semantics JSON.
     const withSpaces = `{  "a" : 1 ,  "b" :  2  }`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", withSpaces),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", withSpaces), helpers.names("bash"))
     expect(out).toBeNull()
   })
 })
 
 describe("I2d: recovered value must be a non-empty plain object", () => {
   test("Pure garbage (no JSON structure) does not fabricate a tool call", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", "this is not json at all"),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", "this is not json at all"), helpers.names("bash"))
     // parsePartialJson may return {} for unparseable input — we must not accept {}
     expect(out).toBeNull()
   })
 
   test("Truncated JSON that cannot produce any key returns null", () => {
     // Only an opening brace — nothing to recover.
-    const out = LLM.repairToolCall(
-      helpers.args("bash", "{"),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", "{"), helpers.names("bash"))
     expect(out).toBeNull()
   })
 
   test("Array-only JSON at top level is not accepted (tool calls are objects)", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", "[1, 2, 3]"),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", "[1, 2, 3]"), helpers.names("bash"))
     // Not null because it's valid JSON — but valid JSON short-circuits earlier anyway.
     expect(out).toBeNull()
   })
 
   test("Truncated array with recoverable but non-object result is rejected", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", "[1, 2, 3"),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", "[1, 2, 3"), helpers.names("bash"))
     expect(out).toBeNull()
   })
 })
@@ -183,10 +160,7 @@ describe("JSON recovery happy path", () => {
   test("Missing outer } at end is recovered (the LLM's typical failure mode)", () => {
     // Last field is an object; LLM closes inner } but forgets outer }.
     const truncated = `{"action": "register", "hyperparameters": {"lr": 1e-4, "seed": 42}`
-    const out = LLM.repairToolCall(
-      helpers.args("research_experiment", truncated),
-      helpers.names("research_experiment"),
-    )
+    const out = LLM.repairToolCall(helpers.args("research_experiment", truncated), helpers.names("research_experiment"))
     expect(out).not.toBeNull()
     expect(out!.toolName).toBe("research_experiment")
     const parsed = JSON.parse(out!.input) as { action: string; hyperparameters: Record<string, number> }
@@ -196,20 +170,14 @@ describe("JSON recovery happy path", () => {
 
   test("Missing outer } when last field is an array is recovered", () => {
     const truncated = `{"a": 1, "b": [1, 2, 3]`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", truncated),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", truncated), helpers.names("bash"))
     expect(out).not.toBeNull()
     expect(JSON.parse(out!.input)).toEqual({ a: 1, b: [1, 2, 3] })
   })
 
   test("Deeply nested truncation is recovered", () => {
     const truncated = `{"a": {"b": {"c": {"d": 1}`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", truncated),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", truncated), helpers.names("bash"))
     expect(out).not.toBeNull()
     // The three missing } should all be restored.
     expect(JSON.parse(out!.input)).toEqual({ a: { b: { c: { d: 1 } } } })
@@ -217,20 +185,14 @@ describe("JSON recovery happy path", () => {
 
   test("Mixed {} and [] truncation is recovered in the right order", () => {
     const truncated = `{"data": [{"x": 1}, {"y": 2}]`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", truncated),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", truncated), helpers.names("bash"))
     expect(out).not.toBeNull()
     expect(JSON.parse(out!.input)).toEqual({ data: [{ x: 1 }, { y: 2 }] })
   })
 
   test("Real-world failure case 1 — research_experiment register with nested hyperparameters", () => {
     const truncated = `{"action": "register", "title": "Micro-pilot: manual proposition extraction validation", "group": "sanity", "plan": "plan_001", "backend": "local", "hyperparameters": {"traces": 5, "annotators": 2, "method": "manual_proposition_extraction"}`
-    const out = LLM.repairToolCall(
-      helpers.args("research_experiment", truncated),
-      helpers.names("research_experiment"),
-    )
+    const out = LLM.repairToolCall(helpers.args("research_experiment", truncated), helpers.names("research_experiment"))
     expect(out).not.toBeNull()
     const parsed = JSON.parse(out!.input) as {
       action: string
@@ -248,10 +210,7 @@ describe("JSON recovery happy path", () => {
 
   test("Real-world failure case 2 — multi-array hyperparameters", () => {
     const truncated = `{"action": "register", "title": "Benevolent Amnesia", "hyperparameters": {"compaction_ratios": [0.25, 0.5, 0.75, 0.9], "models": ["glm5.1", "qwen3.5"], "methods": ["summarization", "sliding_window"]}`
-    const out = LLM.repairToolCall(
-      helpers.args("research_experiment", truncated),
-      helpers.names("research_experiment"),
-    )
+    const out = LLM.repairToolCall(helpers.args("research_experiment", truncated), helpers.names("research_experiment"))
     expect(out).not.toBeNull()
     const parsed = JSON.parse(out!.input) as {
       hyperparameters: { compaction_ratios: number[]; models: string[]; methods: string[] }
@@ -268,10 +227,7 @@ describe("JSON recovery happy path", () => {
 
 describe("composition of case-fold and JSON recovery", () => {
   test("UpperCase tool name with already-valid JSON folds the name only", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("Bash", `{"command": "ls"}`),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("Bash", `{"command": "ls"}`), helpers.names("bash"))
     expect(out).not.toBeNull()
     expect(out!.toolName).toBe("bash")
     expect(out!.input).toBe(`{"command": "ls"}`)
@@ -285,10 +241,7 @@ describe("composition of case-fold and JSON recovery", () => {
     // argument, case-fold "wins" and the broken input reaches the tool.
     // Acceptable because it's an uncommon combination, and the tool's own
     // Zod validation still catches it.
-    const out = LLM.repairToolCall(
-      helpers.args("Bash", `{"command": "ls"`),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("Bash", `{"command": "ls"`), helpers.names("bash"))
     // Either behavior is defensible; we lock in the current one so regressions
     // are visible. If we later decide to recover JSON in this case, update this test.
     expect(out).not.toBeNull()
@@ -304,10 +257,7 @@ describe("composition of case-fold and JSON recovery", () => {
 describe("I4: idempotency", () => {
   test("Feeding the repair output back in yields null (already valid)", () => {
     const broken = `{"a": 1, "b": {"c": 2}`
-    const first = LLM.repairToolCall(
-      helpers.args("bash", broken),
-      helpers.names("bash"),
-    )
+    const first = LLM.repairToolCall(helpers.args("bash", broken), helpers.names("bash"))
     expect(first).not.toBeNull()
 
     // The repaired input is valid JSON — second pass must not rewrite it.
@@ -326,27 +276,15 @@ describe("I4: idempotency", () => {
 describe("I5: determinism", () => {
   test("Same inputs yield identical outputs across multiple calls", () => {
     const broken = `{"a": 1, "b": {"c": 2}`
-    const a = LLM.repairToolCall(
-      helpers.args("bash", broken),
-      helpers.names("bash"),
-    )
-    const b = LLM.repairToolCall(
-      helpers.args("bash", broken),
-      helpers.names("bash"),
-    )
+    const a = LLM.repairToolCall(helpers.args("bash", broken), helpers.names("bash"))
+    const b = LLM.repairToolCall(helpers.args("bash", broken), helpers.names("bash"))
     expect(a).toEqual(b)
   })
 
   test("Same input with different tool sets gives different results", () => {
     const broken = `{"a": 1}`
-    const known = LLM.repairToolCall(
-      helpers.args("bash", broken),
-      helpers.names("bash"),
-    )
-    const unknown = LLM.repairToolCall(
-      helpers.args("bash", broken),
-      helpers.names("read"),
-    )
+    const known = LLM.repairToolCall(helpers.args("bash", broken), helpers.names("bash"))
+    const unknown = LLM.repairToolCall(helpers.args("bash", broken), helpers.names("read"))
     // Valid JSON + known tool → null (nothing to do)
     expect(known).toBeNull()
     // Valid JSON + unknown tool → null (no recovery triggered)
@@ -360,10 +298,7 @@ describe("I5: determinism", () => {
 
 describe("robustness: never throw on pathological input", () => {
   test("Input with unterminated string is handled gracefully", () => {
-    const out = LLM.repairToolCall(
-      helpers.args("bash", `{"command": "ls`),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", `{"command": "ls`), helpers.names("bash"))
     // parsePartialJson may or may not recover this. We only require non-throw.
     expect(() => out).not.toThrow()
   })
@@ -371,19 +306,13 @@ describe("robustness: never throw on pathological input", () => {
   test("Extremely long truncated input does not crash", () => {
     const longInput = `{"a": ` + "1,".repeat(5000) + `"b": {"c": 1}`
     expect(() => {
-      LLM.repairToolCall(
-        helpers.args("bash", longInput),
-        helpers.names("bash"),
-      )
+      LLM.repairToolCall(helpers.args("bash", longInput), helpers.names("bash"))
     }).not.toThrow()
   })
 
   test("Unicode / emoji in input does not crash", () => {
     const truncated = `{"msg": "你好 🌱", "meta": {"tags": ["中文"]}`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", truncated),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", truncated), helpers.names("bash"))
     expect(out).not.toBeNull()
     const parsed = JSON.parse(out!.input) as { msg: string; meta: { tags: string[] } }
     expect(parsed.msg).toBe("你好 🌱")
@@ -393,20 +322,14 @@ describe("robustness: never throw on pathological input", () => {
   test("Escaped braces inside strings are not miscounted", () => {
     // The { in "template: {var}" should not be treated as a real opener.
     const valid = `{"template": "hello {name}", "nested": {"k": 1}}`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", valid),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", valid), helpers.names("bash"))
     // Valid JSON → null.
     expect(out).toBeNull()
   })
 
   test("Truncated input containing string with braces is still recovered correctly", () => {
     const truncated = `{"template": "hello {name}", "nested": {"k": 1}`
-    const out = LLM.repairToolCall(
-      helpers.args("bash", truncated),
-      helpers.names("bash"),
-    )
+    const out = LLM.repairToolCall(helpers.args("bash", truncated), helpers.names("bash"))
     expect(out).not.toBeNull()
     const parsed = JSON.parse(out!.input) as { template: string; nested: { k: number } }
     expect(parsed.template).toBe("hello {name}")
