@@ -13,6 +13,10 @@ afterAll(() => {
 })
 // Set test home directory to isolate tests from user's actual home directory
 // This makes Global.Path.root resolve to <dir>/home/.synergy
+// Clear SYNERGY_HOME first: homeDir() in global/index.ts checks SYNERGY_HOME
+// before SYNERGY_TEST_HOME, so a pre-existing SYNERGY_HOME would leak real
+// user data (sessions, messages, migration state) into test execution.
+delete process.env["SYNERGY_HOME"]
 const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
