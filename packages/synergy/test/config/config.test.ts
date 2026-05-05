@@ -4,11 +4,12 @@ import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
 import { Auth } from "../../src/provider/api-key"
 import { tmpdir } from "../fixture/fixture"
+import os from "os"
 import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { parse as parseJsonc } from "jsonc-parser"
-import { runMigrations } from "../../src/migration"
+import { resetMigrations, runMigrations } from "../../src/migration"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 
@@ -876,11 +877,16 @@ test("permission config preserves key order", async () => {
 })
 
 test("migrates legacy channel holos config to top-level holos", async () => {
-  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
-  await fs.mkdir(path.dirname(target), { recursive: true })
-  await Bun.write(
-    target,
-    `{
+  const home = path.join(os.tmpdir(), `synergy-config-holos-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
   "$schema": "file:///test/config.schema.json",
   "channel": {
     "holos": {
@@ -896,27 +902,36 @@ test("migrates legacy channel holos config to top-level holos", async () => {
     }
   }
 }`,
-  )
+    )
 
-  await Storage.remove(StoragePath.metaMigrationLog())
-  await runMigrations()
+    resetMigrations()
+    await runMigrations()
 
-  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-  expect(migrated.holos).toEqual({
-    enabled: true,
-    apiUrl: "https://api.holosai.io",
-    wsUrl: "wss://api.holosai.io",
-    portalUrl: "https://www.holosai.io",
-  })
-  expect(migrated.channel).toBeUndefined()
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.holos).toEqual({
+      enabled: true,
+      apiUrl: "https://api.holosai.io",
+      wsUrl: "wss://api.holosai.io",
+      portalUrl: "https://www.holosai.io",
+    })
+    expect(migrated.channel).toBeUndefined()
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
 })
 
 test("removes legacy channel holos config when top-level holos already exists", async () => {
-  const target = path.join(process.env["SYNERGY_TEST_HOME"]!, ".synergy", "config", "synergy.jsonc")
-  await fs.mkdir(path.dirname(target), { recursive: true })
-  await Bun.write(
-    target,
-    `{
+  const home = path.join(os.tmpdir(), `synergy-config-holos-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
   "$schema": "file:///test/config.schema.json",
   "channel": {
     "holos": {
@@ -938,19 +953,23 @@ test("removes legacy channel holos config when top-level holos already exists", 
     "portalUrl": "https://www.holosai.io"
   }
 }`,
-  )
+    )
 
-  await Storage.remove(StoragePath.metaMigrationLog())
-  await runMigrations()
+    resetMigrations()
+    await runMigrations()
 
-  const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-  expect(migrated.holos).toEqual({
-    enabled: true,
-    apiUrl: "https://api.holosai.io",
-    wsUrl: "wss://api.holosai.io",
-    portalUrl: "https://www.holosai.io",
-  })
-  expect(migrated.channel).toBeUndefined()
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.holos).toEqual({
+      enabled: true,
+      apiUrl: "https://api.holosai.io",
+      wsUrl: "wss://api.holosai.io",
+      portalUrl: "https://www.holosai.io",
+    })
+    expect(migrated.channel).toBeUndefined()
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
 })
 
 // MCP config merging tests
