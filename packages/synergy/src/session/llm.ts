@@ -11,6 +11,7 @@ import {
 } from "ai"
 import { clone, mergeDeep, pipe } from "remeda"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
@@ -140,6 +141,39 @@ export namespace LLM {
             toolName: lower,
           }
         }
+
+        // Try to recover truncated/malformed JSON input (e.g. missing closing brace).
+        // Common LLM failure mode: when the last field of an outer object is itself an
+        // object or array, the model sometimes emits the inner closer but forgets the
+        // outer one. parsePartialJson walks the bracket stack and appends missing closers.
+        const resolvedName = tools[failed.toolCall.toolName] ? failed.toolCall.toolName : tools[lower] ? lower : undefined
+        if (resolvedName && typeof failed.toolCall.input === "string" && failed.toolCall.input.length > 0) {
+          try {
+            const recovered = parsePartialJson(failed.toolCall.input)
+            if (recovered && typeof recovered === "object" && Object.keys(recovered).length > 0) {
+              const repairedInput = JSON.stringify(recovered)
+              if (repairedInput !== failed.toolCall.input) {
+                l.info("repairing tool call input", {
+                  tool: resolvedName,
+                  originalLength: failed.toolCall.input.length,
+                  recoveredLength: repairedInput.length,
+                  error: failed.error.message,
+                })
+                return {
+                  ...failed.toolCall,
+                  toolName: resolvedName,
+                  input: repairedInput,
+                }
+              }
+            }
+          } catch (recoverError) {
+            l.info("tool call input recovery failed", {
+              tool: resolvedName,
+              error: recoverError instanceof Error ? recoverError.message : String(recoverError),
+            })
+          }
+        }
+
         return {
           ...failed.toolCall,
           input: JSON.stringify({
