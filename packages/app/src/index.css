@@ -145,3 +145,49 @@ a:active,
     transform: translateX(0);
   }
 }
+
+/* iOS safe area support (viewport-fit=cover) */
+:root {
+  --safe-inset-top: env(safe-area-inset-top, 0px);
+  --safe-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-inset-left: env(safe-area-inset-left, 0px);
+  --safe-inset-right: env(safe-area-inset-right, 0px);
+}
+
+/* Prompt dock safe bottom — ensures content clears iOS home indicator */
+.prompt-dock-safe-bottom {
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile drawer safe bottom — pads scrollable area away from home indicator */
+.mobile-drawer-safe-bottom {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Generic safe bottom for absolutely positioned bottom bars */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Use dvh for dialog height calculations on mobile */
+@media (max-width: 767px) {
+  [data-slot="dialog-container"]:has(.dialog-settings-wide) {
+    height: min(calc(100dvh - 16px), 640px);
+  }
+
+  [data-slot="dialog-container"]:has(.dialog-skill-detail) {
+    height: min(calc(100dvh - 20px), 760px);
+  }
+
+  /* Settings dialog tabs bar — allow horizontal scroll on small screens */
+  .ds-tabs-bar {
+    padding: 4px 8px 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ds-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+}

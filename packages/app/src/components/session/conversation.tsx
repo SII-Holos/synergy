@@ -133,7 +133,7 @@ export function SessionConversation(props: {
               data-message-id={msg.id}
               classList={{
                 "min-w-0 w-full max-w-full": true,
-                "last:min-h-[calc(100vh-5.5rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100vh-4.5rem-var(--prompt-height,10rem)-64px)]": true,
+                "last:min-h-[calc(100dvh-5.5rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100dvh-4.5rem-var(--prompt-height,10rem)-64px)]": true,
               }}
               style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
             >
