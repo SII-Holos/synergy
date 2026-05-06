@@ -561,9 +561,7 @@ function LayoutContent(props: ParentProps) {
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
         >
           <div class="flex items-center justify-between px-4 h-11 shrink-0 border-b border-border-weaker-base/60">
-            <span class="text-14-medium text-text-strong">
-              {PANEL_LABELS[panel.active()!] ?? panel.active()}
-            </span>
+            <span class="text-14-medium text-text-strong">{PANEL_LABELS[panel.active()!] ?? panel.active()}</span>
             <button
               type="button"
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
