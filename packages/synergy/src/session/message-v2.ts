@@ -656,6 +656,14 @@ export namespace MessageV2 {
             cause: e,
           },
         ).toObject()
+      case e instanceof DOMException && e.name === "TimeoutError":
+        return new MessageV2.APIError(
+          {
+            message: e.message || "Idle timeout: no data received from provider",
+            isRetryable: true,
+          },
+          { cause: e },
+        ).toObject()
       case MessageV2.OutputLengthError.isInstance(e):
         return e
       case LoadAPIKeyError.isInstance(e):
