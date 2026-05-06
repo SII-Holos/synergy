@@ -15,9 +15,8 @@ import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
-import { usePanel } from "@/context/panel"
+import { usePanel, PANELS } from "@/context/panel"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
-import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -75,7 +74,7 @@ export function MobileDrawer() {
           </div>
 
           {/* Body */}
-          <div class="flex-1 min-h-0 overflow-y-auto mobile-drawer-safe-bottom">
+          <div class="flex-1 min-h-0 overflow-y-auto safe-bottom">
             <Show
               when={drilldown()}
               fallback={
@@ -107,13 +106,8 @@ export function MobileDrawer() {
   )
 }
 
-const TOOLS: Array<{ id: string; icon: IconName; label: string }> = [
-  { id: "scopes", icon: "layout-grid", label: "Projects" },
-  { id: "note", icon: "notebook-pen", label: "Notes" },
-  { id: "engram", icon: "brain", label: "Engram" },
-  { id: "agenda", icon: "clipboard-list", label: "Agenda" },
-  { id: "holos", icon: "users", label: "Holos" },
-]
+// Tools grid uses shared PANELS (excluding lucid which is desktop-only for now)
+const DRAWER_TOOLS = PANELS.filter((p) => p.id !== "lucid")
 
 function ScopeListView(props: {
   currentDir: string | undefined
@@ -210,7 +204,7 @@ function ScopeListView(props: {
         <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
       </div>
       <div class="grid grid-cols-5 gap-1 px-3 pb-2">
-        <For each={TOOLS}>
+        <For each={DRAWER_TOOLS}>
           {(tool) => (
             <button
               type="button"

@@ -304,7 +304,10 @@ export function HeaderBar() {
         <button
           type="button"
           class="md:hidden flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
-          onClick={() => layout.mobileSidebar.toggle()}
+          onClick={() => {
+            panel.close()
+            layout.mobileSidebar.toggle()
+          }}
         >
           <Icon name="menu" size="normal" class="text-icon-base" />
         </button>

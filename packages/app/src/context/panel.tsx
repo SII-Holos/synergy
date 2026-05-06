@@ -1,5 +1,21 @@
 import { createSignal, type JSX } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import type { IconName } from "@ericsanchezok/synergy-ui/icon"
+
+export interface PanelDef {
+  id: string
+  label: string
+  icon: IconName
+}
+
+export const PANELS: PanelDef[] = [
+  { id: "scopes", label: "Projects", icon: "layout-grid" },
+  { id: "note", label: "Notes", icon: "notebook-pen" },
+  { id: "engram", label: "Engram", icon: "brain" },
+  { id: "agenda", label: "Agenda", icon: "clipboard-list" },
+  { id: "holos", label: "Holos", icon: "users" },
+  { id: "lucid", label: "Lucid", icon: "sparkles" },
+]
 
 export const { use: usePanel, provider: PanelProvider } = createSimpleContext({
   name: "Panel",

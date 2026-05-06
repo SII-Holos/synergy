@@ -38,7 +38,7 @@ export function PromptDock(props: {
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none prompt-dock-safe-bottom": true,
+        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-1.5": true,
         "pt-12 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent": !props.isNewSession(),
       }}
       style={{
