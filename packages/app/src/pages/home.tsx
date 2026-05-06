@@ -13,7 +13,7 @@ export default function Home() {
         <Mark class="size-12 text-icon-base" />
         <Button onClick={() => navigate(`/${base64Encode("global")}/session`)}>Start</Button>
       </div>
-      <div class="absolute bottom-0 left-0 right-0">
+      <div class="absolute bottom-0 left-0 right-0 safe-bottom">
         <StatusBar />
       </div>
     </div>

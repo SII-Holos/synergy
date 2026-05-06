@@ -15,6 +15,7 @@ import { PanelProvider, usePanel } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
@@ -442,12 +443,26 @@ const PANEL_DEFAULT = 45
 const PANEL_MIN = 20
 const MAIN_MIN_PX = 480
 
+const PANEL_LABELS: Record<string, string> = {
+  engram: "Engram",
+  agenda: "Agenda",
+  note: "Notes",
+  scopes: "Projects",
+  holos: "Holos",
+  lucid: "Lucid",
+}
+
 function LayoutContent(props: ParentProps) {
   const panel = usePanel()
   const layout = useLayout()
   const [panelWidth, setPanelWidth] = createSignal(PANEL_DEFAULT)
   const [resizing, setResizing] = createSignal(false)
-  const isOpen = () => layout.isDesktop() && !!panel.active()
+
+  // Desktop: side panel; Mobile: full-screen overlay (handled separately)
+  const isDesktopOpen = () => layout.isDesktop() && !!panel.active()
+  const isMobileOpen = () => !layout.isDesktop() && !!panel.active()
+  // Keep the legacy name for the desktop panel container
+  const isOpen = isDesktopOpen
 
   const panelMax = () => Math.floor(((window.innerWidth - MAIN_MIN_PX) / window.innerWidth) * 100)
 
@@ -539,6 +554,47 @@ function LayoutContent(props: ParentProps) {
           </div>
         </div>
       </div>
+      {/* Mobile panel — full-screen overlay, shown instead of desktop side panel */}
+      <Show when={isMobileOpen()}>
+        <div
+          class="md:hidden fixed inset-0 z-[90] flex flex-col bg-background-stronger"
+          style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
+        >
+          <div class="flex items-center justify-between px-4 h-11 shrink-0 border-b border-border-weaker-base/60">
+            <span class="text-14-medium text-text-strong">{PANEL_LABELS[panel.active()!] ?? panel.active()}</span>
+            <button
+              type="button"
+              class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+              onClick={() => panel.close()}
+            >
+              <Icon name="x" size="normal" />
+            </button>
+          </div>
+          <div class="flex-1 min-h-0 overflow-hidden">
+            <Switch>
+              <Match when={panel.active() === "engram"}>
+                <EngramPanel />
+              </Match>
+              <Match when={panel.active() === "agenda"}>
+                <AgendaPanel />
+              </Match>
+              <Match when={panel.active() === "note"}>
+                <NotePanel />
+              </Match>
+              <Match when={panel.active() === "scopes"}>
+                <ScopesPanel />
+              </Match>
+              <Match when={panel.active() === "holos"}>
+                <HolosPanel />
+              </Match>
+              <Match when={panel.active() === "lucid"}>
+                <LucidPanel />
+              </Match>
+              <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
+            </Switch>
+          </div>
+        </div>
+      </Show>
       <Toast.Region />
     </div>
   )
