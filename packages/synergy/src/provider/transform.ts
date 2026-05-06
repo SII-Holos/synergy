@@ -516,6 +516,12 @@ export namespace ProviderTransform {
       result["promptCacheKey"] = sessionID
     }
 
+    // openai and providers using openai package should set store to false by default
+    // to avoid item_reference lookups that fail on proxies/non-OpenAI backends
+    if (model.providerID === "openai" || model.api.npm === "@ai-sdk/openai") {
+      result["store"] = false
+    }
+
     if (model.api.npm === "@ai-sdk/google" || model.api.npm === "@ai-sdk/google-vertex") {
       result["thinkingConfig"] = {
         includeThoughts: true,
@@ -526,10 +532,6 @@ export namespace ProviderTransform {
     }
 
     if (model.api.id.includes("gpt-5") && !model.api.id.includes("gpt-5-chat")) {
-      if (model.providerID.includes("codex")) {
-        result["store"] = false
-      }
-
       if (!model.api.id.includes("codex") && !model.api.id.includes("gpt-5-pro")) {
         result["reasoningEffort"] = "medium"
       }
