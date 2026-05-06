@@ -22,10 +22,29 @@ export namespace ProviderTransform {
     tool?: string
   }
 
+  export function sanitizeSurrogates(content: string) {
+    return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
+  }
+
   function normalizeMessages(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
-    // Anthropic rejects messages with empty content - filter out empty string messages
-    // and remove empty text/reasoning parts from array content
-    if (model.api.npm === "@ai-sdk/anthropic") {
+    // Sanitize surrogate characters in all messages
+    msgs = msgs.map((msg) => {
+      if (typeof msg.content === "string") {
+        msg.content = sanitizeSurrogates(msg.content)
+        return msg
+      }
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if ("text" in part && typeof (part as any).text === "string") {
+            ;(part as any).text = sanitizeSurrogates((part as any).text)
+          }
+        }
+      }
+      return msg
+    })
+
+    // Anthropic and Bedrock reject messages with empty content
+    if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock") {
       msgs = msgs
         .map((msg) => {
           if (typeof msg.content === "string") {
@@ -46,14 +65,12 @@ export namespace ProviderTransform {
     }
 
     if (model.api.id.includes("claude")) {
-      return msgs.map((msg) => {
+      const scrub = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_")
+      msgs = msgs.map((msg) => {
         if ((msg.role === "assistant" || msg.role === "tool") && Array.isArray(msg.content)) {
           msg.content = msg.content.map((part) => {
             if ((part.type === "tool-call" || part.type === "tool-result") && "toolCallId" in part) {
-              return {
-                ...part,
-                toolCallId: part.toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_"),
-              }
+              return { ...part, toolCallId: scrub(part.toolCallId) }
             }
             return part
           })
@@ -61,7 +78,27 @@ export namespace ProviderTransform {
         return msg
       })
     }
-    if (model.providerID === "mistral" || model.api.id.toLowerCase().includes("mistral")) {
+
+    // Anthropic rejects assistant turns where tool_use blocks are followed by non-tool content
+    if (["@ai-sdk/anthropic", "@ai-sdk/google-vertex/anthropic"].includes(model.api.npm)) {
+      msgs = msgs.flatMap((msg) => {
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) return [msg]
+        const parts = msg.content
+        const first = parts.findIndex((part) => part.type === "tool-call")
+        if (first === -1) return [msg]
+        if (!parts.slice(first).some((part) => part.type !== "tool-call")) return [msg]
+        return [
+          { ...msg, content: parts.filter((part) => part.type !== "tool-call") },
+          { ...msg, content: parts.filter((part) => part.type === "tool-call") },
+        ]
+      })
+    }
+
+    if (
+      model.providerID === "mistral" ||
+      model.api.id.toLowerCase().includes("mistral") ||
+      model.api.id.toLowerCase().includes("devstral")
+    ) {
       const result: ModelMessage[] = []
       for (let i = 0; i < msgs.length; i++) {
         const msg = msgs[i]
@@ -405,17 +442,30 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
+        if (["opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"].some((v) => model.api.id.includes(v))) {
+          return Object.fromEntries(
+            ["low", "medium", "high", "max"].map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
+          )
+        }
+        if (["opus-4-7", "opus-4.7"].some((v) => model.api.id.includes(v))) {
+          return Object.fromEntries(
+            ["low", "medium", "high", "xhigh", "max"].map((effort) => [
+              effort,
+              { thinking: { type: "adaptive", display: "summarized" }, effort },
+            ]),
+          )
+        }
         return {
           high: {
             thinking: {
               type: "enabled",
-              budgetTokens: 16000,
+              budgetTokens: Math.min(16_000, Math.floor(model.limit.output / 2 - 1)),
             },
           },
           max: {
             thinking: {
               type: "enabled",
-              budgetTokens: 31999,
+              budgetTokens: Math.min(31_999, model.limit.output - 1),
             },
           },
         }
@@ -454,15 +504,20 @@ export namespace ProviderTransform {
             },
           }
         }
-        return Object.fromEntries(
-          ["low", "high"].map((effort) => [
-            effort,
-            {
-              includeThoughts: true,
-              thinkingLevel: effort,
-            },
-          ]),
-        )
+        {
+          const levels = id.includes("3.1") ? ["low", "medium", "high"] : ["low", "high"]
+          return Object.fromEntries(
+            levels.map((effort) => [
+              effort,
+              {
+                thinkingConfig: {
+                  includeThoughts: true,
+                  thinkingLevel: effort,
+                },
+              },
+            ]),
+          )
+        }
 
       case "@ai-sdk/mistral":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/mistral
@@ -518,25 +573,51 @@ export namespace ProviderTransform {
 
     // openai and providers using openai package should set store to false by default
     // to avoid item_reference lookups that fail on proxies/non-OpenAI backends
-    if (model.providerID === "openai" || model.api.npm === "@ai-sdk/openai") {
+    if (
+      model.providerID === "openai" ||
+      model.api.npm === "@ai-sdk/openai" ||
+      model.api.npm === "@ai-sdk/github-copilot"
+    ) {
       result["store"] = false
     }
 
+    if (model.api.npm === "@ai-sdk/azure") {
+      result["store"] = false
+      result["promptCacheKey"] = sessionID
+    }
+
     if (model.api.npm === "@ai-sdk/google" || model.api.npm === "@ai-sdk/google-vertex") {
-      result["thinkingConfig"] = {
-        includeThoughts: true,
-      }
-      if (model.api.id.includes("gemini-3")) {
-        result["thinkingConfig"]["thinkingLevel"] = "high"
+      if (model.capabilities.reasoning) {
+        result["thinkingConfig"] = {
+          includeThoughts: true,
+        }
+        if (model.api.id.includes("gemini-3")) {
+          result["thinkingConfig"]["thinkingLevel"] = "high"
+        }
       }
     }
 
     if (model.api.id.includes("gpt-5") && !model.api.id.includes("gpt-5-chat")) {
       if (!model.api.id.includes("codex") && !model.api.id.includes("gpt-5-pro")) {
         result["reasoningEffort"] = "medium"
+        // Only inject reasoningSummary for providers that support it natively.
+        // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not understand this parameter.
+        if (
+          model.api.npm === "@ai-sdk/openai" ||
+          model.api.npm === "@ai-sdk/azure" ||
+          model.api.npm === "@ai-sdk/github-copilot"
+        ) {
+          result["reasoningSummary"] = "auto"
+        }
       }
 
-      if (model.api.id.endsWith("gpt-5.") && model.providerID !== "azure") {
+      // Only set textVerbosity for non-chat gpt-5.x models (not codex, not chat variants)
+      if (
+        model.api.id.includes("gpt-5.") &&
+        !model.api.id.includes("codex") &&
+        !model.api.id.includes("-chat") &&
+        model.providerID !== "azure"
+      ) {
         result["textVerbosity"] = "low"
       }
     }
@@ -544,11 +625,18 @@ export namespace ProviderTransform {
   }
 
   export function smallOptions(model: Provider.Model) {
-    if (model.providerID === "openai" || model.api.id.includes("gpt-5")) {
-      if (model.api.id.includes("5.")) {
-        return { reasoningEffort: "low" }
+    if (
+      model.providerID === "openai" ||
+      model.api.npm === "@ai-sdk/openai" ||
+      model.api.npm === "@ai-sdk/github-copilot"
+    ) {
+      if (model.api.id.includes("gpt-5")) {
+        if (model.api.id.includes("5.") || model.api.id.includes("5-mini")) {
+          return { store: false, reasoningEffort: "low" }
+        }
+        return { store: false, reasoningEffort: "minimal" }
       }
-      return { reasoningEffort: "minimal" }
+      return { store: false }
     }
     if (model.providerID === "google") {
       // gemini-3 uses thinkingLevel, gemini-2.5 uses thinkingBudget
@@ -570,10 +658,13 @@ export namespace ProviderTransform {
     switch (model.api.npm) {
       case "@ai-sdk/github-copilot":
       case "@ai-sdk/openai":
-      case "@ai-sdk/azure":
         return {
           ["openai" as string]: options,
         }
+      case "@ai-sdk/azure":
+        // Azure delegates to OpenAIChatLanguageModel which reads from providerOptions["openai"],
+        // but OpenAIResponsesLanguageModel checks "azure" first. Pass both.
+        return { openai: options, azure: options }
       case "@ai-sdk/amazon-bedrock":
         return {
           ["bedrock" as string]: options,
