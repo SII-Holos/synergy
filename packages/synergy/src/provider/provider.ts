@@ -1098,7 +1098,9 @@ export namespace Provider {
     try {
       const language = s.modelLoaders[model.providerID]
         ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
-        : sdk.languageModel(model.api.id)
+        : model.api.npm === "@ai-sdk/openai"
+          ? (sdk as any).responses(model.api.id)
+          : sdk.languageModel(model.api.id)
       s.models.set(key, language)
       return language
     } catch (e) {
