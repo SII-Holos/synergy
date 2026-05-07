@@ -972,8 +972,14 @@ export namespace Provider {
           )
         }
 
+        // Disable HTTP keep-alive to avoid reusing connections that may have
+        // been silently dropped by NAT / load balancers during idle periods.
+        const headers = new Headers(opts.headers ?? {})
+        headers.set("Connection", "close")
+
         const response = await fetchFn(input, {
           ...opts,
+          headers,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
         })
