@@ -22,7 +22,7 @@ export namespace Cortex {
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
   const acquiredTasks = new Set<string>()
 
-  const CLEANUP_DELAY_MS = 5 * 60 * 1000
+  const CLEANUP_DELAY_MS = 20 * 60 * 1000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
     "task",
     "task_output",
