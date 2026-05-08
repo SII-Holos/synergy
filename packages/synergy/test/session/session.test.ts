@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import path from "path"
+import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
@@ -10,13 +10,13 @@ import { Log } from "../../src/util/log"
 import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
 
-const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
 describe("session lifecycle events", () => {
   test("emits session.created when a session is created", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      scope: await tmp.scope(),
       fn: async () => {
         const created = Promise.withResolvers<Session.Info>()
         const unsub = Bus.subscribe(SessionEvent.Created, (event) => {
@@ -39,8 +39,9 @@ describe("session lifecycle events", () => {
   })
 
   test("emits session.created before session.updated", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      scope: await tmp.scope(),
       fn: async () => {
         const events: string[] = []
         const updated = Promise.withResolvers<void>()
@@ -70,8 +71,9 @@ describe("session lifecycle events", () => {
   })
 
   test("app channel sessions stay interactive", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      scope: await tmp.scope(),
       fn: async () => {
         const session = await AppChannel.session()
 
@@ -83,8 +85,9 @@ describe("session lifecycle events", () => {
   })
 
   test("genesis channel sessions stay unattended", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      scope: await tmp.scope(),
       fn: async () => {
         const session = await GenesisChannel.session()
 
@@ -96,8 +99,9 @@ describe("session lifecycle events", () => {
   })
 
   test("child sessions inherit unattended interaction from parent", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
           interaction: SessionInteraction.unattended("agenda"),

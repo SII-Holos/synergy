@@ -314,7 +314,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = matched.slice(offset, offset + limit)
+      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withRuntimeInfo(s)))
       return { data, total }
     }
 
@@ -327,7 +327,9 @@ export namespace Session {
 
     const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
     const sessions = await Storage.readMany<Info>(keys)
-    const data = sessions.filter((s): s is Info => s != null && !!s.scope)
+    const data = await Promise.all(
+      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withRuntimeInfo(s)),
+    )
 
     return { data, total }
   }

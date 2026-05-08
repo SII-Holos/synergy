@@ -38,10 +38,8 @@ export function PromptDock(props: {
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none": true,
-        "pt-12 pb-0 md:pb-1.5 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent":
-          !props.isNewSession(),
-        "pb-0 md:pb-1.5": props.isNewSession(),
+        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-1.5": true,
+        "pt-12 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent": !props.isNewSession(),
       }}
       style={{
         transform: props.isNewSession() ? "translateY(-35vh)" : "translateY(0)",

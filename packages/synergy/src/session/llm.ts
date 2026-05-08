@@ -9,8 +9,10 @@ import {
   type ToolSet,
   extractReasoningMiddleware,
 } from "ai"
+import type { LanguageModelV2ToolCall } from "@ai-sdk/provider"
 import { clone, mergeDeep, pipe } from "remeda"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
@@ -22,6 +24,81 @@ export namespace LLM {
   const log = Log.create({ service: "llm" })
 
   export const OUTPUT_TOKEN_MAX = ModelLimit.OUTPUT_TOKEN_MAX
+
+  /**
+   * Tool call repair logic, extracted for testability.
+   *
+   * Responsibilities (in order):
+   *  1. Case-fold tool names when the model outputs e.g. "Bash" instead of "bash".
+   *  2. Recover tool call input JSON that is syntactically truncated (e.g. missing
+   *     the outer closing `}` when the last field is itself an object/array — a
+   *     common LLM tokenization artifact).
+   *  3. Fall back to the "invalid" tool path so the agent sees an actionable error.
+   *
+   * Guardrails:
+   *  - JSON recovery is only attempted when native JSON.parse fails. If the input
+   *    is already valid JSON (schema-level error, not syntax), we do NOT rewrite it
+   *    — rewriting would mask semantic bugs and could race with AI SDK's own retries.
+   *  - JSON recovery is only attempted when the resolved tool actually exists. A
+   *    hallucinated tool name should not trigger input rewriting.
+   *  - Recovery must yield a non-empty object. parsePartialJson returns `{}` on
+   *    unparseable input; we treat that as failure.
+   */
+  export type RepairArgs = {
+    toolCall: LanguageModelV2ToolCall
+    error: { message: string }
+  }
+
+  export type RepairedToolCall = LanguageModelV2ToolCall | null
+
+  export function repairToolCall(failed: RepairArgs, toolNames: ReadonlySet<string>): RepairedToolCall {
+    const lower = failed.toolCall.toolName.toLowerCase()
+
+    // Case 1: case-fold tool name.
+    if (lower !== failed.toolCall.toolName && toolNames.has(lower)) {
+      return {
+        ...failed.toolCall,
+        toolName: lower,
+      }
+    }
+
+    // Case 2: recover truncated JSON input.
+    const resolvedName = toolNames.has(failed.toolCall.toolName)
+      ? failed.toolCall.toolName
+      : toolNames.has(lower)
+        ? lower
+        : undefined
+
+    if (!resolvedName) return null
+    if (typeof failed.toolCall.input !== "string") return null
+    if (failed.toolCall.input.length === 0) return null
+
+    // Only engage recovery when native parse fails. If the JSON is valid, the
+    // error is semantic (schema mismatch) and not our responsibility — rewriting
+    // would mask it and potentially cause infinite repair loops.
+    try {
+      JSON.parse(failed.toolCall.input)
+      return null
+    } catch {
+      // fall through
+    }
+
+    let recovered: Record<string, unknown>
+    try {
+      recovered = parsePartialJson(failed.toolCall.input)
+    } catch {
+      return null
+    }
+
+    if (!recovered || typeof recovered !== "object" || Array.isArray(recovered)) return null
+    if (Object.keys(recovered).length === 0) return null
+
+    return {
+      ...failed.toolCall,
+      toolName: resolvedName,
+      input: JSON.stringify(recovered),
+    }
+  }
 
   export type StreamInput = {
     user: MessageV2.User
@@ -129,16 +206,24 @@ export namespace LLM {
         })
       },
       async experimental_repairToolCall(failed) {
-        const lower = failed.toolCall.toolName.toLowerCase()
-        if (lower !== failed.toolCall.toolName && tools[lower]) {
-          l.info("repairing tool call", {
-            tool: failed.toolCall.toolName,
-            repaired: lower,
-          })
-          return {
-            ...failed.toolCall,
-            toolName: lower,
+        const toolNames = new Set(Object.keys(tools))
+        const repaired = repairToolCall(failed, toolNames)
+        if (repaired) {
+          if (repaired.toolName !== failed.toolCall.toolName) {
+            l.info("repairing tool call name", {
+              tool: failed.toolCall.toolName,
+              repaired: repaired.toolName,
+            })
           }
+          if (repaired.input !== failed.toolCall.input) {
+            l.info("repairing tool call input", {
+              tool: repaired.toolName,
+              originalLength: failed.toolCall.input.length,
+              recoveredLength: repaired.input.length,
+              error: failed.error.message,
+            })
+          }
+          return repaired
         }
         return {
           ...failed.toolCall,

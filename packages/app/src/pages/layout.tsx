@@ -11,10 +11,11 @@ import { showToast, Toast, toaster } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
-import { PanelProvider, usePanel } from "@/context/panel"
+import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
@@ -442,12 +443,70 @@ const PANEL_DEFAULT = 45
 const PANEL_MIN = 20
 const MAIN_MIN_PX = 480
 
+function PanelContent() {
+  const panel = usePanel()
+  return (
+    <Switch>
+      <Match when={panel.active() === "engram"}>
+        <EngramPanel />
+      </Match>
+      <Match when={panel.active() === "agenda"}>
+        <AgendaPanel />
+      </Match>
+      <Match when={panel.active() === "note"}>
+        <NotePanel />
+      </Match>
+      <Match when={panel.active() === "scopes"}>
+        <ScopesPanel />
+      </Match>
+      <Match when={panel.active() === "holos"}>
+        <HolosPanel />
+      </Match>
+      <Match when={panel.active() === "lucid"}>
+        <LucidPanel />
+      </Match>
+      <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
+    </Switch>
+  )
+}
+
+function MobilePanelOverlay() {
+  const panel = usePanel()
+  const layout = useLayout()
+  const isOpen = () => !layout.isDesktop() && !!panel.active()
+  const label = () => PANELS.find((p) => p.id === panel.active())?.label ?? panel.active()
+
+  return (
+    <Show when={isOpen()}>
+      <div
+        class="md:hidden fixed inset-0 z-[90] flex flex-col bg-background-stronger"
+        style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
+      >
+        <div class="flex items-center justify-between px-4 h-11 shrink-0 border-b border-border-weaker-base/60">
+          <span class="text-14-medium text-text-strong">{label()}</span>
+          <button
+            type="button"
+            class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+            onClick={() => panel.close()}
+          >
+            <Icon name="x" size="normal" />
+          </button>
+        </div>
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <PanelContent />
+        </div>
+      </div>
+    </Show>
+  )
+}
+
 function LayoutContent(props: ParentProps) {
   const panel = usePanel()
   const layout = useLayout()
   const [panelWidth, setPanelWidth] = createSignal(PANEL_DEFAULT)
   const [resizing, setResizing] = createSignal(false)
-  const isOpen = () => layout.isDesktop() && !!panel.active()
+
+  const isDesktopOpen = () => layout.isDesktop() && !!panel.active()
 
   const panelMax = () => Math.floor(((window.innerWidth - MAIN_MIN_PX) / window.innerWidth) * 100)
 
@@ -498,16 +557,16 @@ function LayoutContent(props: ParentProps) {
         <div
           classList={{
             "relative h-full shrink-0 overflow-hidden": true,
-            "border-l border-border-weaker-base/60 bg-background-stronger": isOpen(),
+            "border-l border-border-weaker-base/60 bg-background-stronger": isDesktopOpen(),
           }}
           style={{
-            width: isOpen() ? `${panelWidth()}%` : "0%",
+            width: isDesktopOpen() ? `${panelWidth()}%` : "0%",
             "max-width": `calc(100% - ${MAIN_MIN_PX}px)`,
             ...(!resizing() && { transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)" }),
           }}
         >
           <div class="h-full" style={{ "min-width": `${panelWidth()}vw` }}>
-            <Show when={isOpen()}>
+            <Show when={isDesktopOpen()}>
               <div
                 class="absolute inset-y-0 left-0 w-2 -translate-x-1/2 cursor-ew-resize z-10 group"
                 onMouseDown={handleResizeStart}
@@ -515,30 +574,11 @@ function LayoutContent(props: ParentProps) {
                 <div class="absolute inset-y-0 left-1/2 w-[3px] -translate-x-1/2 rounded-sm bg-border-strong-base opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity" />
               </div>
             </Show>
-            <Switch>
-              <Match when={panel.active() === "engram"}>
-                <EngramPanel />
-              </Match>
-              <Match when={panel.active() === "agenda"}>
-                <AgendaPanel />
-              </Match>
-              <Match when={panel.active() === "note"}>
-                <NotePanel />
-              </Match>
-              <Match when={panel.active() === "scopes"}>
-                <ScopesPanel />
-              </Match>
-              <Match when={panel.active() === "holos"}>
-                <HolosPanel />
-              </Match>
-              <Match when={panel.active() === "lucid"}>
-                <LucidPanel />
-              </Match>
-              <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
-            </Switch>
+            <PanelContent />
           </div>
         </div>
       </div>
+      <MobilePanelOverlay />
       <Toast.Region />
     </div>
   )

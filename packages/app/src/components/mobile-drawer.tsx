@@ -15,6 +15,7 @@ import { getScopeLabel, isGlobalScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
+import { usePanel, PANELS } from "@/context/panel"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 export function MobileDrawer() {
@@ -73,7 +74,7 @@ export function MobileDrawer() {
           </div>
 
           {/* Body */}
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div class="flex-1 min-h-0 overflow-y-auto safe-bottom">
             <Show
               when={drilldown()}
               fallback={
@@ -81,6 +82,7 @@ export function MobileDrawer() {
                   currentDir={currentDir()}
                   onSelectScope={setDrilldown}
                   onNavigateHome={() => navigateAndClose(`/${base64Encode("global")}/session`)}
+                  onClose={close}
                 />
               }
             >
@@ -104,12 +106,17 @@ export function MobileDrawer() {
   )
 }
 
+// Tools grid uses shared PANELS (excluding lucid which is desktop-only for now)
+const DRAWER_TOOLS = PANELS.filter((p) => p.id !== "lucid")
+
 function ScopeListView(props: {
   currentDir: string | undefined
   onSelectScope: (scope: LocalScope) => void
   onNavigateHome: () => void
+  onClose: () => void
 }) {
   const layout = useLayout()
+  const panel = usePanel()
   const globalSync = useGlobalSync()
 
   const scopes = createMemo(() => {
@@ -188,6 +195,35 @@ function ScopeListView(props: {
           )
         }}
       </For>
+
+      {/* Divider */}
+      <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
+
+      {/* Tools */}
+      <div class="px-4 pb-1.5">
+        <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
+      </div>
+      <div class="grid grid-cols-5 gap-1 px-3 pb-2">
+        <For each={DRAWER_TOOLS}>
+          {(tool) => (
+            <button
+              type="button"
+              classList={{
+                "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
+                "bg-surface-interactive-base/8 text-text-interactive-base": panel.active() === tool.id,
+                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": panel.active() !== tool.id,
+              }}
+              onClick={() => {
+                props.onClose()
+                panel.toggle(tool.id)
+              }}
+            >
+              <Icon name={tool.icon} size="normal" />
+              <span class="text-[10px] font-medium leading-none">{tool.label}</span>
+            </button>
+          )}
+        </For>
+      </div>
     </div>
   )
 }

@@ -972,8 +972,14 @@ export namespace Provider {
           )
         }
 
+        // Disable HTTP keep-alive to avoid reusing connections that may have
+        // been silently dropped by NAT / load balancers during idle periods.
+        const headers = new Headers(opts.headers ?? {})
+        headers.set("Connection", "close")
+
         const response = await fetchFn(input, {
           ...opts,
+          headers,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
         })
@@ -1098,7 +1104,9 @@ export namespace Provider {
     try {
       const language = s.modelLoaders[model.providerID]
         ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
-        : sdk.languageModel(model.api.id)
+        : model.api.npm === "@ai-sdk/openai"
+          ? (sdk as any).responses(model.api.id)
+          : sdk.languageModel(model.api.id)
       s.models.set(key, language)
       return language
     } catch (e) {

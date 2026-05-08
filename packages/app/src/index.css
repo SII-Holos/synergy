@@ -145,3 +145,30 @@ a:active,
     transform: translateX(0);
   }
 }
+
+/* iOS safe area support (viewport-fit=cover) */
+@media (max-width: 767px) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  [data-slot="dialog-container"]:has(.dialog-settings-wide) {
+    height: min(calc(100dvh - 16px), 640px);
+  }
+
+  [data-slot="dialog-container"]:has(.dialog-skill-detail) {
+    height: min(calc(100dvh - 20px), 760px);
+  }
+
+  /* Settings dialog tabs bar — allow horizontal scroll on small screens */
+  .ds-tabs-bar {
+    padding: 4px 8px 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ds-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+}

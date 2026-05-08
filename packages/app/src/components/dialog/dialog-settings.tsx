@@ -128,6 +128,7 @@ export function DialogSettings(props: DialogSettingsProps) {
   const [selectedSetName, setSelectedSetName] = createSignal<string>()
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
+  const [refreshing, setRefreshing] = createSignal(false)
   const [creatingSet, setCreatingSet] = createSignal(false)
   const [createSetName, setCreateSetName] = createSignal("")
   const [editMode, setEditMode] = createSignal<SettingsEditMode>("form")
@@ -265,6 +266,7 @@ export function DialogSettings(props: DialogSettingsProps) {
   })
 
   const ensureInit = () => {
+    if (refreshing()) return
     const cfg = config()
     const setName = selectedSet()?.name
     if (!cfg || !setName) return
@@ -447,9 +449,11 @@ export function DialogSettings(props: DialogSettingsProps) {
   }
 
   async function refreshAfterConfigChange() {
+    setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
     await Promise.all([refetchConfig(), refetchRawConfig()])
+    setRefreshing(false)
     ensureInit()
   }
 

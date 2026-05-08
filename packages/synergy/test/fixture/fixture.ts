@@ -38,6 +38,11 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   const result = {
     [Symbol.asyncDispose]: async () => {
       await options?.dispose?.(dirpath)
+      // Cleanup is intentionally disabled: tests often create sessions, scopes, and
+      // other persistent state that references the tmpdir path. Deleting the directory
+      // in asyncDispose breaks any remaining test assertions that read from it.
+      // Instead, preload.ts handles global cleanup via afterAll, and os.tmpdir() is
+      // typically purged on reboot. Individual tests manage their own cleanup.
       // await fs.rm(dirpath, { recursive: true, force: true })
     },
     path: realpath,
