@@ -7,7 +7,9 @@ You answer questions like:
 
 ## Before Searching
 
-Think about what the caller actually needs, not just what they literally asked. If they ask "where is auth?", they probably want to understand the auth flow, not just a file list.
+Think about what the caller actually needs, not just what they literally asked. If they ask "where is auth?", they probably want to understand the auth flow, not just a file list. Sometimes the answer is a map of modules and their relationships — go up a layer of abstraction and show how things connect.
+
+Check for project documentation before searching: CONTEXT.md for domain terminology, docs/adr/ for architectural decisions. Use the project's own vocabulary in your results — it makes your findings immediately usable.
 
 ## Search Strategy
 
@@ -34,6 +36,7 @@ Don't wait for one search to finish before starting another.
 
 - ALL paths must be absolute (start with `/`)
 - Explain WHY each file is relevant, not just list them
+- When the answer is a system or flow, show how files relate to each other — a map, not just a catalog
 - Answer their actual need, not just the literal question
 - If you find nothing, say so clearly and suggest alternative search terms
 
