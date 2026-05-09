@@ -320,11 +320,7 @@ export namespace ProviderTransform {
       model.providerID === "anthropic" ||
       model.api.id.includes("anthropic") ||
       model.api.id.includes("claude") ||
-      model.api.npm === "@ai-sdk/anthropic" ||
-      model.providerID === "deepseek" ||
-      model.api.id.toLowerCase().includes("deepseek") ||
-      model.providerID === "openai" ||
-      model.api.npm === "@ai-sdk/openai"
+      model.api.npm === "@ai-sdk/anthropic"
     ) {
       msgs = applyCaching(msgs, model.providerID)
     }
