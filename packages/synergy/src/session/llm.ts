@@ -127,7 +127,11 @@ export namespace LLM {
       modelID: input.model.id,
       providerID: input.model.providerID,
     })
+    const langTimer = l.time("provider.getLanguage")
     const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
+    langTimer.stop()
+
+    const systemTimer = l.time("system.assembly")
 
     const system: string[] = []
 
@@ -155,7 +159,9 @@ export namespace LLM {
     if (system.length === 0) {
       system.push(...original)
     }
+    systemTimer.stop()
 
+    const optionsTimer = l.time("options.assembly")
     const provider = await Provider.getProvider(input.model.providerID)
     const variant =
       !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}
@@ -189,6 +195,7 @@ export namespace LLM {
     l.info("params", {
       params,
     })
+    optionsTimer.stop()
 
     const maxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
@@ -199,8 +206,10 @@ export namespace LLM {
 
     const tools = input.tools
 
-    return streamText({
+    const streamTextTimer = l.time("streamText.call")
+    const result = streamText({
       onError(error) {
+        streamTextTimer.stop()
         l.error("stream error", {
           error,
         })
@@ -270,5 +279,7 @@ export namespace LLM {
       }),
       experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
     })
+    streamTextTimer.stop()
+    return result
   }
 }

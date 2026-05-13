@@ -977,12 +977,14 @@ export namespace Provider {
         const headers = new Headers(opts.headers ?? {})
         headers.set("Connection", "close")
 
+        const fetchTimer = log.time("fetch.request", { url: typeof input === "string" ? input : input.url })
         const response = await fetchFn(input, {
           ...opts,
           headers,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
         })
+        fetchTimer.stop()
 
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && response.body) {
