@@ -595,11 +595,11 @@ export namespace Provider {
     }
 
     const providers: { [providerID: string]: Info } = {}
-    const languages = new Map<string, LanguageModelV2>()
+    const models = new Map<string, { instance: LanguageModelV2; createdAt: number }>()
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
-    const sdk = new Map<number, SDK>()
+    const sdk = new Map<number, { instance: SDK; createdAt: number }>()
 
     log.info("init")
 
@@ -856,7 +856,7 @@ export namespace Provider {
     }
 
     return {
-      models: languages,
+      models,
       providers,
       sdk,
       modelLoaders,
@@ -929,8 +929,13 @@ export namespace Provider {
         }
 
       const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
+      const SDK_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — prevent stale HTTP client state in long-running processes
       const existing = s.sdk.get(key)
-      if (existing) return existing
+      if (existing) {
+        if (Date.now() - existing.createdAt < SDK_CACHE_TTL_MS) return existing.instance as SDK
+        s.sdk.delete(key) // Expired — force SDK recreation with fresh HTTP client
+        log.info("sdk cache entry expired, recreating", { providerID: model.providerID, key })
+      }
 
       const customFetch = options["fetch"]
 
@@ -953,7 +958,7 @@ export namespace Provider {
               idleController!.abort(
                 new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
               )
-            }, timeoutMs as number)
+            }, timeoutMs as number).unref()
           }
           resetIdle()
 
@@ -995,7 +1000,7 @@ export namespace Provider {
               idleController!.abort(
                 new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
               )
-            }, timeoutMs as number)
+            }, timeoutMs as number).unref()
           }
 
           const wrappedStream = new ReadableStream({
@@ -1045,7 +1050,7 @@ export namespace Provider {
           name: model.providerID,
           ...options,
         })
-        s.sdk.set(key, loaded)
+        s.sdk.set(key, { instance: loaded, createdAt: Date.now() })
         return loaded as SDK
       }
 
@@ -1064,7 +1069,7 @@ export namespace Provider {
         name: model.providerID,
         ...options,
       })
-      s.sdk.set(key, loaded)
+      s.sdk.set(key, { instance: loaded, createdAt: Date.now() })
       return loaded as SDK
     } catch (e) {
       throw new InitError({ providerID: model.providerID }, { cause: e })
@@ -1098,7 +1103,13 @@ export namespace Provider {
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
     const key = `${model.providerID}/${model.id}`
-    if (s.models.has(key)) return s.models.get(key)!
+    const MODEL_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — keep in sync with SDK_CACHE_TTL_MS
+    const cached = s.models.get(key)
+    if (cached) {
+      if (Date.now() - cached.createdAt < MODEL_CACHE_TTL_MS) return cached.instance
+      s.models.delete(key) // Expired — force recreation
+      log.info("model cache entry expired, recreating", { key })
+    }
 
     const provider = s.providers[model.providerID]
     const sdk = await getSDK(model)
@@ -1109,7 +1120,7 @@ export namespace Provider {
         : model.api.npm === "@ai-sdk/openai"
           ? (sdk as any).responses(model.api.id)
           : sdk.languageModel(model.api.id)
-      s.models.set(key, language)
+      s.models.set(key, { instance: language, createdAt: Date.now() })
       return language
     } catch (e) {
       if (e instanceof NoSuchModelError)
