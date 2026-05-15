@@ -190,6 +190,6 @@ LoopJob.register({
       synthetic: true,
     })
 
-    return "continue"
+    return "pass"
   },
 })
