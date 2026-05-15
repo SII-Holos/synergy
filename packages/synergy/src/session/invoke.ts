@@ -492,18 +492,22 @@ export namespace SessionInvoke {
             : []),
         ]
 
+        const promptPlanTimer = log.time("promptBudgeter.buildPlan")
         const promptPlan = await PromptBudgeter.buildPlan({
           model,
           system: systemParts,
           messages: preparedMessages,
           toolDefinitions,
         })
+        promptPlanTimer.stop()
 
         const calibration = buildCalibration(msgs)
+        const promptDecideTimer = log.time("promptBudgeter.decide")
         const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
         })
+        promptDecideTimer.stop()
 
         if (
           !jobCtx.compactionAutoDisabled &&
@@ -526,6 +530,7 @@ export namespace SessionInvoke {
           continue
         }
 
+        const toolResolveTimer = log.time("toolResolver.resolve")
         const tools = await ToolResolver.resolve({
           agent,
           model,
@@ -535,8 +540,10 @@ export namespace SessionInvoke {
           userTools: lastUser.tools,
           includeMCP: true,
         })
+        toolResolveTimer.stop()
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        const processTimer = log.time("processor.process")
         const result = await processor.process({
           user: lastUser,
           agent,
@@ -547,6 +554,7 @@ export namespace SessionInvoke {
           tools,
           model,
         })
+        processTimer.stop()
 
         // post-LLM jobs
         const postJobs = LoopJob.collect("post", jobCtx)

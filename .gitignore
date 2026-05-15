@@ -71,3 +71,6 @@ holos-research/
 
 # External local repos / sandboxes
 faro-web/
+
+# Weekly report skill (standalone repo)
+weekly-report/

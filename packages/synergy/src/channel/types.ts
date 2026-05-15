@@ -126,7 +126,7 @@ export interface StreamingSession {
   start(): Promise<void>
   update(text: string): Promise<void>
   updateToolProgress(progress: StreamingToolProgress[]): Promise<void>
-  close(finalText?: string): Promise<void>
+  close(finalText?: string, error?: boolean): Promise<void>
   isActive(): boolean
 }
 

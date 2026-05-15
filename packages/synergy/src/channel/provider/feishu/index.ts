@@ -798,7 +798,7 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
 
   async updateToolProgress(_progress: ChannelTypes.StreamingToolProgress[]): Promise<void> {}
 
-  async close(finalText?: string): Promise<void> {
+  async close(finalText?: string, _error?: boolean): Promise<void> {
     if (finalText) await this.send(finalText)
   }
 
