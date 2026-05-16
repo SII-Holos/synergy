@@ -127,35 +127,41 @@ export namespace LLM {
       modelID: input.model.id,
       providerID: input.model.providerID,
     })
+    const langTimer = l.time("provider.getLanguage")
     const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
+    langTimer.stop()
+
+    const systemTimer = l.time("system.assembly")
 
     const system: string[] = []
-    system.push(
-      [
-        // use agent prompt otherwise provider prompt
-        ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
-        // any custom prompt passed into this call
-        ...input.system,
-        // any custom prompt from last user message
-        ...(input.user.system ? [input.user.system] : []),
-      ]
-        .filter((x) => x)
-        .join("\n"),
-    )
 
-    const header = system[0]
+    // Part 1: Agent prompt (most stable, always first for caching)
+    // Kept separate from custom parts so the static agent prompt can be
+    // cached independently even when dynamic parts (env block with timestamps)
+    // change on each invoke.
+    if (input.agent.prompt) {
+      system.push(input.agent.prompt)
+    } else {
+      system.push(...SystemPrompt.provider(input.model))
+    }
+
+    // Part 2: All custom system parts from invoke.ts (ordered static → dynamic)
+    const customSystem = [...input.system, ...(input.user.system ? [input.user.system] : [])]
+      .filter((x) => x)
+      .join("\n")
+
+    if (customSystem) {
+      system.push(customSystem)
+    }
+
     const original = clone(system)
     await Plugin.trigger("experimental.chat.system.transform", {}, { system })
     if (system.length === 0) {
       system.push(...original)
     }
-    // rejoin to maintain 2-part structure for caching if header unchanged
-    if (system.length > 2 && system[0] === header) {
-      const rest = system.slice(1)
-      system.length = 0
-      system.push(header, rest.join("\n"))
-    }
+    systemTimer.stop()
 
+    const optionsTimer = l.time("options.assembly")
     const provider = await Provider.getProvider(input.model.providerID)
     const variant =
       !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}
@@ -189,6 +195,7 @@ export namespace LLM {
     l.info("params", {
       params,
     })
+    optionsTimer.stop()
 
     const maxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
@@ -199,8 +206,10 @@ export namespace LLM {
 
     const tools = input.tools
 
-    return streamText({
+    const streamTextTimer = l.time("streamText.call")
+    const result = streamText({
       onError(error) {
+        streamTextTimer.stop()
         l.error("stream error", {
           error,
         })
@@ -270,5 +279,7 @@ export namespace LLM {
       }),
       experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
     })
+    streamTextTimer.stop()
+    return result
   }
 }

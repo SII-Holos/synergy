@@ -441,19 +441,17 @@ export namespace SessionInvoke {
             recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
           ])
 
-        const systemParts = [...envParts, ...customParts]
+        // Layered system prompt assembly: stable → semi-stable → dynamic
+        // This ordering maximizes prompt caching by keeping static content first.
+        const systemParts: string[] = []
+
+        // Layer 1: Static — AGENTS.md instructions (stable within session)
+        systemParts.push(...customParts)
+
+        // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
-        if (cortexReminder) systemParts.push(cortexReminder)
 
-        if (step === 1 && lastFinished?.time.completed) {
-          const elapsed = lastUser.time.created - lastFinished.time.completed
-          if (elapsed > 0) {
-            systemParts.push(
-              `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
-            )
-          }
-        }
-
+        // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {
           systemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
@@ -464,6 +462,21 @@ export namespace SessionInvoke {
               metadata: { ...lastUser.metadata, injectedContext: injection },
             }
             await Session.updateMessage(updated)
+          }
+        }
+
+        // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
+        systemParts.push(...envParts)
+
+        // Layer 5: Dynamic — reminders and time context (always at the end)
+        if (cortexReminder) systemParts.push(cortexReminder)
+
+        if (step === 1 && lastFinished?.time.completed) {
+          const elapsed = lastUser.time.created - lastFinished.time.completed
+          if (elapsed > 0) {
+            systemParts.push(
+              `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
+            )
           }
         }
 
@@ -479,18 +492,22 @@ export namespace SessionInvoke {
             : []),
         ]
 
+        const promptPlanTimer = log.time("promptBudgeter.buildPlan")
         const promptPlan = await PromptBudgeter.buildPlan({
           model,
           system: systemParts,
           messages: preparedMessages,
           toolDefinitions,
         })
+        promptPlanTimer.stop()
 
         const calibration = buildCalibration(msgs)
+        const promptDecideTimer = log.time("promptBudgeter.decide")
         const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
         })
+        promptDecideTimer.stop()
 
         if (
           !jobCtx.compactionAutoDisabled &&
@@ -513,6 +530,7 @@ export namespace SessionInvoke {
           continue
         }
 
+        const toolResolveTimer = log.time("toolResolver.resolve")
         const tools = await ToolResolver.resolve({
           agent,
           model,
@@ -522,8 +540,10 @@ export namespace SessionInvoke {
           userTools: lastUser.tools,
           includeMCP: true,
         })
+        toolResolveTimer.stop()
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        const processTimer = log.time("processor.process")
         const result = await processor.process({
           user: lastUser,
           agent,
@@ -534,6 +554,7 @@ export namespace SessionInvoke {
           tools,
           model,
         })
+        processTimer.stop()
 
         // post-LLM jobs
         const postJobs = LoopJob.collect("post", jobCtx)

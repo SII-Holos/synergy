@@ -29,6 +29,7 @@ type CardState = {
   answerText: string
   toolProgress: ChannelTypes.StreamingToolProgress[]
   rendered: RenderedSections
+  error?: boolean
 }
 
 export function mergeStreamingText(previous: string, next: string): string {
@@ -84,12 +85,19 @@ function renderAnswerContent(answerText: string): string {
   return normalizeMarkdown(answerText)
 }
 
-function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress">, closed: boolean): string {
+function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress" | "error">, closed: boolean): string {
   if (closed) {
+    if (state.error) {
+      return "❌ 生成失败"
+    }
     if (state.toolProgress.some((item) => item.status === "error")) {
       return "✅ 已完成（含工具错误）"
     }
     return "✅ 已完成"
+  }
+
+  if (state.error) {
+    return "❌ 生成失败"
   }
 
   if (state.toolProgress.some((item) => item.status === "generating")) {
@@ -107,7 +115,10 @@ function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress
   return "⏳ 思考中..."
 }
 
-function renderSections(state: Pick<CardState, "answerText" | "toolProgress">, closed: boolean): RenderedSections {
+function renderSections(
+  state: Pick<CardState, "answerText" | "toolProgress" | "error">,
+  closed: boolean,
+): RenderedSections {
   return {
     statusContent: renderStatusContent(state, closed),
     answerContent: renderAnswerContent(state.answerText),
@@ -277,7 +288,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     await this.enqueueRender({ toolProgress: progress })
   }
 
-  async close(finalText?: string): Promise<void> {
+  async close(finalText?: string, error?: boolean): Promise<void> {
     if (!this.state || this.closed) return
     this.closed = true
     this.clearTrailingTimer()
@@ -290,6 +301,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       {
         answerText: text,
         toolProgress: this.state.toolProgress,
+        error,
       },
       true,
     )
@@ -325,13 +337,14 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     return this.state !== null && !this.closed
   }
 
-  private enqueueRender(update: Partial<Pick<CardState, "answerText" | "toolProgress">>) {
+  private enqueueRender(update: Partial<Pick<CardState, "answerText" | "toolProgress" | "error">>) {
     this.queue = this.queue.then(async () => {
       if (!this.state || this.closed) return
       await this.applyRender(
         {
           answerText: update.answerText ?? this.state.answerText,
           toolProgress: update.toolProgress ?? this.state.toolProgress,
+          error: update.error ?? this.state.error,
         },
         false,
       )
@@ -339,7 +352,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     return this.queue
   }
 
-  private async applyRender(nextState: Pick<CardState, "answerText" | "toolProgress">, closed: boolean) {
+  private async applyRender(nextState: Pick<CardState, "answerText" | "toolProgress" | "error">, closed: boolean) {
     if (!this.state) return
 
     const nextRendered = renderSections(nextState, closed)
@@ -357,6 +370,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
 
     this.state.answerText = nextState.answerText
     this.state.toolProgress = nextState.toolProgress
+    this.state.error = nextState.error
     this.state.rendered = nextRendered
 
     for (const update of updates) {

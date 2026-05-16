@@ -46,17 +46,22 @@ export namespace Snapshot {
 
   export async function patch(hash: string, opts?: { indexFresh?: boolean }): Promise<Patch> {
     const git = gitdir()
-    if (!opts?.indexFresh)
-      await $`git --git-dir ${git} --work-tree ${Instance.directory} add .`.quiet().cwd(Instance.directory).nothrow()
-    const result =
-      await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.directory} diff --no-ext-diff --name-only ${hash} -- .`
+    if (!opts?.indexFresh) {
+      await $`git add .`
+        .env({ ...process.env, GIT_DIR: git, GIT_WORK_TREE: Instance.directory })
         .quiet()
         .cwd(Instance.directory)
         .nothrow()
+    }
+    const result = await $`git -c core.autocrlf=false diff --no-ext-diff --name-only ${hash} -- .`
+      .env({ ...process.env, GIT_DIR: git, GIT_WORK_TREE: Instance.directory })
+      .quiet()
+      .cwd(Instance.directory)
+      .nothrow()
 
     // If git diff fails, return empty patch
     if (result.exitCode !== 0) {
-      log.warn("failed to get diff", { hash, exitCode: result.exitCode })
+      log.warn("failed to get diff", { hash, exitCode: result.exitCode, stderr: result.stderr.toString() })
       return { hash, files: [] }
     }
 

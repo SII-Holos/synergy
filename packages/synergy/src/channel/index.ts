@@ -516,14 +516,19 @@ export namespace Channel {
           })
 
           const responseText = buildAssistantTranscript(assistantTranscript) || extractResponseText(result.parts)
-          await streaming.close(responseText)
+          const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
+
+          // If the response failed but tools completed successfully, build a
+          // degraded fallback so the user still receives tool outputs.
+          const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
+          await streaming.close(responseText || fallbackText, hasError)
 
           await reactionController.setDone()
         } catch (err) {
           log.error("prompt failed", { sessionID, error: err })
           void reactionController.setError()
           const errorText = buildAssistantTranscript(assistantTranscript) || undefined
-          await streaming.close(errorText).catch(() => {})
+          await streaming.close(errorText, true).catch(() => {})
         } finally {
           unsubMessage()
           unsubPart()
@@ -579,6 +584,26 @@ export namespace Channel {
     for (const attachment of attachments) {
       fs.unlink(attachment.path).catch(() => {})
     }
+  }
+
+  /**
+   * Build a minimal degraded fallback message when the main LLM response failed
+   * (e.g. content-filtered) but tools completed successfully. This ensures the
+   * user still receives file paths, links, or other critical tool outputs.
+   */
+  function buildDegradedFallback(
+    toolProgress: ReadonlyMap<string, { status: string; title?: string; tool: string }>,
+  ): string | undefined {
+    const completedTools = Array.from(toolProgress.values()).filter((t) => t.status === "completed")
+    if (completedTools.length === 0) return undefined
+
+    const lines = ["⚠️ 回答生成失败，但以下工具已执行完成："]
+    for (const tool of completedTools) {
+      const title = tool.title ?? tool.tool
+      lines.push(`- ${title}`)
+    }
+    lines.push("\n请检查相关输出或稍后重试。")
+    return lines.join("\n")
   }
 
   export async function status(): Promise<Record<string, Status>> {

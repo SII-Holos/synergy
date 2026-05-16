@@ -45,6 +45,7 @@ ref/
 holos-paper/
 awcp-paper/
 research/
+.research/
 /data/
 *.tgz
 Auto-claude-code-research-in-sleep/
@@ -70,3 +71,6 @@ holos-research/
 
 # External local repos / sandboxes
 faro-web/
+
+# Weekly report skill (standalone repo)
+weekly-report/
