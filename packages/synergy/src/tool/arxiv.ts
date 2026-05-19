@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import { ScopeContext } from "../scope/context"
 import { ToolTimeout } from "./timeout"
+import { SearchGuard } from "./search-guard"
 
 const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.arxivSearchMs
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
@@ -49,11 +50,27 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
     topK: z.coerce.number().default(10).describe("Number of results (1-100, default: 10)"),
   }),
   async execute(params, ctx) {
+    const searchScope = String((ctx.extra as any)?.userMessageID ?? ctx.sessionID)
+    const duplicate = SearchGuard.checkDuplicate(searchScope, "arxiv_search", params)
+    if (duplicate) {
+      return {
+        title: "arXiv search skipped",
+        output: duplicate.output,
+        metadata: {
+          total: 0,
+          shown: 0,
+          searchFailureType: "duplicate_query",
+          query: duplicate.query,
+        },
+      }
+    }
+
     await ctx.ask({
       permission: "arxiv_search",
       patterns: ["*"],
       metadata: {},
     })
+    SearchGuard.recordAttempt(searchScope, "arxiv_search", params)
 
     const url = `${Flag.SYNERGY_ARXIV_API_URL}/search`
     const body = {
@@ -88,7 +105,8 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      throw new Error(`arXiv search failed with status: ${response.status}`)
+      const failureType = SearchGuard.classifyHttpStatus(response.status) ?? "blocked_or_unavailable"
+      throw new Error(`arXiv search failed with status: ${response.status} (${failureType})`)
     }
 
     const data = (await response.json()) as SearchResponse
@@ -97,8 +115,17 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
     if (papers.length === 0) {
       return {
         title: "No results found",
-        output: "No papers found matching your search criteria.",
-        metadata: { total: 0, shown: 0 },
+        output: [
+          "No papers found matching your search criteria.",
+          "",
+          `[Search failure: no_results] ${SearchGuard.advice("no_results")}`,
+        ].join("\n"),
+        metadata: {
+          total: 0,
+          shown: 0,
+          searchFailureType: "no_results",
+          query: SearchGuard.extractQuery("arxiv_search", params),
+        },
       }
     }
 
@@ -211,7 +238,8 @@ Examples of valid arXiv IDs:
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      throw new Error(`Failed to download paper: HTTP ${response.status}`)
+      const failureType = SearchGuard.classifyHttpStatus(response.status) ?? "blocked_or_unavailable"
+      throw new Error(`Failed to download paper: HTTP ${response.status} (${failureType})`)
     }
 
     const buffer = await response.arrayBuffer()
