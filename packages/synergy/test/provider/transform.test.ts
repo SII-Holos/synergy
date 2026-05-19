@@ -286,6 +286,54 @@ describe("ProviderTransform.schema - top-level object requirement", () => {
   })
 })
 
+describe("ProviderTransform.message - system message ordering", () => {
+  const openaiModel = {
+    id: "openai/gpt-4.1",
+    providerID: "openai",
+    api: {
+      id: "gpt-4.1",
+      url: "https://api.openai.com",
+      npm: "@ai-sdk/openai",
+    },
+    name: "GPT-4.1",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: {
+      input: 0,
+      output: 0,
+      cache: { read: 0, write: 0 },
+    },
+    limit: {
+      context: 128000,
+      output: 4096,
+    },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("merges and hoists system messages before conversation history", () => {
+    const msgs = [
+      { role: "user", content: "hello" },
+      { role: "system", content: "late instruction" },
+      { role: "assistant", content: "hi" },
+      { role: "system", content: "later instruction" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, openaiModel)
+
+    expect(result.map((msg) => msg.role)).toEqual(["system", "user", "assistant"])
+    expect(result.map((msg) => msg.content)).toEqual(["late instruction\n\nlater instruction", "hello", "hi"])
+  })
+})
+
 describe("ProviderTransform.message - DeepSeek reasoning content", () => {
   test("DeepSeek with tool calls includes reasoning_content in providerOptions", () => {
     const msgs = [

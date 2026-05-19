@@ -8,6 +8,7 @@ import { iife } from "@/util/iife"
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
+type SystemMessage = Extract<ModelMessage, { role: "system" }>
 
 function mimeToModality(mime: string): Modality | undefined {
   if (mime.startsWith("image/")) return "image"
@@ -30,6 +31,30 @@ export namespace ProviderTransform {
     return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
   }
 
+  function isSystemMessage(msg: ModelMessage): msg is SystemMessage {
+    return msg.role === "system"
+  }
+
+  function normalizeSystemMessages(msgs: ModelMessage[]): ModelMessage[] {
+    const system = msgs.filter(isSystemMessage)
+    if (system.length === 0) return msgs
+
+    const rest = msgs.filter((msg) => msg.role !== "system")
+    if (system.length === 1 && msgs[0]?.role === "system") return msgs
+
+    // Some providers reject multiple system messages or any system message after history.
+    return [
+      {
+        ...system[0],
+        content: system
+          .map((msg) => msg.content)
+          .filter((content) => typeof content === "string" && content.length > 0)
+          .join("\n\n"),
+      },
+      ...rest,
+    ]
+  }
+
   function normalizeMessages(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
     // Sanitize surrogate characters in all messages
     msgs = msgs.map((msg) => {
@@ -46,6 +71,8 @@ export namespace ProviderTransform {
       }
       return msg
     })
+
+    msgs = normalizeSystemMessages(msgs)
 
     // Anthropic and Bedrock reject messages with empty content
     if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock") {
