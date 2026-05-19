@@ -3,6 +3,7 @@ import { Tool } from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
 import { ToolTimeout } from "./timeout"
+import { SearchGuard } from "./search-guard"
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
 const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.webfetchMs
@@ -24,6 +25,19 @@ export const WebFetchTool = Tool.define("webfetch", {
       throw new Error("URL must start with http:// or https://")
     }
 
+    const searchScope = String((ctx.extra as any)?.userMessageID ?? ctx.sessionID)
+    const duplicate = SearchGuard.checkDuplicate(searchScope, "webfetch", params)
+    if (duplicate) {
+      return {
+        output: duplicate.output,
+        title: `Web fetch skipped: ${params.url}`,
+        metadata: {
+          searchFailureType: "duplicate_query",
+          url: params.url,
+        },
+      }
+    }
+
     await ctx.ask({
       permission: "webfetch",
       patterns: [params.url],
@@ -33,6 +47,7 @@ export const WebFetchTool = Tool.define("webfetch", {
         timeout: params.timeout,
       },
     })
+    SearchGuard.recordAttempt(searchScope, "webfetch", params)
 
     const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
@@ -56,20 +71,30 @@ export const WebFetchTool = Tool.define("webfetch", {
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
     }
 
-    const response = await fetch(params.url, {
-      signal: AbortSignal.any([controller.signal, ctx.abort]),
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: acceptHeader,
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    })
+    let response: Response
+    try {
+      response = await fetch(params.url, {
+        signal: AbortSignal.any([controller.signal, ctx.abort]),
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: acceptHeader,
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      })
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Request timed out")
+      }
+      throw error
+    }
 
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      throw new Error(`Request failed with status code: ${response.status}`)
+      const failureType = SearchGuard.classifyHttpStatus(response.status) ?? "blocked_or_unavailable"
+      throw new Error(`Request failed with status code: ${response.status} (${failureType})`)
     }
 
     // Check content length
@@ -88,51 +113,45 @@ export const WebFetchTool = Tool.define("webfetch", {
 
     const title = `${params.url} (${contentType})`
 
+    function result(output: string) {
+      const quality = SearchGuard.assessWebContent(output, contentType)
+      return {
+        output: quality ? SearchGuard.appendQualityWarning(output, quality.reason) : output,
+        title,
+        metadata: {
+          contentType,
+          contentLength: arrayBuffer.byteLength,
+          ...(quality
+            ? {
+                searchFailureType: quality.failureType,
+                searchFailureReason: quality.reason,
+              }
+            : {}),
+        },
+      }
+    }
+
     // Handle content based on requested format and actual content type
     switch (params.format) {
       case "markdown":
         if (contentType.includes("text/html")) {
           const markdown = convertHTMLToMarkdown(content)
-          return {
-            output: markdown,
-            title,
-            metadata: {},
-          }
+          return result(markdown)
         }
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        return result(content)
 
       case "text":
         if (contentType.includes("text/html")) {
           const text = await extractTextFromHTML(content)
-          return {
-            output: text,
-            title,
-            metadata: {},
-          }
+          return result(text)
         }
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        return result(content)
 
       case "html":
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        return result(content)
 
       default:
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        return result(content)
     }
   },
 })
