@@ -10,7 +10,8 @@ export const VERSION_MANAGED_PACKAGE_PATHS = [
   path.join(REPO_ROOT, "packages/sdk/js/package.json"),
   path.join(REPO_ROOT, "packages/plugin/package.json"),
   path.join(REPO_ROOT, "packages/meta-protocol/package.json"),
-  path.join(REPO_ROOT, "packages/meta-synergy/package.json"),
+  // meta-synergy npm publish removed — package too large for npm registry
+  // path.join(REPO_ROOT, "packages/meta-synergy/package.json"),
   path.join(REPO_ROOT, "packages/app/package.json"),
   path.join(REPO_ROOT, "packages/config-ui/package.json"),
 ] as const
@@ -20,14 +21,16 @@ export type RegistryPackageName =
   | "@ericsanchezok/meta-protocol"
   | "@ericsanchezok/synergy-plugin"
   | "@ericsanchezok/synergy"
-  | "@ericsanchezok/meta-synergy"
+// meta-synergy npm publish removed — package too large for npm registry
+// | "@ericsanchezok/meta-synergy"
 
 export const FIXED_REGISTRY_PACKAGES = [
   "@ericsanchezok/synergy-sdk",
   "@ericsanchezok/meta-protocol",
   "@ericsanchezok/synergy-plugin",
   "@ericsanchezok/synergy",
-  "@ericsanchezok/meta-synergy",
+  // meta-synergy npm publish removed — package too large for npm registry
+  // "@ericsanchezok/meta-synergy",
 ] as const satisfies readonly RegistryPackageName[]
 
 export const SDK_DIR = path.join(REPO_ROOT, "packages/sdk/js")

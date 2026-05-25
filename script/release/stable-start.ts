@@ -21,7 +21,8 @@ import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
-import { publishMetaSynergyCandidate } from "./nodes/publish-meta-synergy-candidate"
+// meta-synergy npm publish removed — package too large for npm registry
+// import { publishMetaSynergyCandidate } from "./nodes/publish-meta-synergy-candidate"
 import { packageBinaryAssets } from "./nodes/package-binary-assets"
 import { ensureDraftRelease } from "./nodes/create-draft-release"
 import { ensureStableTag } from "./nodes/ensure-stable-tag"
@@ -61,9 +62,10 @@ try {
   await publishMetaProtocolCandidate(version, state.channel)
   await publishPluginCandidate(version, state.channel)
   const synergy = await publishSynergyCandidate(version, state.channel)
-  await publishMetaSynergyCandidate(version, state.channel)
+  // meta-synergy npm publish removed — package too large for npm registry (>512MB tgz)
+  // await publishMetaSynergyCandidate(version, state.channel)
 
-  state.registryPackages.push(...platformPackages, "@ericsanchezok/meta-synergy")
+  state.registryPackages.push(...platformPackages)
   const synergyAssets = await packageBinaryAssets(SYNERGY_DIST_DIR, synergy.platformNames)
   const metaSynergyAssets = await packageBinaryAssets(META_SYNERGY_DIST_DIR, metaSynergyPlatformNames)
   state.binaryAssets = [...synergyAssets, ...metaSynergyAssets]
