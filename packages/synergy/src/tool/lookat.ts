@@ -99,6 +99,20 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         })
       }
 
+      const nonImages = files.filter((f) => !f.mimeType.startsWith("image/"))
+      if (nonImages.length > 0) {
+        return {
+          title: "Unsupported file type",
+          output: nonImages
+            .map(
+              (f) =>
+                `${f.filename}: ${f.mimeType} — use the Read tool instead. look_at only supports image files (png, jpg, webp, gif, svg, heic).`,
+            )
+            .join("\n"),
+          metadata: { error: "unsupported_file_type" },
+        }
+      }
+
       const agent = await Agent.get(MULTIMODAL_AGENT)
       if (!agent) {
         return {
