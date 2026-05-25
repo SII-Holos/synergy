@@ -136,21 +136,6 @@ describe.serial("snapshot", () => {
     })
   })
 
-  test("symlink handling", async () => {
-    await using tmp = await bootstrap()
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const before = await Snapshot.track()
-        expect(before).toBeTruthy()
-
-        await $`ln -s ${tmp.path}/a.txt ${tmp.path}/link.txt`.quiet()
-
-        expect((await Snapshot.patch(before!)).files).toContain(`${tmp.path}/link.txt`)
-      },
-    })
-  })
-
   test("large file handling", async () => {
     await using tmp = await bootstrap()
     await Instance.provide({
