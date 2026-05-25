@@ -20,7 +20,7 @@ Synergy uses model roles for different internal tasks. Each falls back through a
 | `long_context_model` | Extra-large context for very long inputs | → `model` |
 | `creative_model` | Creative/visual: UI design, writing, artistry | → `model` |
 | `holos_friend_reply_model` | Holos automatic friend replies | → `model` |
-| `vision_model` | Vision: image/PDF/video analysis via `look_at` tool | (disabled if not set) |
+| `vision_model` | Image analysis via `look_at` tool (screenshots, diagrams, charts) | (disabled if not set) |
 
 **Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`.
 
@@ -96,7 +96,7 @@ Models can have variants (e.g., different reasoning effort levels). Variants are
 | `long_context_model` | Engaged automatically when inputs exceed the default model's context window. Without it, very long inputs may be truncated or fail. |
 | `creative_model` | Used by the scribe agent and frontend-design skill for writing, UI design, and other creative tasks. A stronger model here produces more nuanced prose and better visual design suggestions. |
 | `holos_friend_reply_model` | Controls the model used for automatic replies in Holos friend conversations. Defaults to `model` if unset, which may be overpowered (and expensive) for casual chat replies. |
-| `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, image/PDF/video analysis is unavailable. |
+| `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, image analysis is unavailable. Use the `read` tool for PDF/DOCX/XLSX/PPTX text extraction — no vision model needed. |
 
 ## Common model configurations
 
@@ -144,8 +144,9 @@ Strongest model for every role (highest cost, highest quality):
 
 - Format is still `provider/model` (e.g. `"openai/gpt-4o"`, `"anthropic/claude-sonnet-4-5"`)
 - Must be explicitly set — `vision_model` does not fall back to `model`
-- Not all models support vision; check the provider's model registry
+- Not all models support image input; check the provider's model registry
 - Common choices: `openai/gpt-4o`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.5-pro`
+- The `look_at` tool is for images only (screenshots, diagrams, charts). Use `read` for PDF text extraction.
 - If `look_at` calls fail or are unavailable, this field is the first thing to check
 
 ## Troubleshooting
@@ -153,7 +154,7 @@ Strongest model for every role (highest cost, highest quality):
 | Problem | Check |
 |---|---|
 | "Model not available" | Provider is configured in `provider` section, API key is saved (`~/.synergy/data/auth/api-key.json`), model ID matches the provider registry exactly |
-| `vision_model` not working | Must be explicitly set — does not fall back. Verify the model supports vision input. Check the model ID format is `provider/model` |
+| `vision_model` not working | Must be explicitly set — does not fall back. Verify the model supports image input. Check the model ID format is `provider/model` |
 | Wrong model used by an agent | Check the agent's `model` field for per-agent overrides. Check model role assignments — the agent may be using a role you didn't expect |
 | Expensive model used for trivial tasks | Set `nano_model` and `mini_model` to cheaper alternatives. Without them, title generation and classification use `model` at full cost |
 
