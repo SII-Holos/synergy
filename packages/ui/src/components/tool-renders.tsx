@@ -1673,6 +1673,33 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "note_edit",
+  render(props) {
+    const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
+    const replacements = () => props.metadata?.replacements as number | undefined
+    return (
+      <BasicTool
+        {...props}
+        icon="notebook-pen"
+        trigger={() => ({
+          title: "Edit Note",
+          subtitle: noteTitle(),
+          args: replacements() ? [`${replacements()} change(s)`] : [],
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "agenda_schedule",
   render(props) {
     return (

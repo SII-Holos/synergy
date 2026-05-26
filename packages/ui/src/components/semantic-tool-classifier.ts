@@ -185,6 +185,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   memory_write: "memory",
   memory_edit: "memory",
   note_write: "note",
+  note_edit: "note",
   note_list: "note",
   note_read: "note",
   skill: "skill",

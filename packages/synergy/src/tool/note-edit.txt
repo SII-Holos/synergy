@@ -1,0 +1,14 @@
+Performs exact string replacements in a note's markdown content.
+
+This is the precise editing counterpart to `note_write`. Use it to fix a typo, update a single section, or make targeted changes — without rewriting the entire note.
+
+Usage:
+- You must read the note first via `note_read`, then edit it with this tool. Reading before editing is required to get the exact text to match and to know the current version for conflict detection.
+- `oldString` must match the note's current text exactly, including whitespace and indentation. If the string is not found or matches multiple times, the edit will fail with a clear error.
+- Use `replaceAll` to replace every occurrence of `oldString` in the note.
+- This tool uses optimistic concurrency: if the note was modified by another process between your read and edit, it will reject with a conflict error asking you to re-read and retry.
+
+Contrast with `note_write`:
+- `note_write` with `mode: "replace"` overwrites the ENTIRE document — use for major restructuring.
+- `note_write` with `mode: "append"` adds content to the END — use for adding new sections.
+- `note_edit` performs surgical string replacements — use for fixing typos, updating details, or tweaking specific sections without resending the whole document.
