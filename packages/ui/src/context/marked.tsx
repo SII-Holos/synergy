@@ -375,12 +375,16 @@ registerCustomTheme("Synergy", () => {
 })
 
 // Convert LaTeX-style delimiters to Markdown-style for KaTeX compatibility
-// \\[...\\] -> $$...$$ (block) and \\(...\\) -> $...$ (inline)
+// Convert LaTeX-style delimiters to Markdown-style for KaTeX compatibility:
+//   LLM output (JSON-escaped): \\[...\\] -> $$...$$, \\(...\\) -> $...$
+//   Human input (literal):     \[...\] -> $$...$$, \(...\) -> $...$
 function convertLatexDelimiters(text: string): string {
-  // Block: \\[...\\] -> $$...$$
-  text = text.replace(/\\\\\[([\s\S]*?)\\\\\]/g, (_, content) => `$$${content}$$`)
-  // Inline: \\(...\\) -> $...$
-  text = text.replace(/\\\\\(([\s\S]*?)\\\\\)/g, (_, content) => `$${content}$`)
+  // Block: \\[...\\] (LLM) or \[...\] (human) -> $$...$$
+  text = text.replace(/\\\\\[([\s\S]*?)\\\\\]/g, (_, c) => `$$${c}$$`)
+  text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, c) => `$$${c}$$`)
+  // Inline: \\(...\\) (LLM) or \(...\) (human) -> $...$
+  text = text.replace(/\\\\\(([\s\S]*?)\\\\\)/g, (_, c) => `$${c}$`)
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, c) => `$${c}$`)
   return text
 }
 

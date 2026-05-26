@@ -12,10 +12,12 @@ function resolveAppDir() {
   return path.resolve(import.meta.dirname, "../../../../app")
 }
 
-async function waitForPort(port: number, timeout = 10000): Promise<boolean> {
+async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
   const start = Date.now()
-  while (Date.now() - start < timeout) {
-    const ready = await fetch(`http://localhost:${port}`)
+  while (Date.now() - start < timeoutMs) {
+    const ready = await fetch(`http://localhost:${port}`, {
+      signal: AbortSignal.timeout(5000),
+    })
       .then(() => true)
       .catch(() => false)
     if (ready) return true
