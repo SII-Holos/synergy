@@ -52,7 +52,7 @@ export function ConversationViewport(props: {
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div
           ref={props.autoScroll.contentRef}
-          class={`min-w-0 max-w-full ${props.contentClass}`}
+          class={["min-w-0 max-w-full", props.contentClass].filter(Boolean).join(" ")}
           classList={props.contentClassList}
         >
           {props.children}
