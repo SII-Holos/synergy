@@ -39,6 +39,9 @@ export namespace NoteMarkdown {
         result += renderMarks(node.text ?? "", node.marks)
       } else if (node.type === "hardBreak") {
         result += "\n"
+      } else if (node.type === "inlineMath") {
+        const latex = node.attrs?.latex ?? ""
+        result += node.attrs?.display === "yes" ? `$$\n${latex}\n$$` : `$${latex}$`
       } else if (node.type === "image") {
         const alt = node.attrs?.alt ?? ""
         const src = node.attrs?.src ?? ""
@@ -223,6 +226,27 @@ export namespace NoteMarkdown {
         continue
       }
 
+      // Block math: $$ ... $$
+      if (/^\$\$/.test(line)) {
+        const mathLines: string[] = []
+        i++ // skip opening $$
+        while (i < end && !/^\$\$/.test(lines[i])) {
+          mathLines.push(lines[i])
+          i++
+        }
+        i++ // skip closing $$
+        blocks.push({
+          type: "paragraph",
+          content: [
+            {
+              type: "inlineMath",
+              attrs: { latex: mathLines.join("\n").trim(), evaluate: "no", display: "yes" },
+            },
+          ],
+        })
+        continue
+      }
+
       if (/^\|/.test(line)) {
         const tableResult = parseTable(lines, i, end)
         blocks.push(tableResult.node)
@@ -283,6 +307,7 @@ export namespace NoteMarkdown {
   function isBlockStart(line: string): boolean {
     if (/^#{1,6}\s/.test(line)) return true
     if (/^```/.test(line)) return true
+    if (/^\$\$/.test(line)) return true
     if (/^---\s*$/.test(line) || /^\*\*\*\s*$/.test(line) || /^___\s*$/.test(line)) return true
     if (/^>\s?/.test(line)) return true
     if (/^[-*]\s/.test(line)) return true
@@ -378,7 +403,7 @@ export namespace NoteMarkdown {
     if (!text) return []
     const nodes: TipTapNode[] = []
     const regex =
-      /!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~|(\n)/g
+      /!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~|\$([^$]+)\$|(\n)/g
     let lastIndex = 0
     let match: RegExpExecArray | null
 
@@ -402,6 +427,9 @@ export namespace NoteMarkdown {
       } else if (match[9] !== undefined) {
         nodes.push({ type: "text", text: match[9], marks: [{ type: "strike" }] })
       } else if (match[10] !== undefined) {
+        // Inline math: $...$
+        nodes.push({ type: "inlineMath", attrs: { latex: match[10], evaluate: "no", display: "no" } })
+      } else if (match[11] !== undefined) {
         nodes.push({ type: "hardBreak" })
       }
 

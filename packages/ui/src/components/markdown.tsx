@@ -41,6 +41,55 @@ function enhanceMarkdown(root: HTMLDivElement) {
     wrapper.append(table)
   }
 
+  // KaTeX formula hover + click-to-copy LaTeX source
+  for (const katexEl of root.querySelectorAll<HTMLElement>(".katex-display, .katex")) {
+    // Skip inner .katex inside .katex-display — already handled by the parent
+    if (katexEl.classList.contains("katex") && katexEl.closest(".katex-display")) continue
+
+    const annotation = katexEl.querySelector<HTMLElement>('annotation[encoding="application/x-tex"]')
+    if (!annotation) continue
+    const source = (annotation.textContent ?? "").trim()
+    if (!source) continue
+
+    katexEl.dataset.katexCopy = "true"
+    katexEl.title = "Click to copy LaTeX"
+
+    let resetTimer: number | undefined
+
+    const handleKatexClick = async (e: MouseEvent) => {
+      e.stopPropagation()
+      try {
+        await navigator.clipboard.writeText(source)
+        // Show "Copied" tooltip
+        const tooltip = document.createElement("span")
+        tooltip.dataset.slot = "katex-copy-tooltip"
+        tooltip.textContent = "Copied!"
+        // Ensure the element is positioned for the tooltip
+        const prevPosition = katexEl.style.position
+        if (!prevPosition || prevPosition === "static") {
+          katexEl.style.position = "relative"
+        }
+        katexEl.appendChild(tooltip)
+        window.clearTimeout(resetTimer)
+        resetTimer = window.setTimeout(() => {
+          tooltip.remove()
+          if (!prevPosition || prevPosition === "static") {
+            katexEl.style.position = prevPosition || ""
+          }
+        }, copyResetDelay)
+      } catch {
+        // clipboard failed silently
+      }
+    }
+
+    katexEl.addEventListener("click", handleKatexClick)
+
+    disposers.push(() => {
+      window.clearTimeout(resetTimer)
+      katexEl.removeEventListener("click", handleKatexClick)
+    })
+  }
+
   for (const block of root.querySelectorAll<HTMLElement>('[data-slot="markdown-code-block"]')) {
     if (block.firstElementChild?.matches('[data-slot="markdown-code-header"]')) continue
 

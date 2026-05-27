@@ -294,4 +294,48 @@
     margin: 1rem 0;
     border-radius: var(--radius-sm);
   }
+
+  /* KaTeX formula click-to-copy */
+  .katex[data-katex-copy="true"],
+  .katex-display[data-katex-copy="true"] {
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: color-mix(in srgb, var(--text-base) 8%, transparent);
+    }
+
+    &:active {
+      background-color: color-mix(in srgb, var(--text-base) 14%, transparent);
+    }
+  }
+
+  [data-slot="katex-copy-tooltip"] {
+    position: absolute;
+    top: -1.75em;
+    right: 0;
+    z-index: 1;
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-raised-solid);
+    color: var(--text-strong);
+    font-size: 0.6875rem;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.3;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: katex-tooltip-appear 0.12s ease;
+  }
+
+  @keyframes katex-tooltip-appear {
+    from {
+      opacity: 0;
+      transform: translateY(0.125rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }

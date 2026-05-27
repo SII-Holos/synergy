@@ -634,6 +634,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Write Note",
         subtitle: input.title || input.mode,
       }
+    case "note_edit":
+      return {
+        icon: "notebook-pen",
+        title: "Edit Note",
+        subtitle: input.title || input.id,
+      }
     case "task_list":
       return {
         icon: "list-todo",

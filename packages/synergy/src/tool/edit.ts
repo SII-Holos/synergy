@@ -195,7 +195,7 @@ const SIMILAR_LINES_MAX_FILE_LINES = 5000
 /**
  * Levenshtein distance algorithm implementation
  */
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   // Handle empty strings
   if (a === "" || b === "") {
     return Math.max(a.length, b.length)

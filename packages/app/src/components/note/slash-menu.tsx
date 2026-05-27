@@ -216,7 +216,7 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
         editor
           .chain()
           .focus()
-          .insertContent({ type: "math_display", attrs: { content: "" } })
+          .insertContent({ type: "inlineMath", attrs: { latex: "x_1", evaluate: "no", display: "yes" } })
           .run(),
     },
     {

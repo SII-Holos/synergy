@@ -27,6 +27,7 @@ import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-me
 import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
+import katex from "katex"
 import "katex/dist/katex.min.css"
 
 function escapeHtml(str: string): string {
@@ -62,8 +63,13 @@ function tiptapToHtml(node: any): string {
   switch (node.type) {
     case "doc":
       return children
-    case "paragraph":
+    case "paragraph": {
+      const content = node.content ?? []
+      if (content.length === 1 && content[0]?.type === "inlineMath" && content[0]?.attrs?.display === "yes") {
+        return tiptapToHtml(content[0])
+      }
       return `<p>${children || "<br>"}</p>`
+    }
     case "heading":
       return `<h${node.attrs?.level ?? 1}>${children}</h${node.attrs?.level ?? 1}>`
     case "bulletList":
@@ -80,6 +86,17 @@ function tiptapToHtml(node: any): string {
       return `<img src="${escapeHtml(node.attrs?.src ?? "")}" alt="${escapeHtml(node.attrs?.alt ?? "")}" style="max-width:100%;border-radius:0.375rem" />`
     case "horizontalRule":
       return `<hr />`
+    case "inlineMath": {
+      const formula = node.attrs?.latex ?? ""
+      if (!formula) return ""
+      const displayMode = node.attrs?.display === "yes"
+      try {
+        const html = katex.renderToString(formula, { displayMode, throwOnError: false })
+        return displayMode ? `<div style="text-align:center;margin:0.5em 0">${html}</div>` : html
+      } catch {
+        return escapeHtml(formula)
+      }
+    }
     case "hardBreak":
       return `<br />`
     case "taskList":
@@ -103,6 +120,29 @@ function tiptapToHtml(node: any): string {
   }
 }
 
+function attachNoteDragData(e: DragEvent, note: NoteInfo) {
+  const title = note.title || "Untitled"
+  const payload = JSON.stringify({
+    id: note.id,
+    title: note.title,
+    content: NoteMarkdown.toMarkdown(note.content),
+  })
+
+  e.dataTransfer!.effectAllowed = "copy"
+  e.dataTransfer!.setData("application/x-synergy-note", payload)
+  e.dataTransfer!.setData("text/plain", title)
+
+  const dragImage = document.createElement("div")
+  dragImage.className =
+    "flex items-center gap-2 rounded-xl border border-border-base/55 bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
+  dragImage.style.position = "absolute"
+  dragImage.style.top = "-1000px"
+  dragImage.textContent = title
+  document.body.appendChild(dragImage)
+  e.dataTransfer!.setDragImage(dragImage, 0, 16)
+  setTimeout(() => document.body.removeChild(dragImage), 0)
+}
+
 function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
   const previewHtml = createMemo(() => tiptapToHtml(props.note.content))
   const hasContent = createMemo(() => {
@@ -110,33 +150,12 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
     return html.length > 0 && html !== "<p><br></p>"
   })
 
-  const handleDragStart = (e: DragEvent) => {
-    const payload = JSON.stringify({
-      id: props.note.id,
-      title: props.note.title,
-      content: NoteMarkdown.toMarkdown(props.note.content),
-    })
-    e.dataTransfer!.effectAllowed = "copy"
-    e.dataTransfer!.setData("application/x-synergy-note", payload)
-    e.dataTransfer!.setData("text/plain", props.note.title || "Untitled")
-
-    const dragImage = document.createElement("div")
-    dragImage.className =
-      "flex items-center gap-2 rounded-xl border border-border-base/55 bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
-    dragImage.style.position = "absolute"
-    dragImage.style.top = "-1000px"
-    dragImage.textContent = props.note.title || "Untitled"
-    document.body.appendChild(dragImage)
-    e.dataTransfer!.setDragImage(dragImage, 0, 16)
-    setTimeout(() => document.body.removeChild(dragImage), 0)
-  }
-
   return (
     <button
       type="button"
       class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-base/55 bg-surface-raised-base/95 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_18px_44px_-34px_rgba(28,34,48,0.24)] transition-all hover:-translate-y-0.5 hover:border-border-base/70 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.1),0_24px_54px_-34px_rgba(28,34,48,0.3)] active:scale-[0.985] cursor-pointer"
       draggable={true}
-      onDragStart={handleDragStart}
+      onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
@@ -200,6 +219,43 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
   )
 }
 
+function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
+  const tags = createMemo(() => props.note.tags ?? [])
+
+  return (
+    <button
+      type="button"
+      class="min-w-0 rounded-xl border border-border-base/42 bg-surface-raised-base/82 px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-all hover:-translate-y-0.5 hover:border-border-base/65 hover:bg-surface-raised-base hover:shadow-[0_14px_32px_-28px_rgba(28,34,48,0.32)] active:scale-[0.985]"
+      draggable={true}
+      onDragStart={(e) => attachNoteDragData(e, props.note)}
+      onClick={props.onClick}
+    >
+      <div class="flex min-w-0 items-center gap-1.5">
+        <Show when={props.note.pinned}>
+          <Icon name="pin" size="small" class="size-3 shrink-0 text-text-interactive-base" />
+        </Show>
+        <span class="min-w-0 flex-1 truncate text-11-medium leading-snug text-text-strong">
+          {props.note.title || "Untitled"}
+        </span>
+      </div>
+      <div class="mt-1.5 flex min-w-0 items-center gap-1.5 text-10-medium leading-none text-text-weaker">
+        <Show when={props.originName}>
+          <span class="inline-flex min-w-0 items-center gap-1 truncate text-text-weak">
+            <Icon name="folder" class="size-2.5 shrink-0" />
+            <span class="truncate">{props.originName}</span>
+          </span>
+        </Show>
+        <Show when={tags()[0]}>
+          <span class="max-w-[5.5rem] truncate rounded-md bg-surface-raised-stronger-non-alpha/72 px-1.5 py-0.5 text-text-weak ring-1 ring-inset ring-border-base/35">
+            {tags()[0]}
+          </span>
+        </Show>
+        <span class="shrink-0">{relativeTime(props.note.time.updated)}</span>
+      </div>
+    </button>
+  )
+}
+
 type DisplayGroup = NoteScopeGroup & {
   name: string
   directory: string
@@ -214,64 +270,102 @@ function ScopeSection(props: {
   onCreateNote: () => void
   scopeLookup: Map<string, { name: string; directory: string }>
 }) {
+  const previewNotes = createMemo(() => props.group.notes.slice(0, 3))
+  const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
+  const noteCountLabel = createMemo(
+    () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
+  )
+  const sectionClass = createMemo(() => {
+    if (props.expanded) return "border-border-base/55 bg-surface-inset-base/36"
+    if (props.group.isCurrent) return "bg-surface-inset-base/42"
+    return ""
+  })
+
   function getOriginName(note: NoteInfo): string | undefined {
     if (props.group.scopeType !== "global") return undefined
     const origin = (note as any).originScope as string | undefined
     if (!origin) return undefined
     return props.scopeLookup.get(origin)?.name ?? origin
   }
+
   return (
-    <div class="mb-1">
-      <div
-        role="button"
-        tabIndex={0}
-        class="group/scope flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-surface-inset-base/42"
-        onClick={props.onToggle}
-        onKeyDown={(e: KeyboardEvent) => {
-          if (e.key === "Enter" || e.key === " ") props.onToggle()
-        }}
-      >
-        <span
-          class="shrink-0 text-icon-weak transition-transform duration-150"
-          classList={{ "rotate-90": props.expanded }}
-        >
-          <Icon name="chevron-right" size="small" />
-        </span>
-        <Show when={props.group.scopeType === "global"}>
-          <Icon name="home" size="small" class="text-text-interactive-base shrink-0" />
-        </Show>
-        <Show when={props.group.scopeType === "project"}>
-          <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
-        </Show>
-        <span class="text-12-medium text-text-base text-left truncate">{props.group.name}</span>
-        <Show when={props.group.isCurrent}>
-          <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-base/45">
-            Current
-          </span>
-        </Show>
-        <span class="flex-1" />
-        <span class="text-11-regular text-text-weaker">{props.group.notes.length}</span>
+    <section
+      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-base/38 bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
+    >
+      <Show when={props.group.isCurrent}>
+        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-text-interactive-base/70" />
+      </Show>
+
+      <div class="flex items-center gap-2">
         <button
           type="button"
-          class="flex size-7 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak opacity-0 shadow-sm transition-all group-hover/scope:opacity-100 hover:bg-surface-raised-base-hover hover:text-icon-base"
-          onClick={(e: MouseEvent) => {
-            e.stopPropagation()
-            props.onCreateNote()
-          }}
+          class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-surface-raised-base-hover/55"
+          aria-expanded={props.expanded}
+          aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.group.name} notes`}
+          onClick={props.onToggle}
+        >
+          <span
+            class="shrink-0 text-icon-weak transition-transform duration-150"
+            classList={{ "rotate-90": props.expanded }}
+          >
+            <Icon name="chevron-right" size="small" />
+          </span>
+          <Show when={props.group.scopeType === "global"}>
+            <Icon name="home" size="small" class="text-text-interactive-base shrink-0" />
+          </Show>
+          <Show when={props.group.scopeType === "project"}>
+            <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
+          </Show>
+          <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
+          <Show when={props.group.isCurrent}>
+            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-base/38">
+              <span class="size-1.5 rounded-full bg-text-interactive-base/80" />
+              Current
+            </span>
+          </Show>
+          <span class="flex-1" />
+          <span class="shrink-0 text-11-regular text-text-weaker">{noteCountLabel()}</span>
+          <Show when={latestUpdated()}>
+            <span class="hidden shrink-0 text-11-regular text-text-weaker sm:inline">
+              · {relativeTime(latestUpdated()!)}
+            </span>
+          </Show>
+        </button>
+        <button
+          type="button"
+          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
+          onClick={props.onCreateNote}
           title="New note"
         >
           <Icon name="plus" size="small" />
         </button>
       </div>
 
-      <Show when={props.expanded}>
+      <Show
+        when={props.expanded}
+        fallback={
+          <Show when={previewNotes().length > 0}>
+            <div class="grid grid-cols-1 gap-2 px-1 pb-1 pt-1.5 sm:grid-cols-3">
+              <For each={previewNotes()}>
+                {(note) => (
+                  <MiniNoteCard
+                    note={note}
+                    originName={getOriginName(note)}
+                    onClick={() => props.onOpenNote(note.id)}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
+        }
+      >
         <Show
           when={props.group.notes.length > 0}
-          fallback={<div class="text-12-regular text-text-weaker text-center py-4">No notes in this scope</div>}
+          fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
-          <div class="mt-1.5 mb-3 flex gap-2.5">
+          <div class="mb-1 mt-2 flex gap-2.5 px-1">
             {[0, 1, 2].map((col) => (
-              <div class="flex-1 min-w-0 flex flex-col gap-2.5">
+              <div class="flex min-w-0 flex-1 flex-col gap-2.5">
                 <For each={props.group.notes.filter((_, i) => i % 3 === col)}>
                   {(note) => (
                     <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
@@ -282,7 +376,7 @@ function ScopeSection(props: {
           </div>
         </Show>
       </Show>
-    </div>
+    </section>
   )
 }
 
@@ -602,11 +696,12 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   function currentDraft() {
     const ed = editor()
     if (!ed || ed.isDestroyed) return null
+    const content = ed.getJSON()
     return {
       title: title(),
       tags: tags(),
-      content: ed.getJSON(),
-      contentText: ed.getText(),
+      content,
+      contentText: NoteMarkdown.toMarkdown(content),
     }
   }
 

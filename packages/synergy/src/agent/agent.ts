@@ -396,6 +396,7 @@ export namespace Agent {
             note_read: "allow",
             note_search: "allow",
             note_write: "allow",
+            note_edit: "allow",
             profile_get: "allow",
             profile_update: "allow",
             session_list: "allow",

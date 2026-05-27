@@ -18,6 +18,7 @@ import { NoteListTool } from "./note-list"
 import { NoteReadTool } from "./note-read"
 import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
+import { NoteEditTool } from "./note-edit"
 import { ProfileGetTool, ProfileUpdateTool } from "./profile"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
@@ -195,6 +196,7 @@ export namespace ToolRegistry {
       NoteReadTool,
       NoteSearchTool,
       NoteWriteTool,
+      NoteEditTool,
       ProfileGetTool,
       ProfileUpdateTool,
       SessionListTool,

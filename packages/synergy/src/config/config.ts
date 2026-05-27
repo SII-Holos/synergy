@@ -1363,7 +1363,7 @@ export namespace Config {
       vision_model: z
         .string()
         .describe(
-          "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
+          "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
         )
         .optional(),
       default_agent: z

@@ -31,8 +31,11 @@ async function extractPdf(filepath: string): Promise<string> {
     const { extractText, getDocumentProxy } = await import("unpdf")
     const buffer = await Bun.file(filepath).arrayBuffer()
     const pdf = await getDocumentProxy(new Uint8Array(buffer))
-    const result = await extractText(pdf, { mergePages: true })
-    return result.text
+    const result = await extractText(pdf)
+    // unpdf returns per-page text array with proper line breaks.
+    // mergePages: true kills all newlines, so we join ourselves.
+    const pages = result.text as string[]
+    return pages.join("\n\n")
   } finally {
     console.warn = originalWarn
   }
