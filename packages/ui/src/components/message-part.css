@@ -1,6 +1,7 @@
 [data-component="assistant-message"] {
   content-visibility: auto;
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -158,6 +159,7 @@
 
 [data-component="text-part"] {
   width: 100%;
+  min-width: 0;
 
   [data-component="markdown"] {
     margin-top: 12px;
@@ -167,6 +169,7 @@
 
 [data-component="reasoning-part"] {
   width: 100%;
+  min-width: 0;
   opacity: 0.5;
 
   [data-component="markdown"] {
@@ -474,6 +477,7 @@
 
 [data-component="tool-part-wrapper"] {
   width: 100%;
+  min-width: 0;
   animation: tool-card-enter 0.25s ease-out both;
 
   /* Tighten gap between consecutive tool cards */

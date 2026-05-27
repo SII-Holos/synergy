@@ -124,6 +124,8 @@
 
   [data-slot="markdown-code-block"] {
     margin: 1rem 0;
+    min-width: 0;
+    max-width: 100%;
     overflow: clip;
     border: 1px solid color-mix(in srgb, var(--border-weaker-base) 88%, transparent);
     border-radius: var(--radius-md);
@@ -207,6 +209,7 @@
 
   pre {
     margin: 1rem 0;
+    min-width: 0;
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;

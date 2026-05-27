@@ -259,6 +259,7 @@
 
   [data-slot="session-turn-response-section"] {
     width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 24px;
@@ -272,6 +273,7 @@
     align-items: flex-start;
     gap: 4px;
     align-self: stretch;
+    min-width: 0;
 
     p {
       font-size: var(--font-size-base);
@@ -286,6 +288,7 @@
 
   [data-slot="session-turn-accordion"] {
     width: 100%;
+    min-width: 0;
 
     [data-slot="accordion-content"] {
       -webkit-user-select: text;

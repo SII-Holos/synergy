@@ -90,13 +90,53 @@ export namespace PromptBudgeter {
     }
   }
 
+  /**
+   * Estimated visual tokens per image/file for budgeter purposes.
+   *
+   * Text tokenizers (tiktoken) count base64 bytes as text tokens, massively
+   * overcounting the real cost — providers charge by visual tokens (typically
+   * 85–1000 per image depending on resolution and provider). This fixed
+   * estimate is intentionally conservative to avoid false-positive
+   * compactions while still catching genuine overflows from many images.
+   */
+  const IMAGE_TOKEN_ESTIMATE = 500
+
+  /**
+   * Sanitize ModelMessage content for token estimation by replacing
+   * base64 data URLs with short placeholders. Text tokenizers cannot
+   * distinguish binary data from natural language and would count every
+   * base64 character as a text token, producing wildly inflated counts.
+   */
+  function sanitizeForEstimation(msgs: ModelMessage[]) {
+    let imageParts = 0
+    const sanitized = msgs.map((msg) => ({
+      ...msg,
+      content: Array.isArray(msg.content)
+        ? msg.content.map((part: any) => {
+            if (part.type === "image") {
+              imageParts++
+              return { ...part, image: "[image]" }
+            }
+            if (part.type === "file") {
+              imageParts++
+              return { ...part, data: "[file data]", mediaType: part.mediaType }
+            }
+            return part
+          })
+        : msg.content,
+    }))
+    return { sanitized, imageParts }
+  }
+
   export async function measure(plan: PromptPlan, modelID: string): Promise<Measure> {
     await Token.warmup(modelID)
     const systemCost = await Token.estimateModelJSON(
       modelID,
       plan.system.map((content) => ({ role: "system", content })),
     )
-    const messageCost = await Token.estimateModelJSON(modelID, plan.messages)
+    const { sanitized, imageParts } = sanitizeForEstimation(plan.messages)
+    const textMessageCost = await Token.estimateModelJSON(modelID, sanitized)
+    const messageCost = textMessageCost + imageParts * IMAGE_TOKEN_ESTIMATE
     const toolCost = await estimateTools(plan.toolDefinitions, modelID)
     return {
       system: systemCost,

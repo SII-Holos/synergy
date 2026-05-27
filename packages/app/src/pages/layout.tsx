@@ -547,9 +547,9 @@ function LayoutContent(props: ParentProps) {
         <HeaderBar />
       </Show>
       <ConnectionBanner />
-      <div class="flex-1 min-h-0 flex overflow-hidden">
+      <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
         <main
-          class="flex-1 min-h-0 overflow-x-hidden flex flex-col contain-strict"
+          class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col contain-strict"
           style={{ "min-width": layout.isDesktop() ? `${MAIN_MIN_PX}px` : undefined }}
         >
           {props.children}
