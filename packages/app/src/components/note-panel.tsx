@@ -27,6 +27,7 @@ import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-me
 import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
+import katex from "katex"
 import "katex/dist/katex.min.css"
 
 function escapeHtml(str: string): string {
@@ -62,8 +63,13 @@ function tiptapToHtml(node: any): string {
   switch (node.type) {
     case "doc":
       return children
-    case "paragraph":
+    case "paragraph": {
+      const content = node.content ?? []
+      if (content.length === 1 && content[0]?.type === "inlineMath" && content[0]?.attrs?.display === "yes") {
+        return tiptapToHtml(content[0])
+      }
       return `<p>${children || "<br>"}</p>`
+    }
     case "heading":
       return `<h${node.attrs?.level ?? 1}>${children}</h${node.attrs?.level ?? 1}>`
     case "bulletList":
@@ -80,6 +86,17 @@ function tiptapToHtml(node: any): string {
       return `<img src="${escapeHtml(node.attrs?.src ?? "")}" alt="${escapeHtml(node.attrs?.alt ?? "")}" style="max-width:100%;border-radius:0.375rem" />`
     case "horizontalRule":
       return `<hr />`
+    case "inlineMath": {
+      const formula = node.attrs?.latex ?? ""
+      if (!formula) return ""
+      const displayMode = node.attrs?.display === "yes"
+      try {
+        const html = katex.renderToString(formula, { displayMode, throwOnError: false })
+        return displayMode ? `<div style="text-align:center;margin:0.5em 0">${html}</div>` : html
+      } catch {
+        return escapeHtml(formula)
+      }
+    }
     case "hardBreak":
       return `<br />`
     case "taskList":
@@ -679,11 +696,12 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   function currentDraft() {
     const ed = editor()
     if (!ed || ed.isDestroyed) return null
+    const content = ed.getJSON()
     return {
       title: title(),
       tags: tags(),
-      content: ed.getJSON(),
-      contentText: ed.getText(),
+      content,
+      contentText: NoteMarkdown.toMarkdown(content),
     }
   }
 
