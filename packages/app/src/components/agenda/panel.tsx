@@ -412,15 +412,13 @@ function DetailPopover(props: {
           >
             <Icon name="pen-line" size="small" />
           </button>
-          <Show when={props.item.status !== "cancelled"}>
-            <ActionIconBtn
-              icon="trash-2"
-              title="Delete"
-              loading={props.isLoading(props.item.id, "remove")}
-              onClick={() => props.onAction("remove")}
-              danger
-            />
-          </Show>
+          <ActionIconBtn
+            icon="trash-2"
+            title="Delete"
+            loading={props.isLoading(props.item.id, "remove")}
+            onClick={() => props.onAction("remove")}
+            danger
+          />
           <div class="flex-1" />
           <button
             type="button"
