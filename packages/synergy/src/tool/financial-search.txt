@@ -1,0 +1,10 @@
+Search for financial information about A-share (Chinese stock market) companies. This tool dispatches an AI agent that uses browser automation to explore official financial websites (巨潮资讯网, 上交所, 深交所) and extract factual information.
+
+Input a financial question or information need. The tool will:
+1. Analyze what data is needed
+2. Search relevant financial websites
+3. Return structured factual information
+
+Best for: company financials, announcements, stock data, shareholder info, IPO details, periodic reports.
+
+Note: This tool provides raw factual information only — it does not interpret or answer questions directly. Use the returned data to inform your own analysis and response to the user.

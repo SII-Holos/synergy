@@ -56,6 +56,7 @@ import z from "zod"
 import { Plugin } from "../plugin"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
+import { FinancialSearchTool } from "./financial-search"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
 import { LspTool } from "./lsp"
@@ -185,6 +186,7 @@ export namespace ToolRegistry {
       WebSearchTool,
       ArxivSearchTool,
       ArxivDownloadTool,
+      FinancialSearchTool,
       SkillTool,
       LookAtTool,
       AstGrepTool,

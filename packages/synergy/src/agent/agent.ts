@@ -21,6 +21,8 @@ import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_ADVISOR from "./prompt/advisor.txt"
 import PROMPT_INSPECTOR from "./prompt/inspector.txt"
 import { buildScholarPrompt } from "./prompt/scholar/builder"
+import { buildFinancialPrompt } from "./prompt/financial/builder"
+import PROMPT_FINANCIAL_EXPLORER from "./prompt/financial-explorer.txt"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
 import PROMPT_SCRIPT from "./prompt/script.txt"
@@ -539,6 +541,50 @@ export namespace Agent {
           user,
         ),
         options: {},
+      },
+      financial: {
+        name: "financial",
+        description:
+          "Financial research coordinator for A-share market information. Analyzes information needs, dispatches parallel browser-based sub-agents to search financial websites (巨潮资讯网, 上交所, 深交所), and compiles structured factual information. Does not answer questions directly — only provides factual data supplements.",
+        prompt: buildFinancialPrompt(),
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: {
+              "financial-explorer": "allow",
+            },
+            memory_write: "allow",
+            memory_edit: "allow",
+          }),
+          user,
+        ),
+        mode: "subagent",
+        native: true,
+        model: role("mid"),
+      },
+      "financial-explorer": {
+        name: "financial-explorer",
+        description:
+          "Browser-based financial website explorer. Navigates A-share financial sites using agent-browser to find specific company data, announcements, and reports. Used as a sub-agent by the financial coordinator.",
+        prompt: PROMPT_FINANCIAL_EXPLORER,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            bash: "allow",
+            read: "allow",
+            skill: {
+              "agent-browser": "allow",
+            },
+          }),
+          user,
+        ),
+        mode: "subagent",
+        native: true,
+        model: role("mid"),
       },
     }
 
