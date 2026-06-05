@@ -606,6 +606,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Diagram",
         subtitle: input.title,
       }
+    case "render":
+      return {
+        icon: "code",
+        title: "Render",
+        subtitle: input.title,
+      }
     case "note_list":
       return {
         icon: "notebook-pen",

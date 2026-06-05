@@ -14,6 +14,7 @@ import { Icon } from "./icon"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiagramRenderer } from "./diagram"
+import { RenderHtml } from "./render-html"
 import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { ToolTextOutput } from "./tool-output-text"
@@ -2234,3 +2235,38 @@ for (const name of researchToolNames) {
     },
   })
 }
+
+ToolRegistry.register({
+  name: "render",
+  render(props) {
+    const html = () => props.metadata?.html as string | undefined
+    return (
+      <BasicTool
+        {...props}
+        defaultOpen
+        forceOpen
+        icon="code"
+        trigger={() => ({
+          title: "Render",
+          subtitle: props.input.title || "",
+          args: html() ? ["HTML preview"] : [],
+        })}
+      >
+        <Show
+          when={html()}
+          fallback={
+            <Show when={props.output}>
+              {(output) => (
+                <div data-component="tool-output">
+                  <ToolTextOutput text={output()} />
+                </div>
+              )}
+            </Show>
+          }
+        >
+          {(content) => <RenderHtml html={content()} />}
+        </Show>
+      </BasicTool>
+    )
+  },
+})

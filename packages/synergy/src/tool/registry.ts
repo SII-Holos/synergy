@@ -63,6 +63,7 @@ import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 // 🔇 import { DiagramTool } from "./diagram"  — 已注释，待重构
+import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
@@ -221,6 +222,7 @@ export namespace ToolRegistry {
       AgoraCommentTool,
       AttachTool,
       // 🔇 DiagramTool,  — 已注释，待重构
+      RenderTool,
       EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,

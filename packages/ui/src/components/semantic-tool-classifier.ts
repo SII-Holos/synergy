@@ -258,6 +258,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   email_send: "communication",
   email_read: "communication",
   diagram: "analyze",
+  render: "analyze",
   attach: "communication",
 
   // qzcli / MCP tools
