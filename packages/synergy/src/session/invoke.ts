@@ -422,24 +422,31 @@ export namespace SessionInvoke {
         const isTopSession = !session.parentID
         const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
-        const [toolDefinitions, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
-          await Promise.all([
-            ToolResolver.definitions({
-              agent,
-              model,
-              sessionID,
-              session,
-              userTools: lastUser.tools,
-              includeMCP: true,
-            }),
-            Promise.all([
-              SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
-              SystemPrompt.custom(),
-            ]).then(([env, custom]) => [env, custom] as const),
-            buildCortexExecutionContext(sessionID),
-            buildCortexReminder(sessionID),
-            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
-          ])
+        const [
+          toolDefinitions,
+          [envParts, customParts],
+          cortexExecutionContext,
+          cortexReminder,
+          agendaReminder,
+          memoryResult,
+        ] = await Promise.all([
+          ToolResolver.definitions({
+            agent,
+            model,
+            sessionID,
+            session,
+            userTools: lastUser.tools,
+            includeMCP: true,
+          }),
+          Promise.all([
+            SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+            SystemPrompt.custom(),
+          ]).then(([env, custom]) => [env, custom] as const),
+          buildCortexExecutionContext(sessionID),
+          buildCortexReminder(sessionID),
+          buildAgendaReminder(sessionID, scopeID),
+          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+        ])
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
@@ -468,7 +475,10 @@ export namespace SessionInvoke {
         // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
         systemParts.push(...envParts)
 
-        // Layer 5: Dynamic — reminders and time context (always at the end)
+        // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
+        if (agendaReminder) systemParts.push(agendaReminder)
+
+        // Layer 6: Dynamic — cortex reminders and time context (always at the end)
         if (cortexReminder) systemParts.push(cortexReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
@@ -819,6 +829,46 @@ export namespace SessionInvoke {
       .join("\n")
 
     return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
+  }
+
+  /**
+   * Build an agenda reminder — tells the agent about pending agenda items that
+   * will wake this session (agenda_watch items with delay triggers) so it
+   * doesn't need to poll or set redundant watches.
+   */
+  async function buildAgendaReminder(sessionID: string, scopeID: string): Promise<string | undefined> {
+    const { AgendaStore } = await import("../agenda/store")
+    const items = await AgendaStore.listForScope(scopeID)
+    const now = Date.now()
+
+    // Filter to items that:
+    // 1. Are active/pending
+    // 2. Have wake !== false (will wake the session)
+    // 3. Originate from this session (origin.sessionID === sessionID)
+    // 4. Have a delay or at trigger with a future nextRunAt
+    const waking = items.filter((item) => {
+      if (item.status !== "active" && item.status !== "pending") return false
+      if (item.wake === false) return false
+      if (item.origin.sessionID !== sessionID) return false
+      if (item.state.nextRunAt === undefined || item.state.nextRunAt <= now) return false
+      return true
+    })
+
+    if (waking.length === 0) return undefined
+
+    const lines = waking.map((item) => {
+      const remaining = item.state.nextRunAt! - now
+      const remainingStr = formatElapsed(remaining)
+      return `- **\`${item.id}\`** "${item.title}" will wake this session in ~${remainingStr}`
+    })
+
+    return [
+      `<agenda-reminder>`,
+      `The following agenda items will automatically wake this session when they fire:`,
+      ...lines,
+      `Do NOT set up redundant \`agenda_watch\` calls — the system handles waking you automatically.`,
+      `</agenda-reminder>`,
+    ].join("\n")
   }
 
   function formatElapsed(ms: number): string {

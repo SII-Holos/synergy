@@ -5,6 +5,6 @@
 > **CRITICAL**: These tasks are gathering information you need.
 > - Do NOT provide final conclusions or recommendations yet
 > - Do NOT ask user for decisions (avoid calling `question` tool)
-> - You WILL be notified when tasks complete - do NOT poll blindly
+> - You WILL be automatically notified when tasks complete — do NOT set up `agenda_watch` or any manual polling, the system handles wake-up
 > - Use `task_list()` or `task_output()` to inspect visible tasks, then call `task_output(task_id="...")` only for a visible task
 > - Otherwise continue with other productive work that doesn't depend on these results
