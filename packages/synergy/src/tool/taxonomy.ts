@@ -173,7 +173,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
-  diagram: entry("communication.visual"),
+  // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   attach: entry("communication.deliver"),
 }
 
@@ -213,7 +213,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(email|mail)/i, kind: "communication.email", traits: { externalIO: true } },
   { pattern: /^(send|notify|message)/i, kind: "communication.deliver" },
   { pattern: /^question/i, kind: "communication.question" },
-  { pattern: /^diagram/i, kind: "communication.visual" },
+  // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
   { pattern: /^attach/i, kind: "communication.deliver" },
 ]
 

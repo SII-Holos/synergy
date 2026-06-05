@@ -489,6 +489,10 @@ Keep diagrams focused: 3-12 nodes for graphs, 2-5 items for comparisons, 3-10 st
 Nodes and edges can be simple strings for quick diagrams. Edges accept "A -> B" or "A -> B: label" string format.
 No visual styling needed — the renderer handles layout and aesthetics.`
 
+/**
+ * 🔇 已注释 — diagram 工具当前实现不合理，待重构。
+ * 重构前可通过取消注释下面代码恢复使用。
+ *
 export const DiagramTool = Tool.define<typeof parameters, { render: string; document: Diagram.Document }>("diagram", {
   description: DESCRIPTION,
   parameters,
@@ -508,3 +512,4 @@ export const DiagramTool = Tool.define<typeof parameters, { render: string; docu
     }
   },
 })
+*/

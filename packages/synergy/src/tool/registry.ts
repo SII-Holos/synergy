@@ -62,7 +62,7 @@ import { LspTool } from "./lsp"
 import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
-import { DiagramTool } from "./diagram"
+// 🔇 import { DiagramTool } from "./diagram"  — 已注释，待重构
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
@@ -220,7 +220,7 @@ export namespace ToolRegistry {
       AgoraAcceptTool,
       AgoraCommentTool,
       AttachTool,
-      DiagramTool,
+      // 🔇 DiagramTool,  — 已注释，待重构
       EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,
