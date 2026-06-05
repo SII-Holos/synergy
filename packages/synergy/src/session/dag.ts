@@ -12,7 +12,37 @@ export namespace Dag {
   export const VALID_STATUSES = ["pending", "running", "completed", "failed", "cancelled"] as const
   export type Status = (typeof VALID_STATUSES)[number]
 
-  export const VALID_ASSIGNS = ["self", "master", "explore", "scout", "scholar", "scribe", "advisor"] as const
+  export const VALID_ASSIGNS = [
+    "self",
+    "intent-analyst",
+    "requirements-engineer",
+    "code-cartographer",
+    "dependency-tracer",
+    "solution-architect",
+    "api-contract-designer",
+    "migration-architect",
+    "workflow-designer",
+    "test-strategist",
+    "regression-reproducer",
+    "fixture-builder",
+    "property-test-engineer",
+    "type-test-engineer",
+    "implementation-engineer",
+    "refactoring-engineer",
+    "integration-engineer",
+    "documentation-engineer",
+    "quality-gatekeeper",
+    "python-quality-engineer",
+    "rust-quality-engineer",
+    "typescript-quality-engineer",
+    "maintainability-reviewer",
+    "security-reviewer",
+    "performance-reviewer",
+    "api-compatibility-reviewer",
+    "documentation-reviewer",
+    "docs-researcher",
+    "research-methodologist",
+  ] as const
   export type Assign = (typeof VALID_ASSIGNS)[number]
 
   export const VALID_TRANSITIONS: Record<Status, Status[]> = {
@@ -32,7 +62,7 @@ export namespace Dag {
       assign: z
         .string()
         .optional()
-        .describe("Suggested executor: self, master, explore, scout, scholar, scribe, advisor"),
+        .describe("Suggested executor: self or one of the registered specialized subagent identifiers"),
     })
     .meta({ ref: "DagNode" })
   export type Node = z.infer<typeof Node>

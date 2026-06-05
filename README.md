@@ -171,18 +171,19 @@ synergy channel status      # Show channel status
 
 ## Current Agent Model
 
-Synergy uses a broad agent system with specialized roles.
+Synergy uses `synergy` as the primary orchestrator and routes substantial work through specialized subagents.
 
-Core built-in agents include:
+Core built-in subagent groups include:
 
-- `synergy` for orchestration, planning, coordination, and multi-step work
-- `master` for direct implementation and coding tasks
-- `scholar` for academic and research-heavy tasks
-- `scribe` for writing and documentation
-- `explore` for codebase exploration
-- `scout` for external technical documentation and open-source search
-- `advisor` for architecture and review
-- `anima` for background continuity and autonomous maintenance roles
+- Task understanding: `intent-analyst`, `requirements-engineer`
+- Code understanding: `code-cartographer`, `dependency-tracer`
+- Design: `solution-architect`, `api-contract-designer`, `migration-architect`, `workflow-designer`
+- TDD: `test-strategist`, `regression-reproducer`, `fixture-builder`, `property-test-engineer`, `type-test-engineer`
+- Execution: `implementation-engineer`, `refactoring-engineer`, `integration-engineer`, `documentation-engineer`
+- Quality gates: `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`
+- Reviews: `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`
+- External knowledge: `docs-researcher`, `research-methodologist`
+- Continuity: `anima` for background maintenance roles
 
 If you update agent names, roles, or recommended usage, update this section and `AGENTS.md` together.
 

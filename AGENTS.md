@@ -256,9 +256,9 @@ then review both `README.md` and any related setup/help text.
 
 ### Current agent reality
 
-The repository now centers on a richer built-in agent set, including `synergy`, `master`, `scholar`, `scribe`, `explore`, `scout`, `advisor`, and others.
+The repository now centers on `synergy` as the primary orchestrator plus a coding-harness subagent set. Core implementation work is routed through specialized roles such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `quality-gatekeeper`, and reviewer agents.
 
-Do not reintroduce stale agent documentation such as old "master / plan / scribe" summaries unless you are explicitly updating migration notes.
+Do not reintroduce stale agent documentation such as old `master`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, or `scholar` built-in role summaries unless you are explicitly documenting migration history.
 
 ### Tool implementation
 

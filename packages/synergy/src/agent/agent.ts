@@ -9,18 +9,12 @@ import { Truncate } from "../tool/truncation"
 import PROMPT_GENERATE from "./generate.txt"
 import { buildCompactionPrompt } from "./prompt/compaction/builder"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
-import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
-import { buildMasterPrompt } from "./prompt/master/builder"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 
-import { buildScribePrompt } from "./prompt/scribe/builder"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
-import PROMPT_SCOUT from "./prompt/scout.txt"
-import PROMPT_ADVISOR from "./prompt/advisor.txt"
-import PROMPT_INSPECTOR from "./prompt/inspector.txt"
-import { buildScholarPrompt } from "./prompt/scholar/builder"
+import { createBuiltinSubagents } from "./builtin-subagents"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
 import PROMPT_SCRIPT from "./prompt/script.txt"
@@ -129,110 +123,7 @@ export namespace Agent {
         mode: "all",
         native: true,
       },
-      master: {
-        name: "master",
-        description:
-          "General-purpose coding agent for executing tasks directly and efficiently. Handles implementation, debugging, refactoring, and multi-step development work. Can run in parallel for independent tasks. Use when you need straightforward task execution.",
-        prompt: buildMasterPrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            runtime_reload: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      scholar: {
-        name: "scholar",
-        description:
-          "Academic research agent for scholarly work. Searches arXiv and academic databases, analyzes papers, explains concepts, critically evaluates research, supports academic writing, and helps plan research. Use for literature surveys, understanding complex topics, methodology guidance, or any task involving academic knowledge.",
-        prompt: buildScholarPrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      scribe: {
-        name: "scribe",
-        description: `Expert writing agent for crafting compelling documents. Use this agent for writing documentation, reports, guides, proposals, or any content that needs narrative flow, varied structure, and clear hierarchy. Produces engaging writing that humans actually want to read.`,
-        prompt: buildScribePrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            runtime_reload: "deny",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "deny",
-              "skill-creator": "deny",
-            },
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      explore: {
-        name: "explore",
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            runtime_reload: "deny",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "deny",
-              "skill-creator": "deny",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        description: `Fast agent specialized for exploring codebases. Use this when you are doing an open-ended search that may require multiple rounds of globbing and grepping. Answers "Where is X?", "Which files contain Y?", "Find the code that does Z". Fire multiple explore agents in parallel for broad searches across different areas. When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
-        prompt: PROMPT_EXPLORE,
-        options: {},
-        mode: "subagent",
-        native: true,
-        model: role("mid"),
-      },
+      ...createBuiltinSubagents({ defaults, user, role, evolutionActive: evo.active }),
       "multimodal-looker": {
         name: "multimodal-looker",
         prompt: PROMPT_MULTIMODAL_LOOKER,
@@ -249,112 +140,6 @@ export namespace Agent {
         native: true,
         hidden: true,
         model: role("vision"),
-      },
-      scout: {
-        name: "scout",
-        description:
-          "Search external technical documentation and open-source code. Use for finding official docs, GitHub examples, library APIs, and best practices for external dependencies. Answers questions like 'How do I use X?', 'What's the API for Y?', or 'Show me examples of Z'.",
-        prompt: PROMPT_SCOUT,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "allow",
-              "skill-creator": "deny",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("mid"),
-      },
-      advisor: {
-        name: "advisor",
-        description:
-          "Read-only strategic advisor for complex architectural decisions, debugging hard problems, and design tradeoffs. Consult when: 2+ fix attempts failed, unfamiliar code patterns, security/performance concerns, multi-system tradeoffs, or when you need a second opinion on a significant design decision.",
-        prompt: PROMPT_ADVISOR,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "allow",
-              "git-guide": "allow",
-              "skill-creator": "allow",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("thinking"),
-      },
-      inspector: {
-        name: "inspector",
-        description:
-          "Read-only code quality auditor. Evaluates readability, unnecessary indirection, structural density, and hygiene (dead code, unused imports, patch-over-fix patterns). Use after completing significant work for a quality check, or to audit recent changes before committing. Lists issues only — does NOT fix them.",
-        prompt: PROMPT_INSPECTOR,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            edit: "ask",
-            write: "ask",
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("thinking"),
       },
       compaction: {
         name: "compaction",

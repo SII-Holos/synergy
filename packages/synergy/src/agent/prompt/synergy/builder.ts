@@ -35,7 +35,7 @@ export function buildAgentTable(agents: AgentInfo[]): string {
   const available = getDelegatableAgents(agents)
 
   if (available.length === 0) {
-    return `No specialized agents available. Use \`master\` for all task execution.`
+    return `No specialized subagents are available. Handle only small direct tasks and ask the user to configure subagents for larger work.`
   }
 
   const rows = available.map((a) => {
@@ -47,7 +47,7 @@ export function buildAgentTable(agents: AgentInfo[]): string {
 |-------|----------|
 ${rows.join("\n")}
 
-Choose the right agent for the job. Don't use \`master\` when a specialized agent exists for that domain.`
+Choose the narrowest specialized subagent for the current workflow stage. Do not route substantial coding work to the primary \`synergy\` agent when a subagent can own the stage.`
 }
 
 function buildSynergyMemorySection(): string {
