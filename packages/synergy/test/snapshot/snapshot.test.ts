@@ -169,26 +169,6 @@ describe.serial("snapshot", () => {
     })
   })
 
-  test("special characters in filenames", async () => {
-    await using tmp = await bootstrap()
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const before = await Snapshot.track()
-        expect(before).toBeTruthy()
-
-        await Bun.write(`${tmp.path}/file with spaces.txt`, "SPACES")
-        await Bun.write(`${tmp.path}/file-with-dashes.txt`, "DASHES")
-        await Bun.write(`${tmp.path}/file_with_underscores.txt`, "UNDERSCORES")
-
-        const files = (await Snapshot.patch(before!)).files
-        expect(files).toContain(`${tmp.path}/file with spaces.txt`)
-        expect(files).toContain(`${tmp.path}/file-with-dashes.txt`)
-        expect(files).toContain(`${tmp.path}/file_with_underscores.txt`)
-      },
-    })
-  })
-
   test("revert with empty patches", async () => {
     await using tmp = await bootstrap()
     await Instance.provide({

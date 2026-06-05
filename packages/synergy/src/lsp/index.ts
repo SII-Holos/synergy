@@ -210,11 +210,7 @@ export namespace LSP {
     const result: LSPClient.Info[] = []
 
     async function schedule(server: LSPServer.Info, root: string, key: string) {
-      const handle = await withTimeout(
-        server.spawn(root),
-        30_000,
-        `Timed out spawning LSP server ${server.id}`,
-      )
+      const handle = await withTimeout(server.spawn(root), 30_000, `Timed out spawning LSP server ${server.id}`)
         .then((value) => {
           if (!value) s.broken.add(key)
           return value
