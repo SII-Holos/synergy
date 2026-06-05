@@ -255,26 +255,14 @@ export namespace SessionCompaction {
   const ANCHOR_CLOSE = "</anchor>"
 
   /**
-   * Build the anchor text that preserves the user's original request across
-   * compaction boundaries.  If a previous compaction already embedded an
-   * anchor in one of the continue messages, reuse it verbatim so the same
-   * text survives any number of compactions without degradation.
+   * Extract the last real (non-synthetic) user message before the compaction
+   * trigger as an anchor, so the agent remembers what it was working on.
    */
-  function buildAnchor(messages: MessageV2.WithParts[]): string | undefined {
-    // Check if a previous compaction already embedded an anchor.
+  function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (msg.info.role !== "user") continue
-      for (const part of msg.parts) {
-        if (part.type === "text" && part.synthetic && part.text.startsWith(ANCHOR_OPEN)) {
-          return part.text
-        }
-      }
-    }
-
-    // First compaction — extract the original user request.
-    for (const msg of messages) {
-      if (msg.info.role !== "user") continue
+      if (msg.info.id === parentID) continue
       const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
       if (textParts.length === 0) continue
       const text = textParts
@@ -282,13 +270,7 @@ export namespace SessionCompaction {
         .join("\n")
         .trim()
       if (!text) continue
-      return [
-        ANCHOR_OPEN,
-        "This is the user's original request that initiated this work session.",
-        "",
-        text,
-        ANCHOR_CLOSE,
-      ].join("\n")
+      return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
     }
 
     return undefined
@@ -434,7 +416,7 @@ export namespace SessionCompaction {
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
-      const anchor = buildAnchor(input.messages)
+      const anchor = buildAnchor(input.messages, input.parentID)
       if (anchor) {
         await Session.updatePart({
           id: Identifier.ascending("part"),
