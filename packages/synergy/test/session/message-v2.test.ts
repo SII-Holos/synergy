@@ -94,7 +94,7 @@ describe("session.message-v2.toModelMessage", () => {
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
   })
 
-  test("includes synthetic text parts", () => {
+  test("excludes synthetic user text parts from model messages", () => {
     const messageID = "m-user"
 
     const input: MessageV2.WithParts[] = [
@@ -104,7 +104,13 @@ describe("session.message-v2.toModelMessage", () => {
           {
             ...basePart(messageID, "p1"),
             type: "text",
-            text: "hello",
+            text: "real user message",
+            synthetic: false,
+          },
+          {
+            ...basePart(messageID, "p2"),
+            type: "text",
+            text: "synthetic continuation",
             synthetic: true,
           },
         ] as MessageV2.Part[],
@@ -116,7 +122,6 @@ describe("session.message-v2.toModelMessage", () => {
             ...basePart("m-assistant", "a1"),
             type: "text",
             text: "assistant",
-            synthetic: true,
           },
         ] as MessageV2.Part[],
       },
@@ -125,7 +130,7 @@ describe("session.message-v2.toModelMessage", () => {
     expect(MessageV2.toModelMessage(input)).toStrictEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "hello" }],
+        content: [{ type: "text", text: "real user message" }],
       },
       {
         role: "assistant",
