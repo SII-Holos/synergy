@@ -8,25 +8,80 @@ export interface AgentVisual {
   external?: boolean
 }
 
+const COLORS = {
+  primary: "rgba(99, 102, 241, 0.35)",
+  max: "rgba(249, 115, 22, 0.35)",
+  code: "rgba(59, 130, 246, 0.35)",
+  analysis: "rgba(168, 85, 247, 0.35)",
+  design: "rgba(245, 158, 11, 0.35)",
+  test: "rgba(34, 197, 94, 0.35)",
+  quality: "rgba(20, 184, 166, 0.35)",
+  review: "rgba(236, 72, 153, 0.35)",
+  knowledge: "rgba(14, 165, 233, 0.35)",
+  research: "rgba(139, 92, 246, 0.35)",
+  external: "rgba(16, 185, 129, 0.35)",
+  neutral: "rgba(107, 114, 128, 0.35)",
+} as const
+
 const VISUALS: Record<string, AgentVisual> = {
-  synergy: { emoji: "😌", label: "Synergy", color: "rgba(99, 102, 241, 0.35)" },
-  "synergy-max": { emoji: "🧭", label: "Synergy Max", color: "rgba(249, 115, 22, 0.35)" },
-  developer: { emoji: "😎", label: "Developer", color: "rgba(59, 130, 246, 0.35)" },
-  explore: { emoji: "🥸", label: "Explore", color: "rgba(168, 85, 247, 0.35)" },
-  scribe: { emoji: "🤭", label: "Scribe", color: "rgba(34, 197, 94, 0.35)" },
-  scholar: { emoji: "🤓", label: "Scholar", color: "rgba(245, 158, 11, 0.35)" },
-  scout: { emoji: "🤩", label: "Scout", color: "rgba(6, 182, 212, 0.35)" },
-  advisor: { emoji: "🧐", label: "Advisor", color: "rgba(236, 72, 153, 0.35)" },
-  inspector: { emoji: "😤", label: "Inspector", color: "rgba(139, 92, 246, 0.35)" },
-  codex: { emoji: "🫡", label: "Codex", color: "rgba(14, 165, 233, 0.35)", external: true },
-  "claude-code": { emoji: "🤨", label: "Claude Code", color: "rgba(249, 115, 22, 0.35)", external: true },
-  openclaw: { emoji: "🤯", label: "OpenClaw", color: "rgba(16, 185, 129, 0.35)", external: true },
+  synergy: { emoji: "😌", label: "Synergy", color: COLORS.primary },
+  "synergy-max": { emoji: "🧭", label: "Synergy Max", color: COLORS.max },
+
+  developer: { emoji: "🛠️", label: "Developer", color: COLORS.code },
+  explore: { emoji: "🗺️", label: "Explore", color: COLORS.analysis },
+  scout: { emoji: "🔎", label: "Scout", color: COLORS.knowledge },
+  advisor: { emoji: "🧠", label: "Advisor", color: COLORS.design },
+  inspector: { emoji: "🧹", label: "Inspector", color: COLORS.review },
+  scribe: { emoji: "✍️", label: "Scribe", color: COLORS.test },
+  scholar: { emoji: "📚", label: "Scholar", color: COLORS.research },
+
+  "intent-analyst": { emoji: "🎯", label: "Intent Analyst", color: COLORS.analysis },
+  "requirements-engineer": { emoji: "📐", label: "Requirements", color: COLORS.analysis },
+  "code-cartographer": { emoji: "🗺️", label: "Code Map", color: COLORS.analysis },
+  "dependency-tracer": { emoji: "🕸️", label: "Dependency Trace", color: COLORS.analysis },
+
+  "solution-architect": { emoji: "🏛️", label: "Solution Architect", color: COLORS.design },
+  "api-contract-designer": { emoji: "📜", label: "API Contract", color: COLORS.design },
+  "migration-architect": { emoji: "🌉", label: "Migration", color: COLORS.design },
+  "workflow-designer": { emoji: "🧩", label: "Workflow", color: COLORS.design },
+
+  "test-strategist": { emoji: "🧪", label: "Test Strategy", color: COLORS.test },
+  "regression-reproducer": { emoji: "🐞", label: "Regression", color: COLORS.test },
+  "fixture-builder": { emoji: "🧰", label: "Fixtures", color: COLORS.test },
+  "property-test-engineer": { emoji: "🎲", label: "Property Tests", color: COLORS.test },
+  "type-test-engineer": { emoji: "🔣", label: "Type Tests", color: COLORS.test },
+
+  "implementation-engineer": { emoji: "⚙️", label: "Implementation", color: COLORS.code },
+  "refactoring-engineer": { emoji: "🔧", label: "Refactor", color: COLORS.code },
+  "integration-engineer": { emoji: "🔗", label: "Integration", color: COLORS.code },
+  "documentation-engineer": { emoji: "📝", label: "Docs", color: COLORS.code },
+
+  "quality-gatekeeper": { emoji: "✅", label: "Quality Gate", color: COLORS.quality },
+  "python-quality-engineer": { emoji: "🐍", label: "Python Quality", color: COLORS.quality },
+  "rust-quality-engineer": { emoji: "🦀", label: "Rust Quality", color: COLORS.quality },
+  "typescript-quality-engineer": { emoji: "TS", label: "TypeScript Quality", color: COLORS.quality },
+
+  "maintainability-reviewer": { emoji: "🧼", label: "Maintainability", color: COLORS.review },
+  "security-reviewer": { emoji: "🛡️", label: "Security", color: COLORS.review },
+  "performance-reviewer": { emoji: "⚡", label: "Performance", color: COLORS.review },
+  "api-compatibility-reviewer": { emoji: "🔌", label: "API Compatibility", color: COLORS.review },
+  "documentation-reviewer": { emoji: "📖", label: "Doc Review", color: COLORS.review },
+
+  "docs-researcher": { emoji: "🌐", label: "Docs Research", color: COLORS.knowledge },
+  "research-methodologist": { emoji: "🔬", label: "Research Method", color: COLORS.research },
+  "memory-curator": { emoji: "🧠", label: "Memory", color: COLORS.knowledge },
+  "note-librarian": { emoji: "🗂️", label: "Notes", color: COLORS.knowledge },
+  "session-historian": { emoji: "🕰️", label: "Session History", color: COLORS.knowledge },
+
+  codex: { emoji: "🫡", label: "Codex", color: COLORS.knowledge, external: true },
+  "claude-code": { emoji: "🤨", label: "Claude Code", color: COLORS.max, external: true },
+  openclaw: { emoji: "🤯", label: "OpenClaw", color: COLORS.external, external: true },
 }
 
 const DEFAULT_VISUAL: AgentVisual = {
   emoji: "🤷",
   label: "Agent",
-  color: "rgba(107, 114, 128, 0.35)",
+  color: COLORS.neutral,
 }
 
 export function getAgentVisual(input?: string | Pick<Agent, "name" | "external"> | null): AgentVisual {
