@@ -212,18 +212,41 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
   createEffect(() => {
     const l = layout()
     if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
-    fitView()
+    focusActiveNodes()
   })
 
   function fitView() {
+    fitToNodes(layout().laid)
+  }
+
+  function focusActiveNodes() {
+    const laid = layout().laid
+    const running = laid.filter((node) => node.node.status === "running")
+    const ready = laid.filter((node) => readySet().has(node.node.id))
+    const pending = laid.filter((node) => node.node.status === "pending")
+    fitToNodes(
+      running.length > 0 ? running : ready.length > 0 ? ready : pending.length > 0 ? pending.slice(0, 3) : laid,
+    )
+  }
+
+  function fitToNodes(targets: LayoutNode[]) {
     const l = layout()
-    if (!viewport || l.width === 0 || l.height === 0) return
+    if (!viewport || l.width === 0 || l.height === 0 || targets.length === 0) return
     const bounds = viewport.getBoundingClientRect()
-    const nextScale = clamp(Math.min((bounds.width - 32) / l.width, (bounds.height - 32) / l.height, 1), 0.32, 1)
+    const minX = Math.min(...targets.map((node) => node.x))
+    const maxX = Math.max(...targets.map((node) => node.x + l.cardW))
+    const minY = Math.min(...targets.map((node) => node.y))
+    const maxY = Math.max(...targets.map((node) => node.y + node.h))
+    const padding = 72
+    const targetW = Math.max(1, maxX - minX + padding * 2)
+    const targetH = Math.max(1, maxY - minY + padding * 2)
+    const nextScale = clamp(Math.min((bounds.width - 32) / targetW, (bounds.height - 32) / targetH, 1), 0.32, 1.16)
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
     setScale(nextScale)
     setPan({
-      x: (bounds.width - l.width * nextScale) / 2,
-      y: Math.max(20, (bounds.height - l.height * nextScale) / 2),
+      x: bounds.width / 2 - centerX * nextScale,
+      y: bounds.height / 2 - centerY * nextScale,
     })
   }
 
@@ -243,7 +266,7 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
   }
 
   function handleWheel(event: WheelEvent) {
-    if (!event.ctrlKey && Math.abs(event.deltaY) < Math.abs(event.deltaX)) return
+    if (!event.ctrlKey && !event.metaKey) return
     event.preventDefault()
     const factor = event.deltaY > 0 ? 0.9 : 1.1
     zoomAt(scale() * factor, event.clientX, event.clientY)
@@ -294,6 +317,9 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
             </Show>
           </div>
           <div data-slot="dag-graph-controls">
+            <button type="button" onClick={focusActiveNodes}>
+              Focus
+            </button>
             <button type="button" onClick={fitView}>
               Fit
             </button>
@@ -314,7 +340,7 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onDblClick={fitView}
+          onDblClick={focusActiveNodes}
         >
           <div
             data-slot="dag-graph-stage"
@@ -385,7 +411,7 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
             </For>
           </div>
         </div>
-        <div data-slot="dag-graph-hint">Drag to pan · Wheel to zoom · Double-click to fit</div>
+        <div data-slot="dag-graph-hint">Drag to pan · Ctrl/⌘ + wheel to zoom · Double-click to focus</div>
       </Show>
     </div>
   )
