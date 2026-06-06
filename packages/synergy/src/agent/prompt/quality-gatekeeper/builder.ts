@@ -10,7 +10,7 @@ export function createQualityGatekeeperAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "quality-gatekeeper",
     description:
-      "Runs project quality gates and reports structured pass or fail. Use after tests are written, after implementation, after refactor, and before final delivery. Detects toolchain, runs format, lint, typecheck, tests, coverage, security, or language-specific gates.",
+      "Runs project quality gates and reports pass or fail. Use after tests are written, after implementation, after refactor, and before delivery. Provide changed paths, gate level, and known commands if available; the agent detects the toolchain, runs appropriate checks, separates environment failures from code failures, and returns blockers and reusable context.",
     prompt: buildQualityGatekeeperPrompt(),
     model: "mid",
     permission: "quality",

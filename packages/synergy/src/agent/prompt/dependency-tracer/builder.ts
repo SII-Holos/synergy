@@ -10,7 +10,7 @@ export function createDependencyTracerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "dependency-tracer",
     description:
-      "Traces references and downstream impact for proposed changes. Use before renames, schema changes, API changes, tool changes, package boundary changes, or cross-module refactors. Reports direct references, indirect dependents, compatibility risk, and required follow-ups.",
+      "Traces references and downstream impact for proposed changes. Use before renames, schema edits, API changes, tool changes, config changes, package boundary changes, or refactors. Provide the target symbol or planned change; the agent inspects references and returns impact, risk, follow-ups, blockers, and reusable context.",
     prompt: buildDependencyTracerPrompt(),
     model: "mid",
     permission: "analysis",

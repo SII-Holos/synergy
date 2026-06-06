@@ -10,7 +10,7 @@ export function createRefactoringEngineerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "refactoring-engineer",
     description:
-      "Performs behavior-preserving refactors after tests are green. Use when code works but structure, naming, duplication, control flow, or module boundaries need improvement. Does not add features or alter public behavior.",
+      "Performs behavior-preserving refactors after tests are green. Use when structure, naming, duplication, control flow, or module boundaries need improvement without changing behavior. Provide target files, review findings, and validation command if known; the agent returns refactor summary, tests run, blockers, and reusable context.",
     prompt: buildRefactoringEngineerPrompt(),
     model: "mid",
     permission: "implementation",

@@ -10,7 +10,7 @@ export function createTestStrategistAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "test-strategist",
     description:
-      "Designs and writes tests before implementation. Use for new behavior, behavior changes, or risky refactors. Chooses the smallest useful test layer, writes red tests, avoids implementation-coupled assertions, and defines verification commands.",
+      "Designs and writes tests before implementation. Use for new behavior, behavior changes, risky refactors, and TDD workflows. Provide requirements, known context, and existing test patterns if available; the agent returns test strategy, red tests, expected failure, verification command, blockers, and reusable context.",
     prompt: buildTestStrategistPrompt(),
     model: "thinking",
     permission: "implementation",

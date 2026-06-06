@@ -10,7 +10,7 @@ export function createApiContractDesignerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "api-contract-designer",
     description:
-      "Designs public contracts for tools, routes, SDK types, config fields, CLI options, plugins, and agent definitions. Use before implementation when field names, schemas, return metadata, error shape, or compatibility behavior must be stable.",
+      "Designs public contracts before implementation. Use for tools, route schemas, SDK types, config fields, CLI options, plugin APIs, agent definitions, and prompt-visible descriptions. Provide the goal and known constraints; the agent returns schema shape, field semantics, error model, wiring obligations, blockers, and reusable context.",
     prompt: buildApiContractDesignerPrompt(),
     model: "thinking",
     permission: "analysis",

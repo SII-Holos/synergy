@@ -10,7 +10,7 @@ export function createCodeCartographerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "code-cartographer",
     description:
-      "Maps the relevant code before changes. Use when the task touches unfamiliar code, spans modules, or needs root-cause location. Finds entry points, call flow, data flow, existing abstractions, likely change points, and risk areas with file citations.",
+      "Maps repository context before changes. Use for unfamiliar code, root-cause location, cross-module work, or when the primary agent needs entry points, call flow, existing abstractions, likely change points, and risk areas. Provide the goal and any known symbols/files; the agent inspects missing context and returns cited code evidence.",
     prompt: buildCodeCartographerPrompt(),
     model: "mid",
     permission: "analysis",

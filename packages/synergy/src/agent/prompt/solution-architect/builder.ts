@@ -10,7 +10,7 @@ export function createSolutionArchitectAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "solution-architect",
     description:
-      "Designs the implementation approach before code changes. Use after requirements and code mapping for new features, root-cause bug fixes, refactors, and architecture-sensitive work. Produces module boundaries, APIs, data shapes, test strategy, rejected alternatives, and risks.",
+      "Designs implementation approach before code changes. Use after requirements and code mapping for features, root-cause fixes, refactors, and architecture-sensitive work. Provide the goal, constraints, and known code context; the agent returns design boundaries, files to change, tests required, risks, blockers, and reusable context.",
     prompt: buildSolutionArchitectPrompt(),
     model: "thinking",
     permission: "analysis",

@@ -10,7 +10,7 @@ export function createFixtureBuilderAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "fixture-builder",
     description:
-      "Builds test fixtures, mocks, fakes, temporary scopes, sample config, and isolated harnesses. Use when tests require setup that should be deterministic, reusable, and isolated from real user state, network, credentials, or external systems.",
+      "Builds test fixtures, mocks, fakes, temporary scopes, sample config, and isolated harnesses. Use when tests need deterministic setup or isolation from real state, network, credentials, or external systems. Provide the test goal and existing patterns; the agent returns fixtures, isolation guarantees, example usage, blockers, and reusable context.",
     prompt: buildFixtureBuilderPrompt(),
     model: "mid",
     permission: "implementation",

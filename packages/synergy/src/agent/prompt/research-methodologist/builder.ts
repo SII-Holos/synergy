@@ -10,7 +10,7 @@ export function createResearchMethodologistAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "research-methodologist",
     description:
-      "Designs research-grade methods, experiments, baselines, metrics, and evidence plans. Use when coding work involves ML, benchmarks, algorithms, empirical claims, evaluation protocols, or paper-quality experimental evidence.",
+      "Designs research-grade methods, experiments, baselines, metrics, and evidence plans. Use when coding work involves ML, benchmarks, algorithms, empirical claims, evaluation protocols, or paper-quality evidence. Provide the research goal and constraints; the agent returns method design, validity risks, required experiments, blockers, and reusable context.",
     prompt: buildResearchMethodologistPrompt(),
     model: "thinking",
     permission: "research",

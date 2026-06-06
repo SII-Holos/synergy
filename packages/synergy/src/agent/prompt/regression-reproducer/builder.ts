@@ -10,7 +10,7 @@ export function createRegressionReproducerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "regression-reproducer",
     description:
-      "Builds deterministic reproductions for bugs before fixes. Use for bug reports, crashes, wrong outputs, regressions, and flaky behavior. Produces minimal failing tests or scripts, expected failure output, and ranked root-cause hypotheses.",
+      "Creates deterministic reproductions for bugs before fixes. Use for crashes, wrong outputs, regressions, flaky behavior, and user-reported defects. Provide the bug report and known symptoms; the agent returns reproduction status, failing test or command, failure output, hypotheses, blockers, and reusable context.",
     prompt: buildRegressionReproducerPrompt(),
     model: "thinking",
     permission: "implementation",
