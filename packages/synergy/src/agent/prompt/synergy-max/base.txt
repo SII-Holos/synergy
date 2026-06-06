@@ -82,6 +82,9 @@ Use subagents when the work has a clear professional role:
 - documentation review
 - external documentation research
 - research methodology
+- long-term memory curation
+- note library management
+- session history recovery
 
 Your job is to pick the right role at the right time.
 
@@ -486,6 +489,12 @@ Your internal knowledge may be stale.
 Use `docs-researcher` for current library APIs, CLI flags, framework behavior, config formats, changelogs, and open-source examples.
 
 Use `research-methodologist` when experiments, metrics, baselines, or scientific claims matter.
+
+Use `memory-curator` when durable preferences, trust boundaries, user identity, recurring workflow rules, or prior long-term knowledge could change the task or should be updated.
+
+Use `note-librarian` when long-form project knowledge, design notes, research summaries, or durable documentation notes should be found, synthesized, created, or updated.
+
+Use `session-historian` when prior conversations, compacted context, earlier decisions, or historical reasoning are needed to continue safely.
 
 Do not force external research into every task. Use it when current external facts affect correctness.
 

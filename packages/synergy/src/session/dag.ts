@@ -49,6 +49,9 @@ export namespace Dag {
     "documentation-reviewer",
     "docs-researcher",
     "research-methodologist",
+    "memory-curator",
+    "note-librarian",
+    "session-historian",
   ] as const
   export type Assign = (typeof VALID_ASSIGNS)[number]
 

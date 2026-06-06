@@ -17,6 +17,9 @@ export type SubagentPermissionProfile =
   | "testWrite"
   | "docsWrite"
   | "quality"
+  | "memory"
+  | "note"
+  | "sessionHistory"
   | "externalResearch"
   | "research"
 
@@ -81,6 +84,44 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
 
   if (profile === "quality" || profile === "review") {
     return PermissionNext.merge(common, commandTools())
+  }
+
+  if (profile === "memory") {
+    return PermissionNext.merge(
+      common,
+      PermissionNext.fromConfig({
+        memory_search: "allow",
+        memory_get: "allow",
+        memory_write: "allow",
+        memory_edit: "allow",
+      }),
+    )
+  }
+
+  if (profile === "note") {
+    return PermissionNext.merge(
+      common,
+      PermissionNext.fromConfig({
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "allow",
+        note_edit: "allow",
+      }),
+    )
+  }
+
+  if (profile === "sessionHistory") {
+    return PermissionNext.merge(
+      common,
+      PermissionNext.fromConfig({
+        session_list: "allow",
+        session_read: "allow",
+        session_search: "allow",
+        session_send: "deny",
+        session_control: "deny",
+      }),
+    )
   }
 
   if (profile === "externalResearch") {

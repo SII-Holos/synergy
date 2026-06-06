@@ -12,7 +12,9 @@ import { createImplementationEngineerAgent } from "./prompt/implementation-engin
 import { createIntentAnalystAgent } from "./prompt/intent-analyst/builder"
 import { createIntegrationEngineerAgent } from "./prompt/integration-engineer/builder"
 import { createMaintainabilityReviewerAgent } from "./prompt/maintainability-reviewer/builder"
+import { createMemoryCuratorAgent } from "./prompt/memory-curator/builder"
 import { createMigrationArchitectAgent } from "./prompt/migration-architect/builder"
+import { createNoteLibrarianAgent } from "./prompt/note-librarian/builder"
 import { createPerformanceReviewerAgent } from "./prompt/performance-reviewer/builder"
 import { createPropertyTestEngineerAgent } from "./prompt/property-test-engineer/builder"
 import { createPythonQualityEngineerAgent } from "./prompt/python-quality-engineer/builder"
@@ -23,6 +25,7 @@ import { createRequirementsEngineerAgent } from "./prompt/requirements-engineer/
 import { createResearchMethodologistAgent } from "./prompt/research-methodologist/builder"
 import { createRustQualityEngineerAgent } from "./prompt/rust-quality-engineer/builder"
 import { createSecurityReviewerAgent } from "./prompt/security-reviewer/builder"
+import { createSessionHistorianAgent } from "./prompt/session-historian/builder"
 import { createSolutionArchitectAgent } from "./prompt/solution-architect/builder"
 import { createTestStrategistAgent } from "./prompt/test-strategist/builder"
 import { createTypeTestEngineerAgent } from "./prompt/type-test-engineer/builder"
@@ -47,6 +50,9 @@ const FACTORIES = [
   createRefactoringEngineerAgent,
   createIntegrationEngineerAgent,
   createDocumentationEngineerAgent,
+  createMemoryCuratorAgent,
+  createNoteLibrarianAgent,
+  createSessionHistorianAgent,
   createQualityGatekeeperAgent,
   createPythonQualityEngineerAgent,
   createRustQualityEngineerAgent,
