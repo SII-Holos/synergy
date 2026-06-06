@@ -2,7 +2,7 @@ import { PermissionNext } from "@/permission/next"
 import type { Agent } from "./agent"
 import type { BuiltinAgentContext } from "./builtin-context"
 
-function primaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
+function classicPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
   return PermissionNext.merge(
     ctx.defaults,
     PermissionNext.fromConfig({
@@ -23,6 +23,31 @@ function primaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
   )
 }
 
+function maxPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
+  return PermissionNext.merge(
+    ctx.defaults,
+    PermissionNext.fromConfig({
+      question: "allow",
+      runtime_reload: "allow",
+      dagwrite: "allow",
+      dagread: "allow",
+      dagpatch: "allow",
+      todowrite: "deny",
+      todoread: "deny",
+      memory_search: "deny",
+      memory_get: "deny",
+      memory_write: "deny",
+      memory_edit: "deny",
+      note_list: "deny",
+      note_read: "deny",
+      note_search: "deny",
+      note_write: "deny",
+      note_edit: "deny",
+    }),
+    ctx.user,
+  )
+}
+
 export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   return {
     synergy: {
@@ -31,7 +56,7 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
         "Primary general-purpose orchestrator for the classic Synergy workflow. Plans, coordinates, executes, delegates to the legacy subagent set, verifies work, and handles user interaction across coding, writing, research, analysis, and operations.",
       prompt: "",
       options: {},
-      permission: primaryPermission(ctx),
+      permission: classicPrimaryPermission(ctx),
       mode: "primary",
       native: true,
     },
@@ -41,7 +66,7 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
         "Primary maximum-orchestration agent for the new coding-harness workflow. Acts as architect, planner, dispatcher, integrator, and quality controller over the expanded professional subagent system.",
       prompt: "",
       options: {},
-      permission: primaryPermission(ctx),
+      permission: maxPrimaryPermission(ctx),
       mode: "primary",
       native: true,
     },
