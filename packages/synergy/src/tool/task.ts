@@ -164,7 +164,8 @@ Status: running
 
 You will be notified when the task completes.
 Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}")\` only for a task visible from this session.`,
+Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
+Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
         }
       }
 
@@ -223,7 +224,8 @@ Status: still running
 
 You will be notified when the task completes.
 Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}")\` only for a task visible from this session.`,
+Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
+Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
         }
       }
 

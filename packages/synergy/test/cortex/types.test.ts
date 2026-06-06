@@ -24,12 +24,25 @@ describe("CortexTypes", () => {
       const progress = {
         toolCalls: 5,
         lastTool: "bash",
+        lastToolStatus: "completed",
+        lastTitle: "Ran tests",
+        lastPartId: "part_01234567890abcdef",
         lastUpdate: Date.now(),
         lastMessage: "Running tests...",
+        recentTools: [
+          {
+            id: "part_01234567890abcdef",
+            tool: "bash",
+            status: "completed",
+            title: "Ran tests",
+            updatedAt: Date.now(),
+          },
+        ],
       }
       const result = CortexTypes.TaskProgress.parse(progress)
       expect(result.toolCalls).toBe(5)
       expect(result.lastTool).toBe("bash")
+      expect(result.recentTools?.[0]?.tool).toBe("bash")
     })
 
     test("accepts minimal progress object", () => {
