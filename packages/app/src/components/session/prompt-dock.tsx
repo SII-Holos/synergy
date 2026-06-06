@@ -36,6 +36,7 @@ export function PromptDock(props: {
   const nav = useNavigate()
   return (
     <div
+      data-holos-prompt-dock="true"
       ref={props.ref}
       classList={{
         "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none": true,

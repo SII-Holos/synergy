@@ -450,6 +450,7 @@ const MAIN_MIN_PX = 480
 function LayoutContent(props: ParentProps) {
   const panel = usePanel()
   const layout = useLayout()
+  const hosted = isHostedMode()
   const [panelWidth, setPanelWidth] = createSignal(PANEL_DEFAULT)
   const [resizing, setResizing] = createSignal(false)
   const isOpen = () => layout.isDesktop() && !!panel.active()
@@ -487,7 +488,10 @@ function LayoutContent(props: ParentProps) {
   const isHome = () => !params.dir
 
   return (
-    <div class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
+    <div
+      data-holos-hosted-layout={hosted ? "true" : undefined}
+      class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
+    >
       <MobileDrawer />
       <Show when={!isHome()}>
         <HeaderBar />

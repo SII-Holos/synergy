@@ -1811,7 +1811,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
+    <div
+      data-holos-prompt-input="true"
+      class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible"
+    >
       <Show when={params.id}>
         <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
           <Tooltip placement="top" value={layout.terminal.opened() ? "Hide terminal" : "Open terminal"}>
@@ -1916,6 +1919,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <PromptStatusBurst items={store.promptBursts} />
         </Show>
         <form
+          data-holos-prompt-form="true"
           onSubmit={handleSubmit}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
