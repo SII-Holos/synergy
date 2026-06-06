@@ -23,8 +23,6 @@ interface ProcessRecord {
   exitSignal?: NodeJS.Signals | number | null
   exited: boolean
   backgrounded: boolean
-  timedOut: boolean
-  timeoutTimer?: ReturnType<typeof setTimeout>
 }
 
 interface FinishedRecord {
@@ -53,7 +51,6 @@ type CurrentOrFinished = {
   status: MetaProtocolProcess.ProcessState
   startedAt: number
   endedAt?: number
-  timedOut?: boolean
 }
 
 export class ProcessRegistry {
@@ -75,7 +72,6 @@ export class ProcessRegistry {
       command: request.command,
       description: request.description,
       workdir: Platform.resolveWorkdir(request.workdir),
-      timeoutMs: request.timeout,
     })
 
     if (request.background) {
@@ -106,7 +102,6 @@ export class ProcessRegistry {
     const runtimeMs = this.#runtimeMs(current ?? launched.record)
     const output = current?.output ?? launched.record.output
     const exitCode = current?.exitCode ?? launched.record.exitCode ?? null
-    const timedOut = current?.timedOut ?? launched.record.timedOut
 
     return {
       title: request.description,
@@ -114,13 +109,12 @@ export class ProcessRegistry {
         output,
         description: request.description,
         exit: typeof exitCode === "number" ? exitCode : null,
-        timedOut,
         durationMs: runtimeMs,
         hostSessionID: this.#host.hostSessionID,
         envID,
         backend: "remote",
       },
-      output: appendRuntimeMetadata(output, runtimeMs, timedOut),
+      output,
     }
   }
 
@@ -184,7 +178,7 @@ export class ProcessRegistry {
     }
   }
 
-  #launchShellProcess(input: { command: string; description?: string; workdir: string; timeoutMs?: number }) {
+  #launchShellProcess(input: { command: string; description?: string; workdir: string }) {
     const launch = Platform.resolveShellLaunch(input.command)
     const options: SpawnOptions = {
       cwd: input.workdir,
@@ -208,7 +202,6 @@ export class ProcessRegistry {
       truncated: false,
       exited: false,
       backgrounded: false,
-      timedOut: false,
     }
 
     const append = (chunk?: Uint8Array | string | null) => {
@@ -228,29 +221,13 @@ export class ProcessRegistry {
     child.stderr?.on("data", append)
 
     child.once("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-      if (record.timeoutTimer) {
-        clearTimeout(record.timeoutTimer)
-        record.timeoutTimer = undefined
-      }
       this.#markExited(record, code, signal)
     })
 
     child.once("error", (error: Error) => {
       append(String(error))
-      if (record.timeoutTimer) {
-        clearTimeout(record.timeoutTimer)
-        record.timeoutTimer = undefined
-      }
       this.#markExited(record, 1, null)
     })
-
-    if (input.timeoutMs && input.timeoutMs > 0) {
-      record.timeoutTimer = setTimeout(() => {
-        record.timedOut = true
-        void Platform.killTree(child, () => record.exited)
-      }, input.timeoutMs)
-      unrefTimer(record.timeoutTimer)
-    }
 
     this.#running.set(processId, record)
     this.#startSweeper()
@@ -649,7 +626,6 @@ export class ProcessRegistry {
         exitSignal: running.exitSignal,
         status: "running",
         startedAt: running.startedAt,
-        timedOut: running.timedOut,
       }
     }
 
@@ -698,13 +674,6 @@ export class ProcessRegistry {
     unrefTimer(this.#sweeper)
   }
 }
-
-function appendRuntimeMetadata(output: string, durationMs: number, timedOut: boolean): string {
-  const lines = [`durationMs=${durationMs}`]
-  if (timedOut) lines.push("timedOut=true")
-  return output + `\n\n<meta_runtime>\n${lines.join("\n")}\n</meta_runtime>`
-}
-
 function classifyExit(
   exitCode: number | null | undefined,
   exitSignal: NodeJS.Signals | number | null | undefined,
