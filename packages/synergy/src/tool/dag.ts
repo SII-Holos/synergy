@@ -131,7 +131,16 @@ export const DagPatchTool = Tool.define("dagpatch", {
       .array(
         z.object({
           id: z.string().describe("Node ID to update"),
-          status: z.string().describe("New status: completed, failed, cancelled, or pending (for retry)"),
+          status: z
+            .string()
+            .optional()
+            .describe("New status: completed, blocked, failed, cancelled, or pending (for retry)"),
+          task_id: z.string().optional().describe("Background task ID to associate with this node"),
+          session_id: z.string().optional().describe("Subagent session ID to associate with this node"),
+          memo: z
+            .string()
+            .optional()
+            .describe("Short node-local memo for important result, blocker, or handoff context"),
         }),
       )
       .describe("Nodes to update"),
@@ -162,13 +171,37 @@ export const DagPatchTool = Tool.define("dagpatch", {
         errors.push(`Node "${patch.id}" not found`)
         continue
       }
-      if (!new Set<string>(Dag.VALID_STATUSES).has(patch.status)) {
-        errors.push(`Invalid status "${patch.status}" for node "${patch.id}"`)
+      const changes: string[] = []
+      if (patch.status !== undefined) {
+        if (!new Set<string>(Dag.VALID_STATUSES).has(patch.status)) {
+          errors.push(`Invalid status "${patch.status}" for node "${patch.id}"`)
+          continue
+        }
+        if (node.status === "completed" && patch.status !== "completed") {
+          errors.push(`Node "${patch.id}" is completed; its status is immutable`)
+          continue
+        }
+        const prev = node.status
+        node.status = patch.status as Dag.Status
+        changes.push(`${prev} → ${patch.status}`)
+      }
+      if (patch.task_id !== undefined) {
+        node.task_id = patch.task_id
+        changes.push(`task_id=${patch.task_id}`)
+      }
+      if (patch.session_id !== undefined) {
+        node.session_id = patch.session_id
+        changes.push(`session_id=${patch.session_id}`)
+      }
+      if (patch.memo !== undefined) {
+        node.memo = patch.memo
+        changes.push("memo updated")
+      }
+      if (changes.length === 0) {
+        errors.push(`No updates provided for node "${patch.id}"`)
         continue
       }
-      const prev = node.status
-      node.status = patch.status as Dag.Status
-      updates.push(`${patch.id}: ${prev} → ${patch.status}`)
+      updates.push(`${patch.id}: ${changes.join(", ")}`)
     }
 
     if (errors.length > 0 && updates.length === 0) {

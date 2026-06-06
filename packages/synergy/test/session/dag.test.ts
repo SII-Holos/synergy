@@ -181,6 +181,31 @@ describe("Dag.validate", () => {
       expect(result.warnings.length).toBe(0)
     })
 
+    test("allows blocked → pending", () => {
+      const previous: Dag.Node[] = [{ id: "a", content: "Task", status: "blocked", deps: [] }]
+      const result = Dag.validate([{ id: "a", content: "Task", status: "pending", deps: [] }], previous)
+      expect(result.valid).toBe(true)
+      expect(result.warnings.length).toBe(0)
+    })
+
+    test("preserves optional task binding and memo fields", () => {
+      const result = Dag.validate([
+        {
+          id: "a",
+          content: "Task",
+          status: "blocked",
+          deps: [],
+          task_id: "ctx_01234567890abcdef",
+          session_id: "ses_01234567890abcdef",
+          memo: "Needs user decision",
+        },
+      ])
+      expect(result.valid).toBe(true)
+      expect(result.nodes[0].task_id).toBe("ctx_01234567890abcdef")
+      expect(result.nodes[0].session_id).toBe("ses_01234567890abcdef")
+      expect(result.nodes[0].memo).toBe("Needs user decision")
+    })
+
     test("warns on modified completed node content", () => {
       const previous: Dag.Node[] = [{ id: "a", content: "Original", status: "completed", deps: [] }]
       const result = Dag.validate([{ id: "a", content: "Modified", status: "completed", deps: [] }], previous)
@@ -206,6 +231,15 @@ describe("Dag.validate", () => {
       ])
       expect(result.valid).toBe(true)
       expect(result.warnings.some((w) => w.includes("never become ready"))).toBe(true)
+    })
+
+    test("warns when pending node depends on blocked node", () => {
+      const result = Dag.validate([
+        { id: "a", content: "A", status: "blocked", deps: [] },
+        { id: "b", content: "B", status: "pending", deps: ["a"] },
+      ])
+      expect(result.valid).toBe(true)
+      expect(result.warnings.some((w) => w.includes("blocked") && w.includes("never become ready"))).toBe(true)
     })
 
     test("warns when no root nodes", () => {

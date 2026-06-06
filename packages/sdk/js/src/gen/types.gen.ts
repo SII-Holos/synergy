@@ -1933,7 +1933,7 @@ export type DagNode = {
    */
   content: string
   /**
-   * Current status: pending, running, completed, failed, cancelled
+   * Current status: pending, running, blocked, completed, failed, cancelled
    */
   status: string
   /**
@@ -1944,6 +1944,18 @@ export type DagNode = {
    * Suggested executor: self or one of the registered specialized subagent identifiers
    */
   assign?: string
+  /**
+   * Background task ID currently or previously associated with this node
+   */
+  task_id?: string
+  /**
+   * Subagent session ID currently or previously associated with this node
+   */
+  session_id?: string
+  /**
+   * Short node-local memo for important result, blocker, or handoff context
+   */
+  memo?: string
 }
 
 export type UserMessage = {
@@ -2423,8 +2435,18 @@ export type CortexTask = {
   progress?: {
     toolCalls: number
     lastTool?: string
+    lastToolStatus?: string
+    lastTitle?: string
+    lastPartId?: string
     lastUpdate: number
     lastMessage?: string
+    recentTools?: Array<{
+      id: string
+      tool: string
+      status: string
+      title?: string
+      updatedAt: number
+    }>
   }
 }
 
@@ -3618,20 +3640,20 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
 export type EventDagUpdated = {
   type: "dag.updated"
   properties: {
     sessionID: string
     nodes: Array<DagNode>
     ready: Array<string>
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
   }
 }
 
@@ -3928,8 +3950,8 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventTodoUpdated
   | EventDagUpdated
+  | EventTodoUpdated
   | EventHolosProfileUpdated
   | EventAppPush
   | EventHolosContactAdded

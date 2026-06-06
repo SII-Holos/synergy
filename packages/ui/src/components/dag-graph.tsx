@@ -7,6 +7,9 @@ export interface DagNode {
   status: string
   deps: string[]
   assign?: string
+  task_id?: string
+  session_id?: string
+  memo?: string
 }
 
 interface LayoutNode {
@@ -168,6 +171,8 @@ function statusLabel(status: string) {
       return "RUNNING"
     case "failed":
       return "FAILED"
+    case "blocked":
+      return "BLOCKED"
     case "cancelled":
       return "SKIP"
     default:
@@ -180,6 +185,7 @@ function statusCounts(nodes: DagNode[]) {
     completed: nodes.filter((n) => n.status === "completed").length,
     running: nodes.filter((n) => n.status === "running").length,
     failed: nodes.filter((n) => n.status === "failed").length,
+    blocked: nodes.filter((n) => n.status === "blocked").length,
     pending: nodes.filter((n) => n.status === "pending").length,
   }
 }
@@ -310,6 +316,11 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
             <span data-slot="dag-graph-stat" data-kind="pending">
               {counts().pending} pending
             </span>
+            <Show when={counts().blocked > 0}>
+              <span data-slot="dag-graph-stat" data-kind="blocked">
+                {counts().blocked} blocked
+              </span>
+            </Show>
             <Show when={counts().failed > 0}>
               <span data-slot="dag-graph-stat" data-kind="failed">
                 {counts().failed} failed
@@ -406,6 +417,18 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
                   <div data-slot="dag-graph-card-content" title={ln.node.content}>
                     {ln.node.content}
                   </div>
+                  <Show when={ln.node.task_id || ln.node.memo}>
+                    <div data-slot="dag-graph-card-footer">
+                      <Show when={ln.node.task_id}>
+                        <span data-slot="dag-graph-task">{ln.node.task_id}</span>
+                      </Show>
+                      <Show when={ln.node.memo}>
+                        <span data-slot="dag-graph-memo" title={ln.node.memo}>
+                          {ln.node.memo}
+                        </span>
+                      </Show>
+                    </div>
+                  </Show>
                 </div>
               )}
             </For>

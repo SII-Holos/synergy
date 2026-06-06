@@ -2,6 +2,7 @@
   --dag-accent-border: var(--border-warning-base);
   --dag-done: var(--border-success-base);
   --dag-failed: var(--border-critical-base);
+  --dag-blocked: var(--border-info-base);
   --dag-card-shadow: var(--shadow-xs);
 
   position: relative;
@@ -57,6 +58,12 @@
       color: var(--text-on-warning-base);
       border-color: color-mix(in srgb, var(--border-warning-base) 46%, transparent);
       background: color-mix(in srgb, var(--surface-warning-weak) 50%, transparent);
+    }
+
+    &[data-kind="blocked"] {
+      color: var(--text-on-info-base);
+      border-color: color-mix(in srgb, var(--border-info-base) 48%, transparent);
+      background: color-mix(in srgb, var(--surface-info-weak) 50%, transparent);
     }
 
     &[data-kind="failed"] {
@@ -178,6 +185,10 @@
       stroke: color-mix(in srgb, var(--dag-accent-border) 78%, var(--border-base));
     }
 
+    &[data-status="blocked"] {
+      stroke: color-mix(in srgb, var(--dag-blocked) 78%, var(--border-base));
+    }
+
     &[data-status="failed"] {
       stroke: color-mix(in srgb, var(--dag-failed) 78%, var(--border-base));
     }
@@ -221,6 +232,11 @@
         var(--dag-card-shadow);
     }
 
+    &[data-status="blocked"] {
+      border-color: color-mix(in srgb, var(--border-info-base) 62%, var(--border-weaker-base));
+      background: color-mix(in srgb, var(--surface-info-weak) 36%, var(--surface-raised-base));
+    }
+
     &[data-status="failed"] {
       border-color: color-mix(in srgb, var(--border-critical-base) 62%, var(--border-weaker-base));
       background: color-mix(in srgb, var(--surface-critical-weak) 36%, var(--surface-raised-base));
@@ -260,6 +276,11 @@
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-warning-base) 17%, transparent);
     }
 
+    [data-status="blocked"] & {
+      background: var(--border-info-base);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-info-base) 17%, transparent);
+    }
+
     [data-status="failed"] & {
       background: var(--border-critical-base);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-critical-base) 17%, transparent);
@@ -281,6 +302,10 @@
       color: var(--text-on-warning-base);
     }
 
+    [data-status="blocked"] & {
+      color: var(--text-on-info-base);
+    }
+
     [data-status="failed"] & {
       color: var(--text-on-critical-base);
     }
@@ -300,6 +325,7 @@
 
   [data-slot="dag-graph-card-content"] {
     min-height: 0;
+    flex: 1;
     overflow: auto;
     padding-right: 3px;
     color: var(--text-base);
@@ -314,6 +340,40 @@
     [data-status="completed"] & {
       color: var(--text-weak);
     }
+  }
+
+  [data-slot="dag-graph-card-footer"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+
+  [data-slot="dag-graph-task"] {
+    flex-shrink: 0;
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--border-weaker-base);
+    border-radius: 999px;
+    padding: 1px 5px;
+    color: var(--text-weaker);
+    background: var(--surface-inset-base);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+  }
+
+  [data-slot="dag-graph-memo"] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-weaker);
+    font-family: var(--font-family-sans);
+    font-size: 11px;
   }
 
   [data-slot="dag-graph-hint"] {

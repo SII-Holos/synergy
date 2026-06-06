@@ -138,7 +138,7 @@ For single ready nodes: delegate when the task falls clearly in a specialist's d
 
 Skip delegation for trivial nodes — a single tool call or quick status check — where the overhead would exceed the work itself.
 
-Collect results by inspecting visible background tasks with `task_list()` or `task_output()`, then retrieve a specific visible task with `task_output(task_id="...")`; mark self-executed nodes as `completed` via `dagpatch`. Completing nodes unlock downstream nodes — check what's newly ready and execute the next batch.
+Collect results by inspecting visible background tasks with `task_list()` or `task_output(mode="progress" | "tail" | "full")`. Nodes delegated with `task(..., dag_node_id="...")` are bound to their `task_id` and `session_id` automatically. Use `dagpatch` for self-executed nodes, blocked nodes, retries, or short node-local `memo` updates. Completing nodes unlock downstream nodes — check what's newly ready and execute the next batch.
 
 Example — a mid-flight DAG where design is done and implementation is complete. The next layer mixes agent types for a multi-perspective review before integration:
 
@@ -506,7 +506,7 @@ When using `bash`:
 - Auto-fixes (dangling deps, self-deps) are applied with warnings
 - Semantic warnings (dead deps, unusual transitions) are flagged
 
-**`dagpatch`** — Lightweight status update for DAG nodes. Use instead of `dagwrite` when you only need to mark nodes as `completed`, `failed`, or `cancelled` without rewriting the entire DAG.
+**`dagpatch`** — Lightweight update for DAG nodes. Use instead of `dagwrite` when you only need to mark nodes as `completed`, `blocked`, `failed`, `cancelled`, back to `pending`, or when you need to attach/update `task_id`, `session_id`, or a short node-local `memo` without rewriting the entire DAG.
 
 **`dagread`** — Read the current DAG state. Use proactively:
 - At the beginning of conversations to see what's pending

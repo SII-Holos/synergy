@@ -14786,7 +14786,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Current status: pending, running, completed, failed, cancelled",
+            "description": "Current status: pending, running, blocked, completed, failed, cancelled",
             "type": "string"
           },
           "deps": {
@@ -14798,6 +14798,18 @@
           },
           "assign": {
             "description": "Suggested executor: self or one of the registered specialized subagent identifiers",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "Background task ID currently or previously associated with this node",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Subagent session ID currently or previously associated with this node",
+            "type": "string"
+          },
+          "memo": {
+            "description": "Short node-local memo for important result, blocker, or handoff context",
             "type": "string"
           }
         },
@@ -16125,11 +16137,44 @@
               "lastTool": {
                 "type": "string"
               },
+              "lastToolStatus": {
+                "type": "string"
+              },
+              "lastTitle": {
+                "type": "string"
+              },
+              "lastPartId": {
+                "type": "string"
+              },
               "lastUpdate": {
                 "type": "number"
               },
               "lastMessage": {
                 "type": "string"
+              },
+              "recentTools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "tool", "status", "updatedAt"]
+                }
               }
             },
             "required": ["toolCalls", "lastUpdate"]
@@ -19609,31 +19654,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.todo.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "todo.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "todos": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Todo"
-                }
-              }
-            },
-            "required": ["sessionID", "todos"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.dag.updated": {
         "type": "object",
         "properties": {
@@ -19661,6 +19681,31 @@
               }
             },
             "required": ["sessionID", "nodes", "ready"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.todo.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "todo.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Todo"
+                }
+              }
+            },
+            "required": ["sessionID", "todos"]
           }
         },
         "required": ["type", "properties"]
@@ -20478,10 +20523,10 @@
             "$ref": "#/components/schemas/Event.message.part.removed"
           },
           {
-            "$ref": "#/components/schemas/Event.todo.updated"
+            "$ref": "#/components/schemas/Event.dag.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.dag.updated"
+            "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
             "$ref": "#/components/schemas/Event.holos.profile.updated"

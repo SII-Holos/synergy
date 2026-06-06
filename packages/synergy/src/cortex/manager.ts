@@ -273,7 +273,8 @@ export namespace Cortex {
       `**Duration:** ${formatDuration(task)}`,
       task.status === "error" && task.error ? `**Error:** ${task.error}` : "",
       "Use `task_list()` to inspect visible background tasks.",
-      `Use \`task_output(task_id="${task.id}")\` only for tasks visible from this session.`,
+      `Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.`,
+      `Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
     ]
       .filter(Boolean)
       .join("\n")

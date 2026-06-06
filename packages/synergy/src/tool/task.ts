@@ -10,6 +10,7 @@ import { PermissionNext } from "@/permission/next"
 import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
 import { Instance } from "../scope/instance"
+import { Dag } from "../session/dag"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -48,6 +49,17 @@ interface TaskMetadata {
 }
 
 const SYNC_TIMEOUT_S = 300
+
+async function bindDagNode(sessionID: string, nodeID: string | undefined, task: { id: string; sessionID: string }) {
+  if (!nodeID) return
+  const nodes = await Dag.get(sessionID)
+  const node = nodes.find((item) => item.id === nodeID)
+  if (!node || node.status === "completed") return
+  node.status = "running"
+  node.task_id = task.id
+  node.session_id = task.sessionID
+  await Dag.update({ sessionID, nodes })
+}
 
 export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
   const caller = ctx?.agent
@@ -134,6 +146,8 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         sessionID,
         model,
       })
+
+      await bindDagNode(ctx.sessionID, params.dag_node_id, task)
 
       if (params.background) {
         ctx.metadata({

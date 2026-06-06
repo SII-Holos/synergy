@@ -128,7 +128,10 @@ Do not create DAGs for trivial single-step answers.
 - Use real dependencies.
 - Parallelize independent work.
 - Mark completed self-executed nodes promptly.
-- Do not modify completed nodes.
+- Mark work as `blocked` when progress requires a user decision, missing environment, or missing evidence rather than treating it as failure.
+- Use node `memo` for short result, blocker, or handoff context that should stay visible in the DAG.
+- Use `task_id` and `session_id` bindings to inspect delegated subagent progress with `task_output(mode="progress" | "tail" | "full")`.
+- Do not modify completed node status.
 - Graft new nodes when evidence reveals missing work.
 - Cancel downstream nodes when upstream assumptions collapse.
 - Use `assign` as a planning hint; use `task()` with the actual subagent type when executing.
@@ -153,7 +156,7 @@ understand intent
   -> final verification
 ```
 
-Remove nodes that do not apply. Do not remove verification.
+Remove nodes that do not apply. Do not remove verification. Use `blocked` and a concise `memo` when the next step depends on a decision or external condition.
 
 # Task Understanding
 
