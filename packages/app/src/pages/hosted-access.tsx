@@ -1,8 +1,20 @@
 import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { createEffect, createMemo, createSignal, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+  type JSX,
+  type ParentProps,
+} from "solid-js"
 import { appAccessFromUrlParam, callbackUrlFor, controlApiBase, trimSlashes, type AppAccess } from "@/utils/runtime"
 import { AppWithAccess } from "@/app-access"
+import { hostedStyleScopeAttrs } from "./hosted-style"
 
 interface HostedProfile {
   id: string
@@ -432,8 +444,20 @@ function HostedAccessGate() {
 export function HostedAppInterface() {
   const overrideAccess = appAccessFromUrlParam()
   if (overrideAccess) {
-    return <AppWithAccess access={overrideAccess} />
+    return (
+      <HostedStyleScope>
+        <AppWithAccess access={overrideAccess} />
+      </HostedStyleScope>
+    )
   }
 
-  return <HostedAccessGate />
+  return (
+    <HostedStyleScope>
+      <HostedAccessGate />
+    </HostedStyleScope>
+  )
+}
+
+export function HostedStyleScope(props: ParentProps) {
+  return <div {...hostedStyleScopeAttrs}>{props.children}</div>
 }

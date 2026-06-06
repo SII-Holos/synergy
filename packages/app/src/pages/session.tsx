@@ -29,6 +29,7 @@ import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
 import { isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
+import { isHostedMode } from "@/utils/runtime"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { SessionConversation } from "@/components/session/conversation"
@@ -59,6 +60,7 @@ export default function Page() {
   const sdk = useSDK()
   const prompt = usePrompt()
   const permission = usePermission()
+  const hosted = isHostedMode()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const view = createMemo(() => layout.view(sessionKey()))
@@ -809,7 +811,10 @@ export default function Page() {
   })
 
   return (
-    <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+    <div
+      data-holos-session-page={hosted ? "true" : undefined}
+      class="relative bg-background-base size-full overflow-hidden flex flex-col"
+    >
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Mobile tab bar */}
         <Show when={!isDesktop() && hasReview()}>
@@ -837,6 +842,7 @@ export default function Page() {
 
         {/* Session panel */}
         <div
+          data-holos-session-panel={hosted ? "true" : undefined}
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
             "flex-1 md:flex-none py-6 md:py-3": true,

@@ -288,7 +288,10 @@ export function HeaderBar() {
   })
 
   return (
-    <header class="h-11 shrink-0 bg-background-weak flex items-center px-3 justify-between border-b border-border-weaker-base/60 relative z-30">
+    <header
+      data-holos-header="true"
+      class="h-11 shrink-0 bg-background-weak flex items-center px-3 justify-between border-b border-border-weaker-base/60 relative z-30"
+    >
       <div class="flex items-center gap-1 min-w-0">
         <A
           href="/"

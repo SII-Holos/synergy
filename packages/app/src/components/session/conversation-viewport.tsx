@@ -18,7 +18,7 @@ export function ConversationViewport(props: {
   children: JSX.Element
 }) {
   return (
-    <div class="relative w-full h-full min-w-0">
+    <div data-holos-conversation-viewport="true" class="relative w-full h-full min-w-0">
       <Show when={props.overlay}>{props.overlay}</Show>
       <Show when={props.scrolledUp}>
         <div
@@ -47,6 +47,7 @@ export function ConversationViewport(props: {
           props.onScrollContainer?.(el)
         }}
         onClick={props.autoScroll.handleInteraction}
+        data-holos-conversation-scroll="true"
         class="relative min-w-0 w-full h-full overflow-y-auto no-scrollbar"
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
