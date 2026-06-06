@@ -21,6 +21,7 @@ export namespace Flag {
   export const SYNERGY_CWD = process.env["SYNERGY_CWD"]
   export const SYNERGY_ROOT = process.env["SYNERGY_ROOT"]
   export const SYNERGY_HOSTED = truthy("SYNERGY_HOSTED")
+  export const SYNERGY_RUNTIME_AUTH_MODE = process.env["SYNERGY_RUNTIME_AUTH_MODE"]
   export const SYNERGY_SCOPE_ROOT = process.env["SYNERGY_SCOPE_ROOT"]
   export const SYNERGY_DISABLE_WEB_MOUNT = truthy("SYNERGY_DISABLE_WEB_MOUNT")
   export const SYNERGY_AUTH_COOKIE_NAME = process.env["SYNERGY_AUTH_COOKIE_NAME"] ?? "holos_jwt"
@@ -28,6 +29,7 @@ export namespace Flag {
   export const SYNERGY_JWT_ISSUER = process.env["SYNERGY_JWT_ISSUER"]
   export const SYNERGY_JWT_AUDIENCE = process.env["SYNERGY_JWT_AUDIENCE"]
   export const HOLOS_OWNER_ID = process.env["HOLOS_OWNER_ID"]
+  export const HOLOS_AGENT_ID = process.env["HOLOS_AGENT_ID"]
   export const SYNERGY_ARXIV_API_URL = process.env["SYNERGY_ARXIV_API_URL"] ?? "https://arxivsearch.synergy.holosai.io"
   export const SYNERGY_SEARXNG_URL = process.env["SYNERGY_SEARXNG_URL"] ?? "https://websearch.synergy.holosai.io"
   export const SYNERGY_AGORA_URL = process.env["SYNERGY_AGORA_URL"]

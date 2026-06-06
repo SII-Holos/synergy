@@ -251,6 +251,20 @@ export namespace Server {
             return next()
           }
 
+          if (Hosted.authMode() === "gateway") {
+            try {
+              await Hosted.verifyGatewayHeaders({
+                userId: c.req.header("x-holos-user-id"),
+                agentId: c.req.header("x-holos-agent-id"),
+              })
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : "invalid_gateway_identity"
+              return c.json({ error: "unauthorized", reason }, 401)
+            }
+
+            return next()
+          }
+
           const token = Hosted.readToken({
             cookie: c.req.header("cookie"),
             authorization: c.req.header("authorization"),

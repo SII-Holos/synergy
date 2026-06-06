@@ -11,6 +11,13 @@ type JwtPayload = Record<string, unknown> & {
   aud?: string | string[]
 }
 
+type AuthMode = "runtime_jwt" | "gateway"
+
+type GatewayAuthPayload = {
+  user_id: string
+  agent_id?: string
+}
+
 function decodeBase64Url(input: string) {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/")
   const padding = normalized.length % 4
@@ -49,6 +56,11 @@ export namespace Hosted {
     return enabled()
   }
 
+  export function authMode(): AuthMode {
+    const mode = process.env["SYNERGY_RUNTIME_AUTH_MODE"] ?? Flag.SYNERGY_RUNTIME_AUTH_MODE
+    return mode === "gateway" ? "gateway" : "runtime_jwt"
+  }
+
   export function disableWebMount() {
     return Flag.SYNERGY_DISABLE_WEB_MOUNT
   }
@@ -66,7 +78,11 @@ export namespace Hosted {
   }
 
   export function ownerId() {
-    return Flag.HOLOS_OWNER_ID
+    return process.env["HOLOS_OWNER_ID"] ?? Flag.HOLOS_OWNER_ID
+  }
+
+  export function agentId() {
+    return process.env["HOLOS_AGENT_ID"] ?? Flag.HOLOS_AGENT_ID
   }
 
   export function readToken(input: { cookie?: string; authorization?: string }) {
@@ -84,6 +100,40 @@ export namespace Hosted {
       throw new DirectoryAccessError({ path: resolved, root })
     }
     return resolved
+  }
+
+  export async function verifyGatewayHeaders(input: {
+    userId?: string
+    agentId?: string
+  }): Promise<GatewayAuthPayload> {
+    const userId = input.userId?.trim()
+    if (!userId) {
+      throw new Error("missing_gateway_user")
+    }
+
+    const owner = ownerId()
+    if (enabled() && owner === undefined) {
+      throw new Error("missing_owner")
+    }
+    if (owner !== undefined && String(userId) !== String(owner)) {
+      throw new Error("invalid_owner")
+    }
+
+    const expectedAgentId = agentId()
+    const actualAgentId = input.agentId?.trim()
+    if (expectedAgentId !== undefined) {
+      if (!actualAgentId) {
+        throw new Error("missing_gateway_agent")
+      }
+      if (String(actualAgentId) !== String(expectedAgentId)) {
+        throw new Error("invalid_agent")
+      }
+    }
+
+    return {
+      user_id: userId,
+      ...(actualAgentId ? { agent_id: actualAgentId } : {}),
+    }
   }
 
   export async function verifyJwt(token: string): Promise<JwtPayload> {
