@@ -13,6 +13,6 @@ export function createWorkflowDesignerAgent(ctx: BuiltinAgentContext) {
       "Designs multi-agent DAGs for complex work. Use when work has phases, dependencies, parallel branches, TDD gates, reviews, or user checkpoints. Provide the task goal and known constraints; the agent returns DAG nodes, dependencies, assigned subagents, quality gates, blockers, and reusable context.",
     prompt: buildWorkflowDesignerPrompt(),
     model: "thinking",
-    permission: "analysis",
+    permission: "readOnly",
   })
 }

@@ -12,7 +12,7 @@ export function createRequirementsEngineerAgent(ctx: BuiltinAgentContext) {
     description:
       "Converts accepted intent into testable engineering requirements. Use before design, testing, or implementation when behavior, edge cases, acceptance criteria, forbidden behavior, or scope boundaries must be explicit. Provide the goal, known context, and prior findings; the agent returns behavioral specs, testable claims, blockers, and reusable context.",
     prompt: buildRequirementsEngineerPrompt(),
-    model: "thinking",
-    permission: "analysis",
+    model: "mid",
+    permission: "readOnly",
   })
 }

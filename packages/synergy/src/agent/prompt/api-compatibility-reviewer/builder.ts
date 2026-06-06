@@ -12,7 +12,7 @@ export function createApiCompatibilityReviewerAgent(ctx: BuiltinAgentContext) {
     description:
       "Reviews public contract impact after code changes. Use when changes may affect tool schemas, route schemas, SDK types, config fields, CLI behavior, plugin APIs, agent names, prompt-visible descriptions, or UI registrations. Provide the goal, changed files or prior findings if available; the agent inspects missing evidence and returns contract changes, wiring follow-ups, blockers, and reusable context.",
     prompt: buildApiCompatibilityReviewerPrompt(),
-    model: "thinking",
-    permission: "analysis",
+    model: "mid",
+    permission: "review",
   })
 }

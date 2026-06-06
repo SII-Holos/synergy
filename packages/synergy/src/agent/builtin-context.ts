@@ -11,9 +11,11 @@ export interface BuiltinAgentContext {
 }
 
 export type SubagentPermissionProfile =
-  | "analysis"
-  | "implementation"
-  | "documentation"
+  | "readOnly"
+  | "review"
+  | "codeWrite"
+  | "testWrite"
+  | "docsWrite"
   | "quality"
   | "externalResearch"
   | "research"
@@ -29,6 +31,20 @@ export interface SubagentDefinition {
   topP?: number
 }
 
+function commandTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    bash: "allow",
+    process: "allow",
+  })
+}
+
+function writeTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    edit: "ask",
+    write: "ask",
+  })
+}
+
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
   const common = PermissionNext.fromConfig({
     "*": "deny",
@@ -36,39 +52,34 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     dagwrite: "deny",
     dagread: "deny",
     dagpatch: "deny",
-    runtime_reload: "deny",
     task: "deny",
+    task_list: "deny",
+    task_output: "deny",
+    task_cancel: "deny",
+    runtime_reload: "deny",
+    todowrite: "allow",
+    todoread: "allow",
     read: "allow",
-    lookat: "allow",
+    look_at: "allow",
     grep: "allow",
     ast_grep: "allow",
     glob: "allow",
-    bash: "allow",
     external_directory: {
       "*": "ask",
       [Truncate.DIR]: "allow",
     },
   })
 
-  if (profile === "implementation" || profile === "documentation") {
-    return PermissionNext.merge(
-      common,
-      PermissionNext.fromConfig({
-        edit: "ask",
-        write: "ask",
-      }),
-    )
+  if (profile === "codeWrite" || profile === "testWrite") {
+    return PermissionNext.merge(common, writeTools(), commandTools())
   }
 
-  if (profile === "quality") {
-    return PermissionNext.merge(
-      common,
-      PermissionNext.fromConfig({
-        edit: "ask",
-        write: "ask",
-        process: "allow",
-      }),
-    )
+  if (profile === "docsWrite") {
+    return PermissionNext.merge(common, writeTools())
+  }
+
+  if (profile === "quality" || profile === "review") {
+    return PermissionNext.merge(common, commandTools())
   }
 
   if (profile === "externalResearch") {
@@ -106,12 +117,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     description: definition.description,
     prompt: definition.prompt,
     options: {},
-    permission: PermissionNext.merge(
-      ctx.defaults,
-      ctx.user,
-      baseToolPermissions(definition.permission),
-      PermissionNext.fromConfig({ question: "deny" }),
-    ),
+    permission: PermissionNext.merge(ctx.defaults, ctx.user, baseToolPermissions(definition.permission)),
     mode: "subagent",
     native: true,
     model: ctx.role(definition.model ?? "mid"),

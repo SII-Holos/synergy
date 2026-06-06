@@ -13,6 +13,6 @@ export function createDocumentationReviewerAgent(ctx: BuiltinAgentContext) {
       "Reviews documentation correctness and terminology. Use after docs changes or code changes with user-facing behavior. Provide changed docs or summary if available; the agent inspects missing implementation evidence and returns inconsistencies, missing docs, stale terminology, blockers, and reusable context.",
     prompt: buildDocumentationReviewerPrompt(),
     model: "mid",
-    permission: "analysis",
+    permission: "review",
   })
 }

@@ -13,6 +13,6 @@ export function createApiContractDesignerAgent(ctx: BuiltinAgentContext) {
       "Designs public contracts before implementation. Use for tools, route schemas, SDK types, config fields, CLI options, plugin APIs, agent definitions, and prompt-visible descriptions. Provide the goal and known constraints; the agent returns schema shape, field semantics, error model, wiring obligations, blockers, and reusable context.",
     prompt: buildApiContractDesignerPrompt(),
     model: "thinking",
-    permission: "analysis",
+    permission: "readOnly",
   })
 }

@@ -13,6 +13,6 @@ export function createCodeCartographerAgent(ctx: BuiltinAgentContext) {
       "Maps repository context before changes. Use for unfamiliar code, root-cause location, cross-module work, or when the primary agent needs entry points, call flow, existing abstractions, likely change points, and risk areas. Provide the goal and any known symbols/files; the agent inspects missing context and returns cited code evidence.",
     prompt: buildCodeCartographerPrompt(),
     model: "mid",
-    permission: "analysis",
+    permission: "readOnly",
   })
 }

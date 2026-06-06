@@ -13,6 +13,6 @@ export function createDependencyTracerAgent(ctx: BuiltinAgentContext) {
       "Traces references and downstream impact for proposed changes. Use before renames, schema edits, API changes, tool changes, config changes, package boundary changes, or refactors. Provide the target symbol or planned change; the agent inspects references and returns impact, risk, follow-ups, blockers, and reusable context.",
     prompt: buildDependencyTracerPrompt(),
     model: "mid",
-    permission: "analysis",
+    permission: "readOnly",
   })
 }

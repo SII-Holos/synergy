@@ -13,6 +13,6 @@ export function createSolutionArchitectAgent(ctx: BuiltinAgentContext) {
       "Designs implementation approach before code changes. Use after requirements and code mapping for features, root-cause fixes, refactors, and architecture-sensitive work. Provide the goal, constraints, and known code context; the agent returns design boundaries, files to change, tests required, risks, blockers, and reusable context.",
     prompt: buildSolutionArchitectPrompt(),
     model: "thinking",
-    permission: "analysis",
+    permission: "readOnly",
   })
 }

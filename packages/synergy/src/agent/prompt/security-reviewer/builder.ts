@@ -13,6 +13,6 @@ export function createSecurityReviewerAgent(ctx: BuiltinAgentContext) {
       "Reviews security and trust boundaries. Use for tools, shell execution, file access, permissions, credentials, auth, channels, external APIs, dependency changes, and user-identity or outbound actions. Provide the task goal and changed surface; the agent inspects missing evidence and returns risks, blockers, and reusable context.",
     prompt: buildSecurityReviewerPrompt(),
     model: "thinking",
-    permission: "analysis",
+    permission: "review",
   })
 }
