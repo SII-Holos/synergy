@@ -135,7 +135,7 @@ Provide a summary with severity ratings.
 ```markdown
 ---
 description: "Run security audit on changed files"
-agent: "master"
+agent: "developer"
 model: "anthropic/claude-sonnet-4-5"
 ---
 

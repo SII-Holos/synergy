@@ -1,13 +1,13 @@
-Lightweight status update for DAG nodes. Use this instead of `dagwrite` when you only need to change the status of one or more nodes without rewriting the entire DAG.
+Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only need to update one or more existing nodes without rewriting the entire graph.
 
 ## When to Use
 
 - Mark a self-executed node as `completed`
-- Mark a node as `failed`
-- Cancel a node
-- Retry a failed node (set back to `pending`)
+- Mark a node as `blocked`, `failed`, `cancelled`, or back to `pending`
+- Attach a `task_id` / `session_id` to a node when work is delegated outside automatic binding
+- Add or update a short node-local `memo` with important result, blocker, or handoff context
 
-You do NOT need this for background tasks launched with `dag_node_id` — those auto-update.
+Background tasks launched with `task(..., dag_node_id="...")` automatically bind `task_id` and `session_id`, then complete/fail the node when the task finishes. Use `dagpatch` manually for self-executed nodes, blocked work, or concise memo updates.
 
 ## Examples
 
@@ -17,9 +17,15 @@ dagpatch({ nodes: [{ id: "research", status: "completed" }] })
 
 ```
 dagpatch({ nodes: [
-  { id: "impl", status: "completed" },
-  { id: "broken", status: "failed" }
+  { id: "impl", status: "blocked", memo: "Needs user decision on compatibility policy" },
+  { id: "review", memo: "Security review should inspect shell command construction" }
 ] })
 ```
 
-After patching, downstream nodes whose deps are now all completed will be auto-promoted to `running`.
+```
+dagpatch({ nodes: [
+  { id: "impl", task_id: "ctx_abc123", session_id: "ses_def456" }
+] })
+```
+
+After patching, downstream pending nodes whose deps are all completed will be auto-promoted to `running`.

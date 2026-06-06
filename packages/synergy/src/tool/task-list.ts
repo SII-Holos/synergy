@@ -8,15 +8,6 @@ interface TaskListMetadata {
   taskIds: string[]
 }
 
-function formatDuration(startedAt: number, completedAt?: number) {
-  const end = completedAt ?? Date.now()
-  const seconds = Math.floor((end - startedAt) / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return `${minutes}m ${remainingSeconds}s`
-}
-
 export const TaskListTool = Tool.define<typeof parameters, TaskListMetadata>("task_list", {
   description: `List background tasks visible from the current session.
 
@@ -40,9 +31,17 @@ task_list()
 
     const lines = tasks
       .sort((a, b) => b.startedAt - a.startedAt)
-      .map((task) => {
-        const duration = formatDuration(task.startedAt, task.completedAt)
-        return `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description} [${duration}]`
+      .flatMap((task) => {
+        const info = Cortex.describe(task)
+        const last = info.lastTool
+          ? `last: ${info.lastTool}${info.lastToolStatus ? ` ${info.lastToolStatus}` : ""}`
+          : "last: none"
+        const title = info.lastTitle ? ` — ${info.lastTitle}` : ""
+        return [
+          `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description}`,
+          `  elapsed: ${info.duration} | health: ${info.health} | updated: ${info.lastUpdate} | tools: ${info.toolCalls}`,
+          `  ${last}${title}${task.dagNodeId ? ` | dag: ${task.dagNodeId}` : ""}`,
+        ]
       })
 
     return {

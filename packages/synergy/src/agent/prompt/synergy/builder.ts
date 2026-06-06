@@ -19,23 +19,30 @@ export interface AgentInfo {
   description: string
   mode: "primary" | "subagent" | "all"
   hidden?: boolean
+  visibleTo?: string[]
 }
 
 /**
  * Agents that synergy can delegate work to
  */
-function getDelegatableAgents(agents: AgentInfo[]): AgentInfo[] {
-  return agents.filter((a) => !a.hidden && a.name !== "synergy" && (a.mode === "subagent" || a.mode === "all"))
+function getDelegatableAgents(agents: AgentInfo[], primaryName = "synergy"): AgentInfo[] {
+  return agents.filter(
+    (agent) =>
+      !agent.hidden &&
+      agent.name !== primaryName &&
+      (agent.mode === "subagent" || agent.mode === "all") &&
+      (!agent.visibleTo || agent.visibleTo.includes(primaryName)),
+  )
 }
 
 /**
  * Build the agent table showing available subagents
  */
-export function buildAgentTable(agents: AgentInfo[]): string {
-  const available = getDelegatableAgents(agents)
+export function buildAgentTable(agents: AgentInfo[], primaryName = "synergy"): string {
+  const available = getDelegatableAgents(agents, primaryName)
 
   if (available.length === 0) {
-    return `No specialized agents available. Use \`master\` for all task execution.`
+    return `No specialized subagents are available. Handle only small direct tasks and ask the user to configure subagents for larger work.`
   }
 
   const rows = available.map((a) => {
@@ -47,10 +54,10 @@ export function buildAgentTable(agents: AgentInfo[]): string {
 |-------|----------|
 ${rows.join("\n")}
 
-Choose the right agent for the job. Don't use \`master\` when a specialized agent exists for that domain.`
+Choose the narrowest specialized subagent for the current workflow stage. Do not route substantial work to the primary \`${primaryName}\` agent when a subagent can own the stage.`
 }
 
-function buildSynergyMemorySection(): string {
+export function buildSynergyMemorySection(): string {
   return buildInteractiveMemorySection({
     intro:
       "During user-facing work, memory is part of execution rather than a background concern. Use it to preserve not just preferences and knowledge, but also durable trust boundaries.",

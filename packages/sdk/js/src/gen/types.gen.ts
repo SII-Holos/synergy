@@ -70,66 +70,21 @@ export type AgendaTriggerDelay = {
 
 export type AgendaTriggerWatch = {
   type: "watch"
-  watch:
-    | {
-        kind: "poll"
-        /**
-         * Shell command to execute periodically
-         */
-        command: string
-        /**
-         * Poll interval, e.g. '5m'. Default: '1m'
-         */
-        interval?: string
-        /**
-         * 'change': fire when output differs from previous; 'match': fire when output matches pattern
-         */
-        trigger?: "change" | "match"
-        /**
-         * Regex pattern, required when trigger is 'match'
-         */
-        match?: string
-      }
-    | {
-        kind: "file"
-        /**
-         * File glob pattern to watch for changes, e.g. 'src***.ts'
-         */
-        glob: string
-        /**
-         * Specific file event to match. If omitted, triggers on any event
-         */
-        event?: "add" | "change" | "unlink"
-        /**
-         * Debounce window before firing, e.g. '500ms', '2s'. Default: '500ms'
-         */
-        debounce?: string
-      }
-    | {
-        kind: "tool"
-        /**
-         * Synergy tool name to call, e.g. 'inspire_jobs'
-         */
-        tool: string
-        /**
-         * Arguments to pass to the tool
-         */
-        args?: {
-          [key: string]: unknown
-        }
-        /**
-         * Poll interval, e.g. '5m'. Default: '5m'
-         */
-        interval?: string
-        /**
-         * 'change': fire when tool output differs; 'match': fire when output matches pattern
-         */
-        trigger?: "change" | "match"
-        /**
-         * Regex pattern, required when trigger is 'match'
-         */
-        match?: string
-      }
+  watch: {
+    kind: "file"
+    /**
+     * File glob pattern to watch for changes, e.g. 'src***.ts'
+     */
+    glob: string
+    /**
+     * Specific file event to match. If omitted, triggers on any event
+     */
+    event?: "add" | "change" | "unlink"
+    /**
+     * Debounce window before firing, e.g. '500ms', '2s'. Default: '500ms'
+     */
+    debounce?: string
+  }
 }
 
 export type AgendaTriggerWebhook = {
@@ -286,6 +241,10 @@ export type AgendaItem = {
    * Whether to suppress result delivery entirely
    */
   silent?: boolean
+  /**
+   * If true, automatically set status to done after first successful fire. Used by agenda_watch.
+   */
+  autoDone?: boolean
   origin: AgendaOrigin
   createdBy: "user" | "agent"
   state?: AgendaItemState
@@ -301,6 +260,8 @@ export type AgendaWebhookResult = {
 
 export type Scope = {
   id: string
+  type: "global" | "project"
+  directory: string
   worktree: string
   vcs?: "git"
   name?: string
@@ -1456,7 +1417,7 @@ export type Config = {
    */
   holos_friend_reply_model?: string
   /**
-   * Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.
+   * Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.
    */
   vision_model?: string
   /**
@@ -1471,7 +1432,9 @@ export type Config = {
    * Agent configuration
    */
   agent?: {
-    master?: AgentConfig
+    synergy?: AgentConfig
+    "synergy-max"?: AgentConfig
+    developer?: AgentConfig
     general?: AgentConfig
     explore?: AgentConfig
     title?: AgentConfig
@@ -1970,7 +1933,7 @@ export type DagNode = {
    */
   content: string
   /**
-   * Current status: pending, running, completed, failed, cancelled
+   * Current status: pending, running, blocked, completed, failed, cancelled
    */
   status: string
   /**
@@ -1978,9 +1941,21 @@ export type DagNode = {
    */
   deps: Array<string>
   /**
-   * Suggested executor: self, master, explore, scout, scholar, scribe, advisor
+   * Suggested executor: self or one of the registered specialized subagent identifiers
    */
   assign?: string
+  /**
+   * Background task ID currently or previously associated with this node
+   */
+  task_id?: string
+  /**
+   * Subagent session ID currently or previously associated with this node
+   */
+  session_id?: string
+  /**
+   * Short node-local memo for important result, blocker, or handoff context
+   */
+  memo?: string
 }
 
 export type UserMessage = {
@@ -2460,8 +2435,18 @@ export type CortexTask = {
   progress?: {
     toolCalls: number
     lastTool?: string
+    lastToolStatus?: string
+    lastTitle?: string
+    lastPartId?: string
     lastUpdate: number
     lastMessage?: string
+    recentTools?: Array<{
+      id: string
+      tool: string
+      status: string
+      title?: string
+      updatedAt: number
+    }>
   }
 }
 
@@ -2806,6 +2791,7 @@ export type AgendaCreateInput = {
   global?: boolean
   wake?: boolean
   silent?: boolean
+  autoDone?: boolean
   agent?: string
   model?: {
     providerID: string
@@ -3247,6 +3233,7 @@ export type Agent = {
   mode: "subagent" | "primary" | "all"
   native?: boolean
   hidden?: boolean
+  visibleTo?: Array<string>
   topP?: number
   temperature?: number
   color?: string
@@ -3653,20 +3640,20 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
 export type EventDagUpdated = {
   type: "dag.updated"
   properties: {
     sessionID: string
     nodes: Array<DagNode>
     ready: Array<string>
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
   }
 }
 
@@ -3963,8 +3950,8 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventTodoUpdated
   | EventDagUpdated
+  | EventTodoUpdated
   | EventHolosProfileUpdated
   | EventAppPush
   | EventHolosContactAdded
@@ -5860,12 +5847,9 @@ export type SessionCommandError = SessionCommandErrors[keyof SessionCommandError
 
 export type SessionCommandResponses = {
   /**
-   * Created message
+   * Command accepted
    */
-  200: {
-    info: AssistantMessage
-    parts: Array<Part>
-  }
+  204: void
 }
 
 export type SessionCommandResponse = SessionCommandResponses[keyof SessionCommandResponses]

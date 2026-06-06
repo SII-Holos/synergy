@@ -1379,7 +1379,10 @@ export namespace Config {
       agent: z
         .object({
           // primary
-          master: Agent.optional(),
+          synergy: Agent.optional(),
+          "synergy-max": Agent.optional(),
+          // classic subagents
+          developer: Agent.optional(),
           // subagent
           general: Agent.optional(),
           explore: Agent.optional(),

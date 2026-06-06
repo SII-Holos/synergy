@@ -3362,7 +3362,7 @@ export class Session extends HeyApiClient {
   /**
    * Send command
    *
-   * Send a new command to a session for execution by the AI assistant.
+   * Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.
    */
   public command<ThrowOnError extends boolean = false>(
     parameters: {

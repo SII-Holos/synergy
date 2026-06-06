@@ -2,7 +2,7 @@ Create and manage a directed acyclic graph (DAG) of tasks for the current sessio
 
 ## Core Concepts
 
-- **Nodes** are tasks. Each has an id, description, status, dependencies, and an optional executor assignment.
+- **Nodes** are tasks. Each has an id, description, status, dependencies, optional executor assignment, optional task/session binding, and an optional short `memo`.
 - **Edges** are defined by `deps` — if node B lists node A in its deps, then A must complete before B can start.
 - **Auto-promotion**: Pending nodes whose deps are ALL completed are automatically promoted to `running`. Focus your work on `running` nodes.
 - **Parallel execution**: Multiple running nodes can be dispatched simultaneously via the `task` tool with `dag_node_id` for auto-completion.
@@ -24,6 +24,7 @@ Do NOT use this tool when:
 
 - `pending` — Not started. Dependencies not yet all completed.
 - `running` — Ready or in progress. **The system auto-promotes pending → running when all deps are completed.** You don't need to manually set this status.
+- `blocked` — Cannot proceed until a user decision, environment condition, missing evidence, or upstream issue is resolved
 - `completed` — Finished successfully
 - `failed` — Attempted but did not succeed. Decide: retry, modify plan, or cancel downstream
 - `cancelled` — No longer needed
@@ -32,7 +33,7 @@ Do NOT use this tool when:
 
 Optional hint for who should execute the node:
 - `self` — You will do it directly (default if omitted)
-- `master` — Delegate to a master agent for implementation work
+- `developer` — Delegate to the classic coding implementation subagent
 - `explore` — Delegate to an explore agent for codebase search
 - `scout` — Delegate to a scout agent for external docs/examples
 - `scholar` — Delegate for academic research
@@ -51,7 +52,7 @@ This is a suggestion, not a binding. You decide the actual execution method when
    - **1 running node**: Self-execute or delegate based on `assign` hint. Use `dagpatch` to mark self-executed nodes as completed.
    - Background tasks with `dag_node_id` auto-complete/auto-fail when the task finishes — no manual DAG update needed.
 5. After nodes complete, downstream nodes are auto-promoted to `running` — repeat from step 3.
-6. Continue until all nodes are `completed` or `cancelled`
+6. Continue until all nodes are `completed` or `cancelled`; resolve `blocked` nodes by asking the user, fixing the environment, or revising the plan
 
 ## Dynamic Modification
 
@@ -60,7 +61,7 @@ The DAG is living — you can modify it at any time by calling `dagwrite` with a
 - **Add nodes**: Insert new nodes (graft new tasks discovered mid-execution)
 - **Remove nodes**: Drop pending/cancelled nodes that are no longer relevant (prune)
 - **Change deps**: Rewire dependencies for pending nodes
-- **Retry failed**: Set a failed node back to `pending`, optionally adjust its content
+- **Retry failed/blocked**: Set a failed or blocked node back to `pending`, optionally adjust its content or memo
 
 **Rule**: Within an active DAG, never modify completed nodes — they are immutable history. Only modify pending, failed, or cancelled nodes.
 
@@ -72,7 +73,7 @@ The tool performs multi-layer validation before saving. Some issues are auto-fix
 
 **Hard errors (rejected — you must fix):**
 - Duplicate node IDs
-- Invalid status values (must be: pending, running, completed, failed, cancelled)
+- Invalid status values (must be: pending, running, blocked, completed, failed, cancelled)
 - Circular dependencies
 
 **Auto-fixed (accepted with warnings):**
@@ -84,13 +85,14 @@ The tool performs multi-layer validation before saving. Some issues are auto-fix
 - Dropping completed nodes from an active (not fully finished) DAG
 - Changing status of completed nodes
 - Running/completed nodes with non-completed dependencies
-- Pending nodes depending on failed/cancelled nodes (will never become ready)
+- Pending nodes depending on failed/blocked/cancelled nodes (will never become ready until the dependency is retried or unblocked)
 - No root nodes (all nodes have dependencies)
 - Dropping running nodes
 
 **Valid status transitions:**
-- pending → running, cancelled
-- running → completed, failed, cancelled
+- pending → running, blocked, cancelled
+- running → completed, failed, blocked, cancelled
+- blocked → pending, cancelled
 - failed → pending (retry)
 - cancelled → pending (re-activate)
 - completed → (immutable, no transitions allowed)

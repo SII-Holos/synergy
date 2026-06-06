@@ -28,6 +28,7 @@ Use background=false only when you cannot proceed without the result.
 2. The result is not visible to the user - summarize it back to them
 3. Each invocation is stateless unless you provide session_id
 4. Clearly tell the agent whether to write code or just research
+5. For long-running background tasks, use `task_output(task_id, mode="progress")` to inspect live status and `mode="tail"` to inspect recent activity before deciding whether to wait, cancel, or re-route
 
 ## Writing effective prompts
 
@@ -47,8 +48,8 @@ task(background: true, subagent_type: "explore", description: "Find data models"
 
 ### Parallel implementation
 ```
-task(background: true, subagent_type: "master", description: "Add validation", prompt: "...")
-task(background: true, subagent_type: "master", description: "Update tests", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Add validation", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Update tests", prompt: "...")
 ```
 
 ### Writing documentation

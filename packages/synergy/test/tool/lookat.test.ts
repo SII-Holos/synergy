@@ -11,7 +11,7 @@ const ctx = {
   sessionID: "ses_test123",
   messageID: "msg_test123",
   callID: "call_test123",
-  agent: "master",
+  agent: "developer",
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},

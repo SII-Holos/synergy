@@ -6,5 +6,5 @@
 > - Do NOT provide final conclusions or recommendations yet
 > - Do NOT ask user for decisions (avoid calling `question` tool)
 > - You WILL be automatically notified when tasks complete — do NOT set up `agenda_watch` or any manual polling, the system handles wake-up
-> - Use `task_list()` or `task_output()` to inspect visible tasks, then call `task_output(task_id="...")` only for a visible task
+> - Use `task_list()` or `task_output()` to inspect visible tasks; use `task_output(task_id="...", mode="progress")` for live status and `mode="tail"` for recent activity
 > - Otherwise continue with other productive work that doesn't depend on these results

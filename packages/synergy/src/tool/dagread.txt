@@ -10,6 +10,6 @@ Use this tool proactively and frequently to ensure you are aware of the current 
 
 Usage:
 - This tool takes in no parameters. So leave the input blank or empty. DO NOT include a dummy object, placeholder string or a key like "input" or "empty". LEAVE IT BLANK.
-- Returns all DAG nodes with their status, dependencies, and assignments
+- Returns all DAG nodes with their status, dependencies, assignments, task/session bindings, and memos
 - Nodes whose deps are all completed are auto-promoted to `running` — focus on `running` nodes
 - If no DAG exists yet, an empty node list will be returned
