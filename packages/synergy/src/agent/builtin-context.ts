@@ -26,6 +26,7 @@ export interface SubagentDefinition {
   prompt: string
   model?: Provider.ModelRole
   permission: SubagentPermissionProfile
+  visibleTo?: string[]
   steps?: number
   temperature?: number
   topP?: number
@@ -117,9 +118,10 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     description: definition.description,
     prompt: definition.prompt,
     options: {},
-    permission: PermissionNext.merge(ctx.defaults, ctx.user, baseToolPermissions(definition.permission)),
+    permission: PermissionNext.merge(ctx.defaults, baseToolPermissions(definition.permission), ctx.user),
     mode: "subagent",
     native: true,
+    visibleTo: definition.visibleTo ?? ["synergy-max"],
     model: ctx.role(definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,

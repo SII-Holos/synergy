@@ -50,9 +50,16 @@ interface TaskMetadata {
 const SYNC_TIMEOUT_S = 300
 
 export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
-  const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary" && !a.hidden))
-
   const caller = ctx?.agent
+  const agents = await Agent.list().then((items) =>
+    items.filter(
+      (agent) =>
+        agent.mode !== "primary" &&
+        !agent.hidden &&
+        (!caller || !agent.visibleTo || agent.visibleTo.includes(caller.name)),
+    ),
+  )
+
   const accessibleAgents = caller
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
@@ -78,6 +85,9 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
+        throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
+      }
 
       const msg = await MessageV2.get({
         scopeID: Instance.scope.id,

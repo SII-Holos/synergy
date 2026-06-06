@@ -97,7 +97,7 @@ describe("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const rootSession = await Session.create({})
-          const agent = "master"
+          const agent = "developer"
           const limit = CortexConcurrency.getLimit(agent)
 
           for (let i = 0; i < limit; i++) {
@@ -210,7 +210,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Test task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -221,7 +221,7 @@ describe("Cortex", () => {
           // Task status is set to "running" synchronously before runTask starts
           expect(task.status).toBe("running")
           expect(task.description).toBe("Test task")
-          expect(task.agent).toBe("master")
+          expect(task.agent).toBe("developer")
           expect(task.parentSessionID).toBe(parentSession.id)
 
           unsub()
@@ -248,7 +248,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Visual task",
             prompt: "Design something",
-            agent: "master",
+            agent: "developer",
             category: "visual-engineering",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
@@ -271,7 +271,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Custom model task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
             model: {
@@ -298,7 +298,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Test task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -321,7 +321,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Test task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -345,7 +345,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Test task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -371,7 +371,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Test task to cancel",
             prompt: "Do something slowly",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -397,7 +397,7 @@ describe("Cortex", () => {
           const task1 = await Cortex.launch({
             description: "Task 1",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -405,7 +405,7 @@ describe("Cortex", () => {
           const task2 = await Cortex.launch({
             description: "Task 2",
             prompt: "Do something else",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -442,7 +442,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Running task",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -466,7 +466,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Task to cancel",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -491,7 +491,7 @@ describe("Cortex", () => {
           const task = await Cortex.launch({
             description: "Task to wait for",
             prompt: "Do something",
-            agent: "master",
+            agent: "developer",
             parentSessionID: parentSession.id,
             parentMessageID: "msg_test01234567890abc",
           })
@@ -514,7 +514,7 @@ describe("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
-          const agent = "master"
+          const agent = "developer"
           const limit = CortexConcurrency.getLimit(agent)
 
           for (let i = 0; i < limit; i++) {

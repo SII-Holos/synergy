@@ -10,7 +10,8 @@ export interface AgentVisual {
 
 const VISUALS: Record<string, AgentVisual> = {
   synergy: { emoji: "😌", label: "Synergy", color: "rgba(99, 102, 241, 0.35)" },
-  master: { emoji: "😎", label: "Master", color: "rgba(59, 130, 246, 0.35)" },
+  "synergy-max": { emoji: "🧭", label: "Synergy Max", color: "rgba(249, 115, 22, 0.35)" },
+  developer: { emoji: "😎", label: "Developer", color: "rgba(59, 130, 246, 0.35)" },
   explore: { emoji: "🥸", label: "Explore", color: "rgba(168, 85, 247, 0.35)" },
   scribe: { emoji: "🤭", label: "Scribe", color: "rgba(34, 197, 94, 0.35)" },
   scholar: { emoji: "🤓", label: "Scholar", color: "rgba(245, 158, 11, 0.35)" },

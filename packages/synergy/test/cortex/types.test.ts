@@ -57,7 +57,7 @@ describe("CortexTypes", () => {
         parentMessageID: "msg_parent01234567890",
         description: "Test task",
         prompt: "Do something",
-        agent: "master",
+        agent: "developer",
         status: "running" as const,
         startedAt: Date.now(),
       }
@@ -75,7 +75,7 @@ describe("CortexTypes", () => {
         parentMessageID: "msg_parent01234567890",
         description: "Test task",
         prompt: "Do something",
-        agent: "master",
+        agent: "developer",
         category: "visual-engineering",
         status: "completed" as const,
         startedAt: Date.now(),
@@ -99,7 +99,7 @@ describe("CortexTypes", () => {
         parentMessageID: "msg_parent01234567890",
         description: "Test task",
         prompt: "Do something",
-        agent: "master",
+        agent: "developer",
         status: "running",
         startedAt: Date.now(),
       }
@@ -112,20 +112,20 @@ describe("CortexTypes", () => {
       const input = {
         description: "Run tests",
         prompt: "Execute the test suite",
-        agent: "master",
+        agent: "developer",
         parentSessionID: "ses_parent01234567890",
         parentMessageID: "msg_parent01234567890",
       }
       const result = CortexTypes.LaunchInput.parse(input)
       expect(result.description).toBe("Run tests")
-      expect(result.agent).toBe("master")
+      expect(result.agent).toBe("developer")
     })
 
     test("accepts launch input with optional model", () => {
       const input = {
         description: "Run tests",
         prompt: "Execute the test suite",
-        agent: "master",
+        agent: "developer",
         parentSessionID: "ses_parent01234567890",
         parentMessageID: "msg_parent01234567890",
         category: "most-capable",

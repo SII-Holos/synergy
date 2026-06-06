@@ -3604,29 +3604,10 @@
           }
         ],
         "summary": "Send command",
-        "description": "Send a new command to a session for execution by the AI assistant.",
+        "description": "Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.",
         "responses": {
-          "200": {
-            "description": "Created message",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "info": {
-                      "$ref": "#/components/schemas/AssistantMessage"
-                    },
-                    "parts": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Part"
-                      }
-                    }
-                  },
-                  "required": ["info", "parts"]
-                }
-              }
-            }
+          "204": {
+            "description": "Command accepted"
           },
           "400": {
             "description": "Bad request",
@@ -11374,34 +11355,6 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "const": "poll"
-                  },
-                  "command": {
-                    "description": "Shell command to execute periodically",
-                    "type": "string"
-                  },
-                  "interval": {
-                    "description": "Poll interval, e.g. '5m'. Default: '1m'",
-                    "type": "string"
-                  },
-                  "trigger": {
-                    "description": "'change': fire when output differs from previous; 'match': fire when output matches pattern",
-                    "default": "change",
-                    "type": "string",
-                    "enum": ["change", "match"]
-                  },
-                  "match": {
-                    "description": "Regex pattern, required when trigger is 'match'",
-                    "type": "string"
-                  }
-                },
-                "required": ["kind", "command"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
                     "const": "file"
                   },
                   "glob": {
@@ -11419,42 +11372,6 @@
                   }
                 },
                 "required": ["kind", "glob"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "tool"
-                  },
-                  "tool": {
-                    "description": "Synergy tool name to call, e.g. 'inspire_jobs'",
-                    "type": "string"
-                  },
-                  "args": {
-                    "description": "Arguments to pass to the tool",
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "interval": {
-                    "description": "Poll interval, e.g. '5m'. Default: '5m'",
-                    "type": "string"
-                  },
-                  "trigger": {
-                    "description": "'change': fire when tool output differs; 'match': fire when output matches pattern",
-                    "default": "change",
-                    "type": "string",
-                    "enum": ["change", "match"]
-                  },
-                  "match": {
-                    "description": "Regex pattern, required when trigger is 'match'",
-                    "type": "string"
-                  }
-                },
-                "required": ["kind", "tool"]
               }
             ]
           }
@@ -11742,6 +11659,11 @@
             "default": false,
             "type": "boolean"
           },
+          "autoDone": {
+            "description": "If true, automatically set status to done after first successful fire. Used by agenda_watch.",
+            "default": false,
+            "type": "boolean"
+          },
           "origin": {
             "$ref": "#/components/schemas/AgendaOrigin"
           },
@@ -11780,6 +11702,13 @@
         "type": "object",
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "directory": {
             "type": "string"
           },
           "worktree": {
@@ -11828,7 +11757,7 @@
             }
           }
         },
-        "required": ["id", "worktree", "time", "sandboxes"]
+        "required": ["id", "type", "directory", "worktree", "time", "sandboxes"]
       },
       "NotFoundError": {
         "type": "object",
@@ -13587,7 +13516,7 @@
             "type": "string"
           },
           "vision_model": {
-            "description": "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
+            "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
             "type": "string"
           },
           "default_agent": {
@@ -13602,7 +13531,13 @@
             "description": "Agent configuration",
             "type": "object",
             "properties": {
-              "master": {
+              "synergy": {
+                "$ref": "#/components/schemas/AgentConfig"
+              },
+              "synergy-max": {
+                "$ref": "#/components/schemas/AgentConfig"
+              },
+              "developer": {
                 "$ref": "#/components/schemas/AgentConfig"
               },
               "general": {
@@ -14862,7 +14797,7 @@
             }
           },
           "assign": {
-            "description": "Suggested executor: self, master, explore, scout, scholar, scribe, advisor",
+            "description": "Suggested executor: self or one of the registered specialized subagent identifiers",
             "type": "string"
           }
         },
@@ -17269,6 +17204,9 @@
           "silent": {
             "type": "boolean"
           },
+          "autoDone": {
+            "type": "boolean"
+          },
           "agent": {
             "type": "string"
           },
@@ -18507,6 +18445,12 @@
           },
           "hidden": {
             "type": "boolean"
+          },
+          "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "topP": {
             "type": "number"

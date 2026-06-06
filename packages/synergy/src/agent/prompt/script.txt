@@ -59,7 +59,7 @@ Conversation about implementing a feature with multiple independent workstreams:
 →
 1. Read the relevant API, data, and integration points to determine which parts of the task can proceed independently
 2. Create a DAG with `dagwrite` splitting the work into 3 parallel branches (API endpoint, database migration, config) with a final integration node depending on all three
-3. Dispatch the 3 ready branches concurrently as background `task` calls to master subagents instead of executing sequentially
+3. Dispatch the 3 ready branches concurrently as background `task` calls to developer subagents instead of executing sequentially
 4. After all branches complete, integrate the dependent pieces in the convergence node and run focused verification
 
 Conversation where authentication blocked further progress:

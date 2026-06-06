@@ -60,7 +60,7 @@ const FACTORIES = [
   createResearchMethodologistAgent,
 ]
 
-export function createBuiltinSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
+export function createBuiltinMaxSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const result: Record<string, Agent.Info> = {}
   for (const factory of FACTORIES) {
     const agent = factory(ctx)

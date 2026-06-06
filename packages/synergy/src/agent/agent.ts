@@ -7,19 +7,12 @@ import { Instance } from "../scope/instance"
 import { Truncate } from "../tool/truncation"
 
 import PROMPT_GENERATE from "./generate.txt"
-import { buildCompactionPrompt } from "./prompt/compaction/builder"
-import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
-import PROMPT_SUMMARY from "./prompt/summary.txt"
-import PROMPT_TITLE from "./prompt/title.txt"
+import { createBuiltinInternalAgents } from "./builtin-internal"
+import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
+import { createBuiltinPrimaryAgents } from "./builtin-primary"
+import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
-
-import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
-import { createBuiltinSubagents } from "./builtin-subagents"
-import PROMPT_INTENT from "./prompt/intent.txt"
-import PROMPT_REWARD from "./prompt/reward.txt"
-import PROMPT_SCRIPT from "./prompt/script.txt"
-import PROMPT_GENESIS from "./prompt/genesis.txt"
-import PROMPT_ANIMA from "./prompt/anima.txt"
+import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -38,6 +31,7 @@ export namespace Agent {
       mode: z.enum(["subagent", "primary", "all"]),
       native: z.boolean().optional(),
       hidden: z.boolean().optional(),
+      visibleTo: z.array(z.string()).optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -94,237 +88,12 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
+    const builtinContext = { defaults, user, role, evolutionActive: evo.active }
     const result: Record<string, Info> = {
-      synergy: {
-        name: "synergy",
-        description:
-          "General-purpose orchestrator agent that plans, coordinates, executes, and verifies. Handles any task: coding, research, writing, analysis, or multi-domain work. Uses DAG-based planning for dependency tracking and parallel execution. Best for complex work that spans multiple domains or requires coordinated multi-agent effort.",
-        prompt: "", // Will be set after all agents are defined via buildSynergyPrompt
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            runtime_reload: "allow",
-            dagwrite: "allow",
-            dagread: "allow",
-            dagpatch: "allow",
-            todowrite: "deny",
-            todoread: "deny",
-            memory_write: "allow",
-
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      ...createBuiltinSubagents({ defaults, user, role, evolutionActive: evo.active }),
-      "multimodal-looker": {
-        name: "multimodal-looker",
-        prompt: PROMPT_MULTIMODAL_LOOKER,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            skill: { "*": "deny" },
-            external_directory: { "*": "allow" },
-          }),
-          user,
-        ),
-        mode: "primary",
-        native: true,
-        hidden: true,
-        model: role("vision"),
-      },
-      compaction: {
-        name: "compaction",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        prompt: buildCompactionPrompt(),
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            session_list: "allow",
-            session_read: "allow",
-            session_send: "allow",
-          }),
-          user,
-        ),
-        options: {},
-        model: role("long"),
-      },
-      chronicler: {
-        name: "chronicler",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        prompt: PROMPT_CHRONICLER,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            grep: "allow",
-            glob: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            memory_search: "allow",
-            memory_get: "allow",
-            note_list: "allow",
-            note_read: "allow",
-            note_search: "allow",
-            note_write: "allow",
-            note_edit: "allow",
-            profile_get: "allow",
-            profile_update: "allow",
-            session_list: "allow",
-            session_read: "allow",
-            session_send: "allow",
-          }),
-          user,
-        ),
-        options: {},
-        model: role("long"),
-      },
-      title: {
-        name: "title",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        temperature: 0.5,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_TITLE,
-        model: role("nano"),
-      },
-      summary: {
-        name: "summary",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_SUMMARY,
-        model: role("nano"),
-      },
-      intent: {
-        name: "intent",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_INTENT,
-        model: role("mini"),
-      },
-      script: {
-        name: "script",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_SCRIPT,
-        model: role("mini"),
-      },
-      reward: {
-        name: "reward",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_REWARD,
-        model: role("mini"),
-      },
-      genesis: {
-        name: "genesis",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        temperature: 0.7,
-        prompt: PROMPT_GENESIS,
-        model: role("mini"),
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            memory_write: "allow",
-            memory_edit: "allow",
-            memory_search: "allow",
-            memory_get: "allow",
-            profile_get: "allow",
-            profile_update: "allow",
-          }),
-          user,
-        ),
-        options: {},
-      },
-      anima: {
-        name: "anima",
-        description:
-          "Autonomous inner self that runs periodic routines — reflects on recent activity, organizes knowledge, plans agenda tasks, engages with the community on Agora, and explores the web to learn. Not a user-facing agent; runs as a background daily routine.",
-        prompt: PROMPT_ANIMA,
-        mode: "primary",
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "allow",
-            question: "deny",
-            todowrite: "deny",
-            todoread: "deny",
-            read: "allow",
-            edit: "allow",
-            write: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            external_directory: {
-              "*": "allow",
-            },
-          }),
-          user,
-        ),
-        options: {},
-      },
+      ...createBuiltinPrimaryAgents(builtinContext),
+      ...createBuiltinLegacySubagents(builtinContext),
+      ...createBuiltinMaxSubagents(builtinContext),
+      ...createBuiltinInternalAgents(builtinContext),
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
@@ -406,17 +175,6 @@ export namespace Agent {
       )
     }
 
-    // Build synergy prompt dynamically based on available agents
-    if (result.synergy) {
-      const agentInfos = Object.values(result).map((a) => ({
-        name: a.name,
-        description: a.description ?? "",
-        mode: a.mode,
-        hidden: a.hidden,
-      }))
-      result.synergy.prompt = buildSynergyPrompt(agentInfos)
-    }
-
     // Discover and register external agents
     const externalConfig = cfg.external_agent ?? {}
     const externalDescriptions: Record<string, string> = {
@@ -474,6 +232,16 @@ export namespace Agent {
         }
       }
     }
+
+    const agentInfos = Object.values(result).map((agent) => ({
+      name: agent.name,
+      description: agent.description ?? "",
+      mode: agent.mode,
+      hidden: agent.hidden,
+      visibleTo: agent.visibleTo,
+    }))
+    if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
+    if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
 
     return result
   })

@@ -20,7 +20,7 @@ test("returns default native agents when no config", async () => {
     fn: async () => {
       const agents = await Agent.list()
       const names = agents.map((a) => a.name)
-      expect(names).toContain("master")
+      expect(names).toContain("developer")
       expect(names).toContain("scribe")
       expect(names).toContain("explore")
       expect(names).toContain("compaction")
@@ -34,17 +34,17 @@ test("returns default native agents when no config", async () => {
   })
 })
 
-test("master agent has correct default properties", async () => {
+test("developer agent has correct default properties", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master).toBeDefined()
-      expect(master?.mode).toBe("all")
-      expect(master?.native).toBe(true)
-      expect(evalPerm(master, "edit")).toBe("ask")
-      expect(evalPerm(master, "bash")).toBe("allow")
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(developer?.mode).toBe("subagent")
+      expect(developer?.native).toBe(true)
+      expect(evalPerm(developer, "edit")).toBe("ask")
+      expect(evalPerm(developer, "bash")).toBe("allow")
     },
   })
 })
@@ -57,10 +57,10 @@ test("explore agent allows edit and write via ask", async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
       expect(explore?.mode).toBe("subagent")
-      expect(evalPerm(explore, "edit")).toBe("ask")
-      expect(evalPerm(explore, "write")).toBe("ask")
-      expect(evalPerm(explore, "todoread")).toBe("deny")
-      expect(evalPerm(explore, "todowrite")).toBe("deny")
+      expect(evalPerm(explore, "edit")).toBe("deny")
+      expect(evalPerm(explore, "write")).toBe("deny")
+      expect(evalPerm(explore, "todoread")).toBe("allow")
+      expect(evalPerm(explore, "todowrite")).toBe("allow")
     },
   })
 })
@@ -72,11 +72,11 @@ test("scholar agent has correct permissions", async () => {
     fn: async () => {
       const scholar = await Agent.get("scholar")
       expect(scholar).toBeDefined()
-      expect(scholar?.mode).toBe("all")
+      expect(scholar?.mode).toBe("subagent")
       expect(scholar?.native).toBe(true)
       // Scholar allows arxiv tools
       expect(PermissionNext.evaluate("arxiv_search", "*", scholar!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("arxiv_download", "*", scholar!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("arxiv_download", "*", scholar!.permission).action).toBe("ask")
     },
   })
 })
@@ -129,7 +129,7 @@ test("custom agent config overrides native agent properties", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           model: "anthropic/claude-3",
           description: "Custom build agent",
           temperature: 0.7,
@@ -141,14 +141,14 @@ test("custom agent config overrides native agent properties", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master).toBeDefined()
-      expect(master?.model?.providerID).toBe("anthropic")
-      expect(master?.model?.modelID).toBe("claude-3")
-      expect(master?.description).toBe("Custom build agent")
-      expect(master?.temperature).toBe(0.7)
-      expect(master?.color).toBe("#FF0000")
-      expect(master?.native).toBe(true)
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(developer?.model?.providerID).toBe("anthropic")
+      expect(developer?.model?.modelID).toBe("claude-3")
+      expect(developer?.description).toBe("Custom build agent")
+      expect(developer?.temperature).toBe(0.7)
+      expect(developer?.color).toBe("#FF0000")
+      expect(developer?.native).toBe(true)
     },
   })
 })
@@ -177,7 +177,7 @@ test("agent permission config merges with defaults", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           permission: {
             bash: {
               "rm -rf *": "deny",
@@ -190,12 +190,12 @@ test("agent permission config merges with defaults", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master).toBeDefined()
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
       // Specific pattern is denied
-      expect(PermissionNext.evaluate("bash", "rm -rf *", master!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("bash", "rm -rf *", developer!.permission).action).toBe("deny")
       // Edit remains ask by default
-      expect(evalPerm(master, "edit")).toBe("ask")
+      expect(evalPerm(developer, "edit")).toBe("ask")
     },
   })
 })
@@ -211,9 +211,9 @@ test("global permission config applies to all agents", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master).toBeDefined()
-      expect(evalPerm(master, "bash")).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(evalPerm(developer, "bash")).toBe("deny")
     },
   })
 })
@@ -222,7 +222,7 @@ test("agent steps/maxSteps config sets steps property", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: { steps: 50 },
+        developer: { steps: 50 },
         scribe: { maxSteps: 100 },
       },
     },
@@ -230,9 +230,9 @@ test("agent steps/maxSteps config sets steps property", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
+      const developer = await Agent.get("developer")
       const scribe = await Agent.get("scribe")
-      expect(master?.steps).toBe(50)
+      expect(developer?.steps).toBe(50)
       expect(scribe?.steps).toBe(100)
     },
   })
@@ -259,15 +259,15 @@ test("agent name can be overridden", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: { name: "Builder" },
+        developer: { name: "Builder" },
       },
     },
   })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master?.name).toBe("Builder")
+      const developer = await Agent.get("developer")
+      expect(developer?.name).toBe("Builder")
     },
   })
 })
@@ -276,15 +276,15 @@ test("agent prompt can be set from config", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: { prompt: "Custom system prompt" },
+        developer: { prompt: "Custom system prompt" },
       },
     },
   })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master?.prompt).toBe("Custom system prompt")
+      const developer = await Agent.get("developer")
+      expect(developer?.prompt).toBe("Custom system prompt")
     },
   })
 })
@@ -293,7 +293,7 @@ test("unknown agent properties are placed into options", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           random_property: "hello",
           another_random: 123,
         },
@@ -303,9 +303,9 @@ test("unknown agent properties are placed into options", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master?.options.random_property).toBe("hello")
-      expect(master?.options.another_random).toBe(123)
+      const developer = await Agent.get("developer")
+      expect(developer?.options.random_property).toBe("hello")
+      expect(developer?.options.another_random).toBe(123)
     },
   })
 })
@@ -314,7 +314,7 @@ test("agent options merge correctly", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           options: {
             custom_option: true,
             another_option: "value",
@@ -326,9 +326,9 @@ test("agent options merge correctly", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master?.options.custom_option).toBe(true)
-      expect(master?.options.another_option).toBe("value")
+      const developer = await Agent.get("developer")
+      expect(developer?.options.custom_option).toBe(true)
+      expect(developer?.options.another_option).toBe("value")
     },
   })
 })
@@ -402,14 +402,14 @@ test("explore agent model follows mid_model after config reload", async () => {
   })
 })
 
-test("default permission includes doom_loop allow and external_directory ask", async () => {
+test("default subagent permission denies unknown tools and external_directory ask", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(evalPerm(master, "doom_loop")).toBe("allow")
-      expect(evalPerm(master, "external_directory")).toBe("ask")
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "doom_loop")).toBe("deny")
+      expect(evalPerm(developer, "external_directory")).toBe("ask")
     },
   })
 })
@@ -430,13 +430,13 @@ test("openclaw external agent is registered without model switching claims", asy
   })
 })
 
-test("webfetch is allowed by default", async () => {
+test("developer denies webfetch by default", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(evalPerm(master, "webfetch")).toBe("allow")
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "webfetch")).toBe("deny")
     },
   })
 })
@@ -445,7 +445,7 @@ test("legacy tools config converts to permissions", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           tools: {
             bash: false,
             read: false,
@@ -457,9 +457,9 @@ test("legacy tools config converts to permissions", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(evalPerm(master, "bash")).toBe("deny")
-      expect(evalPerm(master, "read")).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "bash")).toBe("deny")
+      expect(evalPerm(developer, "read")).toBe("deny")
     },
   })
 })
@@ -468,7 +468,7 @@ test("legacy tools config maps write/edit/patch/multiedit to edit permission", a
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           tools: {
             write: false,
           },
@@ -479,8 +479,8 @@ test("legacy tools config maps write/edit/patch/multiedit to edit permission", a
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(evalPerm(master, "edit")).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "edit")).toBe("deny")
     },
   })
 })
@@ -497,9 +497,11 @@ test("Truncate.DIR is allowed even when user denies external_directory globally"
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, master!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("external_directory", "/some/other/path", master!.permission).action).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("external_directory", "/some/other/path", developer!.permission).action).toBe(
+        "deny",
+      )
     },
   })
 })
@@ -509,7 +511,7 @@ test("Truncate.DIR is allowed even when user denies external_directory per-agent
   await using tmp = await tmpdir({
     config: {
       agent: {
-        master: {
+        developer: {
           permission: {
             external_directory: "deny",
           },
@@ -520,9 +522,11 @@ test("Truncate.DIR is allowed even when user denies external_directory per-agent
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, master!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("external_directory", "/some/other/path", master!.permission).action).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("external_directory", "/some/other/path", developer!.permission).action).toBe(
+        "deny",
+      )
     },
   })
 })
@@ -542,8 +546,8 @@ test("explicit Truncate.DIR deny is respected", async () => {
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, master!.permission).action).toBe("deny")
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("deny")
     },
   })
 })
@@ -558,7 +562,7 @@ test("scribe agent has selective skill permissions", async () => {
       const scribe = await Agent.get("scribe")
       expect(scribe).toBeDefined()
       // Scribe allows agent-browser but denies git-guide, frontend-design, skill-creator
-      expect(PermissionNext.evaluate("skill", "agent-browser", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "agent-browser", scribe!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "frontend-design", scribe!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "skill-creator", scribe!.permission).action).toBe("deny")
@@ -574,7 +578,7 @@ test("explore agent has selective skill permissions", async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
       // Explore allows agent-browser but denies git-guide, skill-creator, frontend-design
-      expect(PermissionNext.evaluate("skill", "agent-browser", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "agent-browser", explore!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "skill-creator", explore!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "frontend-design", explore!.permission).action).toBe("deny")
@@ -612,17 +616,17 @@ test("scout agent has selective skill permissions", async () => {
   })
 })
 
-test("master agent allows all skills by default", async () => {
+test("developer agent denies skills by default", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const master = await Agent.get("master")
-      expect(master).toBeDefined()
-      expect(PermissionNext.evaluate("skill", "git-guide", master!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "skill-creator", master!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "frontend-design", master!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "agent-browser", master!.permission).action).toBe("allow")
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "skill-creator", developer!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "frontend-design", developer!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "agent-browser", developer!.permission).action).toBe("deny")
     },
   })
 })
@@ -641,14 +645,14 @@ test("Agent.defaultAgent() returns synergy by default", async () => {
 test("Agent.defaultAgent() with default_agent config returns configured agent", async () => {
   await using tmp = await tmpdir({
     config: {
-      default_agent: "master",
+      default_agent: "developer",
     },
   })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const defaultAgent = await Agent.defaultAgent()
-      expect(defaultAgent).toBe("master")
+      expect(defaultAgent).toBe("developer")
     },
   })
 })

@@ -6,7 +6,7 @@ import {
   INTERACTIVE_MEMORY_PRIORITY_COMMON,
 } from "../interactive-memory"
 
-export function buildMasterPrompt(): string {
+export function buildDeveloperPrompt(): string {
   const memorySection = buildInteractiveMemorySection({
     intro: "During user-facing work, treat memory as an active collaboration tool, not as a passive afterthought.",
     boundary: [

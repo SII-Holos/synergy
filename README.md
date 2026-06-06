@@ -171,9 +171,11 @@ synergy channel status      # Show channel status
 
 ## Current Agent Model
 
-Synergy uses `synergy` as the primary orchestrator and routes substantial work through specialized subagents.
+Synergy provides two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Each primary agent sees a different built-in subagent set through agent visibility masks.
 
-Core built-in subagent groups include:
+Classic subagents visible to `synergy` include `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar`.
+
+Core `synergy-max` subagent groups include:
 
 - Task understanding: `intent-analyst`, `requirements-engineer`
 - Code understanding: `code-cartographer`, `dependency-tracer`

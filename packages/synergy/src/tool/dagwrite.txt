@@ -32,7 +32,7 @@ Do NOT use this tool when:
 
 Optional hint for who should execute the node:
 - `self` — You will do it directly (default if omitted)
-- `master` — Delegate to a master agent for implementation work
+- `developer` — Delegate to the classic coding implementation subagent
 - `explore` — Delegate to an explore agent for codebase search
 - `scout` — Delegate to a scout agent for external docs/examples
 - `scholar` — Delegate for academic research

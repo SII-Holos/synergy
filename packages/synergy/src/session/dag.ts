@@ -14,6 +14,13 @@ export namespace Dag {
 
   export const VALID_ASSIGNS = [
     "self",
+    "developer",
+    "explore",
+    "scout",
+    "advisor",
+    "inspector",
+    "scribe",
+    "scholar",
     "intent-analyst",
     "requirements-engineer",
     "code-cartographer",

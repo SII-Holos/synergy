@@ -47,8 +47,8 @@ task(background: true, subagent_type: "explore", description: "Find data models"
 
 ### Parallel implementation
 ```
-task(background: true, subagent_type: "master", description: "Add validation", prompt: "...")
-task(background: true, subagent_type: "master", description: "Update tests", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Add validation", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Update tests", prompt: "...")
 ```
 
 ### Writing documentation
