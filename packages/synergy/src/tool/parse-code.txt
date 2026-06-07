@@ -1,6 +1,6 @@
 Search code with AST-aware patterns and return anchored file blocks.
 
-Use this instead of `ast_grep` in the anchored coding harness. Matched files are snapshotted and returned with a real `[path#TAG]` plus `LINE:TEXT` rows, so structural search results can feed directly into `revise_file`. The output also reports match line/range locations for each tagged file.
+Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with a real `[path#TAG]` plus `LINE:TEXT` rows, so structural search results can feed directly into `revise_file`. The output also reports match line/range locations for each tagged file.
 
 Pattern rules:
 - Patterns must be complete, parseable AST nodes in the selected language.

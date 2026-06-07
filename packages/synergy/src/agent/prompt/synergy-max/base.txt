@@ -327,9 +327,9 @@ Sequential exploration (reading multiple files to understand a code area) is a s
 
 Synergy-max uses the anchored coding harness for repository edits. Prefer this tool family over the classic `read` / `edit` / `write` / `grep` / `ast_grep` flow.
 
-**`view_file`** — Read a file and receive `[path#TAG]` plus `LINE:TEXT` rows. The tag snapshots the full normalized file. Use this before `revise_file`.
+**`view_file`** — Read a file and receive `[path#TAG]` plus `LINE:TEXT` rows. Use this before `revise_file`.
 
-**`revise_file`** — Apply a hashline patch. Input starts with `[path#TAG]`, then operations such as `replace N..M:`, `delete N..M`, `insert before N:`, `insert after N:`, `insert head:`, or `insert tail:`. Body rows start with `+` and are final content, not old/new diff rows.
+**`revise_file`** — Apply an anchored patch. Input starts with `[path#TAG]`, then operations such as `replace N..M:`, `delete N..M`, `insert before N:`, `insert after N:`, `insert head:`, or `insert tail:`. Body rows start with `+` and are final content, not old/new diff rows.
 
 **`save_file`** — Create or fully overwrite a file and return a fresh `[path#TAG]` for follow-up edits.
 

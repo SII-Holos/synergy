@@ -40,7 +40,7 @@ function formatLineRange(
 export const ViewFileTool = Tool.define("view_file", {
   description: DESCRIPTION,
   parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to view and snapshot for anchored editing"),
+    filePath: z.string().describe("The absolute path to the file to view and prepare for anchored editing"),
     offset: z.coerce
       .number()
       .int()
@@ -51,12 +51,9 @@ export const ViewFileTool = Tool.define("view_file", {
       .number()
       .int()
       .min(0)
-      .describe("The number of lines to display; the full file is snapshotted even when displayed output is limited")
+      .describe("The number of lines to display; use ranges or another view_file call for hidden regions")
       .optional(),
-    ranges: z
-      .array(RangeSchema)
-      .optional()
-      .describe("Optional non-contiguous ranges to display from the same file snapshot"),
+    ranges: z.array(RangeSchema).optional().describe("Optional non-contiguous ranges to display from the same file"),
   }),
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)

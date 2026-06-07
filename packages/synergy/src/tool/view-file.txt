@@ -1,12 +1,13 @@
 Read a file through the anchored coding harness.
 
-Use this instead of `read` when the content may feed `revise_file`. The output starts with a real `[path#TAG]` header followed by `LINE:TEXT` rows. The tag is a content-derived snapshot of the full normalized file; pass the latest header back to `revise_file`.
+Use this instead of `read` when the content may feed `revise_file`. The output starts with a real `[path#TAG]` header followed by `LINE:TEXT` rows. Pass the latest header back to `revise_file`.
 
+Use this tool when you need to inspect exact line numbers before editing, confirm the file is safe to edit, or gather multiple regions from one file without multiple tool calls.
 Rules:
 - NEVER fabricate a `[path#TAG]` header. Only use tags returned by anchored tools.
 - Use absolute paths when possible.
-- `offset` is 0-based; `limit` controls displayed lines only. The full file is snapshotted, but hidden lines are still unseen by the agent.
-- Use `ranges` when you need multiple non-contiguous regions from one file. The output still has one `[path#TAG]` header because the full file is snapshotted once.
+- `offset` is 0-based; `limit` controls displayed lines only. Hidden lines are still unseen by the agent.
+- Use `ranges` when you need multiple non-contiguous regions from one file. The output still has one `[path#TAG]` header for the whole file.
 - If output is truncated or a region was not displayed, call `view_file` again with an explicit `offset` or `ranges` entry before editing that region.
 - If the output contains a conflict warning, do not use `revise_file` on that file until the conflict markers are resolved. Use `save_file` only when intentionally replacing the whole conflicted file.
 - After `revise_file` or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.

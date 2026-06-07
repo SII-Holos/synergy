@@ -18,7 +18,9 @@ export const ScanFilesTool = Tool.define("scan_files", {
   parameters: z.object({
     pattern: z
       .string()
-      .describe("Regular expression to search for; matched files are snapshotted and returned with [path#TAG] headers"),
+      .describe(
+        "Regular expression to search for; matched files are returned with [path#TAG] headers for follow-up edits",
+      ),
     path: z.string().optional().describe("Directory to search in. Defaults to the current working directory."),
     include: z.string().optional().describe('File pattern to include in the search, e.g. "*.ts"'),
     globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),

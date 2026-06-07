@@ -70,7 +70,7 @@ describe("recovery: external drift before target", () => {
         // Should recover — metadata signals it
         expect(result.metadata.applied).toBe(true)
         expect(result.metadata).toHaveProperty("recovered", true)
-        expect(result.metadata).toHaveProperty("recoveryMode", "drift-before-target")
+        expect(result.metadata).toHaveProperty("recoveryMode", "three-way-merge")
 
         // File content: original target lines replaced at their new offset (lines 5-6)
         const content = await Bun.file(filePath).text()
@@ -265,7 +265,10 @@ describe("recovery: ambiguous duplicate target", () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await Bun.write(path.join(dir, "d4.ts"), "X\nMARKER\nY\nX\nMARKER\nY\n")
+        await Bun.write(
+          path.join(dir, "d4.ts"),
+          "c1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\nc1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\n",
+        )
       },
     })
     await Instance.provide({
@@ -277,18 +280,23 @@ describe("recovery: ambiguous duplicate target", () => {
         const tag = await viewAndGetTag(session, filePath)
 
         // External process inserts 2 lines at the top, shifting everything down.
-        // The two MARKER lines still have identical surrounding context: X before and Y after.
-        await Bun.write(filePath, "PREAMBLE-A\nPREAMBLE-B\nX\nMARKER\nY\nX\nMARKER\nY\n")
+        // Both MARKER candidates retain the same five-line context on both sides,
+        // so even widened three-way context cannot identify the intended one.
+        await Bun.write(
+          filePath,
+          "PREAMBLE-A\nPREAMBLE-B\nc1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\nc1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\n",
+        )
 
-        // Agent targets original line 5 (= second "MARKER") with old tag.
-        // Both live candidates have the same target text and same local context, so recovery must refuse.
-        await expect(reviseWithTag(session, filePath, tag, "replace 5..5:\n+REPLACED\n")).rejects.toThrow(
+        // Agent targets original line 17 (= second "MARKER") with old tag.
+        await expect(reviseWithTag(session, filePath, tag, "replace 17..17:\n+REPLACED\n")).rejects.toThrow(
           /ambiguous|duplicate|multiple matches|unsure|cannot disambiguate/i,
         )
 
         // File unchanged
         const content = await Bun.file(filePath).text()
-        expect(content).toBe("PREAMBLE-A\nPREAMBLE-B\nX\nMARKER\nY\nX\nMARKER\nY\n")
+        expect(content).toBe(
+          "PREAMBLE-A\nPREAMBLE-B\nc1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\nc1\nc2\nc3\nc4\nc5\nMARKER\nc7\nc8\nc9\nc10\nc11\n",
+        )
       },
     })
   })
@@ -297,7 +305,10 @@ describe("recovery: ambiguous duplicate target", () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await Bun.write(path.join(dir, "d4b.ts"), "X\n// TODO: fix\nY\nX\n// TODO: fix\nY\n")
+        await Bun.write(
+          path.join(dir, "d4b.ts"),
+          "a\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\na\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\n",
+        )
       },
     })
     await Instance.provide({
@@ -308,18 +319,23 @@ describe("recovery: ambiguous duplicate target", () => {
 
         const tag = await viewAndGetTag(session, filePath)
 
-        // External process inserts a preamble, but both TODO markers still have identical context.
-        await Bun.write(filePath, "PREAMBLE\nX\n// TODO: fix\nY\nX\n// TODO: fix\nY\n")
+        // External process inserts a preamble, but both TODO markers still have
+        // identical five-line context before and after.
+        await Bun.write(
+          filePath,
+          "PREAMBLE\na\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\na\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\n",
+        )
 
-        // Agent targets original line 5 (= second "// TODO: fix") with old tag.
-        // Both live candidates have the same target text and same surrounding X/Y context.
-        await expect(reviseWithTag(session, filePath, tag, "replace 5..5:\n+// TODO: done\n")).rejects.toThrow(
+        // Agent targets original line 17 (= second "// TODO: fix") with old tag.
+        await expect(reviseWithTag(session, filePath, tag, "replace 17..17:\n+// TODO: done\n")).rejects.toThrow(
           /ambiguous|duplicate|multiple matches|unsure|cannot disambiguate/i,
         )
 
         // File unchanged
         const content = await Bun.file(filePath).text()
-        expect(content).toBe("PREAMBLE\nX\n// TODO: fix\nY\nX\n// TODO: fix\nY\n")
+        expect(content).toBe(
+          "PREAMBLE\na\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\na\nb\nc\nd\ne\n// TODO: fix\ng\nh\ni\nj\nk\n",
+        )
       },
     })
   })
@@ -365,6 +381,43 @@ describe("recovery: ambiguous duplicate target", () => {
         const content = await Bun.file(filePath).text()
         expect(content).toBe(
           "// header comment\nconst LOG = true\nconsole.log('a')\nconst LOG_LEVEL = 'verbose'\nconsole.log('b')\n",
+        )
+      },
+    })
+  })
+
+  test("recovers duplicate target when only wider three-way context is unique", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "d4d.ts"),
+          "group A\nshared before\ntarget\nshared after\nend A\ngroup B\nshared before\ntarget\nshared after\nend B\n",
+        )
+      },
+    })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filePath = path.join(tmp.path, "d4d.ts")
+        const session = "test-three-way-wide-context"
+
+        const tag = await viewAndGetTag(session, filePath)
+
+        await Bun.write(
+          filePath,
+          "preamble\ngroup A\nshared before\ntarget\nshared after\nend A\ngroup B\nshared before\ntarget\nshared after\nend B\n",
+        )
+
+        const result = await reviseWithTag(session, filePath, tag, "replace 8..8:\n+target updated\n")
+
+        expect(result.metadata.applied).toBe(true)
+        expect(result.metadata).toHaveProperty("recovered", true)
+        expect(result.metadata).toHaveProperty("recoveryMode", "three-way-merge")
+
+        const content = await Bun.file(filePath).text()
+        expect(content).toBe(
+          "preamble\ngroup A\nshared before\ntarget\nshared after\nend A\ngroup B\nshared before\ntarget updated\nshared after\nend B\n",
         )
       },
     })

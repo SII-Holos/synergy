@@ -51,7 +51,7 @@ describe("tool.revise_file", () => {
         fn: async () => {
           const tool = await ReviseFileTool.init()
           await expect(tool.execute({ input: "replace 1..1:\n+new\n" }, ctx)).rejects.toThrow(
-            /hashline header|invalid patch/,
+            /Invalid patch header|invalid patch/,
           )
         },
       })
@@ -85,7 +85,7 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           // Use a made-up tag that doesn't correspond to any snapshot
           const badPatch = "[file.ts#FFFF]\nreplace 1..1:\n+new\n"
-          await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/snapshot|tag|not found|stale/)
+          await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/header|tag|out-of-date|current/)
         },
       })
     })
@@ -338,7 +338,7 @@ describe("tool.revise_file", () => {
           const result = await tool.execute({ input: `[same.ts#${tag}]\nreplace 1..1:\n+const x = 1\n` }, ctx)
           expect(result.metadata.applied).toBe(false)
           expect(result.output).toContain("No-op")
-          expect(result.output).toContain("byte-identical")
+          expect(result.output).toContain("already match")
         },
       })
     })

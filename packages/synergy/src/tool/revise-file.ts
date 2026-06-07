@@ -34,7 +34,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
     input: z
       .string()
       .describe(
-        "Hashline patch text beginning with a real [path#TAG] header returned by an anchored tool; body rows must be final +TEXT lines",
+        "Patch text beginning with a real [path#TAG] header returned by an anchored tool; body rows must be final +TEXT lines",
       ),
   }),
   async execute(params, ctx) {
@@ -50,7 +50,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         const stored = store.get(filePath, patch.tag)
         if (stored === undefined) {
           throw new Error(
-            `Unknown or stale hashline tag #${patch.tag} for ${patch.path}. STOP: do not stack additional edits. Use view_file, scan_files, parse_code, or save_file to get a current [path#TAG] header, then retry with that header.`,
+            `Unknown or out-of-date [path#TAG] header for ${patch.path}. STOP: do not stack additional edits. Use view_file, scan_files, parse_code, or save_file to get a current header, then retry with that header.`,
           )
         }
 
@@ -70,7 +70,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
 
         const liveTag = computeTag(oldContent)
         let activeOps = patch.ops
-        let recoveryMode: "drift-before-target" | undefined
+        let recoveryMode: "three-way-merge" | undefined
         if (liveTag !== patch.tag) {
           try {
             const recovery = recoverPatchOps(stored, oldContent, patch.ops)
@@ -79,7 +79,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
           } catch (error) {
             const reason = error instanceof Error ? error.message : "cannot recover safely"
             throw new Error(
-              `Stale hashline tag #${patch.tag} for ${patch.path}; current file hashes to #${liveTag}. ${reason}. STOP: do not stack additional edits. Re-run view_file and retry with the current header.`,
+              `The [path#TAG] header for ${patch.path} is out of date, and this edit could not be safely mapped onto the current file: ${reason}. STOP: do not stack additional edits. Re-run view_file and retry with the current header.`,
             )
           }
         }
@@ -90,7 +90,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
           const diagnostics = await collectWriteDiagnostics(filePath)
           return {
             title,
-            output: `${formatHashlineBlock(title, patch.tag, oldContent)}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows are byte-identical to existing content. Do not widen ranges; verify the anchor and line numbers before retrying.${diagnostics.output}`,
+            output: `${formatHashlineBlock(title, patch.tag, oldContent)}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows already match the current file. Do not widen ranges; verify the header and line numbers before retrying.${diagnostics.output}`,
             metadata: {
               filepath: filePath,
               path: title,

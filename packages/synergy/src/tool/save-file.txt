@@ -1,6 +1,6 @@
 Write a full file through the anchored coding harness.
 
-Use this for new files or intentional full-file rewrites. The tool writes the supplied content, records a new content tag, and returns a real `[path#TAG]` header for follow-up `revise_file` calls.
+Use this for new files or intentional full-file rewrites. The tool writes the supplied content and returns a real `[path#TAG]` header for follow-up `revise_file` calls.
 
 Do NOT use `save_file` for surgical edits when `revise_file` can express the change. `save_file` overwrites the whole file and bypasses line-level freshness checks.
 - `save_file` may intentionally overwrite a file that contains merge conflict markers. Permission and metadata expose whether the previous content or final content had conflicts.

@@ -208,16 +208,16 @@ describe("hashline patch parser", () => {
     })
 
     describe("validation", () => {
-      test("rejects input without hashline header", () => {
-        expect(() => parseHashlinePatch("replace 1..1:\n+new\n")).toThrow("hashline header")
+      test("rejects input without anchored header", () => {
+        expect(() => parseHashlinePatch("replace 1..1:\n+new\n")).toThrow("Invalid patch header")
       })
 
-      test("rejects input with malformed hashline header", () => {
-        expect(() => parseHashlinePatch("[src/a.ts]\nreplace 1..1:\n+new\n")).toThrow("hashline header")
+      test("rejects input with malformed anchored header", () => {
+        expect(() => parseHashlinePatch("[src/a.ts]\nreplace 1..1:\n+new\n")).toThrow("Invalid patch header")
       })
 
       test("rejects input with no tag in header", () => {
-        expect(() => parseHashlinePatch("[src/a.ts#]\nreplace 1..1:\n+new\n")).toThrow(/tag|header|hashline/)
+        expect(() => parseHashlinePatch("[src/a.ts#]\nreplace 1..1:\n+new\n")).toThrow(/tag|header|patch/)
       })
 
       test("rejects unknown operation type", () => {

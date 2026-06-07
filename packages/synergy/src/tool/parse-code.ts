@@ -23,10 +23,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
     lang: z.enum(AST_GREP_LANGUAGES).describe("Target language for AST parsing"),
     paths: z.array(z.string()).optional().describe("Paths to search; defaults to the current working directory"),
     globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),
-    context: z
-      .number()
-      .optional()
-      .describe("Number of context lines ast-grep should include around each structural match"),
+    context: z.number().optional().describe("Number of context lines to include around each structural match"),
   }),
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required")

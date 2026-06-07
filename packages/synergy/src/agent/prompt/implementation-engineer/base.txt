@@ -20,7 +20,7 @@ Write the smallest correct production change that satisfies the specified behavi
 When anchored tools are available, use them as the default coding flow:
 
 - Use `view_file` to inspect files before editing. It returns `[path#TAG]` plus `LINE:TEXT` rows.
-- Use `revise_file` with the latest `[path#TAG]` header and hashline operations: `replace N..M:`, `delete N..M`, `insert before N:`, `insert after N:`, `insert head:`, `insert tail:`.
+- Use `revise_file` with the latest `[path#TAG]` header and anchored operations: `replace N..M:`, `delete N..M`, `insert before N:`, `insert after N:`, `insert head:`, `insert tail:`.
 - Use `save_file` for new files or deliberate full-file rewrites.
 - Use `scan_files` for text search and `parse_code` for AST search when search results may feed edits.
 - After any `revise_file` or `save_file`, previous tags for that file are stale. Use the returned header or re-run `view_file`.

@@ -25,7 +25,7 @@ function parseBody(lines: string[], cursor: { value: number }): string[] {
       cursor.value = lines.length
       break
     }
-    if (!line.startsWith("+")) throw new Error(`Invalid hashline body row: ${line}. Body rows must start with +.`)
+    if (!line.startsWith("+")) throw new Error(`Invalid patch body row: ${line}. Body rows must start with +.`)
     body.push(line.slice(1))
     cursor.value++
   }
@@ -42,8 +42,8 @@ function isOperationHeader(line: string): boolean {
 }
 
 function assertRange(startLine: number, endLine: number): void {
-  if (startLine < 1 || endLine < 1) throw new Error("Hashline line numbers are 1-indexed and must be >= 1")
-  if (endLine < startLine) throw new Error(`Invalid hashline range ${startLine}..${endLine}`)
+  if (startLine < 1 || endLine < 1) throw new Error("Patch line numbers are 1-indexed and must be >= 1")
+  if (endLine < startLine) throw new Error(`Invalid patch range ${startLine}..${endLine}`)
 }
 
 export function parseHashlinePatch(input: string): HashlinePatch {
@@ -51,7 +51,7 @@ export function parseHashlinePatch(input: string): HashlinePatch {
   const lines = normalized.split("\n")
   const header = lines[0]?.trimEnd() ?? ""
   const headerMatch = header.match(HEADER_PATTERN)
-  if (!headerMatch) throw new Error("Invalid hashline header. Expected [path#TAG].")
+  if (!headerMatch) throw new Error("Invalid patch header. Expected [path#TAG].")
 
   const ops: PatchOp[] = []
   const cursor = { value: 1 }
@@ -90,7 +90,7 @@ export function parseHashlinePatch(input: string): HashlinePatch {
       cursor.value++
       const position = (match[1] ?? match[4]) as "before" | "after"
       const lineNumber = Number(match[2] ?? match[3])
-      if (lineNumber < 1) throw new Error("Hashline line numbers are 1-indexed and must be >= 1")
+      if (lineNumber < 1) throw new Error("Patch line numbers are 1-indexed and must be >= 1")
       const body = parseBody(lines, cursor)
       if (body.length === 0) throw new Error(`insert ${position} ${lineNumber} requires at least one + body row`)
       ops.push({ type: "insert", position, lineNumber, lines: body })
@@ -107,9 +107,9 @@ export function parseHashlinePatch(input: string): HashlinePatch {
       continue
     }
 
-    throw new Error(`Invalid or unknown hashline operation: ${line}`)
+    throw new Error(`Invalid or unknown patch operation: ${line}`)
   }
 
-  if (ops.length === 0) throw new Error("Hashline patch must contain at least one operation")
+  if (ops.length === 0) throw new Error("Patch must contain at least one operation")
   return { path: headerMatch[1], tag: headerMatch[2], ops }
 }
