@@ -2,6 +2,7 @@
   content-visibility: auto;
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -160,6 +161,7 @@
 [data-component="text-part"] {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
 
   [data-component="markdown"] {
     margin-top: 12px;
@@ -170,6 +172,7 @@
 [data-component="reasoning-part"] {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   opacity: 0.5;
 
   [data-component="markdown"] {
@@ -214,6 +217,9 @@
 }
 
 [data-component="tool-output"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   white-space: normal;
   padding: 8px 12px;
   height: fit-content;

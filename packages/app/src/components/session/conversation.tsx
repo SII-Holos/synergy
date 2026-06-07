@@ -60,9 +60,9 @@ export function SessionConversation(props: {
           </div>
         </Show>
       }
-      contentClass="flex flex-col gap-4 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pb-[calc(var(--prompt-height,8rem)+64px)] transition-[margin] md:pb-[calc(var(--prompt-height,10rem)+64px)]"
       contentClassList={{
-        "mt-0.5": !props.showTabs(),
+        "mt-0.5 md:max-w-[54rem]": !props.showTabs(),
         "mt-0": props.showTabs(),
       }}
     >
@@ -114,13 +114,9 @@ export function SessionConversation(props: {
                   classes={{
                     root: "min-w-0 w-full relative",
                     container:
-                      "px-3 md:px-1 pb-1 " +
+                      "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
                       (index() > 0 ? "border-t border-border-base pt-2 " : "") +
-                      (!props.showTabs()
-                        ? "md:max-w-200 md:mx-auto"
-                        : (props.visibleUserMessages()?.length ?? 0) > 1
-                          ? "md:pr-6 md:pl-18"
-                          : ""),
+                      (props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1 ? "md:pr-6 md:pl-18" : ""),
                   }}
                 />
               </div>
@@ -148,7 +144,7 @@ export function SessionConversation(props: {
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",
                   container:
-                    "px-3 md:px-1 pb-1 " +
+                    "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
                     (index() > 0 ? "border-t border-border-base pt-2 " : "") +
                     (!props.showTabs()
                       ? "md:max-w-200 md:mx-auto"
