@@ -10,7 +10,7 @@ const parameters = z.object({
       "Output mode: progress for live status, tail for recent session activity, full for final output. Default: full",
     ),
   block: z.boolean().optional().describe("Wait for completion if still running"),
-  timeout: z.number().optional().describe("Max seconds to wait (default: 60)"),
+  timeout: z.number().optional().describe("Max seconds to wait (default: 300)"),
 })
 
 interface TaskOutputMetadata {
@@ -44,6 +44,8 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
   - \`summary\` — compact one-liner (status, health, elapsed)
 - **block** (optional): Wait for completion if still running
 - **timeout** (optional): Maximum seconds to wait (default: 300)
+
+Subagents commonly run 5–30 minutes. Still running is not a problem — check mode="progress" to see what it's doing, or just wait for the automatic completion notification.
 
 ## Usage
 List visible tasks first:
