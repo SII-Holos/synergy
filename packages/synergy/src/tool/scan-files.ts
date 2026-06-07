@@ -2,6 +2,7 @@ import z from "zod"
 import DESCRIPTION from "./scan-files.txt"
 import { Tool } from "./tool"
 import { Ripgrep } from "../file/ripgrep"
+import { conflictWarning, detectConflicts } from "../conflict/detect"
 import { Instance } from "../scope/instance"
 import {
   assertInsideOrAsk,
@@ -45,7 +46,13 @@ export const ScanFilesTool = Tool.define("scan_files", {
     if (exitCode === 1)
       return {
         title: params.pattern,
-        metadata: { matches: 0, files: [] as string[], matchLines: {} as Record<string, number[]>, truncated: false },
+        metadata: {
+          matches: 0,
+          files: [] as string[],
+          matchLines: {} as Record<string, number[]>,
+          conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
+          truncated: false,
+        },
         output: "No files found",
       }
     if (exitCode !== 0) throw new Error(`ripgrep failed: ${stderr}`)
@@ -65,22 +72,26 @@ export const ScanFilesTool = Tool.define("scan_files", {
     const blocks: string[] = []
     const files: string[] = []
     const matchLines: Record<string, number[]> = {}
+    const conflicts: Record<string, ReturnType<typeof detectConflicts>["conflicts"]> = {}
     for (const [filePath, entry] of byFile.entries()) {
       const content = await readTextFile(filePath).catch(() => undefined)
       if (content === undefined) continue
       const { output, tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
       markFileRead(ctx.sessionID, filePath)
       const pathLabel = displayPath(filePath)
+      const conflict = detectConflicts(content)
+      const warning = conflictWarning(conflict)
       const lines = entry.lines.sort((a, b) => a - b)
-      blocks.push(`Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}\n${output}`)
+      blocks.push(`${warning ? `${warning}\n` : ""}Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}\n${output}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
+      if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
     return {
       title: params.pattern,
       output: blocks.length ? blocks.join("\n\n") : "No files found",
-      metadata: { matches: matches.length, files, matchLines, truncated: false },
+      metadata: { matches: matches.length, files, matchLines, conflicts, truncated: false },
     }
   },
 })

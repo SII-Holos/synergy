@@ -3,6 +3,7 @@ import DESCRIPTION from "./parse-code.txt"
 import { Tool } from "./tool"
 import { runSg } from "./ast-grep/cli"
 import { AST_GREP_LANGUAGES } from "./ast-grep/types"
+import { conflictWarning, detectConflicts } from "../conflict/detect"
 import { Instance } from "../scope/instance"
 import {
   assertInsideOrAsk,
@@ -55,6 +56,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
           files: [] as string[],
           matchLines: {} as Record<string, number[]>,
           matchRanges: {} as Record<string, string[]>,
+          conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
           truncated: result.truncated,
         },
         output: result.error,
@@ -75,6 +77,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
     const files: string[] = []
     const matchLines: Record<string, number[]> = {}
     const matchRanges: Record<string, string[]> = {}
+    const conflicts: Record<string, ReturnType<typeof detectConflicts>["conflicts"]> = {}
     for (const [rawPath, entry] of byFile.entries()) {
       const filePath = resolveFilePath(rawPath)
       const content = await readTextFile(filePath).catch(() => undefined)
@@ -82,17 +85,29 @@ export const ParseCodeTool = Tool.define("parse_code", {
       const { output, tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
       markFileRead(ctx.sessionID, filePath)
       const pathLabel = displayPath(filePath)
+      const conflict = detectConflicts(content)
+      const warning = conflictWarning(conflict)
       const lines = entry.lines.sort((a, b) => a - b)
-      blocks.push(`AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${output}`)
+      blocks.push(
+        `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${output}`,
+      )
       files.push(pathLabel)
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
+      if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
     return {
       title: `${params.lang}: ${params.pattern}`,
       output: blocks.length ? blocks.join("\n\n") : "No matches found",
-      metadata: { matches: result.matches.length, files, matchLines, matchRanges, truncated: result.truncated },
+      metadata: {
+        matches: result.matches.length,
+        files,
+        matchLines,
+        matchRanges,
+        conflicts,
+        truncated: result.truncated,
+      },
     }
   },
 })

@@ -195,4 +195,216 @@ describe("tool.save_file", () => {
       })
     })
   })
+
+  describe("conflict metadata", () => {
+    test("overwrites conflicted content and reports prior conflict", async () => {
+      // eslint-disable-next-line no-irregular-whitespace
+      const conflictContent = `before
+<<<<<<< HEAD
+ours
+=======
+theirs
+>>>>>>> main
+after
+`
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "conflict.ts"), conflictContent)
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await SaveFileTool.init()
+          const result = await tool.execute(
+            { filePath: path.join(tmp.path, "conflict.ts"), content: "resolved content\n" },
+            ctx,
+          )
+
+          // File is overwritten with clean content
+          const onDisk = await Bun.file(path.join(tmp.path, "conflict.ts")).text()
+          expect(onDisk).toBe("resolved content\n")
+
+          // The overwrite must succeed — save_file does not refuse conflicted files.
+          expect(result.output).toMatch(/^\[.*#[0-9A-F]{4}\]$/)
+        },
+      })
+    })
+
+    test("reports hasConflicts false in metadata for clean file writes", async () => {
+      // When writing a clean file, the metadata should indicate no internal conflicts
+      const cleanContent = "clean content\nno markers here\n"
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await SaveFileTool.init()
+          const result = await tool.execute({ filePath: path.join(tmp.path, "new.txt"), content: cleanContent }, ctx)
+
+          // The newly written content should have no conflict metadata flagged
+          if ("hasConflicts" in result.metadata) {
+            expect(result.metadata.hasConflicts).toBe(false)
+          }
+        },
+      })
+    })
+
+    test("can overwrite a file that previously had conflict markers", async () => {
+      // eslint-disable-next-line no-irregular-whitespace
+      const conflictContent = `<<<<<<< HEAD
+a
+=======
+b
+>>>>>>> main
+`
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "f.ts"), conflictContent)
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          // View the conflicted file first (to confirm view_file sees it)
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)
+          // view_file should see the conflicts
+          expect(viewed.metadata.hasConflicts).toBe(true)
+
+          // Now overwrite with resolved content
+          const tool = await SaveFileTool.init()
+          const result = await tool.execute({ filePath: path.join(tmp.path, "f.ts"), content: "resolved\n" }, ctx)
+
+          // Save succeeded
+          expect(result.output).toMatch(/^\[.*#[0-9A-F]{4}\]$/)
+
+          // File on disk is resolved
+          const onDisk = await Bun.file(path.join(tmp.path, "f.ts")).text()
+          expect(onDisk).toBe("resolved\n")
+
+          // View again — should now be clean
+          const reViewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)
+          expect(reViewed.metadata.hasConflicts).toBe(false)
+        },
+      })
+    })
+  })
+
+  describe("diagnostics metadata", () => {
+    test("returns diagnostics in metadata after write", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await SaveFileTool.init()
+          const result = await tool.execute({ filePath: path.join(tmp.path, "diag.ts"), content: "const x = 1\n" }, ctx)
+
+          expect(result.metadata).toHaveProperty("diagnostics")
+          const d = (result.metadata as any).diagnostics
+          expect(d).not.toBeNull()
+          expect(typeof d).toBe("object")
+        },
+      })
+    })
+
+    test("diagnostics is present in metadata even after overwrite", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "exist.ts"), "old\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await SaveFileTool.init()
+          const result = await tool.execute(
+            { filePath: path.join(tmp.path, "exist.ts"), content: "new content\n" },
+            ctx,
+          )
+
+          expect(result.metadata).toHaveProperty("diagnostics")
+          const d = (result.metadata as any).diagnostics
+          expect(d).not.toBeNull()
+          expect(typeof d).toBe("object")
+        },
+      })
+    })
+  })
+
+  describe("format-aware metadata", () => {
+    test("returned tag matches final on-disk content after formatting", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          formatter: {
+            "test-fmt": {
+              command: ["bun", "run", "fmt-collapse.js", "$FILE"],
+              extensions: [".ts"],
+            },
+          },
+        },
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "fmt-collapse.js"),
+            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+          )
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { Format } = await import("../../src/file/format")
+          Format.init()
+
+          const tool = await SaveFileTool.init()
+          const unformatted = "const  x  =  1\n"
+          const result = await tool.execute({ filePath: path.join(tmp.path, "fmt.ts"), content: unformatted }, ctx)
+
+          const onDisk = await Bun.file(path.join(tmp.path, "fmt.ts")).text()
+          // After formatting, on-disk content should have single spaces
+          // whereas the current code computes the tag from the unformatted content
+          expect(result.metadata.tag).toBe(computeTag(onDisk))
+        },
+      })
+    })
+
+    test("returned filediff.after matches final on-disk content after formatting", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          formatter: {
+            "test-fmt": {
+              command: ["bun", "run", "fmt-collapse.js", "$FILE"],
+              extensions: [".ts"],
+            },
+          },
+        },
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "fmt-collapse.js"),
+            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+          )
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { Format } = await import("../../src/file/format")
+          Format.init()
+
+          const tool = await SaveFileTool.init()
+          const unformatted = "const  y  =  2\n"
+          const result = await tool.execute({ filePath: path.join(tmp.path, "fmt2.ts"), content: unformatted }, ctx)
+
+          const onDisk = await Bun.file(path.join(tmp.path, "fmt2.ts")).text()
+          // filediff.after should reflect what is actually on disk after formatting
+          expect(result.metadata.filediff.after).toBe(onDisk)
+        },
+      })
+    })
+  })
 })

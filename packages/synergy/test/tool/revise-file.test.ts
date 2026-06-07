@@ -4,6 +4,7 @@ import { ReviseFileTool } from "../../src/tool/revise-file"
 import { Instance } from "../../src/scope/instance"
 import { Snapshot } from "../../src/session/snapshot"
 import { tmpdir } from "../fixture/fixture"
+import { computeTag } from "../../src/hashline/tag"
 
 const ctx = {
   sessionID: "test-hashline-revise",
@@ -373,6 +374,250 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           const badPatch = `[short.txt#${tag}]\nreplace 100..100:\n+out of bounds\n`
           await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/out of bounds|beyond|line/)
+        },
+      })
+    })
+  })
+
+  describe("conflict rejection", () => {
+    test("refuses to edit file containing git conflict markers", async () => {
+      // eslint-disable-next-line no-irregular-whitespace
+      const conflictContent = `header
+<<<<<<< HEAD
+ours
+=======
+theirs
+>>>>>>> main
+footer
+`
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "conflict.ts"), conflictContent)
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "conflict.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const patchInput = `[conflict.ts#${tag}]\nreplace 2..2:\n+clean header\n`
+
+          // Revise_file must reject because the file contains unresolved conflict markers
+          await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(/conflict|unresolved|marker/i)
+
+          // The file on disk must remain unchanged
+          const onDisk = await Bun.file(path.join(tmp.path, "conflict.ts")).text()
+          expect(onDisk).toBe(conflictContent)
+        },
+      })
+    })
+
+    test("refuses to edit file even with a valid tag when conflicts are present", async () => {
+      // eslint-disable-next-line no-irregular-whitespace
+      const conflictContent = `<<<<<<< HEAD
+a
+=======
+b
+>>>>>>> main
+`
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "f.ts"), conflictContent)
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const patchInput = `[f.ts#${tag}]\nreplace 1..1:\n+clean\n`
+
+          // Conflict takes priority over tag validity
+          await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(/conflict|unresolved/i)
+        },
+      })
+    })
+
+    test("does not reject edits for clean files without conflict markers", async () => {
+      // Sanity check — revise_file should still work normally for clean files
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "clean.ts"), "const x = 1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "clean.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const patchInput = `[clean.ts#${tag}]\nreplace 1..1:\n+const x = 2\n`
+          const result = await tool.execute({ input: patchInput }, ctx)
+
+          expect(result.metadata.applied).toBe(true)
+        },
+      })
+    })
+  })
+
+  describe("diagnostics metadata", () => {
+    test("returns diagnostics in metadata after revise", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "mod.ts"), "const x = 1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "mod.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const result = await tool.execute({ input: `[mod.ts#${tag}]\nreplace 1..1:\n+const x = 2\n` }, ctx)
+
+          expect(result.metadata).toHaveProperty("diagnostics")
+          const d = (result.metadata as any).diagnostics
+          expect(d).not.toBeNull()
+          expect(typeof d).toBe("object")
+        },
+      })
+    })
+
+    test("diagnostics is present in metadata even for no-op revise", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "same.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const result = await tool.execute({ input: `[same.ts#${tag}]\nreplace 1..1:\n+const x = 1\n` }, ctx)
+
+          expect(result.metadata.applied).toBe(false)
+          expect(result.metadata).toHaveProperty("diagnostics")
+        },
+      })
+    })
+  })
+
+  describe("format-aware metadata", () => {
+    const formatAwareCtx = (sessionID: string) => ({
+      sessionID,
+      messageID: "",
+      callID: "",
+      agent: "test-strategist",
+      abort: AbortSignal.any([]),
+      metadata: () => {},
+      ask: async () => {},
+    })
+
+    test("returned tag matches final on-disk content after formatting", async () => {
+      const sessID = "test-revise-fmt-tag"
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          formatter: {
+            "test-fmt": {
+              command: ["bun", "run", "fmt-collapse.js", "$FILE"],
+              extensions: [".ts"],
+            },
+          },
+        },
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "fmt-collapse.js"),
+            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+          )
+          await Bun.write(path.join(dir, "fmt.ts"), "const  x  =  1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { Format } = await import("../../src/file/format")
+          Format.init()
+
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "fmt.ts") }, formatAwareCtx(sessID))
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          // Patch that introduces double spaces — formatter will collapse them
+          const patch = `[fmt.ts#${tag}]\nreplace 1..1:\n+const  y  =  2\n`
+          const result = await tool.execute({ input: patch }, formatAwareCtx(sessID))
+
+          const onDisk = await Bun.file(path.join(tmp.path, "fmt.ts")).text()
+          // After formatting, on-disk content should have single spaces
+          expect(result.metadata.tag).toBe(computeTag(onDisk))
+        },
+      })
+    })
+
+    test("returned filediff.after matches final on-disk content after formatting", async () => {
+      const sessID = "test-revise-fmt-filediff"
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          formatter: {
+            "test-fmt": {
+              command: ["bun", "run", "fmt-collapse.js", "$FILE"],
+              extensions: [".ts"],
+            },
+          },
+        },
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "fmt-collapse.js"),
+            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+          )
+          await Bun.write(path.join(dir, "fmt2.ts"), "const  a  =  1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { Format } = await import("../../src/file/format")
+          Format.init()
+
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "fmt2.ts") }, formatAwareCtx(sessID))
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const patch = `[fmt2.ts#${tag}]\nreplace 1..1:\n+const  b  =  3\n`
+          const result = await tool.execute({ input: patch }, formatAwareCtx(sessID))
+
+          const onDisk = await Bun.file(path.join(tmp.path, "fmt2.ts")).text()
+          // filediff.after should reflect what is actually on disk after formatting
+          expect(result.metadata.filediff.after).toBe(onDisk)
         },
       })
     })

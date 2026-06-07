@@ -6,14 +6,16 @@ import { trimDiff } from "./edit"
 import { Bus } from "../bus"
 import { File } from "../file"
 import { FileTime } from "../file/time"
-import { LSP } from "../lsp"
+import { detectConflicts } from "../conflict/detect"
 import { RuntimeReload } from "../runtime/reload"
 import { formatHashlineBlock } from "../hashline/format"
 import { parseHashlinePatch } from "../hashline/patch"
 import { applyPatchOps } from "../hashline/revise"
+import { recoverPatchOps } from "../hashline/recovery"
 import { SessionHashlineStore } from "../hashline/store"
 import { computeTag, normalizeContent } from "../hashline/tag"
 import { assertInsideOrAsk, diffStats, displayPath, resolveFilePath } from "./anchored-file"
+import { collectWriteDiagnostics } from "./write-quality"
 
 function summarizeOperations(operations: ReturnType<typeof parseHashlinePatch>["ops"]): string[] {
   return operations.map((op) => {
@@ -58,19 +60,37 @@ export const ReviseFileTool = Tool.define("revise_file", {
         if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
 
         const oldContent = normalizeContent(await file.text())
-        const liveTag = computeTag(oldContent)
-        if (liveTag !== patch.tag) {
+        const conflict = detectConflicts(oldContent)
+        if (conflict.hasConflicts) {
+          const ranges = conflict.conflicts.map((item) => `${item.startLine}-${item.endLine}`).join(", ")
           throw new Error(
-            `Stale hashline tag #${patch.tag} for ${patch.path}; current file hashes to #${liveTag}. STOP: do not stack additional edits. Re-run view_file and retry with the current header.`,
+            `Refusing revise_file on ${patch.path} because it contains unresolved merge conflict markers at lines ${ranges}. Resolve the conflict first, or use save_file only for an intentional full-file resolution.`,
           )
         }
 
-        await FileTime.assert(ctx.sessionID, filePath)
-        const newContent = applyPatchOps(oldContent, patch.ops)
+        const liveTag = computeTag(oldContent)
+        let activeOps = patch.ops
+        let recoveryMode: "drift-before-target" | undefined
+        if (liveTag !== patch.tag) {
+          try {
+            const recovery = recoverPatchOps(stored, oldContent, patch.ops)
+            activeOps = recovery.ops
+            recoveryMode = recovery.mode
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : "cannot recover safely"
+            throw new Error(
+              `Stale hashline tag #${patch.tag} for ${patch.path}; current file hashes to #${liveTag}. ${reason}. STOP: do not stack additional edits. Re-run view_file and retry with the current header.`,
+            )
+          }
+        }
+
+        if (!recoveryMode) await FileTime.assert(ctx.sessionID, filePath)
+        const newContent = applyPatchOps(oldContent, activeOps)
         if (newContent === oldContent) {
+          const diagnostics = await collectWriteDiagnostics(filePath)
           return {
             title,
-            output: `${formatHashlineBlock(title, patch.tag, oldContent)}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows are byte-identical to existing content. Do not widen ranges; verify the anchor and line numbers before retrying.`,
+            output: `${formatHashlineBlock(title, patch.tag, oldContent)}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows are byte-identical to existing content. Do not widen ranges; verify the anchor and line numbers before retrying.${diagnostics.output}`,
             metadata: {
               filepath: filePath,
               path: title,
@@ -79,8 +99,11 @@ export const ReviseFileTool = Tool.define("revise_file", {
               operations: 0,
               diff: "",
               filediff: { file: title, path: title, before: oldContent, after: oldContent, additions: 0, deletions: 0 },
-              operationSummary: summarizeOperations(patch.ops),
+              operationSummary: summarizeOperations(activeOps),
               changeSummary: { additions: 0, deletions: 0 },
+              recovered: recoveryMode !== undefined,
+              recoveryMode,
+              diagnostics: diagnostics.diagnostics,
               runtimeReload: noRuntimeReload,
               builtinSourceWarning: undefined,
             },
@@ -97,16 +120,19 @@ export const ReviseFileTool = Tool.define("revise_file", {
             path: title,
             diff,
             filediff: { file: title, path: title, before: oldContent, after: newContent, ...changeSummary },
-            operationSummary: summarizeOperations(patch.ops),
+            operationSummary: summarizeOperations(activeOps),
             changeSummary,
+            recovered: recoveryMode !== undefined,
+            recoveryMode,
           },
         })
 
         await Bun.write(filePath, newContent)
         await Bus.publish(File.Event.Edited, { file: filePath })
+        const finalContent = await Bun.file(filePath).text()
         FileTime.read(ctx.sessionID, filePath)
 
-        await LSP.touchFile(filePath, true)
+        const diagnostics = await collectWriteDiagnostics(filePath)
         const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filePath)
         const runtimeReloadScope = RuntimeReload.detectScopeForFile(filePath) ?? "auto"
         const runtimeReload = runtimeReloadTargets.length
@@ -117,8 +143,11 @@ export const ReviseFileTool = Tool.define("revise_file", {
             })
           : undefined
         const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
-        const newTag = store.record(filePath, newContent)
-        let output = formatHashlineBlock(title, newTag, newContent)
+        const newTag = store.record(filePath, finalContent)
+        const finalDiff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, finalContent))
+        const finalChangeSummary = diffStats(finalDiff)
+        let output = formatHashlineBlock(title, newTag, finalContent)
+        output += diagnostics.output
         if (runtimeReload) output += `\nRuntime reload applied: ${runtimeReload.executed.join(",")}`
         if (builtinSourceWarning) output += `\n${builtinSourceWarning}`
 
@@ -130,11 +159,14 @@ export const ReviseFileTool = Tool.define("revise_file", {
             path: title,
             tag: newTag,
             applied: true,
-            operations: patch.ops.length,
-            diff,
-            filediff: { file: title, path: title, before: oldContent, after: newContent, ...changeSummary },
-            operationSummary: summarizeOperations(patch.ops),
-            changeSummary,
+            operations: activeOps.length,
+            diff: finalDiff,
+            filediff: { file: title, path: title, before: oldContent, after: finalContent, ...finalChangeSummary },
+            operationSummary: summarizeOperations(activeOps),
+            changeSummary: finalChangeSummary,
+            diagnostics: diagnostics.diagnostics,
+            recovered: recoveryMode !== undefined,
+            recoveryMode,
             runtimeReload,
             builtinSourceWarning,
           },

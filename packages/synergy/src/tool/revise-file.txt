@@ -24,7 +24,9 @@ Rules:
 - Keep ranges tight. `replace N..M` should cover only original lines whose content changes. Do not widen a range to swallow unchanged keeper lines.
 - Pure additions use `insert before`, `insert after`, `insert head`, or `insert tail`, not a widened `replace`.
 - A tag proves file freshness, not permission to edit unseen code. If a line/range was not visible in `view_file`, `scan_files`, or `parse_code` output, inspect it first.
-- If a tag is stale or unknown, STOP. Do not stack additional edits. Re-run `view_file` and retry with the current header.
+- `revise_file` refuses to edit files that contain unresolved merge conflict markers. Resolve conflicts first, or use `save_file` for an intentional full-file resolution.
+- If a tag is stale, `revise_file` attempts conservative recovery only when the original target content can be uniquely located in the current file. If recovery is ambiguous or the target content changed, STOP and re-run `view_file`.
+- If a tag is unknown, STOP. Do not stack additional edits. Re-run `view_file` and retry with the current header.
 
 Anti-patterns:
 - Wrong: `replace 2..4:` to add one line while copying lines 2 and 4 unchanged. Right: `insert after 2:`.
