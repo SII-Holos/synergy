@@ -1859,6 +1859,10 @@ export type SessionCortexDelegation = {
   startedAt: number
   completedAt?: number
   status: "queued" | "running" | "completed" | "error" | "cancelled"
+  model?: {
+    providerID: string
+    modelID: string
+  }
   result?: string
   error?: string
 }
@@ -3531,13 +3535,6 @@ export type EventNoteDeleted = {
   }
 }
 
-export type EventSessionCreated = {
-  type: "session.created"
-  properties: {
-    info: Session
-  }
-}
-
 export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
@@ -3948,7 +3945,6 @@ export type Event =
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
-  | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff

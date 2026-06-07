@@ -14617,6 +14617,18 @@
             "type": "string",
             "enum": ["queued", "running", "completed", "error", "cancelled"]
           },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
           "result": {
             "type": "string"
           },
@@ -19346,25 +19358,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.session.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Session"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.updated": {
         "type": "object",
         "properties": {
@@ -20514,9 +20507,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.note.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.session.created"
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"

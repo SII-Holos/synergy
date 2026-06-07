@@ -135,6 +135,13 @@ export namespace Cortex {
       throw new Error(`No model configured for agent ${task.agent}`)
     }
 
+    // Persist resolved model to session metadata
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.model = { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
+      }
+    })
+
     const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
       if (evt.properties.part.sessionID !== task.sessionID) return
       const current = tasks.get(task.id)

@@ -46,6 +46,14 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? props.cortex.result))
   const duration = createMemo(() => formatDuration(props.cortex.startedAt, props.cortex.completedAt))
+  const modelLabel = createMemo(() => {
+    const m = props.cortex.model
+    if (!m) return undefined
+    // If provider name is redundant with model prefix, show just modelID
+    const provider = m.providerID.replace(/^openai$|^anthropic$|^google$/i, "")
+    const model = m.modelID
+    return model.startsWith(m.providerID.split("/").pop()!) ? model : `${m.providerID}/${model}`
+  })
 
   const statusInfo = createMemo(() => {
     switch (props.cortex.status) {
@@ -79,6 +87,10 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
             <span class="text-11-regular text-text-subtle">subagent</span>
             <span class="text-11-regular text-text-subtle">·</span>
             <span class="text-11-regular text-text-subtle">{duration()}</span>
+            <Show when={modelLabel()}>
+              <span class="text-11-regular text-text-subtle">·</span>
+              <span class="truncate text-11-regular text-text-subtle max-w-32">{modelLabel()}</span>
+            </Show>
           </div>
           <div class="mt-0.5 truncate text-12-regular text-text-weak">{props.cortex.description}</div>
           <Show when={preview()}>

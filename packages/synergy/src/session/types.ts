@@ -31,6 +31,12 @@ const CortexDelegationInfoInner = z.object({
   startedAt: z.number(),
   completedAt: z.number().optional(),
   status: z.enum(["queued", "running", "completed", "error", "cancelled"]),
+  model: z
+    .object({
+      providerID: z.string(),
+      modelID: z.string(),
+    })
+    .optional(),
   result: z.string().optional(),
   error: z.string().optional(),
 })
