@@ -16,11 +16,27 @@ Use this when:
 Do NOT use this when:
 - The task requires immediate back-and-forth with the user
 
-## Background mode
+## Blocking vs Background
 
-**Prefer background=true by default.** This lets you launch multiple tasks in parallel and continue working.
+### `background: true` (non-blocking, recommended)
+Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. The system will notify you when it completes.
 
-Use background=false only when you cannot proceed without the result.
+### `background: false` / omitted (blocking, default)
+Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
+
+> **Prefer `background=true` by default.** This lets you launch multiple tasks in parallel and continue working. Use `background=false` only when you truly cannot proceed without the result.
+
+## Checking on background tasks
+
+Use the **`task_output`** tool to check on running background tasks:
+
+- `mode="summary"` — Compact one-liner: status, health, elapsed time
+- `mode="progress"` — Detailed progress: tool call list, health, duration
+- `mode="tail"` — Recent session activity from the subagent's conversation
+- `mode="full"` (default) — Full result with progress summary
+- `block: true` — Wait (up to 300s) for the task to finish, then return full result
+
+Use **`task_list()`** to list all visible background tasks at once.
 
 ## Usage notes
 
@@ -28,7 +44,6 @@ Use background=false only when you cannot proceed without the result.
 2. The result is not visible to the user - summarize it back to them
 3. Each invocation is stateless unless you provide session_id
 4. Clearly tell the agent whether to write code or just research
-5. For long-running background tasks, use `task_output(task_id, mode="progress")` to inspect live status and `mode="tail"` to inspect recent activity before deciding whether to wait, cancel, or re-route
 
 ## Writing effective prompts
 

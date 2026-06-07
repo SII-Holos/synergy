@@ -37,9 +37,13 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
 
 ## Parameters
 - **task_id** (optional): Task ID from a visible background task
-- **mode** (optional): \`progress\` for live status, \`tail\` for recent activity, \`full\` for final output, \`summary\` for compact status
+- **mode** (optional): Output mode:
+  - \`progress\` — live status (health, tool calls, duration)
+  - \`tail\` — recent session activity from the subagent
+  - \`full\` — final result with progress summary (default)
+  - \`summary\` — compact one-liner (status, health, elapsed)
 - **block** (optional): Wait for completion if still running
-- **timeout** (optional): Maximum seconds to wait (default: 60)
+- **timeout** (optional): Maximum seconds to wait (default: 300)
 
 ## Usage
 List visible tasks first:
@@ -57,9 +61,14 @@ Inspect recent activity:
 task_output(task_id: "ctx_abc123", mode: "tail")
 \`\`\`
 
-Wait for completion:
+Compact status check:
 \`\`\`
-task_output(task_id: "ctx_abc123", block: true, timeout: 120)
+task_output(task_id: "ctx_abc123", mode: "summary")
+\`\`\`
+
+Wait for completion (up to 300s):
+\`\`\`
+task_output(task_id: "ctx_abc123", block: true)
 \`\`\``,
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
@@ -123,7 +132,7 @@ task_output(task_id: "ctx_abc123", block: true, timeout: 120)
     })
 
     if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeout ?? 60)
+      await Cortex.waitFor(params.task_id, params.timeout ?? 300)
     }
 
     const current = Cortex.getVisibleTask(ctx.sessionID, params.task_id) ?? task

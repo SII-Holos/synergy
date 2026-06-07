@@ -824,7 +824,11 @@ export namespace SessionInvoke {
     const taskList = running
       .map((t) => {
         const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        return `- **\`${t.id}\`** (${t.agent}): ${t.description} [${elapsed}s]`
+        const info = Cortex.describe(t)
+        const lastTool = info.lastTool
+          ? ` | last: ${info.lastTool}${info.lastToolStatus ? ` (${info.lastToolStatus})` : ""}`
+          : ""
+        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${info.health}${lastTool}`
       })
       .join("\n")
 
