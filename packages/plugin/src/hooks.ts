@@ -224,7 +224,6 @@ export const BUS_EVENT_NAMES: string[] = [
   "note.updated",
   "note.deleted",
   // session
-  "session.created",
   "session.updated",
   "session.deleted",
   "session.diff",

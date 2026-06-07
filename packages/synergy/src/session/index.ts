@@ -126,7 +126,7 @@ export namespace Session {
     }
   }
 
-  async function publishInfo(event: typeof SessionEvent.Created | typeof SessionEvent.Updated, session: Info) {
+  async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
     Bus.publish(event, {
       info: await withRuntimeInfo(session),
     })
@@ -188,7 +188,6 @@ export namespace Session {
     SessionManager.registerRuntime(result.id)
     Scope.touch(scope.id)
 
-    await publishInfo(SessionEvent.Created, result)
     await publishInfo(SessionEvent.Updated, result)
     return withRuntimeInfo(result)
   }
