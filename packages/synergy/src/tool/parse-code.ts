@@ -54,6 +54,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
           matchLines: {} as Record<string, number[]>,
           matchRanges: {} as Record<string, string[]>,
           conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
+          tags: {} as Record<string, string>,
           truncated: result.truncated,
         },
         output: result.error,
@@ -75,6 +76,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
     const matchLines: Record<string, number[]> = {}
     const matchRanges: Record<string, string[]> = {}
     const conflicts: Record<string, ReturnType<typeof detectConflicts>["conflicts"]> = {}
+    const tags: Record<string, string> = {}
     for (const [rawPath, entry] of byFile.entries()) {
       const filePath = resolveFilePath(rawPath)
       const content = await readTextFile(filePath).catch(() => undefined)
@@ -91,6 +93,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       files.push(pathLabel)
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
+      tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
@@ -103,6 +106,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
         matchLines,
         matchRanges,
         conflicts,
+        tags,
         truncated: result.truncated,
       },
     }

@@ -53,6 +53,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
           files: [] as string[],
           matchLines: {} as Record<string, number[]>,
           conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
+          tags: {} as Record<string, string>,
           truncated: false,
         },
         output: "No files found",
@@ -75,6 +76,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
     const files: string[] = []
     const matchLines: Record<string, number[]> = {}
     const conflicts: Record<string, ReturnType<typeof detectConflicts>["conflicts"]> = {}
+    const tags: Record<string, string> = {}
     for (const [filePath, entry] of byFile.entries()) {
       const content = await readTextFile(filePath).catch(() => undefined)
       if (content === undefined) continue
@@ -87,13 +89,14 @@ export const ScanFilesTool = Tool.define("scan_files", {
       blocks.push(`${warning ? `${warning}\n` : ""}Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}\n${output}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
+      tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
     return {
       title: params.pattern,
       output: blocks.length ? blocks.join("\n\n") : "No files found",
-      metadata: { matches: matches.length, files, matchLines, conflicts, truncated: false },
+      metadata: { matches: matches.length, files, matchLines, tags, conflicts, truncated: false },
     }
   },
 })
