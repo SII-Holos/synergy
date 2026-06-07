@@ -455,6 +455,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Read",
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "view_file":
+      return {
+        icon: "scan-eye",
+        title: "View File",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "list":
       return {
         icon: "folder",
@@ -471,6 +477,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "regex",
         title: "Grep",
+        subtitle: input.pattern,
+      }
+    case "scan_files":
+      return {
+        icon: "scan-search",
+        title: "Scan Files",
         subtitle: input.pattern,
       }
     case "webfetch":
@@ -497,6 +509,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Edit",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
+    case "revise_file":
+      return {
+        icon: "file-pen",
+        title: "Revise File",
+        subtitle: input.input?.match?.(/^\[([^#\]]+)/)?.[1],
+      }
     case "multiedit":
       return {
         icon: "pen-line",
@@ -512,6 +530,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "file-pen",
         title: "Write",
+        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+      }
+    case "save_file":
+      return {
+        icon: "file-pen",
+        title: "Save File",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "todowrite":
@@ -562,6 +586,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "braces",
         title: "AST Search",
+        subtitle: input.pattern,
+      }
+    case "parse_code":
+      return {
+        icon: "braces",
+        title: "Parse Code",
         subtitle: input.pattern,
       }
     case "lsp":

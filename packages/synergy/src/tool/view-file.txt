@@ -1,0 +1,8 @@
+Read a file through the anchored coding harness.
+
+Use this instead of `read` when you intend to edit with `revise_file`. The output starts with a `[path#TAG]` header followed by `LINE:TEXT` rows. The tag is a content-derived snapshot of the full normalized file; pass the latest header back to `revise_file`.
+
+Rules:
+- Use absolute paths when possible.
+- `offset` is 0-based; `limit` controls displayed lines only. The full file is snapshotted.
+- If the file changes, call `view_file` again and use the new tag.

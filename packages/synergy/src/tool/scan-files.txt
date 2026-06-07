@@ -1,0 +1,5 @@
+Search file contents and return anchored file blocks.
+
+Use this instead of `grep` in the anchored coding harness. Every matched file is snapshotted and returned as `[path#TAG]` plus `LINE:TEXT` rows so search results can feed directly into `revise_file`.
+
+Parameters mirror grep: `pattern` is a regular expression, `path` is the directory to search, and `include`/`globs` filter file paths.

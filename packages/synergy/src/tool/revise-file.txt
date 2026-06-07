@@ -1,0 +1,18 @@
+Apply an anchored hashline patch to existing files.
+
+Input is one or more sections in this format:
+
+[path#TAG]
+replace N..M:
++new content
+delete N..M
+insert before N:
++new content
+insert after N:
++new content
+insert head:
++new content
+insert tail:
++new content
+
+Use the latest tag returned by `view_file`, `scan_files`, `parse_code`, `save_file`, or a prior `revise_file`. If a tag is stale or unknown, re-run `view_file` and retry with the current header. Body rows must start with `+`; the replacement body is final content, not an old/new diff.

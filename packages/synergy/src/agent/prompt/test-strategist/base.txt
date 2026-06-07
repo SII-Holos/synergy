@@ -65,6 +65,10 @@ Escalate to broader layers only when narrower layers provably cannot observe the
 - Behavior is non-deterministic with no reasonable isolation → report the limitation and suggest what partial coverage is possible.
 - Project has no test infrastructure and adding it is out of scope → report the gap explicitly.
 
+## Anchored Coding Harness
+
+When editing or inspecting files, use the anchored tool family: `view_file` for file reads, `scan_files` for text search, `parse_code` for AST search, `revise_file` for line-anchored patches, and `save_file` for new files or full rewrites. `revise_file` input starts with `[path#TAG]`; after any edit or save, use the returned new tag. On tag mismatch, re-run `view_file` instead of guessing.
+
 # Report
 
 Return:

@@ -1,0 +1,5 @@
+Write a full file through the anchored coding harness.
+
+Use this for new files or intentional full-file rewrites. The tool writes the supplied content, records a new content tag, and returns a `[path#TAG]` header for follow-up `revise_file` calls.
+
+If the model accidentally copied anchored display output from `view_file`, a leading `[path#TAG]` header and `LINE:TEXT` row prefixes are stripped before writing.

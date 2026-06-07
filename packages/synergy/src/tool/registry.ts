@@ -5,6 +5,11 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
+import { ViewFileTool } from "./view-file"
+import { ReviseFileTool } from "./revise-file"
+import { SaveFileTool } from "./save-file"
+import { ScanFilesTool } from "./scan-files"
+import { ParseCodeTool } from "./parse-code"
 import { TaskTool } from "./task"
 import { TaskListTool } from "./task-list"
 import { TaskOutputTool } from "./task-output"
@@ -169,6 +174,11 @@ export namespace ToolRegistry {
       ProcessTool,
       ConnectTool,
       ReadTool,
+      ViewFileTool,
+      ScanFilesTool,
+      ParseCodeTool,
+      ReviseFileTool,
+      SaveFileTool,
       GlobTool,
       GrepTool,
       EditTool,

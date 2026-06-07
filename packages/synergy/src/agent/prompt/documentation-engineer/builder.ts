@@ -13,6 +13,6 @@ export function createDocumentationEngineerAgent(ctx: BuiltinAgentContext) {
       "Updates engineering documentation after code, tool, agent, config, CLI, SDK, or workflow changes. Use when public behavior or agent-facing instructions change. Provide the change summary and known docs; the agent inspects missing documentation context, writes concise updates, and returns blockers and reusable context.",
     prompt: buildDocumentationEngineerPrompt(),
     model: "mid",
-    permission: "docsWrite",
+    permission: "anchoredDocsWrite",
   })
 }

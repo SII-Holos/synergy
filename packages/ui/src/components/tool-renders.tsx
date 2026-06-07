@@ -28,6 +28,32 @@ import {
   type ToolProps,
 } from "./message-part"
 
+const anchoredToolNames = ["view_file", "scan_files", "parse_code", "revise_file", "save_file"]
+
+for (const name of anchoredToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = getToolInfo(name, props.input, props.metadata)
+      return (
+        <BasicTool
+          {...props}
+          icon={info.icon}
+          trigger={() => ({ title: info.title, subtitle: info.subtitle, args: info.args ?? [] })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}
+
 ToolRegistry.register({
   name: "read",
   render(props) {

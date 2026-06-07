@@ -81,7 +81,9 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   arxiv_search: entry("search.academic", { externalIO: true }),
   arxiv_download: entry("search.academic", { externalIO: true }),
   grep: entry("search.codebase"),
+  scan_files: entry("search.codebase"),
   ast_grep: entry("search.codebase"),
+  parse_code: entry("code.analyze"),
   glob: entry("search.codebase"),
   session_search: entry("search.session"),
   note_search: entry("search.note"),
@@ -90,10 +92,13 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
 
   // code
   read: entry("code.read"),
+  view_file: entry("code.read"),
   list: entry("code.read"),
   look_at: entry("code.analyze"),
   edit: entry("code.write", { stateful: true }),
+  revise_file: entry("code.write", { stateful: true }),
   write: entry("code.write", { stateful: true }),
+  save_file: entry("code.write", { stateful: true }),
   bash: entry("code.execute"),
   process: entry("code.execute"),
   lsp: entry("code.analyze"),

@@ -14,8 +14,11 @@ export type SubagentPermissionProfile =
   | "readOnly"
   | "review"
   | "codeWrite"
+  | "anchoredCodeWrite"
   | "testWrite"
+  | "anchoredTestWrite"
   | "docsWrite"
+  | "anchoredDocsWrite"
   | "quality"
   | "memory"
   | "note"
@@ -49,6 +52,26 @@ function writeTools(): PermissionNext.Ruleset {
   })
 }
 
+function anchoredReadTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    read: "deny",
+    grep: "deny",
+    ast_grep: "deny",
+    view_file: "allow",
+    scan_files: "allow",
+    parse_code: "allow",
+  })
+}
+
+function anchoredWriteTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    edit: "deny",
+    write: "deny",
+    revise_file: "ask",
+    save_file: "ask",
+  })
+}
+
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
   const common = PermissionNext.fromConfig({
     "*": "deny",
@@ -78,8 +101,16 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     return PermissionNext.merge(common, writeTools(), commandTools())
   }
 
+  if (profile === "anchoredCodeWrite" || profile === "anchoredTestWrite") {
+    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools(), commandTools())
+  }
+
   if (profile === "docsWrite") {
     return PermissionNext.merge(common, writeTools())
+  }
+
+  if (profile === "anchoredDocsWrite") {
+    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
   }
 
   if (profile === "quality" || profile === "review") {

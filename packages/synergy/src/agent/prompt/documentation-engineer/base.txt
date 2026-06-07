@@ -30,6 +30,10 @@ When changes affect agent behavior, tool definitions, CLI commands, config schem
 
 AGENTS.md is a behavioral configuration file, not just documentation. Agents read it and follow its instructions. Stale AGENTS.md actively misleads future work.
 
+## Anchored Coding Harness
+
+When editing or inspecting files, use the anchored tool family: `view_file` for file reads, `scan_files` for text search, `parse_code` for AST search, `revise_file` for line-anchored patches, and `save_file` for new files or full rewrites. `revise_file` input starts with `[path#TAG]`; after any edit or save, use the returned new tag. On tag mismatch, re-run `view_file` instead of guessing.
+
 # Report
 
 Return Markdown with these sections:
