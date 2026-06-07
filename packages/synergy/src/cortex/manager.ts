@@ -113,6 +113,12 @@ export namespace Cortex {
     current.status = "running"
     tasks.set(taskID, current)
     Bus.publish(Event.TasksUpdated, { tasks: list() })
+    // Sync session-level cortex status so UI/task-list reflects "running"
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.status = "running"
+      }
+    })
 
     runTask(current, input.model).catch((error) => {
       log.error("task error", { taskID, error })
