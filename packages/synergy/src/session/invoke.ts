@@ -115,6 +115,7 @@ export namespace SessionInvoke {
       }
       await createUserMessage({
         sessionID,
+        agent: mail.agent,
         model,
         parts: partsFromMail(mail),
         noReply: !needsReply,
@@ -268,6 +269,7 @@ export namespace SessionInvoke {
             if (!mailModel) continue
             const created = await createUserMessage({
               sessionID,
+              agent: mail.agent,
               model: mailModel,
               parts: partsFromMail(mail),
               noReply: mail.noReply,
@@ -624,6 +626,7 @@ export namespace SessionInvoke {
           if (!mailModel) continue
           await createUserMessage({
             sessionID,
+            agent: mail.agent,
             model: mailModel,
             parts: partsFromMail(mail),
             noReply: !needsReply,

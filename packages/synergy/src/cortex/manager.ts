@@ -283,6 +283,7 @@ export namespace Cortex {
       target: task.parentSessionID,
       mail: {
         type: "user",
+        agent: task.agent,
         noReply: false,
         parts: [
           {
