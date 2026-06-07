@@ -34,6 +34,7 @@ import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
+import { ConfigSet } from "./config/set"
 import { registerPluginCommands } from "./cli/plugin-dispatch"
 
 async function flushCliOutput() {
@@ -89,11 +90,27 @@ const cli = yargs(hideBin(process.argv))
     choices: ["DEBUG", "INFO", "WARN", "ERROR"],
   })
   .middleware(async (opts) => {
+    let configLogLevel: string | undefined
+    try {
+      const configText = await Bun.file(ConfigSet.defaultFilePath())
+        .text()
+        .catch(() => "")
+      if (configText) {
+        const config = JSON.parse(configText)
+        if (config.logLevel && ["DEBUG", "INFO", "WARN", "ERROR"].includes(config.logLevel)) {
+          configLogLevel = config.logLevel
+        }
+      }
+    } catch {}
+
     await Log.init({
       print: process.argv.includes("--print-logs"),
       dev: Installation.isLocal(),
       level: (() => {
         if (opts.logLevel) return opts.logLevel as Log.Level
+        if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
+          return process.env.LOG_LEVEL as Log.Level
+        if (configLogLevel) return configLogLevel as Log.Level
         if (Installation.isLocal()) return "DEBUG"
         return "INFO"
       })(),

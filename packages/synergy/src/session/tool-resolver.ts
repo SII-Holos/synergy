@@ -95,6 +95,7 @@ export namespace ToolResolver {
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
               const ctx = context(args, options)
+              using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
               let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
               const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                 resolveExecution = r
@@ -135,6 +136,12 @@ export namespace ToolResolver {
                 })
                 return result
               } catch (error) {
+                log.error("tool.execute.error", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  callID: options.toolCallId,
+                  error,
+                })
                 resolveExecution({
                   status: "error",
                   input: args,
@@ -175,6 +182,7 @@ export namespace ToolResolver {
               ...item,
               execute: async (args, opts) => {
                 const ctx = context(args, opts)
+                using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
                 let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
                 const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                   resolveExecution = r
@@ -251,6 +259,12 @@ export namespace ToolResolver {
 
                   return output
                 } catch (error) {
+                  log.error("tool.execute.error", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    callID: opts.toolCallId,
+                    error,
+                  })
                   resolveExecution({
                     status: "error",
                     input: args,

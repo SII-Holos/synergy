@@ -59,7 +59,7 @@ export namespace Bus {
             .catch((err) => {
               log.error("subscriber threw during publish", {
                 type: def.type,
-                error: err instanceof Error ? err.message : String(err),
+                error: err,
               })
             }),
         )

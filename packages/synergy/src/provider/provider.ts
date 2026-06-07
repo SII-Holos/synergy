@@ -982,14 +982,37 @@ export namespace Provider {
         const headers = new Headers(opts.headers ?? {})
         headers.set("Connection", "close")
 
-        const fetchTimer = log.time("fetch.request", { url: typeof input === "string" ? input : input.url })
-        const response = await fetchFn(input, {
-          ...opts,
-          headers,
-          // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-          timeout: false,
-        })
-        fetchTimer.stop()
+        const logUrl = typeof input === "string" ? input : input.url
+        const safeUrl = (() => {
+          try {
+            const u = new URL(logUrl)
+            return u.origin + u.pathname
+          } catch {
+            return logUrl
+          }
+        })()
+        const fetchTimer = log.time("fetch.request", { url: safeUrl })
+        let response: Response
+        try {
+          response = await fetchFn(input, {
+            ...opts,
+            headers,
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          })
+        } catch (error) {
+          fetchTimer.stop({ status: "exception" })
+          log.error("fetch.request.failed", { url: safeUrl, error })
+          throw error
+        }
+        fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
+        if (!response.ok) {
+          log.warn("fetch.request.non-ok", {
+            url: safeUrl,
+            status: response.status,
+            statusText: response.statusText,
+          })
+        }
 
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && response.body) {

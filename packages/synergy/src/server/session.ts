@@ -857,7 +857,7 @@ export const SessionRoute = new Hono()
     validator("json", SessionRevert.RevertInput.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      log.info("revert", c.req.valid("json"))
+      log.info("session.revert", { sessionID, messageID: c.req.valid("json").messageID })
       const session = await SessionRevert.revert({
         sessionID,
         ...c.req.valid("json"),

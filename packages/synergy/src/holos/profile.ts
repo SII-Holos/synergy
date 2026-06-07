@@ -43,9 +43,7 @@ export namespace HolosProfile {
     await Storage.write(StoragePath.holosProfile(), profile)
     await Bus.publish(Event.Updated, { profile })
     log.info("profile updated", { name: profile.name })
-    syncToRemote(profile).catch((err) =>
-      log.debug("remote profile sync skipped", { error: err instanceof Error ? err.message : String(err) }),
-    )
+    syncToRemote(profile).catch((err) => log.debug("remote profile sync skipped", { error: err }))
     return profile
   }
 

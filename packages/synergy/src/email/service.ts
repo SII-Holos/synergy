@@ -126,7 +126,7 @@ export namespace Email {
     transportKey = nextKey
 
     pooledTransport.on("error", (err) => {
-      log.warn("smtp transport error, will reconnect on next send", { error: err.message })
+      log.warn("smtp transport error, will reconnect on next send", { error: err })
       closePool()
     })
 

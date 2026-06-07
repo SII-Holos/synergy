@@ -167,7 +167,9 @@ export namespace Log {
         name: value.name,
         message: value.message,
       }
-      if (value.stack) result.stack = value.stack
+      // Only include stack traces at DEBUG level to avoid leaking
+      // internal file paths in production logs.
+      if (value.stack && level === "DEBUG") result.stack = value.stack
       if ((value as any).code) result.code = (value as any).code
       if (value.cause instanceof Error && depth < MAX_DEPTH) {
         result.cause = sanitizeValue(value.cause, depth + 1, seen)

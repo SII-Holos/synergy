@@ -193,9 +193,13 @@ async function buildActiveMemoryContext(
         appendEntry(result.category, formatRetrievedMemoryEntry(result))
       }
     } catch (err: any) {
-      log.error("active memory semantic retrieval failed", { error: err?.message ?? String(err) })
+      log.error("active memory semantic retrieval failed", { error: err })
     }
   }
+
+  log.info("active memory context built", {
+    entryCount: [...groupedEntries.values()].reduce((sum, arr) => sum + arr.length, 0),
+  })
 
   const memoryBlock = renderMemoryBlock(groupedEntries)
   if (memoryBlock) parts.push(memoryBlock)
@@ -246,9 +250,10 @@ async function buildExperienceContext(
 
     ExperienceRecall.writeDebugLog(sessionID, scopeID, userText, results, injected)
 
+    log.info("experience context built", { sessionID })
     return { context: injected }
   } catch (err: any) {
-    log.error("memory retrieval failed", { error: err?.message ?? String(err) })
+    log.error("memory retrieval failed", { error: err })
     return { context: undefined }
   }
 }

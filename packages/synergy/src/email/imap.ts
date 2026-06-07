@@ -91,7 +91,7 @@ export namespace EmailImap {
       await client.connect()
       return await fn(client)
     } catch (error: any) {
-      log.warn("imap operation failed", { error: error?.message })
+      log.warn("imap operation failed", { error })
       throw new FetchFailedError({
         message: `IMAP operation failed: ${error?.message ?? String(error)}`,
       })

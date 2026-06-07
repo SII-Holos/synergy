@@ -105,7 +105,7 @@ export namespace HolosRequest {
         if (!isRetryable(err) || attempt >= maxRetries) throw err
         log.warn("transient fetch error, retrying", {
           capability: options.capability,
-          error: err instanceof Error ? err.message : String(err),
+          error: err,
           attempt: attempt + 1,
         })
         await new Promise((r) => setTimeout(r, RETRY_BASE_DELAY_MS * 2 ** attempt))

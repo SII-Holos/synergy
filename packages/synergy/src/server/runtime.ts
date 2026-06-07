@@ -77,7 +77,7 @@ async function runWithRestartPolicyAlways(options: RuntimeOptions): Promise<neve
     } catch (err) {
       log.error("failed to write dev watchdog PID file", {
         path: devPidFile,
-        error: err instanceof Error ? err.message : String(err),
+        error: err,
       })
     }
   }

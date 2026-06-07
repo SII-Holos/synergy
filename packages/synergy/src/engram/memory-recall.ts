@@ -150,7 +150,7 @@ export namespace MemoryRecall {
       log.info("reranked", { candidates: candidates.length, results: results.length })
       return results
     } catch (err: any) {
-      log.error("rerank failed, falling back to embedding order", { error: err?.message ?? String(err) })
+      log.error("rerank failed, falling back to embedding order", { error: err })
       return candidates.slice(0, topK)
     }
   }

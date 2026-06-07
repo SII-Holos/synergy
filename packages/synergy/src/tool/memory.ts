@@ -36,7 +36,7 @@ export const MemoryWriteTool = Tool.define("memory_write", {
     try {
       embedding = await Embedding.generate({ id, text: embeddingText })
     } catch (err: any) {
-      log.error("embedding failed", { error: err?.message ?? String(err) })
+      log.error("embedding failed", { error: err })
       return {
         title: "memory_write",
         output: `Failed to generate embedding: ${err?.message ?? String(err)}`,
@@ -118,7 +118,7 @@ export const MemoryEditTool = Tool.define("memory_edit", {
     try {
       embedding = await Embedding.generate({ id: params.id, text: embeddingText })
     } catch (err: any) {
-      log.error("embedding failed", { error: err?.message ?? String(err) })
+      log.error("embedding failed", { error: err })
       return {
         title: "memory_edit",
         output: `Failed to generate embedding: ${err?.message ?? String(err)}`,
@@ -177,7 +177,7 @@ export const MemorySearchTool = Tool.define("memory_search", {
         recallModes: params.recallModes,
       })
     } catch (err: any) {
-      log.error("search failed", { error: err?.message ?? String(err) })
+      log.error("search failed", { error: err })
       return {
         title: "memory_search",
         output: `Failed to search memories: ${err?.message ?? String(err)}`,

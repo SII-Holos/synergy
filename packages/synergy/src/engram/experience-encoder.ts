@@ -33,16 +33,16 @@ export namespace ExperienceEncoder {
     encode(msg.sessionID, msg.parentID)
       .then(async (outcome) => {
         await triggerEncodeAfter(msg.sessionID, msg.parentID, outcome).catch((err) =>
-          log.error("encode after hook failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }),
+          log.error("encode after hook failed", { sessionID: msg.sessionID, error: err }),
         )
       })
-      .catch((err) => log.error("encoding failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }))
+      .catch((err) => log.error("encoding failed", { sessionID: msg.sessionID, error: err }))
       .finally(async () => {
         await retryFailedEncodings(msg.sessionID, msg.parentID).catch((err) =>
-          log.error("retry failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }),
+          log.error("retry failed", { sessionID: msg.sessionID, error: err }),
         )
         await checkRewardWindow(msg.sessionID).catch((err) =>
-          log.error("reward check failed", { sessionID: msg.sessionID, error: err?.message ?? String(err) }),
+          log.error("reward check failed", { sessionID: msg.sessionID, error: err }),
         )
       })
   }
@@ -224,7 +224,7 @@ export namespace ExperienceEncoder {
       if (exp.id === excludeID) continue
       log.info("retrying failed encoding", { id: exp.id })
       await encode(sessionID, exp.id).catch((err: any) =>
-        log.error("retry encoding failed", { id: exp.id, error: err?.message ?? String(err) }),
+        log.error("retry encoding failed", { id: exp.id, error: err }),
       )
     }
   }
@@ -258,7 +258,7 @@ export namespace ExperienceEncoder {
       if (turnsRemaining > 0) continue
 
       evaluateReward(exp, sessionID, msgs, turns, turnIdx, learning).catch((err: any) =>
-        log.error("reward evaluation failed", { id: exp.id, error: err?.message ?? String(err) }),
+        log.error("reward evaluation failed", { id: exp.id, error: err }),
       )
     }
   }
@@ -369,7 +369,7 @@ export namespace ExperienceEncoder {
 
       return rewards
     } catch (err: any) {
-      log.error("rewards generation failed", { error: err?.message ?? String(err) })
+      log.error("rewards generation failed", { error: err })
       return undefined
     }
   }

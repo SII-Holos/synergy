@@ -147,7 +147,7 @@ export namespace SessionInvoke {
         buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
         RECALL_TIMEOUT_MS,
       ).catch((err: any) => {
-        log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
+        log.warn("recall failed or timed out", { sessionID, error: err })
         return undefined
       })
     }

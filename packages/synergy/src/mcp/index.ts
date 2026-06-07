@@ -239,8 +239,8 @@ export namespace MCP {
             resources[key] = {}
             void prewarmDiscoveryCaches(key, result.mcpClient, timeout).catch((error) => {
               log.warn("failed to prewarm discovery caches", {
-                clientName: key,
-                error: error instanceof Error ? error.message : String(error),
+                clientName: name,
+                error,
               })
             })
           }
@@ -283,7 +283,7 @@ export namespace MCP {
     timeout = DEFAULT_TIMEOUT,
   ): Promise<PromptCache> {
     const prompts = await withTimeout(client.listPrompts(), timeout).catch((e) => {
-      log.error("failed to get prompts", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to get prompts", { clientName, error: e })
       return undefined
     })
 
@@ -307,7 +307,7 @@ export namespace MCP {
     timeout = DEFAULT_TIMEOUT,
   ): Promise<ResourceCache> {
     const resources = await withTimeout(client.listResources(), timeout).catch((e) => {
-      log.error("failed to get resources", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to get resources", { clientName, error: e })
       return undefined
     })
 
@@ -357,7 +357,7 @@ export namespace MCP {
     const config = await Config.get()
     const timeout = config.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
     const toolsResult = await withTimeout(client.listTools(), timeout).catch((e) => {
-      log.error("failed to refresh tool defs", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to refresh tool defs", { clientName, error: e })
       return undefined
     })
     if (toolsResult) {
@@ -384,7 +384,7 @@ export namespace MCP {
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
         log.warn("failed to prewarm discovery caches", {
           clientName: name,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
       })
     }
@@ -536,7 +536,7 @@ export namespace MCP {
           key,
           command: mcp.command,
           cwd,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
         status = {
           status: "failed" as const,
@@ -645,7 +645,7 @@ export namespace MCP {
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
         log.warn("failed to prewarm discovery caches", {
           clientName: name,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
       })
     } else {
@@ -685,7 +685,7 @@ export namespace MCP {
       const fetched = await Promise.all(
         missing.map(async ([clientName, client]) => {
           const toolsResult = await withTimeout(client.listTools(), listTimeout).catch((e) => {
-            log.error("failed to get tools", { clientName, error: e instanceof Error ? e.message : String(e) })
+            log.error("failed to get tools", { clientName, error: e })
             s.status[clientName] = {
               status: "failed" as const,
               error: e instanceof Error ? e.message : String(e),

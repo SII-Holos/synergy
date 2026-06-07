@@ -36,7 +36,7 @@ export namespace Envelope {
 
     const result = HolosProtocol.Envelope.safeParse(data)
     if (!result.success) {
-      log.warn("envelope parse failed", { error: result.error.message })
+      log.warn("envelope parse failed", { error: result.error })
       return null
     }
 

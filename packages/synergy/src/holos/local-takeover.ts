@@ -129,7 +129,7 @@ export namespace HolosLocalTakeover {
       return response.ok
     } catch (error) {
       log.warn("managed lease refresh request failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error,
       })
       return false
     }
@@ -156,7 +156,7 @@ export async function releaseManagedMode(
     return response.ok
   } catch (error) {
     log.warn("managed release request failed", {
-      error: error instanceof Error ? error.message : String(error),
+      error,
     })
     return false
   }
@@ -196,7 +196,7 @@ async function requestManagedMode(controlSocketPath: string, agentId: string): P
     } catch (error) {
       log.warn("managed takeover request transport failed", {
         action: payload.action,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       })
     }
   }
@@ -213,7 +213,7 @@ async function stopService(controlSocketPath: string): Promise<boolean> {
     return response.ok
   } catch (error) {
     log.warn("service.stop takeover fallback failed", {
-      error: error instanceof Error ? error.message : String(error),
+      error,
     })
     return false
   }
