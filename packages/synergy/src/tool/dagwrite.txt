@@ -1,5 +1,7 @@
 Create and manage a directed acyclic graph (DAG) of tasks for the current session. The DAG tracks task dependencies, enables parallel execution, and supports dynamic plan modification.
 
+**Strongly recommended as the first action when receiving a task.** Break down the work into nodes with dependencies, then execute the plan. This produces better results than sequential tool calls because it forces you to think about the full scope, enables parallel dispatch, and gives the user visible progress.
+
 ## Core Concepts
 
 - **Nodes** are tasks. Each has an id, description, status, dependencies, optional executor assignment, optional task/session binding, and an optional short `memo`.

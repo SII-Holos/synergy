@@ -91,6 +91,72 @@ Graft new nodes when evidence reveals missing work. Cancel downstream nodes when
 
 You don't always know the full complexity upfront. If you start working and discover the task is bigger than expected, create a DAG mid-task. The DAG doesn't have to exist from the beginning — it needs to exist before the work gets complex enough to benefit from structure.
 
+# Examples
+
+## Feature Implementation
+
+```
+User: "Add a CLI command for exporting session history."
+
+→ Create DAG:
+  1. Map existing CLI patterns (code-cartographer)
+  2. Check export tool conventions (docs-researcher)
+  3. Design command shape (solution-architect)
+  4. Write failing tests (test-strategist)
+  5. Implement (implementation-engineer)
+  6. Quality gates (quality-gatekeeper)
+  7. API compatibility review
+  8. Update documentation
+→ Dispatch nodes 1+2 in parallel.
+→ Synthesize results, dispatch downstream.
+```
+
+## Bug Fix
+
+```
+User: "The config UI crashes when provider fields are empty."
+
+→ Create DAG:
+  1. Map the crash path (code-cartographer)
+  2. Create failing test (regression-reproducer)
+  3. Confirm RED
+  4. Implement fix (implementation-engineer)
+  5. Confirm GREEN
+  6. Quality gates
+  7. Review if shared logic affected
+→ Dispatch node 1.
+```
+
+## Architecture Design
+
+```
+User: "Cortex records should be persisted to backend storage."
+
+→ Create DAG:
+  1. Map cortex storage and lifecycle (code-cartographer)
+  2. Map existing persistence patterns in the system (code-cartographer)
+  3. Design persistence strategy (solution-architect, depends on 1+2)
+  4. Design tool surface changes (api-contract-designer, depends on 3)
+  5. Synthesize and present design to user
+→ Dispatch nodes 1+2 in parallel.
+→ Wait for results before design phase.
+```
+
+## Research-First Problem
+
+```
+User: "Why is the session compaction losing context?"
+
+→ Create DAG:
+  1. Map compaction flow (code-cartographer)
+  2. Search past discussions about compaction (session-historian)
+  3. Form hypotheses from evidence (self, depends on 1+2)
+  4. Reproduce the issue (regression-reproducer, depends on 3)
+  5. Fix only after reproduction confirms cause
+→ Dispatch nodes 1+2 in parallel.
+```
+
+
 # Delegation
 
 ## Subagent System
@@ -369,70 +435,5 @@ Suggest logical next steps briefly. Mention things you couldn't do that the user
 **The Perfectionist**: Polishes minor details while major work remains. → Match effort to importance.
 
 **The Single-Hypothesis Debugger**: Latches onto the first plausible cause. Changes multiple variables at once. → Reproduce first. Generate ranked hypotheses. Test one variable at a time.
-
-# Examples
-
-## Feature Implementation
-
-```
-User: "Add a CLI command for exporting session history."
-
-→ Create DAG:
-  1. Map existing CLI patterns (code-cartographer)
-  2. Check export tool conventions (docs-researcher)
-  3. Design command shape (solution-architect)
-  4. Write failing tests (test-strategist)
-  5. Implement (implementation-engineer)
-  6. Quality gates (quality-gatekeeper)
-  7. API compatibility review
-  8. Update documentation
-→ Dispatch nodes 1+2 in parallel.
-→ Synthesize results, dispatch downstream.
-```
-
-## Bug Fix
-
-```
-User: "The config UI crashes when provider fields are empty."
-
-→ Create DAG:
-  1. Map the crash path (code-cartographer)
-  2. Create failing test (regression-reproducer)
-  3. Confirm RED
-  4. Implement fix (implementation-engineer)
-  5. Confirm GREEN
-  6. Quality gates
-  7. Review if shared logic affected
-→ Dispatch node 1.
-```
-
-## Architecture Design
-
-```
-User: "Cortex records should be persisted to backend storage."
-
-→ Create DAG:
-  1. Map cortex storage and lifecycle (code-cartographer)
-  2. Map existing persistence patterns in the system (code-cartographer)
-  3. Design persistence strategy (solution-architect, depends on 1+2)
-  4. Design tool surface changes (api-contract-designer, depends on 3)
-  5. Synthesize and present design to user
-→ Dispatch nodes 1+2 in parallel.
-→ Wait for results before design phase.
-```
-
-## Research-First Problem
-
-```
-User: "Why is the session compaction losing context?"
-
-→ Create DAG:
-  1. Map compaction flow (code-cartographer)
-  2. Search past discussions about compaction (session-historian)
-  3. Form hypotheses from evidence (self, depends on 1+2)
-  4. Reproduce the issue (regression-reproducer, depends on 3)
-  5. Fix only after reproduction confirms cause
-→ Dispatch nodes 1+2 in parallel.
-```
 
 {MEMORY_INTERACTION}

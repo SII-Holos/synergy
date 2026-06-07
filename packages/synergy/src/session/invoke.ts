@@ -15,6 +15,7 @@ import { SessionEndpoint } from "./endpoint"
 import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
+import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
 import { Command } from "../skill/command"
 import { $ } from "bun"
@@ -481,6 +482,10 @@ export namespace SessionInvoke {
         // Layer 6: Dynamic — cortex reminders and time context (always at the end)
         if (cortexReminder) systemParts.push(cortexReminder)
 
+        // Layer 7: Dynamic — planning reminder when agent has been self-executing without a DAG
+        const planningReminder = await buildPlanningReminder(sessionID, step, agent)
+        if (planningReminder) systemParts.push(planningReminder)
+
         if (step === 1 && lastFinished?.time.completed) {
           const elapsed = lastUser.time.created - lastFinished.time.completed
           if (elapsed > 0) {
@@ -873,6 +878,19 @@ export namespace SessionInvoke {
       `Do NOT set up redundant \`agenda_watch\` calls — the system handles waking you automatically.`,
       `</agenda-reminder>`,
     ].join("\n")
+  }
+
+  async function buildPlanningReminder(
+    sessionID: string,
+    step: number,
+    agent: { name: string; mode?: string },
+  ): Promise<string | undefined> {
+    if (step < 4) return undefined
+    if (agent.mode !== "primary") return undefined
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(sessionID)
+    if (nodes.length > 0) return undefined
+    return `<planning-reminder>\n${PLANNING_REMINDER.trim()}\n</planning-reminder>`
   }
 
   function formatElapsed(ms: number): string {
