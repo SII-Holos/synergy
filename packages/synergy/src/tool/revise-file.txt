@@ -1,10 +1,13 @@
 Apply an anchored hashline patch to existing files.
 
-Input is one or more sections in this format:
+Input is one or more sections. Every section starts with a real `[path#TAG]` header returned by `view_file`, `scan_files`, `parse_code`, `save_file`, or a prior `revise_file` call. There is no hashless form and you must never fabricate tags.
+
+Supported operations:
 
 [path#TAG]
 replace N..M:
-+new content
++final content line
++another final content line
 delete N..M
 insert before N:
 +new content
@@ -15,4 +18,15 @@ insert head:
 insert tail:
 +new content
 
-Use the latest tag returned by `view_file`, `scan_files`, `parse_code`, `save_file`, or a prior `revise_file`. If a tag is stale or unknown, re-run `view_file` and retry with the current header. Body rows must start with `+`; the replacement body is final content, not an old/new diff.
+Rules:
+- All line numbers refer to the original file state captured by the tag, before any operation in this patch is applied. Do not adjust later hunks for earlier hunks in the same patch.
+- Body rows under `:` headers are final content and must start with `+`. They are not an old/new diff. Do not include `-` rows or unchanged context rows.
+- Keep ranges tight. `replace N..M` should cover only original lines whose content changes. Do not widen a range to swallow unchanged keeper lines.
+- Pure additions use `insert before`, `insert after`, `insert head`, or `insert tail`, not a widened `replace`.
+- A tag proves file freshness, not permission to edit unseen code. If a line/range was not visible in `view_file`, `scan_files`, or `parse_code` output, inspect it first.
+- If a tag is stale or unknown, STOP. Do not stack additional edits. Re-run `view_file` and retry with the current header.
+
+Anti-patterns:
+- Wrong: `replace 2..4:` to add one line while copying lines 2 and 4 unchanged. Right: `insert after 2:`.
+- Wrong: using `-old` and `+new` rows. Right: only `+new final content` rows; the range performs deletion.
+- Wrong: computing line numbers after an earlier hunk in the same patch. Right: all ranges reference the original tagged file.

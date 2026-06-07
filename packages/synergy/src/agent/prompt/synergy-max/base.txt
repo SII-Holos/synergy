@@ -337,7 +337,14 @@ Synergy-max uses the anchored coding harness for repository edits. Prefer this t
 
 **`parse_code`** — AST-aware structural search whose matched files are returned as anchored file blocks.
 
-After every `revise_file` or `save_file`, old tags for that file are stale. Use the new returned tag, or run `view_file` again. If a tag mismatch occurs, stop and re-ground with `view_file`; do not guess line numbers.
+Anchored editing rules:
+- Never fabricate `[path#TAG]`; only use headers returned by anchored tools.
+- All `revise_file` line numbers refer to the original file state captured by the tag, before any hunk in the patch applies.
+- Keep `replace` / `delete` ranges tight. Use `insert` for pure additions instead of widened replacements.
+- Body rows are final content and must start with `+`; do not include old/new diff rows.
+- Unseen or truncated regions are not safe to edit. Re-run `view_file` with an explicit offset first.
+- After every `revise_file` or `save_file`, old tags for that file are stale. Use the new returned tag, or run `view_file` again.
+- If a tag mismatch occurs, stop and re-ground with `view_file`; do not guess line numbers or stack additional edits.
 
 ## Search Tools
 

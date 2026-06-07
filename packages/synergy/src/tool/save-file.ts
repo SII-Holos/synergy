@@ -14,8 +14,10 @@ import { stripHashlineDisplayPrefixes } from "../hashline/format"
 export const SaveFileTool = Tool.define("save_file", {
   description: DESCRIPTION,
   parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to write"),
-    content: z.string().describe("The full file content to write"),
+    filePath: z.string().describe("The absolute path to the file to create or fully overwrite"),
+    content: z
+      .string()
+      .describe("The full final file content to write; use revise_file instead for surgical anchored edits"),
   }),
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)

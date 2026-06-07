@@ -17,9 +17,16 @@ const MIN_READ_LIMIT = 120
 export const ViewFileTool = Tool.define("view_file", {
   description: DESCRIPTION,
   parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to view"),
-    offset: z.coerce.number().describe("The line number to start viewing from (0-based)").optional(),
-    limit: z.coerce.number().int().describe("The number of lines to view (defaults to 2000, minimum 120)").optional(),
+    filePath: z.string().describe("The absolute path to the file to view and snapshot for anchored editing"),
+    offset: z.coerce
+      .number()
+      .describe("The 0-based line offset to display; use this to inspect unseen ranges before revise_file")
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .describe("The number of lines to display; the full file is snapshotted even when displayed output is limited")
+      .optional(),
   }),
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)

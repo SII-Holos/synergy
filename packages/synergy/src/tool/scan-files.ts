@@ -15,10 +15,12 @@ import {
 export const ScanFilesTool = Tool.define("scan_files", {
   description: DESCRIPTION,
   parameters: z.object({
-    pattern: z.string().describe("Regex pattern to search for in file contents"),
+    pattern: z
+      .string()
+      .describe("Regular expression to search for; matched files are snapshotted and returned with [path#TAG] headers"),
     path: z.string().optional().describe("Directory to search in. Defaults to the current working directory."),
-    include: z.string().optional().describe('File pattern to include in the search (e.g. "*.ts")'),
-    globs: z.array(z.string()).optional().describe("Include/exclude globs (prefix ! to exclude)"),
+    include: z.string().optional().describe('File pattern to include in the search, e.g. "*.ts"'),
+    globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),
   }),
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required")
@@ -41,32 +43,44 @@ export const ScanFilesTool = Tool.define("scan_files", {
     const stderr = await new Response(proc.stderr).text()
     const exitCode = await proc.exited
     if (exitCode === 1)
-      return { title: params.pattern, metadata: { matches: 0, files: [], truncated: false }, output: "No files found" }
+      return {
+        title: params.pattern,
+        metadata: { matches: 0, files: [] as string[], matchLines: {} as Record<string, number[]>, truncated: false },
+        output: "No files found",
+      }
     if (exitCode !== 0) throw new Error(`ripgrep failed: ${stderr}`)
 
     const matches = stdout.trim().split(/\r?\n/).filter(Boolean)
-    const byFile = new Map<string, number>()
+    const byFile = new Map<string, { count: number; lines: number[] }>()
     for (const line of matches) {
-      const [filePath] = line.split("|")
-      if (!filePath) continue
-      byFile.set(filePath, (byFile.get(filePath) ?? 0) + 1)
+      const [filePath, lineNumberRaw] = line.split("|")
+      const lineNumber = Number(lineNumberRaw)
+      if (!filePath || !Number.isInteger(lineNumber)) continue
+      const entry = byFile.get(filePath) ?? { count: 0, lines: [] }
+      entry.count++
+      if (!entry.lines.includes(lineNumber)) entry.lines.push(lineNumber)
+      byFile.set(filePath, entry)
     }
 
     const blocks: string[] = []
     const files: string[] = []
-    for (const filePath of byFile.keys()) {
+    const matchLines: Record<string, number[]> = {}
+    for (const [filePath, entry] of byFile.entries()) {
       const content = await readTextFile(filePath).catch(() => undefined)
       if (content === undefined) continue
-      const { output } = formatRecordedBlock(ctx.sessionID, filePath, content)
+      const { output, tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
       markFileRead(ctx.sessionID, filePath)
-      blocks.push(output)
-      files.push(displayPath(filePath))
+      const pathLabel = displayPath(filePath)
+      const lines = entry.lines.sort((a, b) => a - b)
+      blocks.push(`Matches in [${pathLabel}#${tag}]: ${lines.join(", ")}\n${output}`)
+      files.push(pathLabel)
+      matchLines[pathLabel] = lines
     }
 
     return {
       title: params.pattern,
       output: blocks.length ? blocks.join("\n\n") : "No files found",
-      metadata: { matches: matches.length, files, truncated: false },
+      metadata: { matches: matches.length, files, matchLines, truncated: false },
     }
   },
 })

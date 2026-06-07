@@ -32,10 +32,11 @@ describe("tool.scan_files", () => {
           const result = await tool.execute({ pattern: "export", path: tmp.path, include: "*.ts" }, ctx)
 
           // Should have hashline headers for matching files
-          expect(result.output).toMatch(/\[a\.ts#[0-9A-F]{4}\]/)
+          expect(result.output).toMatch(/Matches in \[a\.ts#[0-9A-F]{4}\]: 1, 2/)
           // Should contain the matching lines in LINE:TEXT format
           expect(result.output).toMatch(/1:export const a/)
           expect(result.output).toMatch(/2:export const b/)
+          expect(result.metadata.matchLines["a.ts"]).toEqual([1, 2])
         },
       })
     })
@@ -191,6 +192,7 @@ describe("tool.scan_files", () => {
 
           expect(result.metadata.matches).toBeGreaterThanOrEqual(2)
           expect(result.metadata.files).toContain("x.ts")
+          expect(result.metadata.matchLines["x.ts"]).toEqual([1, 2])
         },
       })
     })

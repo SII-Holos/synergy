@@ -116,6 +116,21 @@ describe("tool.save_file", () => {
       })
     })
 
+    test("does not strip non-contiguous numeric prefixes after a hashline-looking header", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await SaveFileTool.init()
+          const content = "[log.txt#A1B2]\n10:error started\n20:error finished\n"
+          await tool.execute({ filePath: path.join(tmp.path, "log.txt"), content }, ctx)
+
+          const onDisk = await Bun.file(path.join(tmp.path, "log.txt")).text()
+          expect(onDisk).toBe(content)
+        },
+      })
+    })
+
     test("does not corrupt content that has no hashline prefix but looks close", async () => {
       await using tmp = await tmpdir({ git: true })
       await Instance.provide({

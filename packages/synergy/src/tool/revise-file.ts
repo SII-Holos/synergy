@@ -18,7 +18,11 @@ import { assertInsideOrAsk, displayPath, resolveFilePath } from "./anchored-file
 export const ReviseFileTool = Tool.define("revise_file", {
   description: DESCRIPTION,
   parameters: z.object({
-    input: z.string().describe("Hashline patch text beginning with [path#TAG]"),
+    input: z
+      .string()
+      .describe(
+        "Hashline patch text beginning with a real [path#TAG] header returned by an anchored tool; body rows must be final +TEXT lines",
+      ),
   }),
   async execute(params, ctx) {
     const patch = parseHashlinePatch(params.input)
@@ -33,7 +37,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         const stored = store.get(filePath, patch.tag)
         if (stored === undefined) {
           throw new Error(
-            `Unknown or stale hashline tag #${patch.tag} for ${patch.path}. Use view_file, scan_files, parse_code, or save_file to get a current [path#TAG] header.`,
+            `Unknown or stale hashline tag #${patch.tag} for ${patch.path}. STOP: do not stack additional edits. Use view_file, scan_files, parse_code, or save_file to get a current [path#TAG] header, then retry with that header.`,
           )
         }
 
@@ -46,7 +50,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         const liveTag = computeTag(oldContent)
         if (liveTag !== patch.tag) {
           throw new Error(
-            `Stale hashline tag #${patch.tag} for ${patch.path}; current file hashes to #${liveTag}. Re-run view_file and retry with the current header.`,
+            `Stale hashline tag #${patch.tag} for ${patch.path}; current file hashes to #${liveTag}. STOP: do not stack additional edits. Re-run view_file and retry with the current header.`,
           )
         }
 
@@ -55,7 +59,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         if (newContent === oldContent) {
           return {
             title,
-            output: formatHashlineBlock(title, patch.tag, oldContent),
+            output: `${formatHashlineBlock(title, patch.tag, oldContent)}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows are byte-identical to existing content. Do not widen ranges; verify the anchor and line numbers before retrying.`,
             metadata: {
               filepath: filePath,
               path: title,

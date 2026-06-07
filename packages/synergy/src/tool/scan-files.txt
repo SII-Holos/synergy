@@ -1,5 +1,12 @@
 Search file contents and return anchored file blocks.
 
-Use this instead of `grep` in the anchored coding harness. Every matched file is snapshotted and returned as `[path#TAG]` plus `LINE:TEXT` rows so search results can feed directly into `revise_file`.
+Use this instead of `grep` in the anchored coding harness. Every matched file is snapshotted and returned with a real `[path#TAG]` plus `LINE:TEXT` rows, so search results can feed directly into `revise_file`. The output also reports matched line numbers for each tagged file.
 
-Parameters mirror grep: `pattern` is a regular expression, `path` is the directory to search, and `include`/`globs` filter file paths.
+Parameters:
+- `pattern` is a regular expression.
+- `path` is the directory to search; defaults to the current working directory.
+- `include` and `globs` filter file paths.
+
+Critical:
+- Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are snapshotted and tagged.
+- Match line numbers identify where to inspect/edit, but `revise_file` still requires tight ranges and the latest tag.

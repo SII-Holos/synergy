@@ -137,7 +137,9 @@ describe("tool.parse_code", () => {
           const tool = await ParseCodeTool.init()
           const result = await tool.execute({ pattern: "export function $NAME($$$) { $$$ }", lang: "typescript" }, ctx)
 
+          expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
           expect(result.output).toMatch(/\[a\.ts#[0-9A-F]{4}\]\n1:export function a/)
+          expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
           expect(result.output).toMatch(/\[b\.ts#[0-9A-F]{4}\]\n1:export function b/)
         },
       })
@@ -163,6 +165,8 @@ describe("tool.parse_code", () => {
 
           expect(result.metadata.matches).toBe(2)
           expect(result.metadata.files).toContain("code.ts")
+          expect(result.metadata.matchLines["code.ts"]).toEqual([1, 2])
+          expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
         },
       })
     })

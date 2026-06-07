@@ -1,8 +1,10 @@
 Read a file through the anchored coding harness.
 
-Use this instead of `read` when you intend to edit with `revise_file`. The output starts with a `[path#TAG]` header followed by `LINE:TEXT` rows. The tag is a content-derived snapshot of the full normalized file; pass the latest header back to `revise_file`.
+Use this instead of `read` when the content may feed `revise_file`. The output starts with a real `[path#TAG]` header followed by `LINE:TEXT` rows. The tag is a content-derived snapshot of the full normalized file; pass the latest header back to `revise_file`.
 
 Rules:
+- NEVER fabricate a `[path#TAG]` header. Only use tags returned by anchored tools.
 - Use absolute paths when possible.
-- `offset` is 0-based; `limit` controls displayed lines only. The full file is snapshotted.
-- If the file changes, call `view_file` again and use the new tag.
+- `offset` is 0-based; `limit` controls displayed lines only. The full file is snapshotted, but hidden lines are still unseen by the agent.
+- If output is truncated or a region was not displayed, call `view_file` again with an explicit `offset` before editing that region.
+- After `revise_file` or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.

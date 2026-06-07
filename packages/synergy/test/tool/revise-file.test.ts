@@ -112,7 +112,9 @@ describe("tool.revise_file", () => {
           const patchInput = `[file.ts#${tag}]\nreplace 1..1:\n+new line\n`
 
           // Should reject because tag no longer matches the actual file content
-          await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(/stale|outdated|tag|content mismatch/)
+          await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(
+            /STOP|stale|outdated|tag|content mismatch/,
+          )
         },
       })
     })
@@ -316,6 +318,30 @@ describe("tool.revise_file", () => {
   })
 
   describe("error messages", () => {
+    test("returns an explicit no-op warning when patch produces no change", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { ViewFileTool } = await import("../../src/tool/view-file")
+          const view = await ViewFileTool.init()
+          const viewed = await view.execute({ filePath: path.join(tmp.path, "same.ts") }, ctx)
+          const tag = viewed.metadata.tag as string
+
+          const tool = await ReviseFileTool.init()
+          const result = await tool.execute({ input: `[same.ts#${tag}]\nreplace 1..1:\n+const x = 1\n` }, ctx)
+          expect(result.metadata.applied).toBe(false)
+          expect(result.output).toContain("No-op")
+          expect(result.output).toContain("byte-identical")
+        },
+      })
+    })
+
     test("provides a clear error for missing tag", async () => {
       await using tmp = await tmpdir({ git: true })
       await Instance.provide({
@@ -324,7 +350,7 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           // Tag that was never stored
           const badPatch = "[no-such-file.ts#9999]\nreplace 1..1:\n+x\n"
-          await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/tag|not found|snapshot|unknown/)
+          await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/STOP|tag|not found|snapshot|unknown/)
         },
       })
     })
