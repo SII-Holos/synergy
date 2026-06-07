@@ -901,7 +901,7 @@ export namespace SessionInvoke {
     agent: { name: string; mode?: string },
     sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
   ): Promise<string | undefined> {
-    if (agent.mode !== "primary") return undefined
+    if (agent.name !== "synergy-max") return undefined
 
     const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
     if (lastUserIdx < 0) return undefined
