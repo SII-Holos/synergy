@@ -90,6 +90,50 @@ When `unsafe` blocks are present in changed code:
 - Note it as a security review trigger.
 - Check if the unsafe usage has a `// SAFETY:` comment.
 
+
+## Project Initialization
+
+When quality tooling is missing or incomplete, recommend or generate configuration:
+
+Minimum viable `Cargo.toml` lints section:
+
+```toml
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+perf = "warn"
+cargo = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+```
+
+Minimum viable `rust-toolchain.toml`:
+
+```toml
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy", "rust-src"]
+```
+
+Minimum viable `.config/nextest.toml`:
+
+```toml
+[profile.ci]
+test-threads = "num-cpus"
+slow-timeout = { period = "60s", termination = "graceful" }
+
+[profile.ci.junit]
+path = "junit.xml"
+```
+
+Key decisions:
+- `clippy::all` deny + `pedantic` warn is the professional baseline.
+- Pin the toolchain for reproducible builds across developers and CI.
+- Nextest for parallel execution and CI-friendly JUnit output.
+- `cargo deny` for dependency auditing (create `deny.toml` when security matters).
+
 # Report
 
 Return:

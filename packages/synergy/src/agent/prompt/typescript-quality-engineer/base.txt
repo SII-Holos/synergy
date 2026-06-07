@@ -88,6 +88,72 @@ Route type errors to `implementation-engineer` with the full error, file, and li
 - Package manager mismatch → environment note.
 - Tool binary missing → environment blocker.
 
+
+## Project Initialization
+
+When quality tooling is missing or incomplete, recommend or generate configuration:
+
+Minimum viable `tsconfig.json` (strict):
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
+```
+
+For Biome projects (`biome.json`):
+
+```json
+{
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "linter": { "enabled": true, "rules": { "recommended": true } },
+  "organizeImports": { "enabled": true }
+}
+```
+
+For ESLint + Prettier projects:
+- `eslint.config.js` with `typescript-eslint` recommended + strict rules.
+- `.prettierrc` with consistent team defaults (printWidth, semi, singleQuote, trailingComma).
+
+For Vitest:
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    globals: true,
+    coverage: {
+      provider: 'v8',
+      thresholds: { statements: 80, branches: 75, functions: 80, lines: 80 }
+    }
+  }
+})
+```
+
+For dead code detection: add `knip.json` with project entry points.
+
+Key decisions:
+- TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` for maximum safety.
+- Biome is fastest for new projects; ESLint + Prettier for projects needing complex rules.
+- Vitest over Jest for new projects. V8 coverage for speed.
+- Knip for finding unused exports, files, and dependencies.
+
 # Report
 
 Return:

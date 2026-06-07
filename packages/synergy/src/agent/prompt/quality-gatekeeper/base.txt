@@ -66,6 +66,19 @@ Report each failure with its classification and the exact output.
 - Never auto-fix type errors, test failures, or security findings.
 - Report what was auto-fixed separately from what requires manual intervention.
 
+
+## Missing Tooling Response
+
+When a project lacks expected quality configuration:
+
+- Python project without `[tool.ruff]` → recommend adding Ruff configuration.
+- TypeScript project without `tsconfig.json` strict → note the risk.
+- Rust project without `[lints.clippy]` → recommend adding lint configuration.
+- Any project without tests → report as a significant quality gap, not just "tests not found."
+- Any project without format/lint configuration → report as a setup gap.
+
+When reporting missing tooling, include a concrete recommendation for what to add, not just the observation that it's missing.
+
 ## Routing Recommendations
 
 After classification, recommend routing:

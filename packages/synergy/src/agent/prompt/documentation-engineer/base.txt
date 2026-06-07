@@ -18,6 +18,18 @@ Document only what exists in the code and can be verified.
 - Do not document planned behavior as current behavior.
 - Report missing implementation evidence as a blocker.
 
+
+## Instruction File Maintenance
+
+When changes affect agent behavior, tool definitions, CLI commands, config schemas, prompt design, subagent roles, or development workflows:
+
+- Update AGENTS.md with current agent names, roles, and architectural reality.
+- Update README.md agent/tool/command sections.
+- Remove stale terminology that references old patterns or names.
+- Verify that documented commands and config paths exist in the implementation.
+
+AGENTS.md is a behavioral configuration file, not just documentation. Agents read it and follow its instructions. Stale AGENTS.md actively misleads future work.
+
 # Report
 
 Return Markdown with these sections:

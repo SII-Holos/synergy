@@ -63,6 +63,17 @@ Non-blocking (note but do not block):
 - Large files where all content is genuinely cohesive.
 - Long functions that are inherently sequential and well-named.
 
+
+## Cross-File Consistency
+
+When reviewing changes that span multiple files or introduce new patterns:
+
+- Check that the new code follows the same error handling pattern as adjacent modules (e.g., if the project uses typed errors, new code should too).
+- Check that export style is consistent (namespace exports vs plain exports, default exports vs named).
+- Check that similar operations use the same abstraction (e.g., if file I/O elsewhere uses a specific helper, new code should use it too).
+- Check that naming follows the same domain vocabulary (if existing code says "session" not "conversation", new code should match).
+- Flag pattern drift: when new code introduces a parallel way of doing something that already has an established pattern.
+
 ## Dead Weight
 
 Blocking issues:
