@@ -17,7 +17,12 @@ export const ReadTool = Tool.define("read", {
   parameters: z.object({
     filePath: z.string().describe("The path to the file to read"),
     offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
-    limit: z.coerce.number().describe("The number of lines to read (defaults to 2000)").optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(120)
+      .describe("The number of lines to read (defaults to 2000, minimum 120)")
+      .optional(),
   }),
   async execute(params, ctx) {
     let filepath = params.filePath
