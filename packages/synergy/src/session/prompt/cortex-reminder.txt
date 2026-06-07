@@ -1,10 +1,17 @@
-## {{count}} Background Task(s) Running
+## CRITICAL: {{count}} Background Task(s) Running — DO NOT DUPLICATE
 
 {{task_list}}
 
-> **CRITICAL**: These tasks are gathering information you need.
-> - Do NOT provide final conclusions or recommendations yet
-> - Do NOT ask user for decisions (avoid calling `question` tool)
-> - You WILL be automatically notified when tasks complete — do NOT set up `agenda_watch` or any manual polling, the system handles wake-up
-> - Use `task_list()` or `task_output()` to inspect visible tasks; use `task_output(task_id="...", mode="progress")` for live status and `mode="tail"` for recent activity
-> - Otherwise continue with other productive work that doesn't depend on these results
+These subagents are already executing the delegated work. They **WILL complete and report back automatically**.
+
+### What you MUST NOT do (wastes tokens — subagents are already doing this):
+- Do NOT produce final answers, conclusions, recommendations, or implementation yourself
+- Do NOT call `question` to ask the user for decisions — wait for subagent results first
+- Do NOT set up `agenda_watch` or manual polling — the system handles wake-up
+
+### What you SHOULD do:
+- Use `task_list()` to inspect all running tasks with full details (status, agent, elapsed, health, tool calls, last tool used)
+- Use `task_output(task_id="...", mode="progress")` for live status of a specific task
+- Use `task_output(task_id="...", mode="tail")` for recent session activity
+- Continue with other productive work that does NOT depend on these subagent results
+- Wait to be notified — the system WILL wake you when tasks complete
