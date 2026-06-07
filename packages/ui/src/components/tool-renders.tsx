@@ -28,7 +28,127 @@ import {
   type ToolProps,
 } from "./message-part"
 
-const anchoredToolNames = ["view_file", "scan_files", "parse_code", "revise_file", "save_file"]
+const anchoredToolNames = ["view_file", "scan_files", "parse_code"]
+
+function anchoredPath(props: ToolProps): string {
+  const headerPath = typeof props.input.input === "string" ? props.input.input.match(/^\[([^#\]]+)/)?.[1] : undefined
+  return (props.metadata?.path || props.metadata?.filepath || props.input.filePath || headerPath || "") as string
+}
+
+function AnchoredFileTrigger(props: {
+  title: string
+  path: string
+  changes?: { additions: number; deletions: number }
+}) {
+  return (
+    <div data-component="anchored-file-trigger">
+      <div data-slot="message-part-title-area">
+        <div data-slot="message-part-title">{props.title}</div>
+        <Show when={props.path}>
+          <div data-slot="message-part-path">
+            <Show when={props.path.includes("/")}>
+              <span data-slot="message-part-directory">{getDirectory(props.path)}</span>
+            </Show>
+            <span data-slot="message-part-filename">{getFilename(props.path)}</span>
+          </div>
+        </Show>
+      </div>
+      <div data-slot="message-part-actions">
+        <Show when={props.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
+      </div>
+    </div>
+  )
+}
+
+ToolRegistry.register({
+  name: "revise_file",
+  render(props) {
+    const diffComponent = useDiffComponent()
+    const filePath = () => anchoredPath(props)
+    const filediff = () => props.metadata?.filediff as any | undefined
+    const changes = () => props.metadata?.changeSummary || filediff()
+    const operations = () => (props.metadata?.operationSummary ?? []) as string[]
+    return (
+      <BasicTool
+        {...props}
+        icon="file-pen"
+        trigger={<AnchoredFileTrigger title="Revise File" path={filePath()} changes={changes()} />}
+      >
+        <Show when={operations().length > 0}>
+          <div class="mb-2 flex flex-wrap gap-1.5 text-12-regular text-text-subtle">
+            <For each={operations()}>{(op) => <span class="rounded bg-surface-raised px-1.5 py-0.5">{op}</span>}</For>
+          </div>
+        </Show>
+        <Show
+          when={filediff()}
+          fallback={<Show when={props.output}>{(output) => <ToolTextOutput text={output()} />}</Show>}
+        >
+          {(diff) => (
+            <div data-component="edit-content">
+              <Dynamic
+                component={diffComponent}
+                before={{ name: diff().file || filePath() || "file", contents: diff().before ?? "" }}
+                after={{ name: diff().file || filePath() || "file", contents: diff().after ?? "" }}
+              />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "save_file",
+  render(props) {
+    const existingDiff = () => (isOverwrite() ? filediff() : undefined)
+    const codeComponent = useCodeComponent()
+    const diffComponent = useDiffComponent()
+    const filePath = () => anchoredPath(props)
+    const content = () => (props.input.content ?? props.metadata?.filediff?.after ?? "") as string
+    const filediff = () => props.metadata?.filediff as any | undefined
+    const changes = () => props.metadata?.changeSummary || filediff()
+    const isOverwrite = () => props.metadata?.exists === true
+    return (
+      <BasicTool
+        {...props}
+        icon="text-select"
+        trigger={
+          <AnchoredFileTrigger
+            title={isOverwrite() ? "Save File" : "Create File"}
+            path={filePath()}
+            changes={changes()}
+          />
+        }
+      >
+        <Show
+          when={existingDiff()}
+          fallback={
+            <Show when={content() || filePath()}>
+              <div data-component="write-content">
+                <Dynamic
+                  component={codeComponent}
+                  file={{ name: filePath() || "file", contents: content(), cacheKey: checksum(content()) }}
+                  overflow="scroll"
+                />
+              </div>
+            </Show>
+          }
+        >
+          {(diff) => (
+            <div data-component="edit-content">
+              <Dynamic
+                component={diffComponent}
+                before={{ name: diff().file || filePath() || "file", contents: diff().before ?? "" }}
+                after={{ name: diff().file || filePath() || "file", contents: diff().after ?? content() }}
+              />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
 
 for (const name of anchoredToolNames) {
   ToolRegistry.register({

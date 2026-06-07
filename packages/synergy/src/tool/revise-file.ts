@@ -13,7 +13,18 @@ import { parseHashlinePatch } from "../hashline/patch"
 import { applyPatchOps } from "../hashline/revise"
 import { SessionHashlineStore } from "../hashline/store"
 import { computeTag, normalizeContent } from "../hashline/tag"
-import { assertInsideOrAsk, displayPath, resolveFilePath } from "./anchored-file"
+import { assertInsideOrAsk, diffStats, displayPath, resolveFilePath } from "./anchored-file"
+
+function summarizeOperations(operations: ReturnType<typeof parseHashlinePatch>["ops"]): string[] {
+  return operations.map((op) => {
+    if (op.type === "replace") return `replace ${op.startLine}..${op.endLine}`
+    if (op.type === "delete") return `delete ${op.startLine}..${op.endLine}`
+    if (op.position === "before" || op.position === "after") return `insert ${op.position} ${op.lineNumber}`
+    return `insert ${op.position}`
+  })
+}
+
+const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReload.reload>> | undefined
 
 export const ReviseFileTool = Tool.define("revise_file", {
   description: DESCRIPTION,
@@ -67,14 +78,29 @@ export const ReviseFileTool = Tool.define("revise_file", {
               applied: false,
               operations: 0,
               diff: "",
-              runtimeReload: undefined,
+              filediff: { file: title, path: title, before: oldContent, after: oldContent, additions: 0, deletions: 0 },
+              operationSummary: summarizeOperations(patch.ops),
+              changeSummary: { additions: 0, deletions: 0 },
+              runtimeReload: noRuntimeReload,
               builtinSourceWarning: undefined,
             },
           }
         }
 
         const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, newContent))
-        await ctx.ask({ permission: "revise_file", patterns: [title], metadata: { filepath: filePath, diff } })
+        const changeSummary = diffStats(diff)
+        await ctx.ask({
+          permission: "revise_file",
+          patterns: [title],
+          metadata: {
+            filepath: filePath,
+            path: title,
+            diff,
+            filediff: { file: title, path: title, before: oldContent, after: newContent, ...changeSummary },
+            operationSummary: summarizeOperations(patch.ops),
+            changeSummary,
+          },
+        })
 
         await Bun.write(filePath, newContent)
         await Bus.publish(File.Event.Edited, { file: filePath })
@@ -106,6 +132,9 @@ export const ReviseFileTool = Tool.define("revise_file", {
             applied: true,
             operations: patch.ops.length,
             diff,
+            filediff: { file: title, path: title, before: oldContent, after: newContent, ...changeSummary },
+            operationSummary: summarizeOperations(patch.ops),
+            changeSummary,
             runtimeReload,
             builtinSourceWarning,
           },

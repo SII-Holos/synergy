@@ -8,7 +8,14 @@ import { File } from "../file"
 import { FileTime } from "../file/time"
 import { LSP } from "../lsp"
 import { RuntimeReload } from "../runtime/reload"
-import { assertInsideOrAsk, displayPath, ensureParentDir, hashlineHeaderFor, resolveFilePath } from "./anchored-file"
+import {
+  assertInsideOrAsk,
+  diffStats,
+  displayPath,
+  ensureParentDir,
+  hashlineHeaderFor,
+  resolveFilePath,
+} from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
 
 export const SaveFileTool = Tool.define("save_file", {
@@ -34,7 +41,19 @@ export const SaveFileTool = Tool.define("save_file", {
 
         const content = stripHashlineDisplayPrefixes(params.content)
         const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, content))
-        await ctx.ask({ permission: "save_file", patterns: [title], metadata: { filepath: filePath, diff } })
+        const changeSummary = diffStats(diff)
+        await ctx.ask({
+          permission: "save_file",
+          patterns: [title],
+          metadata: {
+            filepath: filePath,
+            path: title,
+            diff,
+            filediff: { file: title, path: title, before: oldContent, after: content, ...changeSummary },
+            changeSummary,
+            exists,
+          },
+        })
 
         await ensureParentDir(filePath)
         await Bun.write(filePath, content)
@@ -65,6 +84,8 @@ export const SaveFileTool = Tool.define("save_file", {
             path: title,
             tag: header.match(/#([0-9A-F]{4})\]$/)?.[1],
             diff,
+            filediff: { file: title, path: title, before: oldContent, after: content, ...changeSummary },
+            changeSummary,
             exists,
             runtimeReload,
             builtinSourceWarning,

@@ -509,12 +509,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Edit",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
-    case "revise_file":
+    case "revise_file": {
+      const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
       return {
         icon: "file-pen",
         title: "Revise File",
-        subtitle: input.input?.match?.(/^\[([^#\]]+)/)?.[1],
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
+    }
     case "multiedit":
       return {
         icon: "pen-line",
@@ -532,12 +534,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Write",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
-    case "save_file":
+    case "save_file": {
+      const path = metadata.path || metadata.filepath || input.filePath
       return {
         icon: "file-pen",
-        title: "Save File",
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        title: metadata.exists === false ? "Create File" : "Save File",
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
+    }
     case "todowrite":
       return {
         icon: "clipboard-check",
