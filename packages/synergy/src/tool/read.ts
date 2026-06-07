@@ -9,6 +9,7 @@ import { Instance } from "../scope/instance"
 import { Attachment } from "../attachment"
 
 const DEFAULT_READ_LIMIT = 2000
+const MIN_READ_LIMIT = 120
 const MAX_LINE_LENGTH = 2000
 const MAX_BYTES = 50 * 1024
 
@@ -17,12 +18,7 @@ export const ReadTool = Tool.define("read", {
   parameters: z.object({
     filePath: z.string().describe("The path to the file to read"),
     offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(120)
-      .describe("The number of lines to read (defaults to 2000, minimum 120)")
-      .optional(),
+    limit: z.coerce.number().int().describe("The number of lines to read (defaults to 2000, minimum 120)").optional(),
   }),
   async execute(params, ctx) {
     let filepath = params.filePath
@@ -97,7 +93,7 @@ export const ReadTool = Tool.define("read", {
     if (filePolicy.extractText) {
       const text = await Attachment.extractTextFromFile(filepath)
       const lines = text.split("\n")
-      const limit = params.limit ?? DEFAULT_READ_LIMIT
+      const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
       const offset = params.offset || 0
 
       const raw: string[] = []
@@ -162,7 +158,7 @@ export const ReadTool = Tool.define("read", {
     const isBinary = await isBinaryFile(filepath, file)
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
-    const limit = params.limit ?? DEFAULT_READ_LIMIT
+    const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
     const offset = params.offset || 0
     const lines = await file.text().then((text) => text.split("\n"))
 
