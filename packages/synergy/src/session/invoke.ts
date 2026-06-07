@@ -482,8 +482,8 @@ export namespace SessionInvoke {
         // Layer 6: Dynamic — cortex reminders and time context (always at the end)
         if (cortexReminder) systemParts.push(cortexReminder)
 
-        // Layer 7: Dynamic — planning reminder when agent has been self-executing without a DAG
-        const planningReminder = await buildPlanningReminder(sessionID, step, agent)
+        // Layer 7: Dynamic — planning reminder when agent self-executes without a DAG
+        const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
         if (planningReminder) systemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
@@ -880,16 +880,52 @@ export namespace SessionInvoke {
     ].join("\n")
   }
 
+  const ACCUMULATING_TOOLS = new Set([
+    "bash",
+    "process",
+    "read",
+    "grep",
+    "ast_grep",
+    "glob",
+    "look_at",
+    "edit",
+    "write",
+    "websearch",
+    "webfetch",
+    "diagram",
+  ])
+  const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])
+
   async function buildPlanningReminder(
     sessionID: string,
-    step: number,
     agent: { name: string; mode?: string },
+    sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
   ): Promise<string | undefined> {
-    if (step < 4) return undefined
     if (agent.mode !== "primary") return undefined
+
+    const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
+    if (lastUserIdx < 0) return undefined
+
+    const currentTurnTools = new Set<string>()
+    for (let i = lastUserIdx + 1; i < sessionMessages.length; i++) {
+      for (const part of sessionMessages[i].parts) {
+        if (part.type === "tool" && part.tool) {
+          currentTurnTools.add(part.tool)
+        }
+      }
+    }
+
+    let counter = 0
+    for (const tool of currentTurnTools) {
+      if (CLEARING_TOOLS.has(tool)) counter = 0
+      else if (ACCUMULATING_TOOLS.has(tool)) counter += 1
+    }
+    if (counter < 3) return undefined
+
     const { Dag } = await import("./dag")
     const nodes = await Dag.get(sessionID)
     if (nodes.length > 0) return undefined
+
     return `<planning-reminder>\n${PLANNING_REMINDER.trim()}\n</planning-reminder>`
   }
 
