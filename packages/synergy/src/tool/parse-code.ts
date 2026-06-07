@@ -30,7 +30,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required")
     await ctx.ask({
-      permission: "ast_grep",
+      permission: "parse_code",
       patterns: [params.pattern],
       metadata: { pattern: params.pattern, lang: params.lang, paths: params.paths, globs: params.globs },
     })

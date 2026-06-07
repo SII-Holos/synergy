@@ -74,7 +74,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         }
 
         const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, newContent))
-        await ctx.ask({ permission: "edit", patterns: [title], metadata: { filepath: filePath, diff } })
+        await ctx.ask({ permission: "revise_file", patterns: [title], metadata: { filepath: filePath, diff } })
 
         await Bun.write(filePath, newContent)
         await Bus.publish(File.Event.Edited, { file: filePath })

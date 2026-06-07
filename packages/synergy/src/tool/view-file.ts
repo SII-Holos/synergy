@@ -31,7 +31,7 @@ export const ViewFileTool = Tool.define("view_file", {
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)
     await assertInsideOrAsk(filePath, ctx)
-    await ctx.ask({ permission: "read", patterns: [filePath], metadata: {} })
+    await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
 
     const content = await readTextFile(filePath)
     const { tag } = formatRecordedBlock(ctx.sessionID, filePath, content)

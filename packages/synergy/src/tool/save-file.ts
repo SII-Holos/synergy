@@ -34,7 +34,7 @@ export const SaveFileTool = Tool.define("save_file", {
 
         const content = stripHashlineDisplayPrefixes(params.content)
         const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, content))
-        await ctx.ask({ permission: "edit", patterns: [title], metadata: { filepath: filePath, diff } })
+        await ctx.ask({ permission: "save_file", patterns: [title], metadata: { filepath: filePath, diff } })
 
         await ensureParentDir(filePath)
         await Bun.write(filePath, content)

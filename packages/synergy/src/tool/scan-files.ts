@@ -25,7 +25,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required")
     await ctx.ask({
-      permission: "grep",
+      permission: "scan_files",
       patterns: [params.pattern],
       metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
     })
