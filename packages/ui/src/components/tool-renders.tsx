@@ -81,7 +81,15 @@ ToolRegistry.register({
         </Show>
         <Show
           when={filediff()}
-          fallback={<Show when={props.output}>{(output) => <ToolTextOutput text={output()} />}</Show>}
+          fallback={
+            <Show when={props.output}>
+              {(output) => (
+                <div data-component="tool-output" data-scrollable>
+                  <ToolTextOutput text={output()} />
+                </div>
+              )}
+            </Show>
+          }
         >
           {(diff) => (
             <div data-component="edit-content">
