@@ -41,7 +41,7 @@ function AnchoredFileTrigger(props: {
   changes?: { additions: number; deletions: number }
 }) {
   return (
-    <div data-component="anchored-file-trigger">
+    <div data-component="edit-trigger">
       <div data-slot="message-part-title-area">
         <div data-slot="message-part-title">{props.title}</div>
         <Show when={props.path}>
