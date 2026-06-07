@@ -65,6 +65,15 @@ export namespace Cortex {
             }))
           : []),
       ],
+      cortex: {
+        parentSessionID: input.parentSessionID,
+        parentMessageID: input.parentMessageID,
+        description: input.description,
+        agent: input.agent,
+        executionRole,
+        status: "queued",
+        startedAt: Date.now(),
+      },
     })
 
     const task: CortexTypes.Task = {
@@ -208,6 +217,17 @@ export namespace Cortex {
 
     tasks.set(taskID, task)
     log.info("task status updated", { taskID, status })
+
+    if (isTerminal(status)) {
+      void Session.update(task.sessionID, (draft) => {
+        if (draft.cortex) {
+          draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
+          draft.cortex.completedAt = task.completedAt
+          if (error) draft.cortex.error = error
+          if (result) draft.cortex.result = result
+        }
+      })
+    }
 
     if (acquiredTasks.delete(taskID)) {
       CortexConcurrency.release(task.agent)

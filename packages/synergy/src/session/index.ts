@@ -21,7 +21,11 @@ import { SessionInteraction } from "./interaction"
 import { SessionManager } from "./manager"
 import { SessionEvent } from "./event"
 import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
-import type { Info as InfoType, StatusInfo as StatusInfoType } from "./types"
+import type {
+  Info as InfoType,
+  StatusInfo as StatusInfoType,
+  CortexDelegationInfo as CortexDelegationInfoType,
+} from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 
@@ -137,6 +141,7 @@ export namespace Session {
     id?: string
     agenda?: { itemID: string }
     interaction?: SessionInteraction.Info
+    cortex?: CortexDelegationInfoType
   }) {
     const scope = input?.scope ?? Instance.scope
     const inheritedInteraction =
@@ -155,6 +160,7 @@ export namespace Session {
       endpoint,
       interaction: inheritedInteraction,
       agenda: input?.agenda,
+      cortex: input?.cortex,
       time: {
         created: Date.now(),
         updated: Date.now(),

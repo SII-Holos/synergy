@@ -22,6 +22,22 @@ const ScopeField = opaque<Scope>(
   { ref: "SessionScope" },
 )
 
+const CortexDelegationInfoInner = z.object({
+  parentSessionID: z.string(),
+  parentMessageID: z.string(),
+  description: z.string(),
+  agent: z.string(),
+  executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
+  startedAt: z.number(),
+  completedAt: z.number().optional(),
+  status: z.enum(["queued", "running", "completed", "error", "cancelled"]),
+  result: z.string().optional(),
+  error: z.string().optional(),
+})
+
+export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
+export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -78,6 +94,7 @@ export const Info = z
           diff: z.string().optional(),
         })
         .optional(),
+      cortex: CortexDelegationInfo.optional(),
     }),
   )
   .meta({

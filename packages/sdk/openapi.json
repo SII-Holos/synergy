@@ -14588,6 +14588,44 @@
         },
         "required": ["mode"]
       },
+      "SessionCortexDelegation": {
+        "type": "object",
+        "properties": {
+          "parentSessionID": {
+            "type": "string"
+          },
+          "parentMessageID": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "executionRole": {
+            "type": "string",
+            "enum": ["primary", "delegated_subagent"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "error", "cancelled"]
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -14702,6 +14740,9 @@
               }
             },
             "required": ["messageID"]
+          },
+          "cortex": {
+            "$ref": "#/components/schemas/SessionCortexDelegation"
           }
         },
         "required": ["id", "scope", "title", "version", "time"]

@@ -373,6 +373,7 @@ export default function Page() {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
+  const currentSessionCortex = createMemo(() => currentSession()?.cortex)
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -997,6 +998,8 @@ export default function Page() {
                 scopeName={scopeName}
                 branch={branch}
                 lastModified={lastModified}
+                cortex={currentSessionCortex}
+                parentID={() => currentSession()?.parentID}
               />
             }
           >

@@ -1850,6 +1850,19 @@ export type SessionInteraction = {
   source?: string
 }
 
+export type SessionCortexDelegation = {
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  agent: string
+  executionRole?: "primary" | "delegated_subagent"
+  startedAt: number
+  completedAt?: number
+  status: "queued" | "running" | "completed" | "error" | "cancelled"
+  result?: string
+  error?: string
+}
+
 export type Session = {
   id: string
   scope: SessionScope
@@ -1887,6 +1900,7 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  cortex?: SessionCortexDelegation
 }
 
 export type SessionStatus =
