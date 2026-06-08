@@ -332,10 +332,8 @@ export function AnchoredReviseTool(props: ToolProps) {
       <WarningPanel metadata={props.metadata} />
       <SummaryGrid
         rows={[
-          { label: "File", value: pathLabel(filePath()) },
           { label: "Operations", value: operations().join(" · ") },
           props.metadata?.recovered ? { label: "Recovery", value: "Safely mapped onto the current file" } : undefined,
-          { label: "Tag", value: props.metadata?.tag },
         ]}
       />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
@@ -382,13 +380,7 @@ export function AnchoredSaveTool(props: ToolProps) {
       }
     >
       <WarningPanel metadata={props.metadata} />
-      <SummaryGrid
-        rows={[
-          { label: "File", value: pathLabel(filePath()) },
-          { label: "Mode", value: isOverwrite() ? "Overwrite existing file" : "Create new file" },
-          { label: "Tag", value: props.metadata?.tag },
-        ]}
-      />
+      <SummaryGrid rows={[{ label: "Mode", value: isOverwrite() ? "Overwrite existing file" : "Create new file" }]} />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
       <Show
         when={existingDiff()}
