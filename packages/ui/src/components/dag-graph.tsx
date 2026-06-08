@@ -26,18 +26,18 @@ interface LayoutEdge {
   to: LayoutNode
 }
 
-const CARD_W = 248
-const MIN_CARD_H = 96
+const CARD_W = 280
+const MIN_CARD_H = 108
 const MAX_CARD_H = 400
-const GAP_X = 20
-const GAP_Y = 48
-const PAD_X = 40
-const PAD_Y = 34
+const GAP_X = 32
+const GAP_Y = 56
+const PAD_X = 48
+const PAD_Y = 40
 
-const HEADER_H = 24
-const LINE_H = 18
-const CARD_PAD_Y = 22
-const CARD_GAP = 8
+const HEADER_H = 26
+const LINE_H = 20
+const CARD_PAD_Y = 26
+const CARD_GAP = 10
 const CHAR_W = 7.1
 
 function clamp(value: number, min: number, max: number) {

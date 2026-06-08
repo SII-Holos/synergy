@@ -125,7 +125,7 @@
   [data-slot="dag-graph-viewport"] {
     position: relative;
     width: 100%;
-    height: clamp(240px, 32vh, 420px);
+    height: clamp(280px, 40vh, 520px);
     overflow: hidden;
     cursor: grab;
     touch-action: none;
@@ -200,10 +200,10 @@
     border: 1px solid var(--border-weaker-base);
     background: var(--surface-raised-base);
     box-shadow: var(--dag-card-shadow);
-    padding: 9px 10px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 10px;
     overflow: hidden;
     transition:
       border-color 0.14s ease,
