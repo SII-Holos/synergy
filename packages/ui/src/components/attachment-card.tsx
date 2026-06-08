@@ -29,57 +29,96 @@ function resolveUrl(serverUrl: string, file: AttachmentFile): string | undefined
   return undefined
 }
 
+function isImage(file: AttachmentFile): boolean {
+  return file.mime.startsWith("image/")
+}
+
+function isPdf(file: AttachmentFile): boolean {
+  return file.mime === "application/pdf"
+}
+
+function attachmentKind(file: AttachmentFile): string {
+  if (isPdf(file)) return "PDF"
+  return file.mime.split("/")[1]?.toUpperCase() ?? "FILE"
+}
+
+function visualWeight(file: AttachmentFile): number {
+  return isImage(file) ? 2 : 1
+}
+
+function attachmentColumns(files: AttachmentFile[]): AttachmentFile[][] {
+  if (files.length <= 1) return files.length ? [files] : []
+
+  const columns: AttachmentFile[][] = [[], []]
+  const weights = [0, 0]
+
+  for (const file of files) {
+    const index = weights[0] <= weights[1] ? 0 : 1
+    columns[index].push(file)
+    weights[index] += visualWeight(file)
+  }
+
+  return columns.filter((column) => column.length > 0)
+}
+
 export function AttachmentCard(props: { file: AttachmentFile; serverUrl: string }) {
   const dialog = useDialog()
   const url = createMemo(() => resolveUrl(props.serverUrl, props.file))
+  const filename = createMemo(() => props.file.filename ?? (isPdf(props.file) ? "file.pdf" : "file"))
 
   return (
     <Show
-      when={props.file.mime.startsWith("image/") && url()}
+      when={isImage(props.file) && url()}
       fallback={
-        <Show
-          when={props.file.mime === "application/pdf" && url()}
-          fallback={
-            <a
-              data-component="attachment-card"
-              data-type="file"
-              href={url() ?? "#"}
-              download={props.file.filename ?? "file"}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <FileIcon node={{ path: props.file.filename ?? "file", type: "file" }} />
-              <span data-slot="attachment-card-filename">{props.file.filename ?? "file"}</span>
-              <Icon name="download" size="small" />
-            </a>
-          }
+        <a
+          data-component="attachment-card"
+          data-type={isPdf(props.file) ? "pdf" : "file"}
+          href={url() ?? "#"}
+          download={isPdf(props.file) ? undefined : filename()}
+          target="_blank"
+          rel="noopener noreferrer"
         >
-          <a data-component="attachment-card" data-type="pdf" href={url()!} target="_blank" rel="noopener noreferrer">
-            <FileIcon node={{ path: props.file.filename ?? "file.pdf", type: "file" }} />
-            <span data-slot="attachment-card-filename">{props.file.filename ?? "file.pdf"}</span>
-            <Icon name="scan-eye" size="small" />
-          </a>
-        </Show>
+          <span data-slot="attachment-card-preview">
+            <FileIcon node={{ path: filename(), type: "file" }} />
+          </span>
+          <span data-slot="attachment-card-body">
+            <span data-slot="attachment-card-filename">{filename()}</span>
+            <span data-slot="attachment-card-meta">{attachmentKind(props.file)}</span>
+          </span>
+          <Icon name={isPdf(props.file) ? "scan-eye" : "download"} size="small" />
+        </a>
       }
     >
       <button
         type="button"
         data-component="attachment-card"
         data-type="image"
-        aria-label={`Preview ${props.file.filename ?? "image attachment"}`}
-        title={props.file.filename ?? "Image attachment"}
-        onClick={() => dialog.show(() => <ImagePreview src={url()!} alt={props.file.filename ?? "attachment"} />)}
+        aria-label={`Preview ${filename()}`}
+        title={filename()}
+        onClick={() => dialog.show(() => <ImagePreview src={url()!} alt={filename()} />)}
       >
-        <img src={url()!} alt={props.file.filename ?? "attachment"} loading="lazy" />
+        <img src={url()!} alt={filename()} loading="lazy" />
       </button>
     </Show>
   )
 }
 
 export function AttachmentList(props: { files: AttachmentFile[]; serverUrl: string }) {
+  const columns = createMemo(() => attachmentColumns(props.files))
+
   return (
-    <div data-component="tool-attachments">
-      <For each={props.files}>{(file) => <AttachmentCard file={file} serverUrl={props.serverUrl} />}</For>
-    </div>
+    <Show when={columns().length > 0}>
+      <div data-component="tool-attachments" data-columns={columns().length}>
+        <div data-slot="attachment-column-layout">
+          <For each={columns()}>
+            {(column) => (
+              <div data-slot="attachment-column">
+                <For each={column}>{(file) => <AttachmentCard file={file} serverUrl={props.serverUrl} />}</For>
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
+    </Show>
   )
 }
