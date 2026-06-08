@@ -6,6 +6,7 @@ import { Instance } from "../../src/scope/instance"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
+import { SessionInvoke } from "../../src/session/invoke"
 
 const ctx = {
   sessionID: "ses_test123",
@@ -109,6 +110,60 @@ describe("tool.look_at", () => {
     })
   })
 
+  describe("user-visible attachments", () => {
+    test("attaches analyzed images when show_to_user is true", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const png = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+            "base64",
+          )
+          await Bun.write(path.join(dir, "visible.png"), png)
+        },
+      })
+
+      const originalAgentGet = Agent.get
+      const originalGetAvailableModel = Agent.getAvailableModel
+      const originalInvoke = SessionInvoke.invoke
+      const originalCancel = SessionInvoke.cancel
+
+      ;(Agent.get as any) = mock(async () => ({ name: "multimodal-looker" }))
+      ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test", modelID: "model" }))
+      ;(Session.create as any) = mock(async (input?: Parameters<typeof Session.create>[0]) => {
+        sessionCreateCalls.push(input)
+        return { id: "ses_child" }
+      })
+      ;(SessionInvoke.invoke as any) = mock(async () => ({ parts: [{ type: "text", text: "one pixel" }] }))
+      ;(SessionInvoke.cancel as any) = mock(() => {})
+
+      try {
+        await Instance.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const lookat = await LookAtTool.init()
+            const result = await lookat.execute(
+              { file_path: path.join(tmp.path, "visible.png"), goal: "describe", show_to_user: true },
+              ctx,
+            )
+
+            expect(result.output).toBe("one pixel")
+            expect(result.metadata.shownToUser).toBe(true)
+            expect(result.attachments).toHaveLength(1)
+            expect(result.attachments?.[0]?.mime).toBe("image/png")
+            expect(result.attachments?.[0]?.filename).toBe("visible.png")
+            expect(result.attachments?.[0]?.url).toStartWith("asset://")
+          },
+        })
+      } finally {
+        ;(Agent.get as any) = originalAgentGet
+        ;(Agent.getAvailableModel as any) = originalGetAvailableModel
+        ;(SessionInvoke.invoke as any) = originalInvoke
+        ;(SessionInvoke.cancel as any) = originalCancel
+      }
+    })
+  })
+
   describe("external_directory permission", () => {
     test("asks for permission when file is outside project directory", async () => {
       await using outerTmp = await tmpdir({
@@ -175,29 +230,5 @@ describe("tool.look_at", () => {
         },
       })
     })
-  })
-})
-
-describe("tool.look_at mime type inference", () => {
-  const cases: [string, string][] = [
-    ["test.jpg", "image/jpeg"],
-    ["test.jpeg", "image/jpeg"],
-    ["test.png", "image/png"],
-    ["test.webp", "image/webp"],
-    ["test.gif", "image/gif"],
-    ["test.heic", "image/heic"],
-    ["test.svg", "image/svg+xml"],
-    ["test.mp4", "video/mp4"],
-    ["test.mov", "video/quicktime"],
-    ["test.webm", "video/webm"],
-    ["test.mp3", "audio/mpeg"],
-    ["test.wav", "audio/wav"],
-    ["test.ogg", "audio/ogg"],
-    ["test.pdf", "application/pdf"],
-    ["test.xyz", "application/octet-stream"],
-  ]
-
-  test.each(cases)("%s -> %s", async () => {
-    expect(true).toBe(true)
   })
 })

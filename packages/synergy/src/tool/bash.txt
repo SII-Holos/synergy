@@ -20,6 +20,11 @@ Before executing the command, please follow these steps:
    - After ensuring proper quoting, execute the command.
    - Capture the output of the command.
 
+3. User-visible artifacts:
+   - If the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation.
+   - Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files.
+   - If you need to inspect an image yourself before showing it, use `look_at`; if the user should see the same image, set `show_to_user: true` or follow with `attach`.
+
 Usage notes:
   - The `command` parameter is required.
   - The `description` parameter is required — write a clear, concise description (5-10 words).

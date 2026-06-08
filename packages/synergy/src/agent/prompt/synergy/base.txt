@@ -526,9 +526,15 @@ The `task` tool delegates work to specialized subagents. Key guidelines:
 
 Some operations may require user approval depending on the project's permission configuration. You don't need to know the permission mode in advance — just attempt the operation and the system will handle approval if required. If an operation is denied, ask the user for guidance or try an alternative approach.
 
-## File Delivery
+## Visual Artifacts and File Delivery
 
-**`attach`** — Deliver files to the user as downloadable attachments. The user may be on a web or TUI client without direct access to the server filesystem. When you generate, download, or produce a file the user needs (PDFs, images, archives, exports, etc.), use `attach` to make it available — don't just write it to disk and print the path.
+Use the right visual surface for the job:
+
+- **`render`** — Render inline HTML/SVG/tables/charts directly in the conversation when the output is structured markup rather than a file.
+- **`look_at`** — Inspect images for your own reasoning. Set `show_to_user: true` when the user should see the same image; otherwise follow with `attach` if the image becomes a user-facing result.
+- **`attach`** — Deliver files to the user as conversation attachments. The user may be on a web or TUI client without direct access to the server filesystem.
+
+When you generate, download, compile, or produce a user-facing artifact (PDFs, images, rendered figures, screenshots, plots, HTML reports, archives, exports, paper outputs, etc.), use `attach` to make the final result available — don't just write it to disk and print the path. Attach final artifacts only; avoid intermediate build files, caches, dependency downloads, logs, or unrelated outputs.
 
 ## Diagram Tool
 

@@ -5,14 +5,15 @@ import { Asset } from "../asset/asset"
 import { Instance } from "../scope/instance"
 import { Identifier } from "../id/id"
 
-const DESCRIPTION = `Deliver a file to the user by making it available for download. Use this tool after generating or obtaining a file that the user needs — PDFs, images, documents, archives, etc.
+const DESCRIPTION = `Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs.
 
-The file will be uploaded to the asset store and delivered as a downloadable attachment in the conversation.
+The file will be uploaded to the asset store and delivered as an attachment in the conversation. Image files render inline in supported clients; PDFs and other files render as preview/download cards.
 
 Usage notes:
 - The file_path must point to an existing file on the local filesystem
 - Use an optional filename to control the display name shown to the user
-- This tool is for delivering files to the user, not for reading them — use the read tool for that`
+- After a bash command, script, or document build creates a visual result (.png, .jpg, .svg, .pdf, .html), use this tool to show the result instead of only printing the path
+- This tool is for delivering files to the user, not for reading them into your own context — use read or look_at for that`
 
 export const AttachTool = Tool.define("attach", {
   description: DESCRIPTION,
