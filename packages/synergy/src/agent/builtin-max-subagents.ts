@@ -30,7 +30,6 @@ import { createSolutionArchitectAgent } from "./prompt/solution-architect/builde
 import { createTestStrategistAgent } from "./prompt/test-strategist/builder"
 import { createTypeTestEngineerAgent } from "./prompt/type-test-engineer/builder"
 import { createTypescriptQualityEngineerAgent } from "./prompt/typescript-quality-engineer/builder"
-import { createWorkflowDesignerAgent } from "./prompt/workflow-designer/builder"
 
 const FACTORIES = [
   createIntentAnalystAgent,
@@ -40,7 +39,6 @@ const FACTORIES = [
   createSolutionArchitectAgent,
   createApiContractDesignerAgent,
   createMigrationArchitectAgent,
-  createWorkflowDesignerAgent,
   createTestStrategistAgent,
   createRegressionReproducerAgent,
   createFixtureBuilderAgent,

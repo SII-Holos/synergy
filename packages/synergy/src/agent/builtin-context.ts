@@ -38,28 +38,10 @@ export interface SubagentDefinition {
   topP?: number
 }
 
-function commandTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    bash: "allow",
-    process: "allow",
-  })
-}
-
 function writeTools(): PermissionNext.Ruleset {
   return PermissionNext.fromConfig({
     edit: "ask",
     write: "ask",
-  })
-}
-
-function anchoredReadTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    read: "deny",
-    grep: "deny",
-    ast_grep: "deny",
-    view_file: "allow",
-    scan_files: "allow",
-    parse_code: "allow",
   })
 }
 
@@ -86,11 +68,20 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     runtime_reload: "deny",
     todowrite: "allow",
     todoread: "allow",
+    bash: "allow",
+    process: "allow",
+    skill: "allow",
+    websearch: "allow",
+    webfetch: "allow",
     read: "allow",
     look_at: "allow",
     grep: "allow",
     ast_grep: "allow",
+    view_file: "allow",
+    scan_files: "allow",
+    parse_code: "allow",
     glob: "allow",
+    list: "allow",
     external_directory: {
       "*": "ask",
       [Truncate.DIR]: "allow",
@@ -98,11 +89,11 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   })
 
   if (profile === "codeWrite" || profile === "testWrite") {
-    return PermissionNext.merge(common, writeTools(), commandTools())
+    return PermissionNext.merge(common, writeTools())
   }
 
   if (profile === "anchoredCodeWrite" || profile === "anchoredTestWrite") {
-    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools(), commandTools())
+    return PermissionNext.merge(common, anchoredWriteTools())
   }
 
   if (profile === "docsWrite") {
@@ -110,11 +101,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   }
 
   if (profile === "anchoredDocsWrite") {
-    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
-  }
-
-  if (profile === "quality" || profile === "review") {
-    return PermissionNext.merge(common, commandTools())
+    return PermissionNext.merge(common, anchoredWriteTools())
   }
 
   if (profile === "memory") {
@@ -155,26 +142,10 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
-  if (profile === "externalResearch") {
-    return PermissionNext.merge(
-      common,
-      PermissionNext.fromConfig({
-        websearch: "allow",
-        webfetch: "allow",
-        skill: {
-          "agent-browser": "allow",
-          "git-guide": "allow",
-        },
-      }),
-    )
-  }
-
   if (profile === "research") {
     return PermissionNext.merge(
       common,
       PermissionNext.fromConfig({
-        websearch: "allow",
-        webfetch: "allow",
         arxiv_search: "allow",
         arxiv_download: "ask",
       }),
