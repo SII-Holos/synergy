@@ -13,6 +13,46 @@ import {
   resolveFilePath,
 } from "./anchored-file"
 
+function noMatchGuidance(params: { path?: string; include?: string; globs?: string[] }): string[] {
+  const guidance = [
+    "No matches found for this search.",
+    "Do not conclude the symbol or text is absent until you broaden the search once.",
+  ]
+  if (params.include || params.globs?.length) {
+    guidance.push(
+      "The include/globs filters may be too narrow. Try again without include/globs or with a broader file pattern.",
+    )
+  }
+  if (params.path) {
+    guidance.push("If the searched concept may live elsewhere, try the parent directory or the repository root.")
+  }
+  guidance.push("For partial code fragments, literals, error messages, and names, keep using scan_files.")
+  guidance.push("For a known complete syntax shape, use parse_code with a complete AST pattern.")
+  return guidance
+}
+
+function formatNoMatches(params: { pattern: string; path?: string; include?: string; globs?: string[] }): string {
+  const details = [
+    `Pattern: ${params.pattern}`,
+    `Search path: ${params.path ?? "current scope"}`,
+    params.include ? `Include: ${params.include}` : undefined,
+    params.globs?.length ? `Globs: ${params.globs.join(", ")}` : undefined,
+  ].filter(Boolean)
+  return [...details, "", ...noMatchGuidance(params)].join("\n")
+}
+
+function formatRipgrepFailure(stderr: string): string {
+  return [
+    "scan_files could not run this regular expression.",
+    stderr.trim(),
+    "",
+    "Check the regex syntax, escape literal metacharacters like (, ), [, ], {, }, and retry.",
+    "If you meant a literal string, remove unnecessary regex punctuation or escape it.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export const ScanFilesTool = Tool.define("scan_files", {
   description: DESCRIPTION,
   parameters: z.object({
@@ -55,10 +95,11 @@ export const ScanFilesTool = Tool.define("scan_files", {
           conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
           tags: {} as Record<string, string>,
           truncated: false,
+          guidance: noMatchGuidance(params),
         },
-        output: "No files found",
+        output: formatNoMatches(params),
       }
-    if (exitCode !== 0) throw new Error(`ripgrep failed: ${stderr}`)
+    if (exitCode !== 0) throw new Error(formatRipgrepFailure(stderr))
 
     const matches = stdout.trim().split(/\r?\n/).filter(Boolean)
     const byFile = new Map<string, { count: number; lines: number[] }>()
@@ -95,8 +136,16 @@ export const ScanFilesTool = Tool.define("scan_files", {
 
     return {
       title: params.pattern,
-      output: blocks.length ? blocks.join("\n\n") : "No files found",
-      metadata: { matches: matches.length, files, matchLines, tags, conflicts, truncated: false },
+      output: blocks.length ? blocks.join("\n\n") : formatNoMatches(params),
+      metadata: {
+        matches: matches.length,
+        files,
+        matchLines,
+        tags,
+        conflicts,
+        truncated: false,
+        guidance: blocks.length ? [] : noMatchGuidance(params),
+      },
     }
   },
 })

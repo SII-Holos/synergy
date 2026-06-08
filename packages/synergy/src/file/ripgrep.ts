@@ -202,6 +202,13 @@ export namespace Ripgrep {
 
   export async function filepath() {
     const { filepath } = await state()
+    // Cache may point to a stale path from a previous test's temp-homedir setup
+    const file = Bun.file(filepath)
+    if (!(await file.exists())) {
+      state.reset()
+      const { filepath: newFilepath } = await state()
+      return newFilepath
+    }
     return filepath
   }
 

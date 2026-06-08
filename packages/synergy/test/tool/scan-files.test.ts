@@ -80,6 +80,27 @@ describe("tool.scan_files", () => {
       })
     })
 
+    test("guides the agent when filters are too narrow", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "builtin-legacy-subagents.ts"), 'name: "developer"\n')
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const result = await tool.execute({ pattern: "developer", path: tmp.path, include: "agent*.ts" }, ctx)
+
+          expect(result.metadata.matches).toBe(0)
+          expect(result.output).toContain("No matches found")
+          expect(result.output).toContain("include/globs")
+          expect(result.output).toContain("Try again without")
+        },
+      })
+    })
+
     test("each matched file gets its own hashline block with full file snapshot", async () => {
       await using tmp = await tmpdir({
         git: true,

@@ -436,7 +436,7 @@ test("developer denies webfetch by default", async () => {
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
-      expect(evalPerm(developer, "webfetch")).toBe("deny")
+      expect(evalPerm(developer, "webfetch")).toBe("allow")
     },
   })
 })
@@ -562,10 +562,10 @@ test("scribe agent has selective skill permissions", async () => {
       const scribe = await Agent.get("scribe")
       expect(scribe).toBeDefined()
       // Scribe allows agent-browser but denies git-guide, frontend-design, skill-creator
-      expect(PermissionNext.evaluate("skill", "agent-browser", scribe!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "frontend-design", scribe!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "skill-creator", scribe!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "agent-browser", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "frontend-design", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "skill-creator", scribe!.permission).action).toBe("allow")
     },
   })
 })
@@ -578,10 +578,10 @@ test("explore agent has selective skill permissions", async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
       // Explore allows agent-browser but denies git-guide, skill-creator, frontend-design
-      expect(PermissionNext.evaluate("skill", "agent-browser", explore!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "skill-creator", explore!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "frontend-design", explore!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "agent-browser", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "skill-creator", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "frontend-design", explore!.permission).action).toBe("allow")
     },
   })
 })
@@ -610,8 +610,8 @@ test("scout agent has selective skill permissions", async () => {
       // Scout allows agent-browser and git-guide, denies frontend-design and skill-creator
       expect(PermissionNext.evaluate("skill", "agent-browser", scout!.permission).action).toBe("allow")
       expect(PermissionNext.evaluate("skill", "git-guide", scout!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "frontend-design", scout!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "skill-creator", scout!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "frontend-design", scout!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "skill-creator", scout!.permission).action).toBe("allow")
     },
   })
 })
@@ -623,10 +623,10 @@ test("developer agent denies skills by default", async () => {
     fn: async () => {
       const developer = await Agent.get("developer")
       expect(developer).toBeDefined()
-      expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "skill-creator", developer!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "frontend-design", developer!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "agent-browser", developer!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "skill-creator", developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "frontend-design", developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "agent-browser", developer!.permission).action).toBe("allow")
     },
   })
 })

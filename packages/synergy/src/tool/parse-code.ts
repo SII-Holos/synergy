@@ -14,6 +14,56 @@ import {
   resolveFilePath,
 } from "./anchored-file"
 
+function parseGuidance(params: { pattern: string; lang: string; paths?: string[]; globs?: string[] }): string[] {
+  const guidance = [
+    "AST patterns must be complete, parseable syntax for the selected language.",
+    "If you are searching for a literal or partial fragment, use scan_files instead.",
+  ]
+  if (params.globs?.length)
+    guidance.push("The globs filter may be too narrow. Retry without globs if the structure might be elsewhere.")
+  if (params.paths?.length)
+    guidance.push("If the structure may live outside these paths, retry from a broader parent directory.")
+  guidance.push(
+    "TypeScript examples: export namespace $NAME { $$$ } · function $NAME($$$) { $$$ } · const $NAME = $VALUE",
+  )
+  return guidance
+}
+
+function formatParseError(
+  params: { pattern: string; lang: string; paths?: string[]; globs?: string[] },
+  error: string,
+): string {
+  return [
+    "The AST pattern is not parseable for this language.",
+    `Pattern: ${params.pattern}`,
+    `Language: ${params.lang}`,
+    "",
+    error.trim(),
+    "",
+    ...parseGuidance(params),
+  ].join("\n")
+}
+
+function formatNoStructuralMatches(params: {
+  pattern: string
+  lang: string
+  paths?: string[]
+  globs?: string[]
+}): string {
+  return [
+    "No structural matches found.",
+    `Pattern: ${params.pattern}`,
+    `Language: ${params.lang}`,
+    `Search path: ${params.paths?.join(", ") || "current scope"}`,
+    params.globs?.length ? `Globs: ${params.globs.join(", ")}` : undefined,
+    "",
+    "Do not conclude the code is absent until you broaden the path/filter once or try scan_files for literal text.",
+    ...parseGuidance(params),
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export const ParseCodeTool = Tool.define("parse_code", {
   description: DESCRIPTION,
   parameters: z.object({
@@ -56,10 +106,10 @@ export const ParseCodeTool = Tool.define("parse_code", {
           conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
           tags: {} as Record<string, string>,
           truncated: result.truncated,
+          guidance: parseGuidance(params),
         },
-        output: result.error,
+        output: formatParseError(params, result.error),
       }
-
     const byFile = new Map<string, { count: number; lines: number[]; ranges: string[] }>()
     for (const match of result.matches) {
       const entry = byFile.get(match.file) ?? { count: 0, lines: [], ranges: [] }
@@ -99,7 +149,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
 
     return {
       title: `${params.lang}: ${params.pattern}`,
-      output: blocks.length ? blocks.join("\n\n") : "No matches found",
+      output: blocks.length ? blocks.join("\n\n") : formatNoStructuralMatches(params),
       metadata: {
         matches: result.matches.length,
         files,
@@ -108,6 +158,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
         conflicts,
         tags,
         truncated: result.truncated,
+        guidance: blocks.length ? [] : parseGuidance(params),
       },
     }
   },

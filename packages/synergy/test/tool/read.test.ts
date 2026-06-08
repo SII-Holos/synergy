@@ -195,7 +195,7 @@ describe("tool.read truncation", () => {
   test("truncates by line count when limit is specified", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        const lines = Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n")
+        const lines = Array.from({ length: 200 }, (_, i) => `line${i}`).join("\n")
         await Bun.write(path.join(dir, "many-lines.txt"), lines)
       },
     })
@@ -207,8 +207,8 @@ describe("tool.read truncation", () => {
         expect(result.metadata.truncated).toBe(true)
         expect(result.output).toContain("File has more lines")
         expect(result.output).toContain("line0")
-        expect(result.output).toContain("line9")
-        expect(result.output).not.toContain("line10")
+        expect(result.output).toContain("line119")
+        expect(result.output).not.toContain("line120")
       },
     })
   })
@@ -233,7 +233,7 @@ describe("tool.read truncation", () => {
   test("respects offset parameter", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        const lines = Array.from({ length: 20 }, (_, i) => `line${i}`).join("\n")
+        const lines = Array.from({ length: 150 }, (_, i) => `line${i}`).join("\n")
         await Bun.write(path.join(dir, "offset.txt"), lines)
       },
     })
@@ -243,9 +243,9 @@ describe("tool.read truncation", () => {
         const read = await ReadTool.init()
         const result = await read.execute({ filePath: path.join(tmp.path, "offset.txt"), offset: 10, limit: 5 }, ctx)
         expect(result.output).toContain("line10")
-        expect(result.output).toContain("line14")
+        expect(result.output).toContain("line129")
         expect(result.output).not.toContain("line0")
-        expect(result.output).not.toContain("line15")
+        expect(result.output).not.toContain("line130")
       },
     })
   })

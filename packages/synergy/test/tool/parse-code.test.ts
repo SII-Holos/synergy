@@ -103,7 +103,7 @@ describe("tool.parse_code", () => {
   })
 
   describe("no matches handling", () => {
-    test("returns no matches result", async () => {
+    test("returns guidance when no structural matches are found", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
@@ -117,6 +117,29 @@ describe("tool.parse_code", () => {
           const result = await tool.execute({ pattern: "someNonexistentPattern($$$)", lang: "typescript" }, ctx)
 
           expect(result.metadata.matches).toBe(0)
+          expect(result.output).toContain("No structural matches found")
+          expect(result.output).toContain("If you are searching for a literal or partial fragment, use scan_files")
+        },
+      })
+    })
+
+    test("guides the agent when the AST pattern is incomplete", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "dag.ts"), "export namespace Dag {\n  export const x = 1\n}\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ParseCodeTool.init()
+          const result = await tool.execute({ pattern: "export namespace Dag {", lang: "typescript" }, ctx)
+
+          expect(result.metadata.matches).toBe(0)
+          expect(result.output).toContain("The AST pattern is not parseable")
+          expect(result.output).toContain("export namespace $NAME { $$$ }")
+          expect(result.output).toContain("scan_files")
         },
       })
     })
