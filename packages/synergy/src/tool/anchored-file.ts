@@ -6,6 +6,12 @@ import { formatHashline, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
 import { normalizeContent } from "../hashline/tag"
 
+export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
+export const DEFAULT_VIEW_LINES = 2000
+export const MAX_VIEW_LINES = 3000
+export const DEFAULT_VIEW_BYTES = 50 * 1024
+export const MAX_LINE_COLUMNS = 512
+
 export function resolveFilePath(filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.join(Instance.directory, filePath)
 }
@@ -57,8 +63,24 @@ export async function readTextFile(filePath: string): Promise<string> {
   return file.text()
 }
 
+export async function readTextFileUnderSnapshotCap(filePath: string): Promise<string | undefined> {
+  const file = Bun.file(filePath)
+  const stats = await file.stat().catch(() => undefined)
+  if (!stats) throw new Error(`File not found: ${filePath}`)
+  if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+  if (isKnownBinaryPath(filePath)) throw new Error(`Cannot read binary file: ${filePath}`)
+  if (stats.size > SNAPSHOT_MAX_BYTES) return undefined
+  return file.text()
+}
+
 export function recordHashlineSnapshot(sessionID: string, filePath: string, content: string): string {
   return SessionHashlineStore.get(sessionID).record(filePath, normalizeContent(content))
+}
+
+export async function recordHashlineSnapshotIfSmall(sessionID: string, filePath: string): Promise<string | undefined> {
+  const content = await readTextFileUnderSnapshotCap(filePath)
+  if (content === undefined) return undefined
+  return recordHashlineSnapshot(sessionID, filePath, content)
 }
 
 export function formatRecordedBlock(
@@ -82,6 +104,43 @@ export function markFileRead(sessionID: string, filePath: string): void {
 export function hashlineHeaderFor(sessionID: string, filePath: string, content: string): string {
   const tag = recordHashlineSnapshot(sessionID, filePath, content)
   return formatHashline(displayPath(filePath), tag)
+}
+
+export function normalizeLineLimit(limit: number | undefined, fallback = DEFAULT_VIEW_LINES): number {
+  return Math.min(Math.max(limit ?? fallback, 0), MAX_VIEW_LINES)
+}
+
+export function truncateLineForDisplay(line: string): { text: string; truncated: boolean } {
+  if (line.length <= MAX_LINE_COLUMNS) return { text: line, truncated: false }
+  return { text: `${line.slice(0, MAX_LINE_COLUMNS)}…`, truncated: true }
+}
+
+export function splitDisplayLines(content: string): string[] {
+  const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")
+  if (lines.at(-1) === "") lines.pop()
+  return lines
+}
+
+export function formatSelectedLine(lines: string[], lineNumber: number): { output: string; truncated: boolean } {
+  const raw = lines[lineNumber - 1] ?? ""
+  const line = truncateLineForDisplay(raw)
+  return { output: `${lineNumber}:${line.text}`, truncated: line.truncated }
+}
+
+export function formatSelectedLines(
+  lines: string[],
+  lineNumbers: number[],
+): { output: string; truncatedLines: number[] } {
+  const unique = [...new Set(lineNumbers)].filter((line) => line >= 1 && line <= lines.length).sort((a, b) => a - b)
+  const truncatedLines: number[] = []
+  const output = unique
+    .map((lineNumber) => {
+      const line = formatSelectedLine(lines, lineNumber)
+      if (line.truncated) truncatedLines.push(lineNumber)
+      return line.output
+    })
+    .join("\n")
+  return { output, truncatedLines }
 }
 
 export function diffStats(diff: string): { additions: number; deletions: number } {

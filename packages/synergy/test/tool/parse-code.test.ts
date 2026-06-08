@@ -161,9 +161,11 @@ describe("tool.parse_code", () => {
           const result = await tool.execute({ pattern: "export function $NAME($$$) { $$$ }", lang: "typescript" }, ctx)
 
           expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toMatch(/\[a\.ts#[0-9A-F]{4}\]\n1:export function a/)
+          expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
+          expect(result.output).toContain("1:export function a")
           expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toMatch(/\[b\.ts#[0-9A-F]{4}\]\n1:export function b/)
+          expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
+          expect(result.output).toContain("1:export function b")
         },
       })
     })

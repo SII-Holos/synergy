@@ -8,6 +8,8 @@ Rules:
 - Use absolute paths when possible.
 - `offset` is 0-based; `limit` controls displayed lines only. Hidden lines are still unseen by the agent.
 - Use `ranges` when you need multiple non-contiguous regions from one file. The output still has one `[path#TAG]` header for the whole file.
+- Very large files may be shown without a `[path#TAG]` header. That output is for inspection only and cannot feed `revise_file`; narrow the target with `scan_files` or a smaller `view_file` range first.
+- Long lines may be shortened in displayed output. Inspect the exact region again before editing shortened lines.
 - If output is truncated or a region was not displayed, call `view_file` again with an explicit `offset` or `ranges` entry before editing that region.
 - If the output contains a conflict warning, do not use `revise_file` on that file until the conflict markers are resolved. Use `save_file` only when intentionally replacing the whole conflicted file.
 - After `revise_file` or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.

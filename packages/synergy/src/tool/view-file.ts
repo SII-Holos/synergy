@@ -5,36 +5,55 @@ import { LSP } from "../lsp"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import {
   assertInsideOrAsk,
+  DEFAULT_VIEW_BYTES,
+  DEFAULT_VIEW_LINES,
   displayPath,
   formatRecordedBlock,
+  formatSelectedLines,
   markFileRead,
+  normalizeLineLimit,
   readTextFile,
+  readTextFileUnderSnapshotCap,
   resolveFilePath,
+  splitDisplayLines,
 } from "./anchored-file"
-
-const DEFAULT_READ_LIMIT = 2000
 
 const RangeSchema = z.object({
   offset: z.coerce.number().int().min(0).describe("The 0-based line offset for this displayed range"),
   limit: z.coerce.number().int().min(0).optional().describe("The number of lines to display for this range"),
 })
 
-function normalizeLimit(limit: number | undefined): number {
-  return limit ?? DEFAULT_READ_LIMIT
+interface RangeMetadata {
+  offset: number
+  limit: number
+  startLine: number
+  endLine: number
+  truncated: boolean
+  truncatedLines: number[]
 }
 
 function formatLineRange(
   lines: string[],
   offset: number,
   limit: number,
-): { body: string; truncated: boolean; endLine: number } {
+): { body: string; truncated: boolean; endLine: number; truncatedLines: number[] } {
   const shown = lines.slice(offset, offset + limit)
-  const body = shown.map((line, index) => `${offset + index + 1}:${line}`).join("\n")
+  const lineNumbers = shown.map((_, index) => offset + index + 1)
+  const formatted = formatSelectedLines(lines, lineNumbers)
   return {
-    body,
-    truncated: offset + shown.length < lines.length,
+    body: formatted.output,
+    truncated: offset + shown.length < lines.length || formatted.truncatedLines.length > 0,
     endLine: offset + shown.length,
+    truncatedLines: formatted.truncatedLines,
   }
+}
+
+function cappedPreviewMessage(filePath: string): string {
+  return [
+    `[Large file: ${displayPath(filePath)} is too large for anchored editing in one call.]`,
+    "Only the beginning of the file is displayed. No [path#TAG] header is returned, so revise_file cannot use this output directly.",
+    "Use scan_files or a narrower view_file range after locating the relevant lines.",
+  ].join("\n")
 }
 
 export const ViewFileTool = Tool.define("view_file", {
@@ -60,30 +79,29 @@ export const ViewFileTool = Tool.define("view_file", {
     await assertInsideOrAsk(filePath, ctx)
     await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
 
-    const content = await readTextFile(filePath)
-    const { tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
+    let content = await readTextFileUnderSnapshotCap(filePath)
+    const snapshotAvailable = content !== undefined
+    if (content === undefined) {
+      const file = Bun.file(filePath)
+      content = await file.slice(0, DEFAULT_VIEW_BYTES).text()
+    }
+
+    const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
+    const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
     markFileRead(ctx.sessionID, filePath)
     LSP.touchFile(filePath, false)
 
-    const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")
-    if (lines.at(-1) === "") lines.pop()
-
+    const lines = splitDisplayLines(content)
     const display = displayPath(filePath)
-    const conflict = detectConflicts(content)
+    const conflict = detectConflicts(fullContentForConflict)
     const warning = conflictWarning(conflict)
-    const header = `[${display}#${tag}]`
+    const header = tag ? `[${display}#${tag}]` : cappedPreviewMessage(filePath)
 
-    const emptyRangeMetadata: Array<{
-      offset: number
-      limit: number
-      startLine: number
-      endLine: number
-      truncated: boolean
-    }> = []
+    const emptyRangeMetadata: RangeMetadata[] = []
     if (params.ranges) {
       const blocks: string[] = []
-      const rangeMetadata = params.ranges.map((range, index) => {
-        const limit = normalizeLimit(range.limit)
+      const rangeMetadata: RangeMetadata[] = params.ranges.map((range, index) => {
+        const limit = normalizeLineLimit(range.limit)
         const formatted = formatLineRange(lines, range.offset, limit)
         if (formatted.body)
           blocks.push(`## Range ${index + 1}: lines ${range.offset + 1}-${formatted.endLine}\n${formatted.body}`)
@@ -93,6 +111,7 @@ export const ViewFileTool = Tool.define("view_file", {
           startLine: range.offset + 1,
           endLine: formatted.endLine,
           truncated: formatted.truncated,
+          truncatedLines: formatted.truncatedLines,
         }
       })
       const outputParts = [warning, header, ...blocks].filter(Boolean)
@@ -106,7 +125,9 @@ export const ViewFileTool = Tool.define("view_file", {
           ranges: rangeMetadata,
           offset: undefined as number | undefined,
           limit: undefined as number | undefined,
-          truncated: undefined as boolean | undefined,
+          truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
+          truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
+          snapshotAvailable,
           hasConflicts: conflict.hasConflicts,
           conflicts: conflict.conflicts,
         },
@@ -114,7 +135,7 @@ export const ViewFileTool = Tool.define("view_file", {
     }
 
     const offset = params.offset ?? 0
-    const limit = normalizeLimit(params.limit)
+    const limit = normalizeLineLimit(params.limit, DEFAULT_VIEW_LINES)
     const formatted = formatLineRange(lines, offset, limit)
     const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
 
@@ -128,7 +149,9 @@ export const ViewFileTool = Tool.define("view_file", {
         limit,
         ranges: emptyRangeMetadata,
         totalLines: lines.length,
-        truncated: formatted.truncated,
+        truncated: !snapshotAvailable || formatted.truncated,
+        truncatedLines: formatted.truncatedLines,
+        snapshotAvailable,
         hasConflicts: conflict.hasConflicts,
         conflicts: conflict.conflicts,
       },

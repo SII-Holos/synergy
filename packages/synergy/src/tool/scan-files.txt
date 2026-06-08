@@ -1,12 +1,17 @@
 Search file contents and return anchored file blocks.
 
-Use this instead of `grep` in the anchored coding harness. Every matched file is returned with a real `[path#TAG]` plus `LINE:TEXT` rows, so search results can feed directly into `revise_file`. The output also reports matched line numbers for each tagged file.
+Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed.
 
 Parameters:
 - `pattern` is a regular expression.
 - `path` is the directory to search; defaults to the current working directory.
 - `include` and `globs` filter file paths.
+- `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached.
+- `perFileLimit` caps matched lines per file so one hot file cannot dominate the result.
+- `timeoutMs` bounds long searches. If a search times out, narrow `path`, `include`/`globs`, or `pattern`.
+- `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results.
 
 Critical:
 - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags.
+- Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search.
 - Match line numbers identify where to inspect/edit, but `revise_file` still requires tight ranges and the latest tag.

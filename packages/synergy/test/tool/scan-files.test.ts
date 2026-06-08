@@ -115,7 +115,10 @@ describe("tool.scan_files", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
-          const result = await tool.execute({ pattern: "import", path: tmp.path, globs: ["*.ts"] }, ctx)
+          const result = await tool.execute(
+            { pattern: "import", path: tmp.path, globs: ["*.ts"], outputMode: "files" },
+            ctx,
+          )
 
           // Full file snapshot in hashline format
           expect(result.output).toContain("1:import { foo }")
@@ -189,9 +192,9 @@ describe("tool.scan_files", () => {
           const tool = await ScanFilesTool.init()
           const result = await tool.execute({ pattern: "helper", path: tmp.path }, ctx)
 
-          // Should still be a full-file snapshot, not just context
-          expect(result.output).toContain("1:")
-          expect(result.output).toContain("2:")
+          // Default output should stay narrow and include only matching lines.
+          expect(result.output).not.toContain("1:function foo()")
+          expect(result.output).toContain("2:  const x = helper()")
         },
       })
     })
@@ -214,6 +217,49 @@ describe("tool.scan_files", () => {
           expect(result.metadata.matches).toBeGreaterThanOrEqual(2)
           expect(result.metadata.files).toContain("x.ts")
           expect(result.metadata.matchLines["x.ts"]).toEqual([1, 2])
+        },
+      })
+    })
+
+    test("limits files and returns pagination guidance", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "a.ts"), "hit\n")
+          await Bun.write(path.join(dir, "b.ts"), "hit\n")
+          await Bun.write(path.join(dir, "c.ts"), "hit\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const result = await tool.execute({ pattern: "hit", path: tmp.path, include: "*.ts", limitFiles: 2 }, ctx)
+
+          expect(result.metadata.files).toHaveLength(2)
+          expect(result.metadata.limitReached).toBe(true)
+          expect(result.metadata.nextSkipFiles).toBe(2)
+          expect(result.output).toContain("Result limit reached")
+        },
+      })
+    })
+
+    test("default output returns matching lines instead of full files", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "narrow.ts"), "before\nhit\nafter\n")
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const result = await tool.execute({ pattern: "hit", path: tmp.path, include: "*.ts" }, ctx)
+
+          expect(result.output).toContain("2:hit")
+          expect(result.output).not.toContain("1:before")
+          expect(result.output).not.toContain("3:after")
         },
       })
     })

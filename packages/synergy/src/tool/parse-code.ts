@@ -9,10 +9,15 @@ import {
   assertInsideOrAsk,
   displayPath,
   formatRecordedBlock,
+  formatSelectedLines,
   markFileRead,
-  readTextFile,
+  readTextFileUnderSnapshotCap,
   resolveFilePath,
+  splitDisplayLines,
 } from "./anchored-file"
+
+const DEFAULT_AST_LIMIT = 50
+const MAX_AST_LIMIT = 100
 
 function parseGuidance(params: { pattern: string; lang: string; paths?: string[]; globs?: string[] }): string[] {
   const guidance = [
@@ -64,6 +69,11 @@ function formatNoStructuralMatches(params: {
     .join("\n")
 }
 
+function normalizeLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return DEFAULT_AST_LIMIT
+  return Math.min(Math.floor(value), MAX_AST_LIMIT)
+}
+
 export const ParseCodeTool = Tool.define("parse_code", {
   description: DESCRIPTION,
   parameters: z.object({
@@ -74,6 +84,8 @@ export const ParseCodeTool = Tool.define("parse_code", {
     paths: z.array(z.string()).optional().describe("Paths to search; defaults to the current working directory"),
     globs: z.array(z.string()).optional().describe("Additional include/exclude globs; prefix exclusions with !"),
     context: z.number().optional().describe("Number of context lines to include around each structural match"),
+    limit: z.number().int().min(1).optional().describe("Maximum matches to return; defaults to 50"),
+    skip: z.number().int().min(0).optional().describe("Matches to skip for pagination"),
   }),
   async execute(params, ctx) {
     if (!params.pattern) throw new Error("pattern is required")
@@ -95,23 +107,36 @@ export const ParseCodeTool = Tool.define("parse_code", {
       context: params.context,
       cwd: Instance.directory,
     })
+    const limit = normalizeLimit(params.limit)
+    const skip = Math.max(params.skip ?? 0, 0)
+
     if (result.error)
       return {
         title: `${params.lang}: ${params.pattern}`,
         metadata: {
           matches: 0,
+          returnedMatches: 0,
           files: [] as string[],
           matchLines: {} as Record<string, number[]>,
           matchRanges: {} as Record<string, string[]>,
           conflicts: {} as Record<string, ReturnType<typeof detectConflicts>["conflicts"]>,
           tags: {} as Record<string, string>,
           truncated: result.truncated,
+          limitReached: false,
+          nextSkip: undefined as number | undefined,
+          skip,
+          limit,
+          oversizedFiles: [] as string[],
           guidance: parseGuidance(params),
         },
         output: formatParseError(params, result.error),
       }
+
+    const selectedMatches = result.matches.slice(skip, skip + limit)
+    const limitReached = result.truncated || result.matches.length > skip + limit
+    const nextSkip = result.matches.length > skip + limit ? skip + limit : undefined
     const byFile = new Map<string, { count: number; lines: number[]; ranges: string[] }>()
-    for (const match of result.matches) {
+    for (const match of selectedMatches) {
       const entry = byFile.get(match.file) ?? { count: 0, lines: [], ranges: [] }
       entry.count++
       const startLine = match.range.start.line + 1
@@ -127,18 +152,29 @@ export const ParseCodeTool = Tool.define("parse_code", {
     const matchRanges: Record<string, string[]> = {}
     const conflicts: Record<string, ReturnType<typeof detectConflicts>["conflicts"]> = {}
     const tags: Record<string, string> = {}
+    const oversizedFiles: string[] = []
+
     for (const [rawPath, entry] of byFile.entries()) {
       const filePath = resolveFilePath(rawPath)
-      const content = await readTextFile(filePath).catch(() => undefined)
-      if (content === undefined) continue
-      const { output, tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
-      markFileRead(ctx.sessionID, filePath)
+      const content = await readTextFileUnderSnapshotCap(filePath).catch(() => undefined)
       const pathLabel = displayPath(filePath)
+      const lines = entry.lines.sort((a, b) => a - b)
+      if (content === undefined) {
+        oversizedFiles.push(pathLabel)
+        blocks.push(`AST matches in ${pathLabel} (file too large for anchored tag): ${entry.ranges.join(", ")}`)
+        files.push(pathLabel)
+        matchLines[pathLabel] = lines
+        matchRanges[pathLabel] = entry.ranges
+        continue
+      }
+
+      const contentLines = splitDisplayLines(content)
+      const { tag } = formatRecordedBlock(ctx.sessionID, filePath, content)
+      markFileRead(ctx.sessionID, filePath)
       const conflict = detectConflicts(content)
       const warning = conflictWarning(conflict)
-      const lines = entry.lines.sort((a, b) => a - b)
       blocks.push(
-        `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${output}`,
+        `${warning ? `${warning}\n` : ""}AST matches in [${pathLabel}#${tag}]: ${entry.ranges.join(", ")}\n${formatSelectedLines(contentLines, lines).output}`,
       )
       files.push(pathLabel)
       matchLines[pathLabel] = lines
@@ -147,17 +183,30 @@ export const ParseCodeTool = Tool.define("parse_code", {
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
+    const footer = limitReached
+      ? `\n\n[Result limit reached. Use skip=${nextSkip ?? skip + limit} to continue, or narrow paths/globs/pattern.]`
+      : ""
+    const oversized = oversizedFiles.length
+      ? `\n\n[${oversizedFiles.length} matched file(s) were too large for anchored tags: ${oversizedFiles.join(", ")}. Use narrower searches or inspect smaller ranges.]`
+      : ""
+
     return {
       title: `${params.lang}: ${params.pattern}`,
-      output: blocks.length ? blocks.join("\n\n") : formatNoStructuralMatches(params),
+      output: blocks.length ? `${blocks.join("\n\n")}${footer}${oversized}` : formatNoStructuralMatches(params),
       metadata: {
-        matches: result.matches.length,
+        matches: result.totalMatches,
+        returnedMatches: selectedMatches.length,
         files,
         matchLines,
         matchRanges,
         conflicts,
         tags,
-        truncated: result.truncated,
+        truncated: limitReached || oversizedFiles.length > 0,
+        limitReached,
+        nextSkip,
+        skip,
+        limit,
+        oversizedFiles,
         guidance: blocks.length ? [] : parseGuidance(params),
       },
     }
