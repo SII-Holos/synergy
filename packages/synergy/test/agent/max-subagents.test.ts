@@ -20,7 +20,7 @@ describe("synergy-max subagents", () => {
     expect(agents["workflow-designer"]).toBeUndefined()
   })
 
-  test("all max subagents receive the base utility and read tool bundles", () => {
+  test("all max subagents receive the base utility and research tool bundle", () => {
     for (const agent of Object.values(agents)) {
       for (const permission of [
         "bash",
@@ -30,19 +30,15 @@ describe("synergy-max subagents", () => {
         "webfetch",
         "look_at",
         "glob",
-        "read",
-        "grep",
-        "ast_grep",
-        "view_file",
-        "scan_files",
-        "parse_code",
+        "arxiv_search",
       ]) {
         expect(action(agent, permission)).toBe("allow")
       }
+      expect(action(agent, "arxiv_download")).toBe("ask")
     }
   })
 
-  test("anchored write agents can read broadly but write through the anchored file harness", () => {
+  test("anchored write agents use only the anchored file harness", () => {
     const anchoredWriters = [
       "implementation-engineer",
       "refactoring-engineer",
@@ -63,15 +59,15 @@ describe("synergy-max subagents", () => {
       expect(action(agent, "parse_code")).toBe("allow")
       expect(action(agent, "revise_file")).toBe("ask")
       expect(action(agent, "save_file")).toBe("ask")
-      expect(action(agent, "read")).toBe("allow")
-      expect(action(agent, "grep")).toBe("allow")
-      expect(action(agent, "ast_grep")).toBe("allow")
+      expect(action(agent, "read")).toBe("deny")
+      expect(action(agent, "grep")).toBe("deny")
+      expect(action(agent, "ast_grep")).toBe("deny")
       expect(action(agent, "edit")).toBe("deny")
       expect(action(agent, "write")).toBe("deny")
     }
   })
 
-  test("classic read agents do not receive anchored write tools", () => {
+  test("classic read agents use only the classic read harness and cannot write files", () => {
     const classicReaders = [
       "intent-analyst",
       "requirements-engineer",
@@ -99,19 +95,23 @@ describe("synergy-max subagents", () => {
       expect(action(agent, "read")).toBe("allow")
       expect(action(agent, "grep")).toBe("allow")
       expect(action(agent, "ast_grep")).toBe("allow")
-      expect(action(agent, "view_file")).toBe("allow")
-      expect(action(agent, "scan_files")).toBe("allow")
-      expect(action(agent, "parse_code")).toBe("allow")
+      expect(action(agent, "view_file")).toBe("deny")
+      expect(action(agent, "scan_files")).toBe("deny")
+      expect(action(agent, "parse_code")).toBe("deny")
       expect(action(agent, "revise_file")).toBe("deny")
       expect(action(agent, "save_file")).toBe("deny")
+      expect(action(agent, "edit")).toBe("deny")
+      expect(action(agent, "write")).toBe("deny")
     }
   })
 
-  test("knowledge agents keep their specialized bundles", () => {
+  test("knowledge agents keep their specialized bundles without file write access", () => {
     expect(action(agents["memory-curator"], "memory_search")).toBe("allow")
     expect(action(agents["memory-curator"], "memory_write")).toBe("allow")
+    expect(action(agents["memory-curator"], "revise_file")).toBe("deny")
     expect(action(agents["note-librarian"], "note_search")).toBe("allow")
     expect(action(agents["note-librarian"], "note_write")).toBe("allow")
+    expect(action(agents["note-librarian"], "save_file")).toBe("deny")
     expect(action(agents["session-historian"], "session_search")).toBe("allow")
     expect(action(agents["session-historian"], "session_control")).toBe("deny")
   })
