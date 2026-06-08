@@ -13,6 +13,6 @@ export function createTypeTestEngineerAgent(ctx: BuiltinAgentContext) {
       "Tests static type contracts. Use for TypeScript generics, overloads, schemas, public types, Rust trait bounds, typestates, compile-fail behavior, or typed Python protocols and stubs. Provide the type surface and expected contract; the agent returns type tests, compile expectations, blockers, and reusable context.",
     prompt: buildTypeTestEngineerPrompt(),
     model: "thinking",
-    permission: "testWrite",
+    permission: "anchoredTestWrite",
   })
 }

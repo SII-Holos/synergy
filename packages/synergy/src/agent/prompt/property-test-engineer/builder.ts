@@ -13,6 +13,6 @@ export function createPropertyTestEngineerAgent(ctx: BuiltinAgentContext) {
       "Designs property-based tests for invariants. Use for algorithms, parsers, serializers, normalizers, validators, state machines, and data transformations. Provide the target behavior and language context; the agent returns properties, generators, property tests, failure interpretation, blockers, and reusable context.",
     prompt: buildPropertyTestEngineerPrompt(),
     model: "thinking",
-    permission: "testWrite",
+    permission: "anchoredTestWrite",
   })
 }

@@ -455,6 +455,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Read",
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "view_file":
+      return {
+        icon: "scan-eye",
+        title: "View File",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "list":
       return {
         icon: "folder",
@@ -471,6 +477,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "regex",
         title: "Grep",
+        subtitle: input.pattern,
+      }
+    case "scan_files":
+      return {
+        icon: "scan-search",
+        title: "Scan Files",
         subtitle: input.pattern,
       }
     case "webfetch":
@@ -497,6 +509,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Edit",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
+    case "revise_file": {
+      const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
+      return {
+        icon: "file-pen",
+        title: "Revise File",
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
     case "multiedit":
       return {
         icon: "pen-line",
@@ -514,6 +534,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Write",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
+    case "save_file": {
+      const path = metadata.path || metadata.filepath || input.filePath
+      return {
+        icon: "file-pen",
+        title: metadata.exists === false ? "Create File" : "Save File",
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
     case "todowrite":
       return {
         icon: "clipboard-check",
@@ -562,6 +590,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "braces",
         title: "AST Search",
+        subtitle: input.pattern,
+      }
+    case "parse_code":
+      return {
+        icon: "braces",
+        title: "Parse Code",
         subtitle: input.pattern,
       }
     case "lsp":

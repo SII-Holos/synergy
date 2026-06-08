@@ -18,6 +18,10 @@ Give implementation agents a failure they can use to verify the fix.
 - Change one variable at a time during diagnosis.
 - Do not implement the fix.
 
+## Anchored Coding Harness
+
+When editing or inspecting files, use the anchored tool family: `view_file` for file reads, `scan_files` for text search, `parse_code` for AST search, `revise_file` for line-anchored patches, and `save_file` for new files or full rewrites. Never fabricate `[path#TAG]`; all `revise_file` line numbers refer to the original tagged file; keep ranges tight; use `insert` for pure additions; after any edit or save, use the returned new tag. On tag mismatch, stop and re-run `view_file` instead of guessing.
+
 # Report
 
 Return Markdown with these sections:

@@ -110,9 +110,7 @@ export namespace Cortex {
       return current ?? task
     }
 
-    current.status = "running"
-    tasks.set(taskID, current)
-    Bus.publish(Event.TasksUpdated, { tasks: list() })
+    setTaskStatus(taskID, "running")
 
     runTask(current, input.model).catch((error) => {
       log.error("task error", { taskID, error })
@@ -121,6 +119,23 @@ export namespace Cortex {
 
     return current
   })
+
+  function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): void {
+    const task = tasks.get(taskID)
+    if (!task) return
+
+    task.status = status
+    tasks.set(taskID, task)
+    log.info("task status updated", { taskID, status })
+
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
+      }
+    })
+
+    Bus.publish(Event.TasksUpdated, { tasks: list() })
+  }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
@@ -136,60 +151,55 @@ export namespace Cortex {
     }
 
     // Persist resolved model to session metadata
-    void Session.update(task.sessionID, (draft) => {
-      if (draft.cortex) {
-        draft.cortex.model = { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
-      }
-    })
-
-    const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
-      if (evt.properties.part.sessionID !== task.sessionID) return
-      const current = tasks.get(task.id)
-      if (!current || current.status !== "running") return
-
-      const now = Date.now()
-      const progress = current.progress ?? { toolCalls: 0, lastUpdate: now, recentTools: [] }
-      const part = evt.properties.part
-
-      if (part.type === "tool") {
-        const existing = progress.recentTools?.some((item) => item.id === part.id) ?? false
-        const title = "title" in part.state ? part.state.title : undefined
-        const entry: CortexTypes.TaskToolProgress = {
-          id: part.id,
-          tool: part.tool,
-          status: part.state.status,
-          title,
-          updatedAt: now,
-        }
-        current.progress = {
-          ...progress,
-          toolCalls: progress.toolCalls + (existing ? 0 : 1),
-          lastTool: part.tool,
-          lastToolStatus: part.state.status,
-          lastTitle: title,
-          lastPartId: part.id,
-          lastUpdate: now,
-          recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
-        }
-        tasks.set(task.id, current)
-        return
-      }
-
-      if (part.type === "text" && !part.synthetic && !part.ignored) {
-        const text = part.text.trim()
-        current.progress = {
-          ...progress,
-          lastMessage: text.length > 240 ? `${text.slice(0, 237)}...` : text,
-          lastPartId: part.id,
-          lastUpdate: now,
-        }
-        tasks.set(task.id, current)
-      }
-    })
-
-    const parts = await resolveInputParts(task.prompt)
-
+    let unsub: (() => void) | undefined
     try {
+      unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
+        if (evt.properties.part.sessionID !== task.sessionID) return
+        const current = tasks.get(task.id)
+        if (!current || current.status !== "running") return
+
+        const now = Date.now()
+        const progress = current.progress ?? { toolCalls: 0, lastUpdate: now, recentTools: [] }
+        const part = evt.properties.part
+
+        if (part.type === "tool") {
+          const existing = progress.recentTools?.some((item) => item.id === part.id) ?? false
+          const title = "title" in part.state ? part.state.title : undefined
+          const entry: CortexTypes.TaskToolProgress = {
+            id: part.id,
+            tool: part.tool,
+            status: part.state.status,
+            title,
+            updatedAt: now,
+          }
+          current.progress = {
+            ...progress,
+            toolCalls: progress.toolCalls + (existing ? 0 : 1),
+            lastTool: part.tool,
+            lastToolStatus: part.state.status,
+            lastTitle: title,
+            lastPartId: part.id,
+            lastUpdate: now,
+            recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
+          }
+          tasks.set(task.id, current)
+          return
+        }
+
+        if (part.type === "text" && !part.synthetic && !part.ignored) {
+          const text = part.text.trim()
+          current.progress = {
+            ...progress,
+            lastMessage: text.length > 240 ? `${text.slice(0, 237)}...` : text,
+            lastPartId: part.id,
+            lastUpdate: now,
+          }
+          tasks.set(task.id, current)
+        }
+      })
+
+      const parts = await resolveInputParts(task.prompt)
+
       await SessionInvoke.invoke({
         sessionID: task.sessionID,
         model: resolvedModel,
@@ -202,7 +212,7 @@ export namespace Cortex {
       const summary = await Trajectory.summarize(task.sessionID)
       updateTaskStatus(task.id, "completed", undefined, summary || undefined)
     } catch (error) {
-      unsub()
+      unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
       updateTaskStatus(task.id, "error", String(error))
     }
@@ -217,31 +227,27 @@ export namespace Cortex {
       return
     }
 
-    task.status = status
     task.completedAt = Date.now()
     if (error) task.error = error
     if (result) task.result = result
-
     tasks.set(taskID, task)
-    log.info("task status updated", { taskID, status })
 
-    if (isTerminal(status)) {
-      void Session.update(task.sessionID, (draft) => {
-        if (draft.cortex) {
-          draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
-          draft.cortex.completedAt = task.completedAt
-          if (error) draft.cortex.error = error
-          if (result) draft.cortex.result = result
-        }
-      })
-    }
+    setTaskStatus(taskID, status)
+
+    // Terminal-specific: extra session fields (status already synced by setTaskStatus)
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.completedAt = task.completedAt
+        if (error) draft.cortex.error = error
+        if (result) draft.cortex.result = result
+      }
+    })
 
     if (acquiredTasks.delete(taskID)) {
       CortexConcurrency.release(task.agent)
     }
 
     Bus.publish(Event.TaskCompleted, { task })
-    Bus.publish(Event.TasksUpdated, { tasks: list() })
     void Plugin.trigger(
       "cortex.task.after",
       {

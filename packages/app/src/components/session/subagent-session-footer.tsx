@@ -84,7 +84,7 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
           <div class="flex min-w-0 items-center gap-1.5">
             <span class="truncate text-13-medium text-text-base">{visual().label}</span>
             <span class="text-11-regular text-text-subtle">·</span>
-            <span class="text-11-regular text-text-subtle">subagent</span>
+            <span class="text-11-regular text-text-subtle">{props.cortex.agent}</span>
             <span class="text-11-regular text-text-subtle">·</span>
             <span class="text-11-regular text-text-subtle">{duration()}</span>
             <Show when={modelLabel()}>

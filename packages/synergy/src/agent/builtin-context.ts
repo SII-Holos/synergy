@@ -14,8 +14,11 @@ export type SubagentPermissionProfile =
   | "readOnly"
   | "review"
   | "codeWrite"
+  | "anchoredCodeWrite"
   | "testWrite"
+  | "anchoredTestWrite"
   | "docsWrite"
+  | "anchoredDocsWrite"
   | "quality"
   | "memory"
   | "note"
@@ -35,17 +38,41 @@ export interface SubagentDefinition {
   topP?: number
 }
 
-function commandTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    bash: "allow",
-    process: "allow",
-  })
-}
-
-function writeTools(): PermissionNext.Ruleset {
+function classicWriteTools(): PermissionNext.Ruleset {
   return PermissionNext.fromConfig({
     edit: "ask",
     write: "ask",
+  })
+}
+
+function classicReadTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    read: "allow",
+    grep: "allow",
+    ast_grep: "allow",
+    view_file: "deny",
+    scan_files: "deny",
+    parse_code: "deny",
+  })
+}
+
+function anchoredReadTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    read: "deny",
+    grep: "deny",
+    ast_grep: "deny",
+    view_file: "allow",
+    scan_files: "allow",
+    parse_code: "allow",
+  })
+}
+
+function anchoredWriteTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({
+    edit: "deny",
+    write: "deny",
+    revise_file: "ask",
+    save_file: "ask",
   })
 }
 
@@ -63,11 +90,16 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     runtime_reload: "deny",
     todowrite: "allow",
     todoread: "allow",
-    read: "allow",
+    bash: "allow",
+    process: "allow",
+    skill: "allow",
+    websearch: "allow",
+    webfetch: "allow",
     look_at: "allow",
-    grep: "allow",
-    ast_grep: "allow",
     glob: "allow",
+    list: "allow",
+    arxiv_search: "allow",
+    arxiv_download: "ask",
     external_directory: {
       "*": "ask",
       [Truncate.DIR]: "allow",
@@ -75,20 +107,25 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   })
 
   if (profile === "codeWrite" || profile === "testWrite") {
-    return PermissionNext.merge(common, writeTools(), commandTools())
+    return PermissionNext.merge(common, classicReadTools(), classicWriteTools())
+  }
+
+  if (profile === "anchoredCodeWrite" || profile === "anchoredTestWrite") {
+    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
   }
 
   if (profile === "docsWrite") {
-    return PermissionNext.merge(common, writeTools())
+    return PermissionNext.merge(common, classicReadTools(), classicWriteTools())
   }
 
-  if (profile === "quality" || profile === "review") {
-    return PermissionNext.merge(common, commandTools())
+  if (profile === "anchoredDocsWrite") {
+    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
   }
 
   if (profile === "memory") {
     return PermissionNext.merge(
       common,
+      classicReadTools(),
       PermissionNext.fromConfig({
         memory_search: "allow",
         memory_get: "allow",
@@ -101,6 +138,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   if (profile === "note") {
     return PermissionNext.merge(
       common,
+      classicReadTools(),
       PermissionNext.fromConfig({
         note_list: "allow",
         note_read: "allow",
@@ -114,6 +152,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   if (profile === "sessionHistory") {
     return PermissionNext.merge(
       common,
+      classicReadTools(),
       PermissionNext.fromConfig({
         session_list: "allow",
         session_read: "allow",
@@ -124,33 +163,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
-  if (profile === "externalResearch") {
-    return PermissionNext.merge(
-      common,
-      PermissionNext.fromConfig({
-        websearch: "allow",
-        webfetch: "allow",
-        skill: {
-          "agent-browser": "allow",
-          "git-guide": "allow",
-        },
-      }),
-    )
-  }
-
-  if (profile === "research") {
-    return PermissionNext.merge(
-      common,
-      PermissionNext.fromConfig({
-        websearch: "allow",
-        webfetch: "allow",
-        arxiv_search: "allow",
-        arxiv_download: "ask",
-      }),
-    )
-  }
-
-  return common
+  return PermissionNext.merge(common, classicReadTools())
 }
 
 export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDefinition): Agent.Info {

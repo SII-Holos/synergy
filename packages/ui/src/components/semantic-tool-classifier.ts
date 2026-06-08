@@ -164,7 +164,9 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   arxiv_search: "search",
   arxiv_download: "search",
   grep: "search",
+  scan_files: "search",
   ast_grep: "search",
+  parse_code: "analyze",
   glob: "search",
   session_search: "session",
   note_search: "note",
@@ -173,10 +175,13 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
 
   // code
   read: "file-read",
+  view_file: "file-read",
   list: "file-read",
   look_at: "analyze",
   edit: "file-write",
+  revise_file: "file-write",
   write: "file-write",
+  save_file: "file-write",
   bash: "shell",
   process: "shell",
   lsp: "analyze",

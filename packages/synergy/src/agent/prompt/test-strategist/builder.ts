@@ -13,6 +13,6 @@ export function createTestStrategistAgent(ctx: BuiltinAgentContext) {
       "Designs and writes tests before implementation. Use for new behavior, behavior changes, risky refactors, and TDD workflows. Provide requirements, known context, and existing test patterns if available; the agent returns test strategy, red tests, expected failure, verification command, blockers, and reusable context.",
     prompt: buildTestStrategistPrompt(),
     model: "thinking",
-    permission: "testWrite",
+    permission: "anchoredTestWrite",
   })
 }

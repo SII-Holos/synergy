@@ -1,0 +1,34 @@
+Apply an anchored patch to existing files.
+
+Input is one or more sections. Every section starts with a real `[path#TAG]` header returned by `view_file`, `scan_files`, `parse_code`, `save_file`, or a prior `revise_file` call. There is no hashless form and you must never fabricate tags.
+
+Supported operations:
+
+[path#TAG]
+replace N..M:
++final content line
++another final content line
+delete N..M
+insert before N:
++new content
+insert after N:
++new content
+insert head:
++new content
+insert tail:
++new content
+
+Rules:
+- All line numbers refer to the original file state captured by the tag, before any operation in this patch is applied. Do not adjust later hunks for earlier hunks in the same patch.
+- Body rows under `:` headers are final content and must start with `+`. They are not an old/new diff. Do not include `-` rows or unchanged context rows.
+- Keep ranges tight. `replace N..M` should cover only original lines whose content changes. Do not widen a range to swallow unchanged keeper lines.
+- Pure additions use `insert before`, `insert after`, `insert head`, or `insert tail`, not a widened `replace`.
+- A tag proves file freshness, not permission to edit unseen code. If a line/range was not visible in `view_file`, `scan_files`, or `parse_code` output, inspect it first.
+- `revise_file` refuses to edit files that contain unresolved merge conflict markers. Resolve conflicts first, or use `save_file` for an intentional full-file resolution.
+- If a tag is stale, `revise_file` attempts a conservative recovery only when the original target content and enough surrounding context can be uniquely located in the current file. If recovery is ambiguous or the target content changed, STOP and re-run `view_file`.
+- If a tag is unknown, STOP. Do not stack additional edits. Re-run `view_file` and retry with the current header.
+
+Anti-patterns:
+- Wrong: `replace 2..4:` to add one line while copying lines 2 and 4 unchanged. Right: `insert after 2:`.
+- Wrong: using `-old` and `+new` rows. Right: only `+new final content` rows; the range performs deletion.
+- Wrong: computing line numbers after an earlier hunk in the same patch. Right: all ranges reference the original tagged file.

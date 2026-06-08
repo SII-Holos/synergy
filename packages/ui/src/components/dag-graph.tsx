@@ -28,9 +28,9 @@ interface LayoutEdge {
 
 const CARD_W = 248
 const MIN_CARD_H = 96
-const MAX_CARD_H = 178
-const GAP_X = 30
-const GAP_Y = 72
+const MAX_CARD_H = 400
+const GAP_X = 20
+const GAP_Y = 48
 const PAD_X = 40
 const PAD_Y = 34
 

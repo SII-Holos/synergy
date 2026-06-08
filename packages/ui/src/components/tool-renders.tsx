@@ -19,14 +19,26 @@ import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { ToolTextOutput } from "./tool-output-text"
 import {
+  AnchoredParseCodeTool,
+  AnchoredReviseTool,
+  AnchoredSaveTool,
+  AnchoredScanFilesTool,
+  AnchoredViewTool,
+} from "./anchored-tool-card"
+import {
   ToolRegistry,
   getToolInfo,
   getQzToolInfo,
   getDirectory,
   getDiagnostics,
   DiagnosticsDisplay,
-  type ToolProps,
 } from "./message-part"
+
+ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
+ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
+ToolRegistry.register({ name: "parse_code", render: AnchoredParseCodeTool })
+ToolRegistry.register({ name: "revise_file", render: AnchoredReviseTool })
+ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 
 ToolRegistry.register({
   name: "read",
