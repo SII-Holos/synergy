@@ -1,0 +1,87 @@
+[data-component="tool-attachments"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 12px 8px;
+}
+
+[data-component="attachment-card"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--surface-base);
+  border: 1px solid var(--border-base);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: inherit;
+
+  &:hover {
+    border-color: var(--border-strong-base);
+    background: var(--surface-base-hover);
+  }
+
+  [data-component="file-icon"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  [data-slot="attachment-card-filename"] {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    color: var(--text-base);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-slot="icon-svg"] {
+    flex-shrink: 0;
+    color: var(--icon-weak);
+    transition: color 0.15s ease;
+  }
+
+  &:hover [data-slot="icon-svg"] {
+    color: var(--icon-base);
+  }
+}
+
+[data-component="attachment-card"][data-type="image"] {
+  max-width: min(240px, 100%);
+  max-height: 180px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  display: inline-flex;
+  background: transparent;
+
+  &:hover {
+    background: transparent;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+  }
+
+  img {
+    display: block;
+    max-width: min(240px, 100%);
+    max-height: 180px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+  }
+}

@@ -16,7 +16,7 @@ import { DagGraph } from "./dag-graph"
 import { DiagramRenderer } from "./diagram"
 import { RenderHtml } from "./render-html"
 import { DiffChanges } from "./diff-changes"
-import { FileIcon } from "./file-icon"
+import { AttachmentList } from "./attachment-card"
 import { ToolTextOutput } from "./tool-output-text"
 import {
   AnchoredParseCodeTool,
@@ -1904,7 +1904,6 @@ ToolRegistry.register({
       if (f.length === 1) return f[0].filename
       return `${f.length} files`
     }
-    const resolveAssetUrl = (assetId: string) => `${data.serverUrl.replace(/\/$/, "")}/asset/${assetId}`
     return (
       <BasicTool
         {...props}
@@ -1917,23 +1916,7 @@ ToolRegistry.register({
         })}
       >
         <Show when={props.status === "completed" && files().length}>
-          <div data-component="tool-attachments">
-            <For each={files()}>
-              {(file) => (
-                <a
-                  data-component="tool-attachment"
-                  href={resolveAssetUrl(file.assetId)}
-                  download={file.filename}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <FileIcon node={{ path: file.filename, type: "file" }} />
-                  <span data-slot="tool-attachment-filename">{file.filename}</span>
-                  <Icon name="download" size="small" />
-                </a>
-              )}
-            </For>
-          </div>
+          <AttachmentList files={files()} serverUrl={data.serverUrl} />
         </Show>
       </BasicTool>
     )
