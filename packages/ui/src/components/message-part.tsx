@@ -40,6 +40,7 @@ import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { FileIcon } from "./file-icon"
+import { AttachmentList } from "./attachment-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
@@ -455,6 +456,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Read",
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "view_file":
+      return {
+        icon: "scan-eye",
+        title: "View File",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "list":
       return {
         icon: "folder",
@@ -471,6 +478,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "regex",
         title: "Grep",
+        subtitle: input.pattern,
+      }
+    case "scan_files":
+      return {
+        icon: "scan-search",
+        title: "Scan Files",
         subtitle: input.pattern,
       }
     case "webfetch":
@@ -497,6 +510,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Edit",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
+    case "revise_file": {
+      const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
+      return {
+        icon: "file-pen",
+        title: "Revise File",
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
     case "multiedit":
       return {
         icon: "pen-line",
@@ -514,6 +535,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Write",
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
+    case "save_file": {
+      const path = metadata.path || metadata.filepath || input.filePath
+      return {
+        icon: "file-pen",
+        title: metadata.exists === false ? "Create File" : "Save File",
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
     case "todowrite":
       return {
         icon: "clipboard-check",
@@ -564,6 +593,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "AST Search",
         subtitle: input.pattern,
       }
+    case "parse_code":
+      return {
+        icon: "braces",
+        title: "Parse Code",
+        subtitle: input.pattern,
+      }
     case "lsp":
       return {
         icon: "circuit-board",
@@ -604,6 +639,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "workflow",
         title: "Diagram",
+        subtitle: input.title,
+      }
+    case "render":
+      return {
+        icon: "code",
+        title: "Render",
         subtitle: input.title,
       }
     case "note_list":
@@ -1474,36 +1515,16 @@ export const ToolRegistry = {
   render: getTool,
 }
 
-function joinServerUrl(serverUrl: string, pathname: string): string {
-  return `${serverUrl.replace(/\/$/, "")}${pathname.startsWith("/") ? pathname : `/${pathname}`}`
-}
-
-function resolvePartUrl(serverUrl: string, url: string): string {
-  if (url.startsWith("asset://")) return joinServerUrl(serverUrl, `/asset/${url.slice(8)}`)
-  return url
-}
-
 function ToolAttachments(props: { attachments: FilePart[] }) {
   const data = useData()
-  return (
-    <div data-component="tool-attachments">
-      <For each={props.attachments}>
-        {(file) => (
-          <a
-            data-component="tool-attachment"
-            href={resolvePartUrl(data.serverUrl, file.url)}
-            download={file.filename ?? "file"}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <FileIcon node={{ path: file.filename ?? "file", type: "file" }} />
-            <span data-slot="tool-attachment-filename">{file.filename ?? "file"}</span>
-            <Icon name="download" size="small" />
-          </a>
-        )}
-      </For>
-    </div>
+  const files = createMemo(() =>
+    props.attachments.map((f) => ({
+      mime: f.mime,
+      filename: f.filename,
+      url: f.url,
+    })),
   )
+  return <AttachmentList files={files()} serverUrl={data.serverUrl} />
 }
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {

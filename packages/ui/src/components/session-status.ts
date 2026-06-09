@@ -133,6 +133,8 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
         return "Preparing files"
       case "diagram":
         return "Drawing diagram"
+      case "render":
+        return "Rendering content"
       case "runtime_reload":
         return "Reloading config"
       case "task_list":

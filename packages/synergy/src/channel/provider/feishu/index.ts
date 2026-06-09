@@ -354,7 +354,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
               return
             }
 
-            log.info("queued message", { messageId: ctx.messageId, text: ctx.text.slice(0, 100) })
+            log.debug("queued message", { messageId: ctx.messageId, text: ctx.text.slice(0, 100) })
 
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
@@ -466,7 +466,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     const msg = message!
     const messageType = msg.message_type ?? "text"
     const rawContent = msg.content ?? ""
-    log.info("feishu message payload", {
+    log.debug("feishu message payload", {
       accountId,
       messageId: msg.message_id,
       messageType,

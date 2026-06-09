@@ -517,7 +517,7 @@ export const EngramRoute = new Hono()
         const results = await MemoryRecall.search({ query, topK, categories, recallModes })
         return c.json(results.map(toMemorySearchResult))
       } catch (err: any) {
-        log.error("search failed", { error: err?.message ?? String(err) })
+        log.error("search failed", { error: err })
         return c.json(
           { message: `Search failed: ${err?.message ?? String(err)}. Is the embedding API configured?` },
           400,

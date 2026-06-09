@@ -167,7 +167,13 @@
       "description": "Agent configuration",
       "type": "object",
       "properties": {
-        "master": {
+        "synergy": {
+          "ref": "AgentConfig"
+        },
+        "synergy-max": {
+          "ref": "AgentConfig"
+        },
+        "developer": {
           "ref": "AgentConfig"
         },
         "general": {

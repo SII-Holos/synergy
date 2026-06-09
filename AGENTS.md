@@ -256,9 +256,9 @@ then review both `README.md` and any related setup/help text.
 
 ### Current agent reality
 
-The repository now centers on a richer built-in agent set, including `synergy`, `master`, `scholar`, `scribe`, `explore`, `scout`, `advisor`, and others.
+The repository now has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; the new coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
 
-Do not reintroduce stale agent documentation such as old "master / plan / scribe" summaries unless you are explicitly updating migration notes.
+Do not reintroduce `master` as a built-in agent name. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
 
 ### Tool implementation
 

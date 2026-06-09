@@ -3,11 +3,13 @@ import * as path from "path"
 import { pathToFileURL } from "url"
 import { Tool } from "./tool"
 import { SessionInteraction } from "@/session/interaction"
+import type { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { Instance } from "../scope/instance"
 import { workMap } from "../util/queue"
 import DESCRIPTION from "./lookat.txt"
+import { Asset } from "../asset/asset"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
 const CONCURRENCY_LIMIT = 5
@@ -22,6 +24,12 @@ const parameters = z.object({
       `Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes).`,
     )
     .optional(),
+  show_to_user: z
+    .boolean()
+    .describe(
+      "When true, also deliver the analyzed image(s) to the user as visible attachments. Use this when the user should see the same visual result you are analyzing.",
+    )
+    .optional(),
 })
 
 interface LookAtMetadata {
@@ -31,6 +39,25 @@ interface LookAtMetadata {
   error?: string
   timeout?: number
   timedOut?: boolean
+  shownToUser?: boolean
+}
+
+async function toVisibleAttachment(
+  file: { filepath: string; mimeType: string; filename: string },
+  ctx: { sessionID: string; messageID: string },
+): Promise<MessageV2.FilePart> {
+  const source = Bun.file(file.filepath)
+  const buffer = Buffer.from(await source.arrayBuffer())
+  const assetId = await Asset.write(buffer, file.mimeType)
+  return {
+    id: Identifier.ascending("part"),
+    sessionID: ctx.sessionID,
+    messageID: ctx.messageID,
+    type: "file",
+    mime: file.mimeType,
+    filename: file.filename,
+    url: `asset://${assetId}`,
+  }
 }
 
 function inferMimeType(filepath: string): string {
@@ -214,11 +241,22 @@ If the requested information is not found, clearly state what is missing.`
 
       const anyTimedOut = results.some((r) => r.timedOut)
 
+      const attachments = params.show_to_user
+        ? await Promise.all(files.map((file) => toVisibleAttachment(file, ctx)))
+        : undefined
+
       if (files.length === 1) {
         return {
           title: anyTimedOut ? "Analysis timed out" : `Analyzed: ${files[0].filename}`,
           output: results[0].output,
-          metadata: { filePath: files[0].filepath, mimeType: files[0].mimeType, timeout, timedOut: anyTimedOut },
+          metadata: {
+            filePath: files[0].filepath,
+            mimeType: files[0].mimeType,
+            timeout,
+            timedOut: anyTimedOut,
+            shownToUser: params.show_to_user === true,
+          },
+          attachments,
         }
       }
 
@@ -226,7 +264,13 @@ If the requested information is not found, clearly state what is missing.`
       return {
         title: anyTimedOut ? "Some analyses timed out" : `Analyzed ${files.length} files`,
         output,
-        metadata: { fileCount: files.length, timeout, timedOut: anyTimedOut },
+        metadata: {
+          fileCount: files.length,
+          timeout,
+          timedOut: anyTimedOut,
+          shownToUser: params.show_to_user === true,
+        },
+        attachments,
       }
     },
   }

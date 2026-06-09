@@ -2291,7 +2291,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 inactive={!prompt.dirty() && !working()}
                 value={
                   <Switch>
-                    <Match when={working()}>
+                    <Match when={working() && !prompt.dirty()}>
                       <div class="flex items-center gap-2">
                         <span>Stop</span>
                         <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
@@ -2309,7 +2309,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <IconButton
                   type="submit"
                   disabled={!prompt.dirty() && !working()}
-                  icon={working() ? "square" : "arrow-up"}
+                  icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
                   variant="primary"
                   class="size-9 rounded-full!"
                 />

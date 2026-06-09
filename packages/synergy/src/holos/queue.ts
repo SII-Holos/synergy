@@ -178,13 +178,13 @@ export namespace MessageQueue {
               log.warn("retry send failed", {
                 id: item.id,
                 target: targetId,
-                error: err instanceof Error ? err.message : String(err),
+                error: err,
               })
             }
           }
         }
       } catch (err) {
-        log.warn("retry loop tick failed", { error: err instanceof Error ? err.message : String(err) })
+        log.warn("retry loop tick failed", { error: err })
       }
     }
 

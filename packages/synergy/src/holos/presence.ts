@@ -75,7 +75,7 @@ export namespace Presence {
         }
         log.info("presence poll sent", { count: friendIds.length })
       } catch (err) {
-        log.warn("presence poll failed", { error: err instanceof Error ? err.message : String(err) })
+        log.warn("presence poll failed", { error: err })
       }
     }
 

@@ -5,11 +5,24 @@ export namespace CortexTypes {
   export const TaskStatus = z.enum(["pending", "queued", "running", "completed", "error", "cancelled"])
   export type TaskStatus = z.infer<typeof TaskStatus>
 
+  export const TaskToolProgress = z.object({
+    id: z.string(),
+    tool: z.string(),
+    status: z.string(),
+    title: z.string().optional(),
+    updatedAt: z.number(),
+  })
+  export type TaskToolProgress = z.infer<typeof TaskToolProgress>
+
   export const TaskProgress = z.object({
     toolCalls: z.number(),
     lastTool: z.string().optional(),
+    lastToolStatus: z.string().optional(),
+    lastTitle: z.string().optional(),
+    lastPartId: z.string().optional(),
     lastUpdate: z.number(),
     lastMessage: z.string().optional(),
+    recentTools: z.array(TaskToolProgress).optional(),
   })
   export type TaskProgress = z.infer<typeof TaskProgress>
 

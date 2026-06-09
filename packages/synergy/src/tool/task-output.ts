@@ -3,8 +3,14 @@ import z from "zod"
 
 const parameters = z.object({
   task_id: z.string().optional().describe("Task ID from a visible background task"),
+  mode: z
+    .enum(["summary", "progress", "tail", "full"])
+    .optional()
+    .describe(
+      "Output mode: progress for live status, tail for recent session activity, full for final output. Default: full",
+    ),
   block: z.boolean().optional().describe("Wait for completion if still running"),
-  timeout: z.number().optional().describe("Max seconds to wait (default: 60)"),
+  timeout: z.number().optional().describe("Max seconds to wait (default: 300)"),
 })
 
 interface TaskOutputMetadata {
@@ -13,6 +19,7 @@ interface TaskOutputMetadata {
   found: boolean
   description?: string
   timeout?: number
+  mode?: string
   visibleTaskIds?: string[]
 }
 
@@ -30,8 +37,15 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
 
 ## Parameters
 - **task_id** (optional): Task ID from a visible background task
+- **mode** (optional): Output mode:
+  - \`progress\` — live status (health, tool calls, duration)
+  - \`tail\` — recent session activity from the subagent
+  - \`full\` — final result with progress summary (default)
+  - \`summary\` — compact one-liner (status, health, elapsed)
 - **block** (optional): Wait for completion if still running
-- **timeout** (optional): Maximum seconds to wait (default: 60)
+- **timeout** (optional): Maximum seconds to wait (default: 300)
+
+Subagents commonly run 5–30 minutes. Still running is not a problem — check mode="progress" to see what it's doing, or just wait for the automatic completion notification.
 
 ## Usage
 List visible tasks first:
@@ -39,14 +53,24 @@ List visible tasks first:
 task_output()
 \`\`\`
 
-Retrieve one visible task:
+Check live progress without waiting:
 \`\`\`
-task_output(task_id: "ctx_abc123")
+task_output(task_id: "ctx_abc123", mode: "progress")
 \`\`\`
 
-Wait for completion:
+Inspect recent activity:
 \`\`\`
-task_output(task_id: "ctx_abc123", block: true, timeout: 120)
+task_output(task_id: "ctx_abc123", mode: "tail")
+\`\`\`
+
+Compact status check:
+\`\`\`
+task_output(task_id: "ctx_abc123", mode: "summary")
+\`\`\`
+
+Wait for completion (up to 300s):
+\`\`\`
+task_output(task_id: "ctx_abc123", block: true)
 \`\`\``,
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
@@ -64,7 +88,11 @@ task_output(task_id: "ctx_abc123", block: true, timeout: 120)
 
       const lines = visibleTasks.map((task) => {
         const duration = formatDuration(task.startedAt, task.completedAt)
-        return `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description} [${duration}]`
+        const info = Cortex.describe(task)
+        const last = info.lastTool
+          ? ` — last: ${info.lastTool}${info.lastToolStatus ? ` ${info.lastToolStatus}` : ""}`
+          : ""
+        return `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description} [${duration}, ${info.health}]${last}`
       })
 
       return {
@@ -77,7 +105,8 @@ task_output(task_id: "ctx_abc123", block: true, timeout: 120)
           "Visible background tasks for this session:",
           ...lines,
           "",
-          'Use `task_output(task_id="...")` for one of the visible task IDs listed above.',
+          'Use `task_output(task_id="...", mode="progress")` for live status.',
+          'Use `task_output(task_id="...", mode="tail")` for recent activity.',
         ].join("\n"),
       }
     }
@@ -99,16 +128,17 @@ task_output(task_id: "ctx_abc123", block: true, timeout: 120)
         found: true,
         description: task.description,
         timeout: params.timeout,
+        mode: params.mode ?? "full",
         visibleTaskIds: visibleTasks.map((item) => item.id),
       },
     })
 
     if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeout ?? 60)
+      await Cortex.waitFor(params.task_id, params.timeout ?? 300)
     }
 
     const current = Cortex.getVisibleTask(ctx.sessionID, params.task_id) ?? task
-    const output = await Cortex.output(params.task_id)
+    const output = await Cortex.output(params.task_id, params.mode ?? "full")
 
     return {
       title: `Task ${params.task_id}`,
@@ -118,6 +148,7 @@ task_output(task_id: "ctx_abc123", block: true, timeout: 120)
         found: true,
         description: current.description,
         timeout: params.timeout,
+        mode: params.mode ?? "full",
         visibleTaskIds: visibleTasks.map((item) => item.id),
       },
       output,

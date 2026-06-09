@@ -1,0 +1,1 @@
+You have made multiple tool calls without creating a workflow plan. If this task involves uncertainty about scope, relevant files, approach, or would benefit from parallel work, create a DAG now to structure the remaining work and leverage your subagent team. A DAG produces better results than sequential self-execution for tasks with multiple stages.

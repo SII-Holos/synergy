@@ -65,6 +65,15 @@ export namespace Cortex {
             }))
           : []),
       ],
+      cortex: {
+        parentSessionID: input.parentSessionID,
+        parentMessageID: input.parentMessageID,
+        description: input.description,
+        agent: input.agent,
+        executionRole,
+        status: "queued",
+        startedAt: Date.now(),
+      },
     })
 
     const task: CortexTypes.Task = {
@@ -83,6 +92,7 @@ export namespace Cortex {
       progress: {
         toolCalls: 0,
         lastUpdate: Date.now(),
+        recentTools: [],
       },
     }
 
@@ -100,9 +110,7 @@ export namespace Cortex {
       return current ?? task
     }
 
-    current.status = "running"
-    tasks.set(taskID, current)
-    Bus.publish(Event.TasksUpdated, { tasks: list() })
+    setTaskStatus(taskID, "running")
 
     runTask(current, input.model).catch((error) => {
       log.error("task error", { taskID, error })
@@ -111,6 +119,23 @@ export namespace Cortex {
 
     return current
   })
+
+  function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): void {
+    const task = tasks.get(taskID)
+    if (!task) return
+
+    task.status = status
+    tasks.set(taskID, task)
+    log.info("task status updated", { taskID, status })
+
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
+      }
+    })
+
+    Bus.publish(Event.TasksUpdated, { tasks: list() })
+  }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
@@ -125,23 +150,56 @@ export namespace Cortex {
       throw new Error(`No model configured for agent ${task.agent}`)
     }
 
-    const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
-      if (evt.properties.part.sessionID !== task.sessionID) return
-      if (evt.properties.part.type === "tool") {
+    // Persist resolved model to session metadata
+    let unsub: (() => void) | undefined
+    try {
+      unsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
+        if (evt.properties.part.sessionID !== task.sessionID) return
         const current = tasks.get(task.id)
         if (!current || current.status !== "running") return
-        current.progress = {
-          toolCalls: (current.progress?.toolCalls ?? 0) + 1,
-          lastTool: evt.properties.part.tool,
-          lastUpdate: Date.now(),
+
+        const now = Date.now()
+        const progress = current.progress ?? { toolCalls: 0, lastUpdate: now, recentTools: [] }
+        const part = evt.properties.part
+
+        if (part.type === "tool") {
+          const existing = progress.recentTools?.some((item) => item.id === part.id) ?? false
+          const title = "title" in part.state ? part.state.title : undefined
+          const entry: CortexTypes.TaskToolProgress = {
+            id: part.id,
+            tool: part.tool,
+            status: part.state.status,
+            title,
+            updatedAt: now,
+          }
+          current.progress = {
+            ...progress,
+            toolCalls: progress.toolCalls + (existing ? 0 : 1),
+            lastTool: part.tool,
+            lastToolStatus: part.state.status,
+            lastTitle: title,
+            lastPartId: part.id,
+            lastUpdate: now,
+            recentTools: [entry, ...(progress.recentTools ?? []).filter((item) => item.id !== part.id)].slice(0, 8),
+          }
+          tasks.set(task.id, current)
+          return
         }
-        tasks.set(task.id, current)
-      }
-    })
 
-    const parts = await resolveInputParts(task.prompt)
+        if (part.type === "text" && !part.synthetic && !part.ignored) {
+          const text = part.text.trim()
+          current.progress = {
+            ...progress,
+            lastMessage: text.length > 240 ? `${text.slice(0, 237)}...` : text,
+            lastPartId: part.id,
+            lastUpdate: now,
+          }
+          tasks.set(task.id, current)
+        }
+      })
 
-    try {
+      const parts = await resolveInputParts(task.prompt)
+
       await SessionInvoke.invoke({
         sessionID: task.sessionID,
         model: resolvedModel,
@@ -154,7 +212,7 @@ export namespace Cortex {
       const summary = await Trajectory.summarize(task.sessionID)
       updateTaskStatus(task.id, "completed", undefined, summary || undefined)
     } catch (error) {
-      unsub()
+      unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
       updateTaskStatus(task.id, "error", String(error))
     }
@@ -169,20 +227,27 @@ export namespace Cortex {
       return
     }
 
-    task.status = status
     task.completedAt = Date.now()
     if (error) task.error = error
     if (result) task.result = result
-
     tasks.set(taskID, task)
-    log.info("task status updated", { taskID, status })
+
+    setTaskStatus(taskID, status)
+
+    // Terminal-specific: extra session fields (status already synced by setTaskStatus)
+    void Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) {
+        draft.cortex.completedAt = task.completedAt
+        if (error) draft.cortex.error = error
+        if (result) draft.cortex.result = result
+      }
+    })
 
     if (acquiredTasks.delete(taskID)) {
       CortexConcurrency.release(task.agent)
     }
 
     Bus.publish(Event.TaskCompleted, { task })
-    Bus.publish(Event.TasksUpdated, { tasks: list() })
     void Plugin.trigger(
       "cortex.task.after",
       {
@@ -241,7 +306,8 @@ export namespace Cortex {
       `**Duration:** ${formatDuration(task)}`,
       task.status === "error" && task.error ? `**Error:** ${task.error}` : "",
       "Use `task_list()` to inspect visible background tasks.",
-      `Use \`task_output(task_id="${task.id}")\` only for tasks visible from this session.`,
+      `Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.`,
+      `Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
     ]
       .filter(Boolean)
       .join("\n")
@@ -273,6 +339,8 @@ export namespace Cortex {
     return status === "completed" || status === "error" || status === "cancelled"
   }
 
+  export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"
+
   function formatDuration(task: CortexTypes.Task): string {
     const start = task.startedAt
     const end = task.completedAt ?? Date.now()
@@ -281,6 +349,40 @@ export namespace Cortex {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
     return `${minutes}m ${remainingSeconds}s`
+  }
+
+  function formatAge(timestamp?: number): string {
+    if (!timestamp) return "never"
+    const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+    if (seconds < 5) return "just now"
+    if (seconds < 60) return `${seconds}s ago`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ago`
+  }
+
+  export function health(task: CortexTypes.Task): TaskHealth {
+    if (isTerminal(task.status)) return "terminal"
+    if (task.status === "queued") return "queued"
+    const recentRunningTool = task.progress?.recentTools?.some(
+      (tool) => tool.status === "running" || tool.status === "generating",
+    )
+    if (recentRunningTool) return "tool-running"
+    const lastUpdate = task.progress?.lastUpdate ?? task.startedAt
+    return Date.now() - lastUpdate > 5 * 60 * 1000 ? "stale" : "active"
+  }
+
+  export function describe(task: CortexTypes.Task) {
+    return {
+      duration: formatDuration(task),
+      health: health(task),
+      lastUpdate: formatAge(task.progress?.lastUpdate ?? task.startedAt),
+      lastTool: task.progress?.lastTool,
+      lastToolStatus: task.progress?.lastToolStatus,
+      lastTitle: task.progress?.lastTitle,
+      toolCalls: task.progress?.toolCalls ?? 0,
+    }
   }
 
   export function get(taskID: string): CortexTypes.Task | undefined {
@@ -350,51 +452,79 @@ export namespace Cortex {
     return toCancel.length
   }
 
-  export async function output(taskID: string): Promise<string> {
+  export async function output(
+    taskID: string,
+    mode: "summary" | "progress" | "tail" | "full" = "full",
+  ): Promise<string> {
     const task = tasks.get(taskID)
     if (!task) {
       return `Task ${taskID} not found. It may have expired or been cancelled.`
     }
 
-    const duration = formatDuration(task)
+    if (mode === "progress" || mode === "summary") return renderProgress(task)
+    if (mode === "tail") return renderTail(task)
 
-    if (task.status === "queued") {
-      return [`Task: ${task.id}`, `Status: queued (waiting for concurrency slot)`, `Duration: ${duration}`].join("\n")
-    }
-
-    if (task.status === "running") {
-      const progress = task.progress
-      return [
-        `Task: ${task.id}`,
-        `Status: running`,
-        `Duration: ${duration}`,
-        progress
-          ? `Progress: ${progress.toolCalls} tool calls${progress.lastTool ? `, last: ${progress.lastTool}` : ""}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    }
+    if (task.status === "queued" || task.status === "running") return renderProgress(task)
 
     if (task.status === "error") {
-      return [
-        `Task: ${task.id}`,
-        `Status: error`,
-        `Duration: ${duration}`,
-        "",
-        "--- Error ---",
-        task.error ?? "Unknown error",
-      ].join("\n")
+      return [renderProgress(task), "", "--- Error ---", task.error ?? "Unknown error"].join("\n")
     }
 
-    return [
+    return [renderProgress(task), "", "--- Result ---", task.result ?? "No output captured"].join("\n")
+  }
+
+  function renderProgress(task: CortexTypes.Task): string {
+    const info = describe(task)
+    const lines = [
       `Task: ${task.id}`,
       `Status: ${task.status}`,
-      `Duration: ${duration}`,
-      "",
-      "--- Result ---",
-      task.result ?? "No output captured",
-    ].join("\n")
+      `Agent: ${task.agent}`,
+      `Description: ${task.description}`,
+      `Duration: ${info.duration}`,
+      `Health: ${info.health}`,
+      `Last update: ${info.lastUpdate}`,
+      `Tool calls: ${info.toolCalls}`,
+      info.lastTool ? `Last tool: ${info.lastTool}${info.lastToolStatus ? ` (${info.lastToolStatus})` : ""}` : "",
+      info.lastTitle ? `Last title: ${info.lastTitle}` : "",
+      task.dagNodeId ? `DAG node: ${task.dagNodeId}` : "",
+    ].filter(Boolean)
+
+    const recentTools = task.progress?.recentTools ?? []
+    if (recentTools.length > 0) {
+      lines.push("", "## Recent Tools")
+      for (const tool of recentTools) {
+        lines.push(
+          `- ${tool.tool} — ${tool.status}${tool.title ? ` — ${tool.title}` : ""} [${formatAge(tool.updatedAt)}]`,
+        )
+      }
+    }
+
+    if (task.progress?.lastMessage) {
+      lines.push("", "## Recent Text", task.progress.lastMessage)
+    }
+
+    return lines.join("\n")
+  }
+
+  async function renderTail(task: CortexTypes.Task): Promise<string> {
+    const messages = await Session.messages({ sessionID: task.sessionID })
+    const lines = [renderProgress(task), "", "## Recent Session Tail"]
+    const recent = messages.slice(-4)
+    for (const message of recent) {
+      const parts: string[] = []
+      for (const part of message.parts) {
+        if (part.type === "text" && !part.synthetic && !part.ignored) {
+          const text = part.text.trim().replace(/\s+/g, " ")
+          if (text) parts.push(`text: ${text.length > 260 ? `${text.slice(0, 257)}...` : text}`)
+        }
+        if (part.type === "tool") {
+          const title = "title" in part.state && part.state.title ? ` — ${part.state.title}` : ""
+          parts.push(`tool: ${part.tool} — ${part.state.status}${title}`)
+        }
+      }
+      if (parts.length > 0) lines.push(`- ${message.info.role}: ${parts.join("; ")}`)
+    }
+    return lines.join("\n")
   }
 
   export async function waitFor(taskID: string, timeoutSeconds: number): Promise<CortexTypes.Task | undefined> {

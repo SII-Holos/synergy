@@ -15,6 +15,7 @@ import { SessionEndpoint } from "./endpoint"
 import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
+import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
 import { Command } from "../skill/command"
 import { $ } from "bun"
@@ -26,6 +27,7 @@ import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
@@ -114,6 +116,7 @@ export namespace SessionInvoke {
       }
       await createUserMessage({
         sessionID,
+        agent: mail.agent,
         model,
         parts: partsFromMail(mail),
         noReply: !needsReply,
@@ -146,7 +149,7 @@ export namespace SessionInvoke {
         buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
         RECALL_TIMEOUT_MS,
       ).catch((err: any) => {
-        log.warn("recall failed or timed out", { sessionID, error: err?.message ?? String(err) })
+        log.warn("recall failed or timed out", { sessionID, error: err })
         return undefined
       })
     }
@@ -267,6 +270,7 @@ export namespace SessionInvoke {
             if (!mailModel) continue
             const created = await createUserMessage({
               sessionID,
+              agent: mail.agent,
               model: mailModel,
               parts: partsFromMail(mail),
               noReply: mail.noReply,
@@ -422,24 +426,31 @@ export namespace SessionInvoke {
         const isTopSession = !session.parentID
         const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
-        const [toolDefinitions, [envParts, customParts], cortexExecutionContext, cortexReminder, memoryResult] =
-          await Promise.all([
-            ToolResolver.definitions({
-              agent,
-              model,
-              sessionID,
-              session,
-              userTools: lastUser.tools,
-              includeMCP: true,
-            }),
-            Promise.all([
-              SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
-              SystemPrompt.custom(),
-            ]).then(([env, custom]) => [env, custom] as const),
-            buildCortexExecutionContext(sessionID),
-            buildCortexReminder(sessionID),
-            recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
-          ])
+        const [
+          toolDefinitions,
+          [envParts, customParts],
+          cortexExecutionContext,
+          cortexReminder,
+          agendaReminder,
+          memoryResult,
+        ] = await Promise.all([
+          ToolResolver.definitions({
+            agent,
+            model,
+            sessionID,
+            session,
+            userTools: lastUser.tools,
+            includeMCP: true,
+          }),
+          Promise.all([
+            SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+            SystemPrompt.custom(),
+          ]).then(([env, custom]) => [env, custom] as const),
+          buildCortexExecutionContext(sessionID),
+          buildCortexReminder(sessionID),
+          buildAgendaReminder(sessionID, scopeID),
+          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+        ])
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
@@ -468,8 +479,15 @@ export namespace SessionInvoke {
         // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
         systemParts.push(...envParts)
 
-        // Layer 5: Dynamic — reminders and time context (always at the end)
+        // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
+        if (agendaReminder) systemParts.push(agendaReminder)
+
+        // Layer 6: Dynamic — cortex reminders and time context (always at the end)
         if (cortexReminder) systemParts.push(cortexReminder)
+
+        // Layer 7: Dynamic — planning reminder when agent self-executes without a DAG
+        const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
+        if (planningReminder) systemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
           const elapsed = lastUser.time.created - lastFinished.time.completed
@@ -544,16 +562,25 @@ export namespace SessionInvoke {
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
         const processTimer = log.time("processor.process")
+        const timeoutCfg = await TimeoutConfig.resolve()
+        const turnDeadline = new AbortController()
+        const turnTimer = setTimeout(() => {
+          turnDeadline.abort(new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError"))
+        }, timeoutCfg.invokeMs)
+        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
+
         const result = await processor.process({
           user: lastUser,
           agent,
-          abort,
+          abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
           messages: promptPlan.messages,
           tools,
           model,
         })
+        clearTimeout(turnTimer)
         processTimer.stop()
 
         // post-LLM jobs
@@ -609,6 +636,7 @@ export namespace SessionInvoke {
           if (!mailModel) continue
           await createUserMessage({
             sessionID,
+            agent: mail.agent,
             model: mailModel,
             parts: partsFromMail(mail),
             noReply: !needsReply,
@@ -814,11 +842,104 @@ export namespace SessionInvoke {
     const taskList = running
       .map((t) => {
         const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        return `- **\`${t.id}\`** (${t.agent}): ${t.description} [${elapsed}s]`
+        const info = Cortex.describe(t)
+        const lastTool = info.lastTool
+          ? ` | last: ${info.lastTool}${info.lastToolStatus ? ` (${info.lastToolStatus})` : ""}`
+          : ""
+        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${info.health}${lastTool}`
       })
       .join("\n")
 
     return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
+  }
+
+  /**
+   * Build an agenda reminder — tells the agent about pending agenda items that
+   * will wake this session (agenda_watch items with delay triggers) so it
+   * doesn't need to poll or set redundant watches.
+   */
+  async function buildAgendaReminder(sessionID: string, scopeID: string): Promise<string | undefined> {
+    const { AgendaStore } = await import("../agenda/store")
+    const items = await AgendaStore.listForScope(scopeID)
+    const now = Date.now()
+
+    // Filter to items that:
+    // 1. Are active/pending
+    // 2. Have wake !== false (will wake the session)
+    // 3. Originate from this session (origin.sessionID === sessionID)
+    // 4. Have a delay or at trigger with a future nextRunAt
+    const waking = items.filter((item) => {
+      if (item.status !== "active" && item.status !== "pending") return false
+      if (item.wake === false) return false
+      if (item.origin.sessionID !== sessionID) return false
+      if (item.state.nextRunAt === undefined || item.state.nextRunAt <= now) return false
+      return true
+    })
+
+    if (waking.length === 0) return undefined
+
+    const lines = waking.map((item) => {
+      const remaining = item.state.nextRunAt! - now
+      const remainingStr = formatElapsed(remaining)
+      return `- **\`${item.id}\`** "${item.title}" will wake this session in ~${remainingStr}`
+    })
+
+    return [
+      `<agenda-reminder>`,
+      `The following agenda items will automatically wake this session when they fire:`,
+      ...lines,
+      `Do NOT set up redundant \`agenda_watch\` calls — the system handles waking you automatically.`,
+      `</agenda-reminder>`,
+    ].join("\n")
+  }
+
+  const ACCUMULATING_TOOLS = new Set([
+    "bash",
+    "process",
+    "read",
+    "grep",
+    "ast_grep",
+    "glob",
+    "look_at",
+    "edit",
+    "write",
+    "websearch",
+    "webfetch",
+    "diagram",
+  ])
+  const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])
+
+  async function buildPlanningReminder(
+    sessionID: string,
+    agent: { name: string; mode?: string },
+    sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
+  ): Promise<string | undefined> {
+    if (agent.name !== "synergy-max") return undefined
+
+    const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
+    if (lastUserIdx < 0) return undefined
+
+    const currentTurnTools = new Set<string>()
+    for (let i = lastUserIdx + 1; i < sessionMessages.length; i++) {
+      for (const part of sessionMessages[i].parts) {
+        if (part.type === "tool" && part.tool) {
+          currentTurnTools.add(part.tool)
+        }
+      }
+    }
+
+    let counter = 0
+    for (const tool of currentTurnTools) {
+      if (CLEARING_TOOLS.has(tool)) counter = 0
+      else if (ACCUMULATING_TOOLS.has(tool)) counter += 1
+    }
+    if (counter < 3) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(sessionID)
+    if (nodes.length > 0) return undefined
+
+    return `<planning-reminder>\n${PLANNING_REMINDER.trim()}\n</planning-reminder>`
   }
 
   function formatElapsed(ms: number): string {

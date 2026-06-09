@@ -190,12 +190,12 @@ export const AgoraAcceptTool = Tool.define<typeof parameters, AgoraAcceptMetadat
       },
       abort: ctx.abort,
     }).catch((err) => {
-      log.warn("failed to post acceptance comment", { postId: params.post_id, error: String(err) })
+      log.warn("failed to post acceptance comment", { postId: params.post_id, error: err })
     })
 
     if (isTemp) {
       await fs.rm(directory, { recursive: true, force: true }).catch((err) => {
-        log.warn("failed to clean up temp directory", { directory, error: String(err) })
+        log.warn("failed to clean up temp directory", { directory, error: err })
       })
     }
 

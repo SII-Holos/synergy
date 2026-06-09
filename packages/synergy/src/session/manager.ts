@@ -25,6 +25,7 @@ export namespace SessionManager {
     export interface User {
       type: "user"
       parts: MessageV2.Part[]
+      agent?: string
       noReply?: boolean
       summary?: {
         title?: string

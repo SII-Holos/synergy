@@ -9,15 +9,55 @@ import { Scope } from "@/scope"
 
 export namespace Dag {
   const { asSessionID } = Identifier
-  export const VALID_STATUSES = ["pending", "running", "completed", "failed", "cancelled"] as const
+  export const VALID_STATUSES = ["pending", "running", "blocked", "completed", "failed", "cancelled"] as const
   export type Status = (typeof VALID_STATUSES)[number]
 
-  export const VALID_ASSIGNS = ["self", "master", "explore", "scout", "scholar", "scribe", "advisor"] as const
+  export const VALID_ASSIGNS = [
+    "self",
+    "developer",
+    "explore",
+    "scout",
+    "advisor",
+    "inspector",
+    "scribe",
+    "scholar",
+    "intent-analyst",
+    "requirements-engineer",
+    "code-cartographer",
+    "dependency-tracer",
+    "solution-architect",
+    "api-contract-designer",
+    "migration-architect",
+    "test-strategist",
+    "regression-reproducer",
+    "fixture-builder",
+    "property-test-engineer",
+    "type-test-engineer",
+    "implementation-engineer",
+    "refactoring-engineer",
+    "integration-engineer",
+    "documentation-engineer",
+    "quality-gatekeeper",
+    "python-quality-engineer",
+    "rust-quality-engineer",
+    "typescript-quality-engineer",
+    "maintainability-reviewer",
+    "security-reviewer",
+    "performance-reviewer",
+    "api-compatibility-reviewer",
+    "documentation-reviewer",
+    "docs-researcher",
+    "research-methodologist",
+    "memory-curator",
+    "note-librarian",
+    "session-historian",
+  ] as const
   export type Assign = (typeof VALID_ASSIGNS)[number]
 
   export const VALID_TRANSITIONS: Record<Status, Status[]> = {
-    pending: ["running", "cancelled"],
-    running: ["completed", "failed", "cancelled"],
+    pending: ["running", "blocked", "cancelled"],
+    running: ["completed", "failed", "blocked", "cancelled"],
+    blocked: ["pending", "cancelled"],
     completed: [],
     failed: ["pending"],
     cancelled: ["pending"],
@@ -27,12 +67,18 @@ export namespace Dag {
     .object({
       id: z.string().describe("Unique identifier for the node"),
       content: z.string().describe("Brief description of the task"),
-      status: z.string().describe("Current status: pending, running, completed, failed, cancelled"),
+      status: z.string().describe("Current status: pending, running, blocked, completed, failed, cancelled"),
       deps: z.array(z.string()).describe("IDs of nodes this depends on. Empty array for root nodes"),
       assign: z
         .string()
         .optional()
-        .describe("Suggested executor: self, master, explore, scout, scholar, scribe, advisor"),
+        .describe("Suggested executor: self or one of the registered specialized subagent identifiers"),
+      task_id: z.string().optional().describe("Background task ID currently or previously associated with this node"),
+      session_id: z
+        .string()
+        .optional()
+        .describe("Subagent session ID currently or previously associated with this node"),
+      memo: z.string().optional().describe("Short node-local memo for important result, blocker, or handoff context"),
     })
     .meta({ ref: "DagNode" })
   export type Node = z.infer<typeof Node>
@@ -218,9 +264,12 @@ export namespace Dag {
 
       for (const dep of node.deps) {
         const depStatus = statusMap.get(dep)
-        if (node.status === "pending" && (depStatus === "failed" || depStatus === "cancelled")) {
+        if (
+          node.status === "pending" &&
+          (depStatus === "failed" || depStatus === "cancelled" || depStatus === "blocked")
+        ) {
           result.warnings.push(
-            `Node "${node.id}" depends on ${depStatus} node "${dep}" — it will never become ready unless "${dep}" is retried`,
+            `Node "${node.id}" depends on ${depStatus} node "${dep}" — it will never become ready unless "${dep}" is retried or unblocked`,
           )
         }
       }

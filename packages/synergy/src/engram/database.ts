@@ -41,7 +41,7 @@ function safeVecOp<T>(state: VecTableState, fn: () => T, fallback: T): T {
     state.ready = false
     state.failAt = Date.now()
     log.warn(`${state.tableName} operation failed, disabling vector search`, {
-      error: e instanceof Error ? e.message : String(e),
+      error: e,
     })
     return fallback
   }
@@ -114,7 +114,7 @@ function open(): Database {
     loadSqliteVec(conn)
   } catch (e) {
     log.warn("sqlite-vec extension failed to load, vector search will be unavailable", {
-      error: e instanceof Error ? e.message : String(e),
+      error: e,
     })
   }
   conn.exec("PRAGMA journal_mode=WAL")
@@ -237,7 +237,7 @@ function ensureExperienceVecTable(dimensions: number) {
     log.info("vec_experience table ready", { dimensions })
   } catch (e) {
     vecExperience.ready = hasVecTable(conn, "vec_experience")
-    log.warn("vec_experience creation failed", { error: e instanceof Error ? e.message : String(e) })
+    log.warn("vec_experience creation failed", { error: e })
   }
 }
 
@@ -264,7 +264,7 @@ function ensureMemoryVecTable(dimensions: number) {
     log.info("vec_memory table ready", { dimensions })
   } catch (e) {
     vecMemory.ready = hasVecTable(conn, "vec_memory")
-    log.warn("vec_memory creation failed", { error: e instanceof Error ? e.message : String(e) })
+    log.warn("vec_memory creation failed", { error: e })
   }
 }
 

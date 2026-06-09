@@ -25,7 +25,7 @@ export namespace Avatar {
       log.warn("unrecognized avatar format", { prefix: avatarData.slice(0, 30) })
       return undefined
     } catch (err) {
-      log.warn("failed to cache avatar", { error: err instanceof Error ? err.message : String(err) })
+      log.warn("failed to cache avatar", { error: err })
       return undefined
     }
   }

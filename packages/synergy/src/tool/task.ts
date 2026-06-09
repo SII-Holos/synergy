@@ -10,6 +10,7 @@ import { PermissionNext } from "@/permission/next"
 import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
 import { Instance } from "../scope/instance"
+import { Dag } from "../session/dag"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -49,10 +50,28 @@ interface TaskMetadata {
 
 const SYNC_TIMEOUT_S = 300
 
-export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
-  const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary" && !a.hidden))
+async function bindDagNode(sessionID: string, nodeID: string | undefined, task: { id: string; sessionID: string }) {
+  if (!nodeID) return
+  const nodes = await Dag.get(sessionID)
+  const node = nodes.find((item) => item.id === nodeID)
+  if (!node || node.status === "completed") return
+  node.status = "running"
+  node.task_id = task.id
+  node.session_id = task.sessionID
+  await Dag.update({ sessionID, nodes })
+}
 
+export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
   const caller = ctx?.agent
+  const agents = await Agent.list().then((items) =>
+    items.filter(
+      (agent) =>
+        agent.mode !== "primary" &&
+        !agent.hidden &&
+        (!caller || !agent.visibleTo || agent.visibleTo.includes(caller.name)),
+    ),
+  )
+
   const accessibleAgents = caller
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
@@ -78,6 +97,9 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
+        throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
+      }
 
       const msg = await MessageV2.get({
         scopeID: Instance.scope.id,
@@ -125,6 +147,8 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         model,
       })
 
+      await bindDagNode(ctx.sessionID, params.dag_node_id, task)
+
       if (params.background) {
         ctx.metadata({
           title: `[Background] ${params.description}`,
@@ -154,7 +178,8 @@ Status: running
 
 You will be notified when the task completes.
 Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}")\` only for a task visible from this session.`,
+Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
+Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
         }
       }
 
@@ -213,7 +238,8 @@ Status: still running
 
 You will be notified when the task completes.
 Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}")\` only for a task visible from this session.`,
+Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
+Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
         }
       }
 

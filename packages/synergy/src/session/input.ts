@@ -127,7 +127,19 @@ export async function lastModel(sessionID: string) {
 }
 
 export async function createUserMessage(input: InvokeInput) {
-  const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+  let agentName = input.agent
+  if (!agentName) {
+    // Inherit the current session agent from the last user message,
+    // so system notifications (cortex completion, agenda delivery, etc.)
+    // don't silently switch the agent to the default.
+    for await (const item of MessageV2.stream({ sessionID: input.sessionID })) {
+      if (item.info.role === "user") {
+        agentName = item.info.agent
+        break
+      }
+    }
+  }
+  const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
   const info: MessageV2.Info = {
     id: input.messageID ?? Identifier.ascending("message"),
     role: "user",

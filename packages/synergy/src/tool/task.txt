@@ -16,11 +16,31 @@ Use this when:
 Do NOT use this when:
 - The task requires immediate back-and-forth with the user
 
-## Background mode
+## Blocking vs Background
 
-**Prefer background=true by default.** This lets you launch multiple tasks in parallel and continue working.
+### `background: true` (non-blocking, recommended)
+Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. The system will notify you when it completes.
 
-Use background=false only when you cannot proceed without the result.
+### `background: false` / omitted (blocking, default)
+Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
+
+> **Prefer `background=true` by default.** This lets you launch multiple tasks in parallel and continue working. Use `background=false` only when you truly cannot proceed without the result.
+
+## Checking on background tasks
+
+Use the **`task_output`** tool to check on running background tasks:
+
+- `mode="summary"` — Compact one-liner: status, health, elapsed time
+- `mode="progress"` — Detailed progress: tool call list, health, duration
+- `mode="tail"` — Recent session activity from the subagent's conversation
+- `mode="full"` (default) — Full result with progress summary
+- `block: true` — Wait (up to 300s) for the task to finish, then return full result
+
+Use **`task_list()`** to list all visible background tasks at once.
+
+**No need to set an agenda watch.** When a background task completes, you will be notified automatically — no need to use \`agenda_watch\` or poll manually.
+
+Subagents commonly run 5–30 minutes for non-trivial work (code exploration, multi-file implementation, research, review). Still running is normal — the system handles it.
 
 ## Usage notes
 
@@ -47,8 +67,8 @@ task(background: true, subagent_type: "explore", description: "Find data models"
 
 ### Parallel implementation
 ```
-task(background: true, subagent_type: "master", description: "Add validation", prompt: "...")
-task(background: true, subagent_type: "master", description: "Update tests", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Add validation", prompt: "...")
+task(background: true, subagent_type: "developer", description: "Update tests", prompt: "...")
 ```
 
 ### Writing documentation

@@ -75,7 +75,7 @@ export namespace ExperienceRecall {
         const embeddingResult = await Embedding.generate({ id: "query", text: query })
         queryEmbedding = embeddingResult.vector
       } catch (err: any) {
-        log.error("query embedding failed", { error: err?.message ?? String(err) })
+        log.error("query embedding failed", { error: err })
         return []
       }
     }

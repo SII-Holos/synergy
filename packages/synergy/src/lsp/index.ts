@@ -1,3 +1,4 @@
+import { withTimeout } from "@/util/timeout"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Log } from "../util/log"
@@ -196,8 +197,9 @@ export namespace LSP {
     const result: LSPClient.Info[] = []
 
     async function schedule(server: LSPServer.Info, root: string, key: string) {
-      const handle = await server
-        .spawn(root)
+      const handle = await withTimeout(server.spawn(root), 30_000, {
+        message: `Timed out spawning LSP server ${server.id}`,
+      })
         .then((value) => {
           if (!value) s.broken.add(key)
           return value
@@ -210,7 +212,6 @@ export namespace LSP {
 
       if (!handle) return undefined
       log.info("spawned lsp server", { serverID: server.id })
-
       const client = await LSPClient.create({
         serverID: server.id,
         server: handle,

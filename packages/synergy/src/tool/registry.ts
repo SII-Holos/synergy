@@ -5,6 +5,11 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
+import { ViewFileTool } from "./view-file"
+import { ReviseFileTool } from "./revise-file"
+import { SaveFileTool } from "./save-file"
+import { ScanFilesTool } from "./scan-files"
+import { ParseCodeTool } from "./parse-code"
 import { TaskTool } from "./task"
 import { TaskListTool } from "./task-list"
 import { TaskOutputTool } from "./task-output"
@@ -62,7 +67,8 @@ import { LspTool } from "./lsp"
 import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
-import { DiagramTool } from "./diagram"
+// 🔇 import { DiagramTool } from "./diagram"  — 已注释，待重构
+import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
@@ -168,6 +174,11 @@ export namespace ToolRegistry {
       ProcessTool,
       ConnectTool,
       ReadTool,
+      ViewFileTool,
+      ScanFilesTool,
+      ParseCodeTool,
+      ReviseFileTool,
+      SaveFileTool,
       GlobTool,
       GrepTool,
       EditTool,
@@ -220,7 +231,8 @@ export namespace ToolRegistry {
       AgoraAcceptTool,
       AgoraCommentTool,
       AttachTool,
-      DiagramTool,
+      // 🔇 DiagramTool,  — 已注释，待重构
+      RenderTool,
       EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,

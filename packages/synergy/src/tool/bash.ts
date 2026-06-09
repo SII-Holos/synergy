@@ -11,10 +11,6 @@ import type { BashBackend, BashMetadata } from "./bash/shared"
 
 const parameters = z.object({
   command: z.string().describe("The command to execute"),
-  timeout: z
-    .number()
-    .describe("Optional timeout in seconds. If not specified, commands will time out after 120 seconds (2 minutes).")
-    .optional(),
   workdir: z
     .string()
     .describe(

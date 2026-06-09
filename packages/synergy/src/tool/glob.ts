@@ -29,27 +29,50 @@ export const GlobTool = Tool.define("glob", {
     let search = params.path ?? Instance.directory
     search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
 
+    const TIMEOUT_MS = 15_000
     const limit = 100
     const files = []
     let truncated = false
-    for await (const file of Ripgrep.files({
-      cwd: search,
-      glob: [params.pattern],
-    })) {
-      if (files.length >= limit) {
-        truncated = true
-        break
+    let timedOut = false
+
+    // Combine local timeout with session abort signal
+    const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
+    const combinedSignal = ctx.abort ? AbortSignal.any([ctx.abort, timeoutSignal]) : timeoutSignal
+
+    try {
+      for await (const file of Ripgrep.files({
+        cwd: search,
+        glob: [params.pattern],
+        signal: combinedSignal,
+      })) {
+        if (files.length >= limit) {
+          truncated = true
+          break
+        }
+        const full = path.resolve(search, file)
+        const stats = await Bun.file(full)
+          .stat()
+          .then((x) => x.mtime.getTime())
+          .catch(() => 0)
+        files.push({
+          path: full,
+          mtime: stats,
+        })
       }
-      const full = path.resolve(search, file)
-      const stats = await Bun.file(full)
-        .stat()
-        .then((x) => x.mtime.getTime())
-        .catch(() => 0)
-      files.push({
-        path: full,
-        mtime: stats,
-      })
+    } catch {
+      // Subprocess was killed — check if it was our timeout
+      if (timeoutSignal.aborted && !ctx.abort?.aborted) {
+        timedOut = true
+      }
     }
+
+    if (timedOut) {
+      throw new Error(
+        `glob stopped after ${TIMEOUT_MS}ms before completing the search.\n` +
+          `Use a more specific glob pattern or specify a smaller directory path.`,
+      )
+    }
+
     files.sort((a, b) => b.mtime - a.mtime)
 
     const output = []

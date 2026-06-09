@@ -12,6 +12,7 @@ import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { Instance } from "../scope/instance"
 import { SYNERGY_REFERER } from "../holos/constants"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
 
 // Direct imports for bundled providers
@@ -938,6 +939,7 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const timeoutCfg = await TimeoutConfig.resolve()
 
       const DEFAULT_TIMEOUT_MS = 900_000
 
@@ -947,49 +949,86 @@ export namespace Provider {
 
         const timeoutMs = options["timeout"] === false ? false : (options["timeout"] ?? DEFAULT_TIMEOUT_MS)
 
+        let ttfbController: AbortController | null = null
+        let ttfbTimer: ReturnType<typeof setTimeout> | null = null
         let idleController: AbortController | null = null
         let idleTimer: ReturnType<typeof setTimeout> | null = null
 
+        // TTFB timeout — covers time from fetch start to first byte (accommodates reasoning models)
+        if (timeoutCfg.providerTtfbMs > 0) {
+          ttfbController = new AbortController()
+          ttfbTimer = setTimeout(() => {
+            ttfbController!.abort(
+              new DOMException(
+                "TTFB timeout: no response received within " + timeoutCfg.providerTtfbMs + "ms",
+                "TimeoutError",
+              ),
+            )
+          }, timeoutCfg.providerTtfbMs).unref()
+        }
+
+        // Idle AbortController (timer starts on first chunk, not on fetch)
         if (timeoutMs !== false) {
           idleController = new AbortController()
-          const resetIdle = () => {
-            if (idleTimer) clearTimeout(idleTimer)
-            idleTimer = setTimeout(() => {
-              idleController!.abort(
-                new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
-              )
-            }, timeoutMs as number).unref()
-          }
-          resetIdle()
-
-          const signals: AbortSignal[] = []
-          if (opts.signal) signals.push(opts.signal)
-          signals.push(idleController.signal)
-          opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
-
-          // Reset idle timer when the outer signal aborts (e.g. user cancel)
-          opts.signal?.addEventListener(
-            "abort",
-            () => {
-              if (idleTimer) clearTimeout(idleTimer)
-            },
-            { once: true },
-          )
         }
+
+        // Wall-clock timeout (optional — disabled by default)
+        const wallClockSignal =
+          timeoutCfg.providerWallMs !== false && timeoutCfg.providerWallMs > 0
+            ? AbortSignal.timeout(timeoutCfg.providerWallMs)
+            : null
+
+        // Combine signals before fetch
+        const signals: AbortSignal[] = []
+        if (opts.signal) signals.push(opts.signal)
+        if (ttfbController) signals.push(ttfbController.signal)
+        if (idleController) signals.push(idleController.signal)
+        if (wallClockSignal) signals.push(wallClockSignal)
+        opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
+
+        // Clean up all timers when outer signal aborts (e.g. user cancel)
+        const cleanupTimers = () => {
+          if (ttfbTimer) clearTimeout(ttfbTimer)
+          if (idleTimer) clearTimeout(idleTimer)
+        }
+        opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
 
         // Disable HTTP keep-alive to avoid reusing connections that may have
         // been silently dropped by NAT / load balancers during idle periods.
         const headers = new Headers(opts.headers ?? {})
         headers.set("Connection", "close")
 
-        const fetchTimer = log.time("fetch.request", { url: typeof input === "string" ? input : input.url })
-        const response = await fetchFn(input, {
-          ...opts,
-          headers,
-          // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-          timeout: false,
-        })
-        fetchTimer.stop()
+        const logUrl = typeof input === "string" ? input : input.url
+        const safeUrl = (() => {
+          try {
+            const u = new URL(logUrl)
+            return u.origin + u.pathname
+          } catch {
+            return logUrl
+          }
+        })()
+        const fetchTimer = log.time("fetch.request", { url: safeUrl })
+        let response: Response
+        try {
+          response = await fetchFn(input, {
+            ...opts,
+            headers,
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          })
+        } catch (error) {
+          fetchTimer.stop({ status: "exception" })
+          log.error("fetch.request.failed", { url: safeUrl, error })
+          throw error
+        }
+        fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
+        if (!response.ok) {
+          log.warn("fetch.request.non-ok", {
+            url: safeUrl,
+            status: response.status,
+            statusText: response.statusText,
+          })
+        }
 
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && response.body) {

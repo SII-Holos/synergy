@@ -47,10 +47,14 @@ export function ConversationViewport(props: {
           props.onScrollContainer?.(el)
         }}
         onClick={props.autoScroll.handleInteraction}
-        class="relative min-w-0 w-full h-full overflow-y-auto no-scrollbar"
+        class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar"
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
-        <div ref={props.autoScroll.contentRef} class={props.contentClass} classList={props.contentClassList}>
+        <div
+          ref={props.autoScroll.contentRef}
+          class={["min-w-0 w-full max-w-full", props.contentClass].filter(Boolean).join(" ")}
+          classList={props.contentClassList}
+        >
           {props.children}
         </div>
       </div>

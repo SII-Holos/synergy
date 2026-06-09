@@ -4,12 +4,6 @@ import { Snapshot } from "@/session/snapshot"
 import { Info, StatusInfo } from "./types"
 
 export const SessionEvent = {
-  Created: BusEvent.define(
-    "session.created",
-    z.object({
-      info: Info,
-    }),
-  ),
   Updated: BusEvent.define(
     "session.updated",
     z.object({

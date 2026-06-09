@@ -1,3 +1,4 @@
+import { withTimeout } from "@/util/timeout"
 import { Identifier } from "../id/id"
 import { Instance } from "../scope/instance"
 import { Scope } from "../scope"
@@ -212,15 +213,6 @@ export namespace AgendaReactor {
     const sessionID = await createEphemeralSession(item, scope)
     await AgendaStore.setPersistentSession(scopeID, item.id, sessionID)
     return sessionID
-  }
-
-  function withTimeout<T>(promise: Promise<T>, timeoutMs: number | undefined): Promise<T> {
-    if (!timeoutMs) return promise
-    let timer: Timer
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Execution timed out")), timeoutMs)
-    })
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!))
   }
 
   async function extractLastAssistantMessage(sessionID: string): Promise<string | undefined> {

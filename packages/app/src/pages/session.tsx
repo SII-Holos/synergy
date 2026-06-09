@@ -373,6 +373,7 @@ export default function Page() {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
+  const currentSessionCortex = createMemo(() => currentSession()?.cortex)
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -842,7 +843,7 @@ export default function Page() {
         {/* Session panel */}
         <div
           classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
+            "@container relative shrink-0 flex flex-col min-h-0 min-w-0 h-full bg-background-stronger": true,
             "flex-1 md:flex-none pt-3 pb-0 md:py-3": true,
           }}
           style={{
@@ -850,12 +851,12 @@ export default function Page() {
             "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
           }}
         >
-          <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
             <Show when={isHolosSession(parentSession())}>
               <div class="shrink-0 px-4 md:px-6 pb-2">
                 <button
                   type="button"
-                  class="w-full md:max-w-200 md:mx-auto flex items-center justify-between gap-3 rounded-[22px] border border-border-base bg-surface-raised-stronger-non-alpha px-4 py-3 text-left shadow-sm hover:bg-surface-raised-base-hover active:scale-[0.995] transition-all duration-150"
+                  class="w-full min-w-0 md:max-w-200 md:mx-auto flex items-center justify-between gap-3 rounded-[22px] border border-border-base bg-surface-raised-stronger-non-alpha px-4 py-3 text-left shadow-sm hover:bg-surface-raised-base-hover active:scale-[0.995] transition-all duration-150"
                   onClick={() => navigate(`/${params.dir}/session/${parentSession()!.id}`)}
                 >
                   <div class="min-w-0 flex items-center gap-3">
@@ -876,7 +877,7 @@ export default function Page() {
                 </button>
               </div>
             </Show>
-            <div class="flex-1 min-h-0 overflow-hidden">
+            <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
               <Switch>
                 <Match when={isHolosConversation() && holosContact()}>
                   <HolosConversation
@@ -997,6 +998,8 @@ export default function Page() {
                 scopeName={scopeName}
                 branch={branch}
                 lastModified={lastModified}
+                cortex={currentSessionCortex}
+                parentID={() => currentSession()?.parentID}
               />
             }
           >
@@ -1013,7 +1016,7 @@ export default function Page() {
                 transition: "transform 400ms ease-out",
               }}
             >
-              <div class="w-full md:px-6 md:max-w-200 pointer-events-auto">
+              <div class="w-full min-w-0 md:px-6 md:max-w-200 pointer-events-auto">
                 <Show when={(messages()?.length ?? 0) === 0}>
                   <HolosGreeting contactName={holosContact()!.name} />
                 </Show>

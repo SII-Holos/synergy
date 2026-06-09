@@ -1,0 +1,22 @@
+Search code with AST-aware patterns and return anchored file blocks.
+
+Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matched `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. The output also reports match line/range locations for each tagged file.
+
+Pattern rules:
+- Patterns must be complete, parseable AST nodes in the selected language.
+- `$NAME` matches one node; `$_` matches one ignored node; `$$$NAME` or `$$$` matches zero or more nodes.
+- Do not use incomplete fragments such as `const $X` when the language requires an initializer; use a complete pattern such as `const $X = $Y`.
+
+Examples:
+- TypeScript/JavaScript: `console.log($MSG)`, `function $NAME($$$) { $$$ }`, `import { $$$ } from '$MODULE'`
+- Python: `def $FUNC($$$)`, `class $NAME`, `for $VAR in $ITER`
+- Rust: `fn $NAME($$$) -> $RET { $$$ }`, `impl $TRAIT for $TYPE { $$$ }`
+
+Result control:
+- `limit` caps returned matches; default is 50.
+- `skip` continues from a previous limited result.
+- If the result says the limit was reached, continue with `skip` or narrow `paths`, `globs`, or `pattern`.
+
+Critical:
+- A parse error or invalid pattern is a query failure, not evidence that the code is absent.
+- Use `scan_files` for literal text or error-message search; use `parse_code` when syntax structure matters.

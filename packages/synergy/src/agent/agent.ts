@@ -7,25 +7,12 @@ import { Instance } from "../scope/instance"
 import { Truncate } from "../tool/truncation"
 
 import PROMPT_GENERATE from "./generate.txt"
-import { buildCompactionPrompt } from "./prompt/compaction/builder"
-import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
-import PROMPT_EXPLORE from "./prompt/explore.txt"
-import PROMPT_SUMMARY from "./prompt/summary.txt"
-import PROMPT_TITLE from "./prompt/title.txt"
-import { buildMasterPrompt } from "./prompt/master/builder"
+import { createBuiltinInternalAgents } from "./builtin-internal"
+import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
+import { createBuiltinPrimaryAgents } from "./builtin-primary"
+import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
-
-import { buildScribePrompt } from "./prompt/scribe/builder"
-import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
-import PROMPT_SCOUT from "./prompt/scout.txt"
-import PROMPT_ADVISOR from "./prompt/advisor.txt"
-import PROMPT_INSPECTOR from "./prompt/inspector.txt"
-import { buildScholarPrompt } from "./prompt/scholar/builder"
-import PROMPT_INTENT from "./prompt/intent.txt"
-import PROMPT_REWARD from "./prompt/reward.txt"
-import PROMPT_SCRIPT from "./prompt/script.txt"
-import PROMPT_GENESIS from "./prompt/genesis.txt"
-import PROMPT_ANIMA from "./prompt/anima.txt"
+import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -44,6 +31,7 @@ export namespace Agent {
       mode: z.enum(["subagent", "primary", "all"]),
       native: z.boolean().optional(),
       hidden: z.boolean().optional(),
+      visibleTo: z.array(z.string()).optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -100,446 +88,12 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
+    const builtinContext = { defaults, user, role, evolutionActive: evo.active }
     const result: Record<string, Info> = {
-      synergy: {
-        name: "synergy",
-        description:
-          "General-purpose orchestrator agent that plans, coordinates, executes, and verifies. Handles any task: coding, research, writing, analysis, or multi-domain work. Uses DAG-based planning for dependency tracking and parallel execution. Best for complex work that spans multiple domains or requires coordinated multi-agent effort.",
-        prompt: "", // Will be set after all agents are defined via buildSynergyPrompt
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            runtime_reload: "allow",
-            dagwrite: "allow",
-            dagread: "allow",
-            dagpatch: "allow",
-            todowrite: "deny",
-            todoread: "deny",
-            memory_write: "allow",
-
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      master: {
-        name: "master",
-        description:
-          "General-purpose coding agent for executing tasks directly and efficiently. Handles implementation, debugging, refactoring, and multi-step development work. Can run in parallel for independent tasks. Use when you need straightforward task execution.",
-        prompt: buildMasterPrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            runtime_reload: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      scholar: {
-        name: "scholar",
-        description:
-          "Academic research agent for scholarly work. Searches arXiv and academic databases, analyzes papers, explains concepts, critically evaluates research, supports academic writing, and helps plan research. Use for literature surveys, understanding complex topics, methodology guidance, or any task involving academic knowledge.",
-        prompt: buildScholarPrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      scribe: {
-        name: "scribe",
-        description: `Expert writing agent for crafting compelling documents. Use this agent for writing documentation, reports, guides, proposals, or any content that needs narrative flow, varied structure, and clear hierarchy. Produces engaging writing that humans actually want to read.`,
-        prompt: buildScribePrompt(),
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            runtime_reload: "deny",
-            memory_write: "allow",
-            memory_edit: "allow",
-            ...(evo.active ? {} : { memory_search: "deny", memory_get: "deny" }),
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "deny",
-              "skill-creator": "deny",
-            },
-          }),
-          user,
-        ),
-        mode: "all",
-        native: true,
-      },
-      explore: {
-        name: "explore",
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            runtime_reload: "deny",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "deny",
-              "skill-creator": "deny",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        description: `Fast agent specialized for exploring codebases. Use this when you are doing an open-ended search that may require multiple rounds of globbing and grepping. Answers "Where is X?", "Which files contain Y?", "Find the code that does Z". Fire multiple explore agents in parallel for broad searches across different areas. When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
-        prompt: PROMPT_EXPLORE,
-        options: {},
-        mode: "subagent",
-        native: true,
-        model: role("mid"),
-      },
-      "multimodal-looker": {
-        name: "multimodal-looker",
-        prompt: PROMPT_MULTIMODAL_LOOKER,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            skill: { "*": "deny" },
-            external_directory: { "*": "allow" },
-          }),
-          user,
-        ),
-        mode: "primary",
-        native: true,
-        hidden: true,
-        model: role("vision"),
-      },
-      scout: {
-        name: "scout",
-        description:
-          "Search external technical documentation and open-source code. Use for finding official docs, GitHub examples, library APIs, and best practices for external dependencies. Answers questions like 'How do I use X?', 'What's the API for Y?', or 'Show me examples of Z'.",
-        prompt: PROMPT_SCOUT,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "deny",
-              "git-guide": "allow",
-              "skill-creator": "deny",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("mid"),
-      },
-      advisor: {
-        name: "advisor",
-        description:
-          "Read-only strategic advisor for complex architectural decisions, debugging hard problems, and design tradeoffs. Consult when: 2+ fix attempts failed, unfamiliar code patterns, security/performance concerns, multi-system tradeoffs, or when you need a second opinion on a significant design decision.",
-        prompt: PROMPT_ADVISOR,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            websearch: "allow",
-            webfetch: "allow",
-            edit: "ask",
-            write: "ask",
-            skill: {
-              "agent-browser": "allow",
-              "frontend-design": "allow",
-              "git-guide": "allow",
-              "skill-creator": "allow",
-            },
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("thinking"),
-      },
-      inspector: {
-        name: "inspector",
-        description:
-          "Read-only code quality auditor. Evaluates readability, unnecessary indirection, structural density, and hygiene (dead code, unused imports, patch-over-fix patterns). Use after completing significant work for a quality check, or to audit recent changes before committing. Lists issues only — does NOT fix them.",
-        prompt: PROMPT_INSPECTOR,
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            lookat: "allow",
-            grep: "allow",
-            ast_grep: "allow",
-            glob: "allow",
-            list: "allow",
-            bash: "allow",
-            edit: "ask",
-            write: "ask",
-            external_directory: {
-              "*": "ask",
-              [Truncate.DIR]: "allow",
-            },
-          }),
-          user,
-        ),
-        mode: "subagent",
-        native: true,
-        model: role("thinking"),
-      },
-      compaction: {
-        name: "compaction",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        prompt: buildCompactionPrompt(),
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            session_list: "allow",
-            session_read: "allow",
-            session_send: "allow",
-          }),
-          user,
-        ),
-        options: {},
-        model: role("long"),
-      },
-      chronicler: {
-        name: "chronicler",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        prompt: PROMPT_CHRONICLER,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            read: "allow",
-            grep: "allow",
-            glob: "allow",
-            memory_write: "allow",
-            memory_edit: "allow",
-            memory_search: "allow",
-            memory_get: "allow",
-            note_list: "allow",
-            note_read: "allow",
-            note_search: "allow",
-            note_write: "allow",
-            note_edit: "allow",
-            profile_get: "allow",
-            profile_update: "allow",
-            session_list: "allow",
-            session_read: "allow",
-            session_send: "allow",
-          }),
-          user,
-        ),
-        options: {},
-        model: role("long"),
-      },
-      title: {
-        name: "title",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        temperature: 0.5,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_TITLE,
-        model: role("nano"),
-      },
-      summary: {
-        name: "summary",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_SUMMARY,
-        model: role("nano"),
-      },
-      intent: {
-        name: "intent",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_INTENT,
-        model: role("mini"),
-      },
-      script: {
-        name: "script",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_SCRIPT,
-        model: role("mini"),
-      },
-      reward: {
-        name: "reward",
-        mode: "primary",
-        options: {},
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        prompt: PROMPT_REWARD,
-        model: role("mini"),
-      },
-      genesis: {
-        name: "genesis",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        temperature: 0.7,
-        prompt: PROMPT_GENESIS,
-        model: role("mini"),
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-            memory_write: "allow",
-            memory_edit: "allow",
-            memory_search: "allow",
-            memory_get: "allow",
-            profile_get: "allow",
-            profile_update: "allow",
-          }),
-          user,
-        ),
-        options: {},
-      },
-      anima: {
-        name: "anima",
-        description:
-          "Autonomous inner self that runs periodic routines — reflects on recent activity, organizes knowledge, plans agenda tasks, engages with the community on Agora, and explores the web to learn. Not a user-facing agent; runs as a background daily routine.",
-        prompt: PROMPT_ANIMA,
-        mode: "primary",
-        native: true,
-        hidden: true,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "allow",
-            question: "deny",
-            todowrite: "deny",
-            todoread: "deny",
-            read: "allow",
-            edit: "allow",
-            write: "allow",
-            arxiv_search: "allow",
-            arxiv_download: "allow",
-            external_directory: {
-              "*": "allow",
-            },
-          }),
-          user,
-        ),
-        options: {},
-      },
+      ...createBuiltinPrimaryAgents(builtinContext),
+      ...createBuiltinLegacySubagents(builtinContext),
+      ...createBuiltinMaxSubagents(builtinContext),
+      ...createBuiltinInternalAgents(builtinContext),
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
@@ -594,7 +148,16 @@ export namespace Agent {
       }
     }
 
-    for (const item of Object.values(result)) {
+    for (const [name, item] of Object.entries(result)) {
+      // Skip agents that explicitly deny memory_write/memory_edit (e.g. synergy-max).
+      // The blanket allow-patch uses PermissionNext.merge() which appends rules, and
+      // PermissionNext.evaluate() uses findLast() — so this patch would silently
+      // override any explicit "deny" configured in the agent's own permission builder.
+      const hasExplicitMemoryDeny = item.permission.some(
+        (r) => (r.permission === "memory_write" || r.permission === "memory_edit") && r.action === "deny",
+      )
+      if (hasExplicitMemoryDeny) continue
+
       if (item.mode === "primary" && item.hidden !== true) {
         item.permission = PermissionNext.merge(
           item.permission,
@@ -619,17 +182,6 @@ export namespace Agent {
         result[name].permission,
         PermissionNext.fromConfig({ external_directory: { [Truncate.DIR]: "allow" } }),
       )
-    }
-
-    // Build synergy prompt dynamically based on available agents
-    if (result.synergy) {
-      const agentInfos = Object.values(result).map((a) => ({
-        name: a.name,
-        description: a.description ?? "",
-        mode: a.mode,
-        hidden: a.hidden,
-      }))
-      result.synergy.prompt = buildSynergyPrompt(agentInfos)
     }
 
     // Discover and register external agents
@@ -689,6 +241,16 @@ export namespace Agent {
         }
       }
     }
+
+    const agentInfos = Object.values(result).map((agent) => ({
+      name: agent.name,
+      description: agent.description ?? "",
+      mode: agent.mode,
+      hidden: agent.hidden,
+      visibleTo: agent.visibleTo,
+    }))
+    if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
+    if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
 
     return result
   })

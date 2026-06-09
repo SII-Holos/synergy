@@ -88,7 +88,7 @@ function HolosConversationHeader(props: {
 
   return (
     <div class="flex justify-center">
-      <div class="w-full md:max-w-200 flex flex-col items-start gap-2.5">
+      <div class="w-full min-w-0 md:max-w-200 flex flex-col items-start gap-2.5">
         <button
           type="button"
           class="inline-flex max-w-full items-center gap-2 rounded-full border border-border-base bg-background-base/86 backdrop-blur-xl px-3.5 py-2 text-left shadow-[0_14px_38px_-30px_color-mix(in_srgb,var(--surface-brand-base)_34%,transparent)] hover:bg-background-base transition-colors"
@@ -375,7 +375,7 @@ export function HolosConversation(props: {
       scrollButtonOffsetClass="bottom-[calc(var(--prompt-height,8rem)+20px)]"
       stickyHeader={
         <div class="sticky top-0 z-10 px-4 md:px-6 pt-3 pb-2 bg-gradient-to-b from-background-stronger via-background-stronger/96 to-transparent backdrop-blur-[2px]">
-          <div class="mx-auto w-full md:max-w-200">
+          <div class="mx-auto w-full min-w-0 md:max-w-200">
             <HolosConversationHeader
               contactName={props.contactName}
               contactBio={props.contactBio}
@@ -387,7 +387,7 @@ export function HolosConversation(props: {
       }
       contentClass="flex flex-col gap-5 px-4 md:px-6 pb-[calc(var(--prompt-height,8rem)+72px)] pt-1"
     >
-      <div class="mx-auto w-full md:max-w-200 flex flex-col gap-5">
+      <div class="mx-auto w-full min-w-0 md:max-w-200 flex flex-col gap-5">
         <For each={groups()}>
           {(group) => (
             <HolosMessageGroup

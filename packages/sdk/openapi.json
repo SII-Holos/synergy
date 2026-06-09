@@ -3604,29 +3604,10 @@
           }
         ],
         "summary": "Send command",
-        "description": "Send a new command to a session for execution by the AI assistant.",
+        "description": "Send a new command to a session for execution by the AI assistant. Returns immediately; the agent processes the command asynchronously.",
         "responses": {
-          "200": {
-            "description": "Created message",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "info": {
-                      "$ref": "#/components/schemas/AssistantMessage"
-                    },
-                    "parts": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Part"
-                      }
-                    }
-                  },
-                  "required": ["info", "parts"]
-                }
-              }
-            }
+          "204": {
+            "description": "Command accepted"
           },
           "400": {
             "description": "Bad request",
@@ -11374,34 +11355,6 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "const": "poll"
-                  },
-                  "command": {
-                    "description": "Shell command to execute periodically",
-                    "type": "string"
-                  },
-                  "interval": {
-                    "description": "Poll interval, e.g. '5m'. Default: '1m'",
-                    "type": "string"
-                  },
-                  "trigger": {
-                    "description": "'change': fire when output differs from previous; 'match': fire when output matches pattern",
-                    "default": "change",
-                    "type": "string",
-                    "enum": ["change", "match"]
-                  },
-                  "match": {
-                    "description": "Regex pattern, required when trigger is 'match'",
-                    "type": "string"
-                  }
-                },
-                "required": ["kind", "command"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
                     "const": "file"
                   },
                   "glob": {
@@ -11419,42 +11372,6 @@
                   }
                 },
                 "required": ["kind", "glob"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "tool"
-                  },
-                  "tool": {
-                    "description": "Synergy tool name to call, e.g. 'inspire_jobs'",
-                    "type": "string"
-                  },
-                  "args": {
-                    "description": "Arguments to pass to the tool",
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "interval": {
-                    "description": "Poll interval, e.g. '5m'. Default: '5m'",
-                    "type": "string"
-                  },
-                  "trigger": {
-                    "description": "'change': fire when tool output differs; 'match': fire when output matches pattern",
-                    "default": "change",
-                    "type": "string",
-                    "enum": ["change", "match"]
-                  },
-                  "match": {
-                    "description": "Regex pattern, required when trigger is 'match'",
-                    "type": "string"
-                  }
-                },
-                "required": ["kind", "tool"]
               }
             ]
           }
@@ -11742,6 +11659,11 @@
             "default": false,
             "type": "boolean"
           },
+          "autoDone": {
+            "description": "If true, automatically set status to done after first successful fire. Used by agenda_watch.",
+            "default": false,
+            "type": "boolean"
+          },
           "origin": {
             "$ref": "#/components/schemas/AgendaOrigin"
           },
@@ -11780,6 +11702,13 @@
         "type": "object",
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "directory": {
             "type": "string"
           },
           "worktree": {
@@ -11828,7 +11757,7 @@
             }
           }
         },
-        "required": ["id", "worktree", "time", "sandboxes"]
+        "required": ["id", "type", "directory", "worktree", "time", "sandboxes"]
       },
       "NotFoundError": {
         "type": "object",
@@ -13587,7 +13516,7 @@
             "type": "string"
           },
           "vision_model": {
-            "description": "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
+            "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
             "type": "string"
           },
           "default_agent": {
@@ -13602,7 +13531,13 @@
             "description": "Agent configuration",
             "type": "object",
             "properties": {
-              "master": {
+              "synergy": {
+                "$ref": "#/components/schemas/AgentConfig"
+              },
+              "synergy-max": {
+                "$ref": "#/components/schemas/AgentConfig"
+              },
+              "developer": {
                 "$ref": "#/components/schemas/AgentConfig"
               },
               "general": {
@@ -14653,6 +14588,56 @@
         },
         "required": ["mode"]
       },
+      "SessionCortexDelegation": {
+        "type": "object",
+        "properties": {
+          "parentSessionID": {
+            "type": "string"
+          },
+          "parentMessageID": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "executionRole": {
+            "type": "string",
+            "enum": ["primary", "delegated_subagent"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "error", "cancelled"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -14767,6 +14752,9 @@
               }
             },
             "required": ["messageID"]
+          },
+          "cortex": {
+            "$ref": "#/components/schemas/SessionCortexDelegation"
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
@@ -14851,7 +14839,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Current status: pending, running, completed, failed, cancelled",
+            "description": "Current status: pending, running, blocked, completed, failed, cancelled",
             "type": "string"
           },
           "deps": {
@@ -14862,7 +14850,19 @@
             }
           },
           "assign": {
-            "description": "Suggested executor: self, master, explore, scout, scholar, scribe, advisor",
+            "description": "Suggested executor: self or one of the registered specialized subagent identifiers",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "Background task ID currently or previously associated with this node",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Subagent session ID currently or previously associated with this node",
+            "type": "string"
+          },
+          "memo": {
+            "description": "Short node-local memo for important result, blocker, or handoff context",
             "type": "string"
           }
         },
@@ -16190,11 +16190,44 @@
               "lastTool": {
                 "type": "string"
               },
+              "lastToolStatus": {
+                "type": "string"
+              },
+              "lastTitle": {
+                "type": "string"
+              },
+              "lastPartId": {
+                "type": "string"
+              },
               "lastUpdate": {
                 "type": "number"
               },
               "lastMessage": {
                 "type": "string"
+              },
+              "recentTools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "tool", "status", "updatedAt"]
+                }
               }
             },
             "required": ["toolCalls", "lastUpdate"]
@@ -17267,6 +17300,9 @@
             "type": "boolean"
           },
           "silent": {
+            "type": "boolean"
+          },
+          "autoDone": {
             "type": "boolean"
           },
           "agent": {
@@ -18508,6 +18544,12 @@
           "hidden": {
             "type": "boolean"
           },
+          "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "topP": {
             "type": "number"
           },
@@ -19316,25 +19358,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.session.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Session"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.updated": {
         "type": "object",
         "properties": {
@@ -19665,31 +19688,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.todo.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "todo.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "todos": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Todo"
-                }
-              }
-            },
-            "required": ["sessionID", "todos"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.dag.updated": {
         "type": "object",
         "properties": {
@@ -19717,6 +19715,31 @@
               }
             },
             "required": ["sessionID", "nodes", "ready"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.todo.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "todo.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Todo"
+                }
+              }
+            },
+            "required": ["sessionID", "todos"]
           }
         },
         "required": ["type", "properties"]
@@ -20486,9 +20509,6 @@
             "$ref": "#/components/schemas/Event.note.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.session.created"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.updated"
           },
           {
@@ -20534,10 +20554,10 @@
             "$ref": "#/components/schemas/Event.message.part.removed"
           },
           {
-            "$ref": "#/components/schemas/Event.todo.updated"
+            "$ref": "#/components/schemas/Event.dag.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.dag.updated"
+            "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
             "$ref": "#/components/schemas/Event.holos.profile.updated"

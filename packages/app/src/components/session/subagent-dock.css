@@ -138,7 +138,7 @@
     subagent-glow 3s ease-in-out infinite;
 }
 
-.subagent-avatar-master .subagent-icon {
+.subagent-avatar-developer .subagent-icon {
   animation: subagent-bounce 1.8s ease-in-out infinite;
 }
 

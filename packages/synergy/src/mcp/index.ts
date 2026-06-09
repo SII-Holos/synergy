@@ -28,6 +28,11 @@ import open from "open"
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const DEFAULT_TIMEOUT = 30_000
+  async function resolveMcpTimeout(serverName?: string): Promise<number> {
+    const cfg = await Config.get()
+    const perServer = serverName ? (cfg.mcp?.[serverName] as Config.Mcp | undefined)?.timeout : undefined
+    return perServer ?? cfg.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
+  }
 
   export const Resource = z
     .object({
@@ -239,8 +244,8 @@ export namespace MCP {
             resources[key] = {}
             void prewarmDiscoveryCaches(key, result.mcpClient, timeout).catch((error) => {
               log.warn("failed to prewarm discovery caches", {
-                clientName: key,
-                error: error instanceof Error ? error.message : String(error),
+                clientName: name,
+                error,
               })
             })
           }
@@ -283,7 +288,7 @@ export namespace MCP {
     timeout = DEFAULT_TIMEOUT,
   ): Promise<PromptCache> {
     const prompts = await withTimeout(client.listPrompts(), timeout).catch((e) => {
-      log.error("failed to get prompts", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to get prompts", { clientName, error: e })
       return undefined
     })
 
@@ -307,7 +312,7 @@ export namespace MCP {
     timeout = DEFAULT_TIMEOUT,
   ): Promise<ResourceCache> {
     const resources = await withTimeout(client.listResources(), timeout).catch((e) => {
-      log.error("failed to get resources", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to get resources", { clientName, error: e })
       return undefined
     })
 
@@ -354,10 +359,9 @@ export namespace MCP {
       return
     }
 
-    const config = await Config.get()
-    const timeout = config.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
+    const timeout = await resolveMcpTimeout(clientName)
     const toolsResult = await withTimeout(client.listTools(), timeout).catch((e) => {
-      log.error("failed to refresh tool defs", { clientName, error: e instanceof Error ? e.message : String(e) })
+      log.error("failed to refresh tool defs", { clientName, error: e })
       return undefined
     })
     if (toolsResult) {
@@ -384,7 +388,7 @@ export namespace MCP {
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
         log.warn("failed to prewarm discovery caches", {
           clientName: name,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
       })
     }
@@ -536,7 +540,7 @@ export namespace MCP {
           key,
           command: mcp.command,
           cwd,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
         status = {
           status: "failed" as const,
@@ -645,7 +649,7 @@ export namespace MCP {
       void prewarmDiscoveryCaches(name, result.mcpClient).catch((error) => {
         log.warn("failed to prewarm discovery caches", {
           clientName: name,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         })
       })
     } else {
@@ -685,7 +689,7 @@ export namespace MCP {
       const fetched = await Promise.all(
         missing.map(async ([clientName, client]) => {
           const toolsResult = await withTimeout(client.listTools(), listTimeout).catch((e) => {
-            log.error("failed to get tools", { clientName, error: e instanceof Error ? e.message : String(e) })
+            log.error("failed to get tools", { clientName, error: e })
             s.status[clientName] = {
               status: "failed" as const,
               error: e instanceof Error ? e.message : String(e),
@@ -753,19 +757,15 @@ export namespace MCP {
       return undefined
     }
 
-    const result = await client
-      .getPrompt({
-        name: name,
-        arguments: args,
+    const timeout = await resolveMcpTimeout(clientName)
+    const result = await withTimeout(client.getPrompt({ name, arguments: args }), timeout).catch((e) => {
+      log.error("failed to get prompt from MCP server", {
+        clientName,
+        promptName: name,
+        error: e instanceof Error ? e.message : String(e),
       })
-      .catch((e) => {
-        log.error("failed to get prompt from MCP server", {
-          clientName,
-          promptName: name,
-          error: e.message,
-        })
-        return undefined
-      })
+      return undefined
+    })
 
     return result
   }
@@ -781,18 +781,15 @@ export namespace MCP {
       return undefined
     }
 
-    const result = await client
-      .readResource({
-        uri: resourceUri,
+    const timeout = await resolveMcpTimeout(clientName)
+    const result = await withTimeout(client.readResource({ uri: resourceUri }), timeout).catch((e) => {
+      log.error("failed to read resource from MCP server", {
+        clientName: clientName,
+        resourceUri: resourceUri,
+        error: e instanceof Error ? e.message : String(e),
       })
-      .catch((e) => {
-        log.error("failed to get prompt from MCP server", {
-          clientName: clientName,
-          resourceUri: resourceUri,
-          error: e.message,
-        })
-        return undefined
-      })
+      return undefined
+    })
 
     return result
   }
@@ -861,7 +858,8 @@ export namespace MCP {
         name: "synergy",
         version: Installation.VERSION,
       })
-      await client.connect(transport)
+      const connectTimeout = await resolveMcpTimeout(mcpName)
+      await withTimeout(client.connect(transport), connectTimeout)
       // If we get here, we're already authenticated
       return { authorizationUrl: "" }
     } catch (error) {

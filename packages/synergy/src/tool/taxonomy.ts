@@ -81,7 +81,9 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   arxiv_search: entry("search.academic", { externalIO: true }),
   arxiv_download: entry("search.academic", { externalIO: true }),
   grep: entry("search.codebase"),
+  scan_files: entry("search.codebase"),
   ast_grep: entry("search.codebase"),
+  parse_code: entry("code.analyze"),
   glob: entry("search.codebase"),
   session_search: entry("search.session"),
   note_search: entry("search.note"),
@@ -90,10 +92,13 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
 
   // code
   read: entry("code.read"),
+  view_file: entry("code.read"),
   list: entry("code.read"),
   look_at: entry("code.analyze"),
   edit: entry("code.write", { stateful: true }),
+  revise_file: entry("code.write", { stateful: true }),
   write: entry("code.write", { stateful: true }),
+  save_file: entry("code.write", { stateful: true }),
   bash: entry("code.execute"),
   process: entry("code.execute"),
   lsp: entry("code.analyze"),
@@ -173,7 +178,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
-  diagram: entry("communication.visual"),
+  // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
+  render: entry("communication.visual"),
   attach: entry("communication.deliver"),
 }
 
@@ -213,7 +219,8 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(email|mail)/i, kind: "communication.email", traits: { externalIO: true } },
   { pattern: /^(send|notify|message)/i, kind: "communication.deliver" },
   { pattern: /^question/i, kind: "communication.question" },
-  { pattern: /^diagram/i, kind: "communication.visual" },
+  // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
+  { pattern: /^render/i, kind: "communication.visual" },
   { pattern: /^attach/i, kind: "communication.deliver" },
 ]
 

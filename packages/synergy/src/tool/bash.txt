@@ -1,8 +1,8 @@
-Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+Executes a bash command in a persistent shell session. All commands run in ${directory} by default.
 
-All commands run in ${directory} by default. Use the `workdir` parameter if you need to run a command in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workdir` instead.
+Use the `workdir` parameter to run in a different directory. AVOID using `cd <directory> && <command>` patterns - use `workdir` instead.
 
-IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead.
 
 Before executing the command, please follow these steps:
 
@@ -20,21 +20,40 @@ Before executing the command, please follow these steps:
    - After ensuring proper quoting, execute the command.
    - Capture the output of the command.
 
+3. User-visible artifacts:
+   - If the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation.
+   - Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files.
+   - If you need to inspect an image yourself before showing it, use `look_at`; if the user should see the same image, set `show_to_user: true` or follow with `attach`.
+
 Usage notes:
-  - The command argument is required.
+  - The `command` parameter is required.
+  - The `description` parameter is required — write a clear, concise description (5-10 words).
+  - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output — just run the command directly.
   - `envID` is optional. Omit it to run in the current local environment; provide it to target a remote execution backend.
   - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
   - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
   - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
-  - You can specify an optional timeout in seconds. If not specified, commands will time out after 120 seconds (2 minutes).
 
-  - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output - just run the command directly.
-  - For long-running commands, consider using background execution:
-    - Set `background: true` to run the command in background and return immediately with a processId.
-    - Set `yieldSeconds` to auto-background if the command takes longer than the specified seconds.
-    - Use the `process` tool to monitor/interact with background sessions (list, poll, log, write, send-keys, kill).
-    - After launching a background process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
+  - Use `yieldSeconds` for commands that may run longer than expected:
+    - Set `yieldSeconds` to auto-background if the command exceeds that duration. Default behavior: the tool waits for completion with no hard time limit.
+    - If the command completes before `yieldSeconds`, it returns normally.
+    - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
+  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this over `yieldSeconds` when you know the command will take a while.
+  - After launching a background or auto-backgrounded process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
+
+  **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
+  - Do NOT use `background: true` or `yieldSeconds` for these.
+  - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
+  - Example with tmux:
+    ```bash
+    tmux new-session -d -s my-task 'python train.py 2>&1 | tee /path/to/logs/train.log'
+    ```
+  - Example with nohup:
+    ```bash
+    nohup python train.py > /path/to/logs/train.log 2>&1 &
+    ```
+  - Then monitor progress by reading the log file with the Read tool, or use tail/grep as needed.
+  - The bash tool's background mode is designed for short-to-medium interactive processes (builds, tests, installations), not long-running server-type workloads.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)
@@ -97,6 +116,7 @@ Important notes:
 - If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
 
 # Creating pull requests
+
 Use the gh command via the Bash tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
 
 IMPORTANT: When the user asks you to create a pull request, follow these steps carefully:

@@ -12,8 +12,6 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 
-const DEFAULT_TIMEOUT_S = 2 * 60
-
 const log = Log.create({ service: "bash-tool" })
 
 const resolveWasm = (asset: string) => {
@@ -50,10 +48,6 @@ export const LocalBashBackend: BashBackend = {
     log.info("bash tool using shell", { shell })
 
     const cwd = params.workdir || Instance.directory
-    if (params.timeout !== undefined && params.timeout < 0) {
-      throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
-    }
-    const timeout = params.timeout ?? DEFAULT_TIMEOUT_S
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
       throw new Error("Failed to parse command")
@@ -215,32 +209,34 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    let timedOut = false
     let aborted = false
     let exited = false
     let yielded = false
 
+    const HARD_BASH_CEILING_MS = 3_600_000 // 60 minutes absolute hard limit
+
     const kill = () => Shell.killTree(child, { exited: () => exited })
+
+    const hardCeilingTimer = setTimeout(() => {
+      if (!exited && !yielded) {
+        log.warn("bash hard ceiling reached, killing", { description: params.description })
+        kill()
+      }
+    }, HARD_BASH_CEILING_MS)
 
     if (ctx.abort.aborted) {
       aborted = true
+      clearTimeout(hardCeilingTimer)
       await kill()
     }
 
     const abortHandler = () => {
       aborted = true
+      clearTimeout(hardCeilingTimer)
       void kill()
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
-
-    const timeoutTimer = setTimeout(
-      () => {
-        timedOut = true
-        void kill()
-      },
-      timeout * 1000 + 100,
-    )
 
     const yieldS = params.yieldSeconds
     const yieldResult = await new Promise<"exited" | "yielded" | "error">((resolve, reject) => {
@@ -252,7 +248,7 @@ export const LocalBashBackend: BashBackend = {
         : undefined
 
       const cleanup = () => {
-        clearTimeout(timeoutTimer)
+        clearTimeout(hardCeilingTimer)
         if (yieldTimer) clearTimeout(yieldTimer)
         ctx.abort.removeEventListener("abort", abortHandler)
       }
@@ -293,30 +289,18 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    const resultMetadata: string[] = []
-
-    if (timedOut) {
-      resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout}s`)
-    }
-
-    if (aborted) {
-      resultMetadata.push("User aborted the command")
-    }
-
     const output = regProc.output
 
-    if (resultMetadata.length > 0) {
+    if (aborted) {
       return {
         title: params.description,
         metadata: {
-          output: truncateMetadataOutput(
-            output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
-          ),
+          output: truncateMetadataOutput(output + "\n\n<bash_metadata>\nUser aborted the command\n</bash_metadata>"),
           exit: child.exitCode,
           description: params.description,
           backend: "local",
         },
-        output: output + "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>",
+        output: output + "\n\n<bash_metadata>\nUser aborted the command\n</bash_metadata>",
       }
     }
 

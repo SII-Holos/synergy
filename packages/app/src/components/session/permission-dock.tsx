@@ -71,7 +71,7 @@ export function PermissionDock(props: PermissionDockProps) {
     const part = toolPart()
     const item = activeItem()
     if (!part) return item?.permission.permission ?? "Permission"
-    const info = getToolInfo(part.tool, part.state?.input)
+    const info = getToolInfo(part.tool, part.state?.input, item?.permission.metadata)
     if (info.subtitle) return `${info.title} ${info.subtitle}`
     return info.title
   })
@@ -101,7 +101,7 @@ export function PermissionDock(props: PermissionDockProps) {
         const parts = data.store.part[message.id] ?? []
         for (const part of parts) {
           if (part?.type === "tool" && (part as ToolPart).callID === perm.tool!.callID) {
-            const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input)
+            const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
             if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
             return info.title
           }
@@ -165,8 +165,10 @@ export function PermissionDock(props: PermissionDockProps) {
                   const p = part()
                   const render = ToolRegistry.render(p.tool) ?? GenericTool
                   const input = p.state?.input ?? {}
-                  // @ts-expect-error - metadata/output not present on all ToolState variants
-                  const metadata = p.state?.metadata ?? {}
+                  const permissionMetadata = activeItem()?.permission.metadata ?? {}
+                  // @ts-expect-error - metadata not present on all ToolState variants
+                  const stateMetadata = p.state?.metadata ?? {}
+                  const metadata = { ...permissionMetadata, ...stateMetadata }
                   return (
                     <Dynamic
                       component={render}

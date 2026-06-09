@@ -14,9 +14,17 @@ import { Icon } from "./icon"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiagramRenderer } from "./diagram"
+import { RenderHtml } from "./render-html"
 import { DiffChanges } from "./diff-changes"
-import { FileIcon } from "./file-icon"
+import { AttachmentList } from "./attachment-card"
 import { ToolTextOutput } from "./tool-output-text"
+import {
+  AnchoredParseCodeTool,
+  AnchoredReviseTool,
+  AnchoredSaveTool,
+  AnchoredScanFilesTool,
+  AnchoredViewTool,
+} from "./anchored-tool-card"
 import {
   ToolRegistry,
   getToolInfo,
@@ -24,8 +32,13 @@ import {
   getDirectory,
   getDiagnostics,
   DiagnosticsDisplay,
-  type ToolProps,
 } from "./message-part"
+
+ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
+ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
+ToolRegistry.register({ name: "parse_code", render: AnchoredParseCodeTool })
+ToolRegistry.register({ name: "revise_file", render: AnchoredReviseTool })
+ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 
 ToolRegistry.register({
   name: "read",
@@ -1891,7 +1904,6 @@ ToolRegistry.register({
       if (f.length === 1) return f[0].filename
       return `${f.length} files`
     }
-    const resolveAssetUrl = (assetId: string) => `${data.serverUrl.replace(/\/$/, "")}/asset/${assetId}`
     return (
       <BasicTool
         {...props}
@@ -1904,23 +1916,7 @@ ToolRegistry.register({
         })}
       >
         <Show when={props.status === "completed" && files().length}>
-          <div data-component="tool-attachments">
-            <For each={files()}>
-              {(file) => (
-                <a
-                  data-component="tool-attachment"
-                  href={resolveAssetUrl(file.assetId)}
-                  download={file.filename}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <FileIcon node={{ path: file.filename, type: "file" }} />
-                  <span data-slot="tool-attachment-filename">{file.filename}</span>
-                  <Icon name="download" size="small" />
-                </a>
-              )}
-            </For>
-          </div>
+          <AttachmentList files={files()} serverUrl={data.serverUrl} />
         </Show>
       </BasicTool>
     )
@@ -2234,3 +2230,38 @@ for (const name of researchToolNames) {
     },
   })
 }
+
+ToolRegistry.register({
+  name: "render",
+  render(props) {
+    const html = () => props.metadata?.html as string | undefined
+    return (
+      <BasicTool
+        {...props}
+        defaultOpen
+        forceOpen
+        icon="code"
+        trigger={() => ({
+          title: "Render",
+          subtitle: props.input.title || "",
+          args: html() ? ["HTML preview"] : [],
+        })}
+      >
+        <Show
+          when={html()}
+          fallback={
+            <Show when={props.output}>
+              {(output) => (
+                <div data-component="tool-output">
+                  <ToolTextOutput text={output()} />
+                </div>
+              )}
+            </Show>
+          }
+        >
+          {(content) => <RenderHtml html={content()} />}
+        </Show>
+      </BasicTool>
+    )
+  },
+})

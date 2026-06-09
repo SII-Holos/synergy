@@ -1,6 +1,6 @@
-Create a scheduled task that runs in a new session each time it fires. Use for recurring jobs (cron, every) or one-off future tasks that don't need the current conversation's context.
+Create a scheduled task that runs in its own separate session, isolated from this conversation. Use for recurring jobs (cron, every) or one-off future tasks that don't need the current conversation's context.
 
-The prompt should be a complete, self-contained brief — the executing agent starts a fresh session with no access to this conversation.
+Each execution runs in a session that has no access to this conversation — the prompt must be a complete, self-contained brief. One-shot tasks (at, delay) get a fresh session per fire. Recurring tasks (cron, every) reuse a persistent session across fires, accumulating their own conversation history.
 
 Provide a trigger to set the schedule:
 - {type:"cron", expr:"0 9 * * *"} — recurring cron schedule. Add tz for timezone, e.g. tz:"Asia/Shanghai"

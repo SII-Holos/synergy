@@ -10,6 +10,7 @@ import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { Log } from "@/util/log"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
@@ -95,11 +96,20 @@ export namespace ToolResolver {
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
               const ctx = context(args, options)
+              using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
               let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
               const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                 resolveExecution = r
               })
               runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
+
+              const timeoutCfg = await TimeoutConfig.resolve()
+              const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+              const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
+              const combinedAbort = options.abortSignal
+                ? AbortSignal.any([options.abortSignal, toolDeadline])
+                : toolDeadline
+              const toolCtx = { ...ctx, abort: combinedAbort }
 
               try {
                 await Plugin.trigger(
@@ -113,7 +123,7 @@ export namespace ToolResolver {
                     args,
                   },
                 )
-                const result = await item.execute(args, ctx)
+                const result = await item.execute(args, toolCtx)
                 await Plugin.trigger(
                   "tool.execute.after",
                   {
@@ -135,6 +145,12 @@ export namespace ToolResolver {
                 })
                 return result
               } catch (error) {
+                log.error("tool.execute.error", {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  callID: options.toolCallId,
+                  error,
+                })
                 resolveExecution({
                   status: "error",
                   input: args,
@@ -175,11 +191,19 @@ export namespace ToolResolver {
               ...item,
               execute: async (args, opts) => {
                 const ctx = context(args, opts)
+                using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
                 let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
                 const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                   resolveExecution = r
                 })
                 runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
+
+                const timeoutCfg = await TimeoutConfig.resolve()
+                const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
+                const combinedAbort = opts.abortSignal
+                  ? AbortSignal.any([opts.abortSignal, toolDeadline])
+                  : toolDeadline
 
                 try {
                   await Plugin.trigger(
@@ -200,7 +224,7 @@ export namespace ToolResolver {
                     patterns: ["*"],
                   })
 
-                  const result = await execute(args, opts)
+                  const result = await execute(args, { ...opts, abortSignal: combinedAbort })
 
                   await Plugin.trigger(
                     "tool.execute.after",
@@ -251,6 +275,12 @@ export namespace ToolResolver {
 
                   return output
                 } catch (error) {
+                  log.error("tool.execute.error", {
+                    tool: key,
+                    sessionID: ctx.sessionID,
+                    callID: opts.toolCallId,
+                    error,
+                  })
                   resolveExecution({
                     status: "error",
                     input: args,

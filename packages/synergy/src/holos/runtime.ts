@@ -264,9 +264,7 @@ export namespace HolosRuntime {
       onDisconnect: (reason) => {
         if (signal.aborted) return
         current.provider = null
-        void syncRemoteExecutionState(current).catch((err) =>
-          log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
-        )
+        void syncRemoteExecutionState(current).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
       },
@@ -289,14 +287,10 @@ export namespace HolosRuntime {
     current.provider = null
     current.abort.abort()
     if (peerId) {
-      await releaseManagedMode(peerId).catch((err) =>
-        log.warn("managed release failed during stop", { error: err instanceof Error ? err.message : String(err) }),
-      )
+      await releaseManagedMode(peerId).catch((err) => log.warn("managed release failed during stop", { error: err }))
     }
     setStatus(current, { status: "disconnected" })
-    await syncRemoteExecutionState(current).catch((err) =>
-      log.warn("syncRemoteExecution failed", { error: err instanceof Error ? err.message : String(err) }),
-    )
+    await syncRemoteExecutionState(current).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
   }
 
   export async function reload(): Promise<void> {
@@ -437,14 +431,14 @@ export class HolosProvider {
           try {
             if (ws.readyState === WebSocket.OPEN) ws.send(Envelope.ping())
           } catch (err) {
-            log.warn("heartbeat send failed", { error: err instanceof Error ? err.message : String(err) })
+            log.warn("heartbeat send failed", { error: err })
           }
         }, HEARTBEAT_INTERVAL_MS)
         this.state.heartbeatTimer.unref?.()
 
         this.state.managedLeaseTimer = setInterval(() => {
           void this.refreshManagedLease().catch((err: unknown) =>
-            log.warn("managed lease refresh failed", { error: err instanceof Error ? err.message : String(err) }),
+            log.warn("managed lease refresh failed", { error: err }),
           )
         }, 5_000)
         this.state.managedLeaseTimer.unref?.()
@@ -458,7 +452,7 @@ export class HolosProvider {
               Bus.subscribe(HolosProfile.Event.Updated, () => {
                 this.notifyProfileUpdate().catch((err) =>
                   log.warn("failed to broadcast profile update", {
-                    error: err instanceof Error ? err.message : String(err),
+                    error: err,
                   }),
                 )
               }),
@@ -477,12 +471,12 @@ export class HolosProvider {
             fn: () => this.handleParsedMessage(parsed),
           }).catch((err) =>
             log.error("failed to handle websocket message", {
-              error: err instanceof Error ? err.message : String(err),
+              error: err,
             }),
           )
         } catch (err) {
           log.error("failed to handle websocket message", {
-            error: err instanceof Error ? err.message : String(err),
+            error: err,
           })
         }
       })
@@ -494,7 +488,7 @@ export class HolosProvider {
         } else if (onDisconnect) {
           Instance.provide({ scope: capturedScope, fn: () => onDisconnect("ws_closed") }).catch((err) =>
             log.warn("disconnect handler failed", {
-              error: err instanceof Error ? err.message : String(err),
+              error: err,
             }),
           )
         }
@@ -565,7 +559,7 @@ export class HolosProvider {
       } catch (err) {
         log.warn("trackSend timeout callback failed", {
           requestId,
-          error: err instanceof Error ? err.message : String(err),
+          error: err,
         })
       }
     }, WS_FAILED_TIMEOUT_MS)
@@ -812,9 +806,7 @@ export class HolosProvider {
             log.warn("unknown app event", { event })
         }
       })
-      .catch((err) =>
-        log.error("app event handler failed", { event, error: err instanceof Error ? err.message : String(err) }),
-      )
+      .catch((err) => log.error("app event handler failed", { event, error: err }))
   }
 
   private async handleFriendRequest(caller: Envelope.Caller, payload: unknown): Promise<void> {

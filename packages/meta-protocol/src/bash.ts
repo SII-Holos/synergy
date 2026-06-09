@@ -6,7 +6,6 @@ export namespace MetaProtocolBash {
   export const ExecutePayload = z.object({
     command: z.string(),
     description: z.string(),
-    timeout: z.number().optional(),
     workdir: z.string().optional(),
     background: z.boolean().optional(),
     yieldSeconds: z.number().optional(),
@@ -19,7 +18,6 @@ export namespace MetaProtocolBash {
     exit: z.number().nullable().optional(),
     processId: MetaProtocolEnv.ProcessID.optional(),
     background: z.boolean().optional(),
-    timedOut: z.boolean().optional(),
     durationMs: z.number().optional(),
     hostSessionID: MetaProtocolEnv.HostSessionID.optional(),
     envID: MetaProtocolEnv.EnvID.optional(),
