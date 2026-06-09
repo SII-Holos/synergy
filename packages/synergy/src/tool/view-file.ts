@@ -11,6 +11,7 @@ import {
   formatRecordedBlock,
   formatSelectedLines,
   markFileRead,
+  MIN_VIEW_LINES,
   normalizeLineLimit,
   readTextFile,
   readTextFileUnderSnapshotCap,
@@ -133,9 +134,9 @@ export const ViewFileTool = Tool.define("view_file", {
         },
       }
     }
-
     const offset = params.offset ?? 0
-    const limit = normalizeLineLimit(params.limit, DEFAULT_VIEW_LINES)
+    const rawLimit = Math.max(params.limit ?? DEFAULT_VIEW_LINES, MIN_VIEW_LINES)
+    const limit = normalizeLineLimit(rawLimit)
     const formatted = formatLineRange(lines, offset, limit)
     const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
 

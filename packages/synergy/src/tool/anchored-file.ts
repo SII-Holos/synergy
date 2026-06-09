@@ -7,6 +7,7 @@ import { SessionHashlineStore } from "../hashline/store"
 import { normalizeContent } from "../hashline/tag"
 
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
+export const MIN_VIEW_LINES = 120
 export const DEFAULT_VIEW_LINES = 2000
 export const MAX_VIEW_LINES = 3000
 export const DEFAULT_VIEW_BYTES = 50 * 1024
