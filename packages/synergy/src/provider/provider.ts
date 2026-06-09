@@ -12,6 +12,7 @@ import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { Instance } from "../scope/instance"
 import { SYNERGY_REFERER } from "../holos/constants"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
 
 // Direct imports for bundled providers
@@ -938,6 +939,7 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const timeoutCfg = await TimeoutConfig.resolve()
 
       const DEFAULT_TIMEOUT_MS = 900_000
 
@@ -961,21 +963,25 @@ export namespace Provider {
             }, timeoutMs as number).unref()
           }
           resetIdle()
-
-          const signals: AbortSignal[] = []
-          if (opts.signal) signals.push(opts.signal)
-          signals.push(idleController.signal)
-          opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
-
-          // Reset idle timer when the outer signal aborts (e.g. user cancel)
-          opts.signal?.addEventListener(
-            "abort",
-            () => {
-              if (idleTimer) clearTimeout(idleTimer)
-            },
-            { once: true },
-          )
         }
+
+        // Wall-clock timeout (total request duration cap)
+        const wallClockSignal = AbortSignal.timeout(timeoutCfg.providerWallMs)
+
+        const signals: AbortSignal[] = []
+        if (opts.signal) signals.push(opts.signal)
+        if (idleController) signals.push(idleController.signal)
+        signals.push(wallClockSignal)
+        opts.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
+
+        // Reset idle timer when the outer signal aborts (e.g. user cancel)
+        opts.signal?.addEventListener(
+          "abort",
+          () => {
+            if (idleTimer) clearTimeout(idleTimer)
+          },
+          { once: true },
+        )
 
         // Disable HTTP keep-alive to avoid reusing connections that may have
         // been silently dropped by NAT / load balancers during idle periods.

@@ -1296,6 +1296,43 @@ export namespace Config {
       logLevel: Log.Level.optional().describe("Log level"),
       server: Server.optional().describe("Server configuration for synergy serve and web commands"),
       command: z.record(z.string(), Command).optional().describe("Command configuration"),
+      timeout: z
+        .object({
+          invoke_sec: z
+            .number()
+            .positive()
+            .optional()
+            .describe("Max wall-clock seconds for one agent turn (default: 900 = 15min)"),
+          provider: z
+            .object({
+              idle_sec: z
+                .number()
+                .min(0)
+                .optional()
+                .describe("Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk."),
+              wall_sec: z
+                .number()
+                .positive()
+                .optional()
+                .describe("Wall-clock timeout per HTTP request in seconds (default: 900 = 15min)"),
+            })
+            .optional(),
+          tool: z
+            .object({
+              default_sec: z
+                .number()
+                .positive()
+                .optional()
+                .describe("Default timeout per tool execution in seconds (default: 300 = 5min)"),
+              overrides: z
+                .record(z.string(), z.number().positive())
+                .optional()
+                .describe("Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }"),
+            })
+            .optional(),
+        })
+        .optional()
+        .describe("Timeout configuration for agent turns, provider requests, and tool execution"),
       watcher: z
         .object({
           ignore: z.array(z.string()).optional(),
