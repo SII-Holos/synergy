@@ -12,6 +12,8 @@ export function proxyPrefix() {
       return fullPath.slice(0, fullPath.length - route.length).replace(/\/+$/, "")
     }
   }
+  const hostedAgentMatch = window.location.pathname.match(/^\/agents\/[^/]+(?=\/|$)/)
+  if (hostedAgentMatch) return hostedAgentMatch[0]
   return ""
 }
 

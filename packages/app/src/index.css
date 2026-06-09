@@ -147,6 +147,9 @@ a:active,
 }
 
 .holos-hosted-app {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   color-scheme: dark;
   --holos-page-bg: #08090d;
   --holos-page-bg-soft: #0d0f14;

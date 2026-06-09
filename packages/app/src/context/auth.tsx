@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { Persist, persisted } from "@/utils/persist"
+import { isHostedAgentAccess } from "@/utils/runtime"
 
 export interface AuthUser {
   id: string
@@ -24,13 +25,14 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
         user: null,
       }),
     )
+    const hostedGatewayAccess = isHostedAgentAccess()
 
     const [store, setStore] = createStore<AuthState>({
-      status: "unauthenticated",
+      status: hostedGatewayAccess ? "guest" : "unauthenticated",
       user: null,
     })
 
-    if (persistedStore.token && persistedStore.user) {
+    if (!hostedGatewayAccess && persistedStore.token && persistedStore.user) {
       setStore({ status: "authenticated", user: persistedStore.user })
     }
 

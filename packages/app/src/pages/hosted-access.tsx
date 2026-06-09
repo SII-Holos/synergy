@@ -12,7 +12,14 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js"
-import { appAccessFromUrlParam, callbackUrlFor, controlApiBase, trimSlashes, type AppAccess } from "@/utils/runtime"
+import {
+  appAccessFromHostedAgentPath,
+  appAccessFromUrlParam,
+  callbackUrlFor,
+  controlApiBase,
+  trimSlashes,
+  type AppAccess,
+} from "@/utils/runtime"
 import { AppWithAccess } from "@/app-access"
 import { hostedStyleScopeAttrs } from "./hosted-style"
 
@@ -442,6 +449,15 @@ function HostedAccessGate() {
 }
 
 export function HostedAppInterface() {
+  const agentPathAccess = appAccessFromHostedAgentPath()
+  if (agentPathAccess) {
+    return (
+      <HostedStyleScope>
+        <AppWithAccess access={agentPathAccess} />
+      </HostedStyleScope>
+    )
+  }
+
   const overrideAccess = appAccessFromUrlParam()
   if (overrideAccess) {
     return (

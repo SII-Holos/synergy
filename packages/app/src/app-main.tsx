@@ -1,6 +1,5 @@
-import { lazy, Suspense } from "solid-js"
-import { Router, Route, Navigate } from "@solidjs/router"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createEffect, lazy, Suspense } from "solid-js"
+import { Router, Route, useNavigate } from "@solidjs/router"
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
@@ -11,11 +10,36 @@ import { NotificationProvider } from "@/context/notification"
 import { RecentSessionsProvider } from "@/context/recent-sessions"
 import { CommandProvider } from "@/context/command"
 import { proxyPrefix } from "@/utils/proxy"
+import { globalSessionRoute } from "@/utils/session-route"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 
 const Session = lazy(() => import("@/pages/session"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
+
+function RootSessionRedirect() {
+  const navigate = useNavigate()
+
+  createEffect(() => {
+    navigate(globalSessionRoute(), { replace: true })
+  })
+
+  return null
+}
+
+function SessionRoute() {
+  return (
+    <TerminalProvider>
+      <FileProvider>
+        <PromptProvider>
+          <Suspense fallback={<Loading />}>
+            <Session />
+          </Suspense>
+        </PromptProvider>
+      </FileProvider>
+    </TerminalProvider>
+  )
+}
 
 export function MainApp() {
   return (
@@ -36,23 +60,10 @@ export function MainApp() {
           </PermissionProvider>
         )}
       >
-        <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />
+        <Route path="/" component={RootSessionRedirect} />
         <Route path="/:dir" component={DirectoryLayout}>
-          <Route path="/" component={() => <Navigate href="session" />} />
-          <Route
-            path="/session/:id?"
-            component={() => (
-              <TerminalProvider>
-                <FileProvider>
-                  <PromptProvider>
-                    <Suspense fallback={<Loading />}>
-                      <Session />
-                    </Suspense>
-                  </PromptProvider>
-                </FileProvider>
-              </TerminalProvider>
-            )}
-          />
+          <Route path="/" component={SessionRoute} />
+          <Route path="/session/:id?" component={SessionRoute} />
         </Route>
       </Router>
     </GlobalSyncProvider>

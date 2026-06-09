@@ -24,8 +24,17 @@ function browserBaseUrl() {
   return trimSlashes(window.location.origin)
 }
 
+export function hostedAgentPrefix() {
+  const prefix = proxyPrefix()
+  return /^\/agents\/[^/]+$/.test(prefix) ? prefix : ""
+}
+
+export function isHostedAgentAccess() {
+  return Boolean(hostedAgentPrefix())
+}
+
 export function isHostedMode() {
-  return envFlag(import.meta.env.VITE_SYNERGY_HOSTED)
+  return envFlag(import.meta.env.VITE_SYNERGY_HOSTED) || isHostedAgentAccess()
 }
 
 export function allowDebugUrl() {
@@ -46,6 +55,12 @@ function fromAttachUrl(attachUrl: string): AppAccess {
     attachUrl: normalized,
     callbackUrl: callbackUrlFor(normalized),
   }
+}
+
+export function appAccessFromHostedAgentPath(): AppAccess | undefined {
+  const prefix = hostedAgentPrefix()
+  if (!prefix) return
+  return fromAttachUrl(window.location.origin + prefix)
 }
 
 export function appAccessFromUrlParam(): AppAccess | undefined {

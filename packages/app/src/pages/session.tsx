@@ -30,6 +30,7 @@ import { same } from "@/utils/same"
 import { isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
 import { isHostedMode } from "@/utils/runtime"
+import { isNewSessionView } from "@/pages/session-state"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { SessionConversation } from "@/components/session/conversation"
@@ -181,12 +182,14 @@ export default function Page() {
     return messages().find((message) => message.id === replyToMessageId)
   })
   const [resolvingHome, setResolvingHome] = createSignal(false)
-  const isNewSession = createMemo(() => {
-    if (resolvingHome()) return false
-    if (!params.id) return true
-    if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
-    return false
-  })
+  const isNewSession = createMemo(() =>
+    isNewSessionView({
+      hasSessionId: Boolean(params.id),
+      resolvingHome: resolvingHome(),
+      isGlobal: isGlobalScope(sdk.directory),
+      messageCount: messages()?.length ?? 0,
+    }),
+  )
   const messagesReady = createMemo(() => {
     const id = params.id
     if (!id) return true

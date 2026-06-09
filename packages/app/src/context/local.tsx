@@ -10,6 +10,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { DateTime } from "luxon"
 import { Persist, persisted } from "@/utils/persist"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getVisiblePrimaryAgents } from "./local-agent"
 
 export type LocalFile = FileNode &
   Partial<{
@@ -66,7 +67,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     const agent = (() => {
-      const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+      const list = createMemo(() => getVisiblePrimaryAgents(sync.data.agent))
       const [store, setStore] = createStore<{
         current?: string
       }>({
