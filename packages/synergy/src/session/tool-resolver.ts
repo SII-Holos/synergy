@@ -10,6 +10,7 @@ import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { Log } from "@/util/log"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
@@ -102,6 +103,14 @@ export namespace ToolResolver {
               })
               runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
 
+              const timeoutCfg = await TimeoutConfig.resolve()
+              const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+              const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
+              const combinedAbort = options.abortSignal
+                ? AbortSignal.any([options.abortSignal, toolDeadline])
+                : toolDeadline
+              const toolCtx = { ...ctx, abort: combinedAbort }
+
               try {
                 await Plugin.trigger(
                   "tool.execute.before",
@@ -114,7 +123,7 @@ export namespace ToolResolver {
                     args,
                   },
                 )
-                const result = await item.execute(args, ctx)
+                const result = await item.execute(args, toolCtx)
                 await Plugin.trigger(
                   "tool.execute.after",
                   {
@@ -189,6 +198,13 @@ export namespace ToolResolver {
                 })
                 runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
 
+                const timeoutCfg = await TimeoutConfig.resolve()
+                const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
+                const combinedAbort = opts.abortSignal
+                  ? AbortSignal.any([opts.abortSignal, toolDeadline])
+                  : toolDeadline
+
                 try {
                   await Plugin.trigger(
                     "tool.execute.before",
@@ -208,7 +224,7 @@ export namespace ToolResolver {
                     patterns: ["*"],
                   })
 
-                  const result = await execute(args, opts)
+                  const result = await execute(args, { ...opts, abortSignal: combinedAbort })
 
                   await Plugin.trigger(
                     "tool.execute.after",

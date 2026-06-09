@@ -213,15 +213,26 @@ export const LocalBashBackend: BashBackend = {
     let exited = false
     let yielded = false
 
+    const HARD_BASH_CEILING_MS = 3_600_000 // 60 minutes absolute hard limit
+
     const kill = () => Shell.killTree(child, { exited: () => exited })
+
+    const hardCeilingTimer = setTimeout(() => {
+      if (!exited && !yielded) {
+        log.warn("bash hard ceiling reached, killing", { description: params.description })
+        kill()
+      }
+    }, HARD_BASH_CEILING_MS)
 
     if (ctx.abort.aborted) {
       aborted = true
+      clearTimeout(hardCeilingTimer)
       await kill()
     }
 
     const abortHandler = () => {
       aborted = true
+      clearTimeout(hardCeilingTimer)
       void kill()
     }
 
@@ -237,6 +248,7 @@ export const LocalBashBackend: BashBackend = {
         : undefined
 
       const cleanup = () => {
+        clearTimeout(hardCeilingTimer)
         if (yieldTimer) clearTimeout(yieldTimer)
         ctx.abort.removeEventListener("abort", abortHandler)
       }

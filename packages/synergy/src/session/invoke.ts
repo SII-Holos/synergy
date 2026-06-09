@@ -27,6 +27,7 @@ import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
+import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
@@ -561,16 +562,25 @@ export namespace SessionInvoke {
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
         const processTimer = log.time("processor.process")
+        const timeoutCfg = await TimeoutConfig.resolve()
+        const turnDeadline = new AbortController()
+        const turnTimer = setTimeout(() => {
+          turnDeadline.abort(new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError"))
+        }, timeoutCfg.invokeMs)
+        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
+
         const result = await processor.process({
           user: lastUser,
           agent,
-          abort,
+          abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
           messages: promptPlan.messages,
           tools,
           model,
         })
+        clearTimeout(turnTimer)
         processTimer.stop()
 
         // post-LLM jobs

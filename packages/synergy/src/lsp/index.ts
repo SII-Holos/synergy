@@ -1,3 +1,4 @@
+import { withTimeout } from "@/util/timeout"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Log } from "../util/log"
@@ -61,20 +62,6 @@ export namespace LSP {
       ref: "DocumentSymbol",
     })
   export type DocumentSymbol = z.infer<typeof DocumentSymbol>
-
-  const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(message)), timeoutMs)
-        }),
-      ])
-    } finally {
-      if (timer) clearTimeout(timer)
-    }
-  }
 
   const filterExperimentalServers = (servers: Record<string, LSPServer.Info>) => {
     if (Flag.SYNERGY_EXPERIMENTAL_LSP_TY) {
@@ -210,7 +197,9 @@ export namespace LSP {
     const result: LSPClient.Info[] = []
 
     async function schedule(server: LSPServer.Info, root: string, key: string) {
-      const handle = await withTimeout(server.spawn(root), 30_000, `Timed out spawning LSP server ${server.id}`)
+      const handle = await withTimeout(server.spawn(root), 30_000, {
+        message: `Timed out spawning LSP server ${server.id}`,
+      })
         .then((value) => {
           if (!value) s.broken.add(key)
           return value
@@ -223,7 +212,6 @@ export namespace LSP {
 
       if (!handle) return undefined
       log.info("spawned lsp server", { serverID: server.id })
-
       const client = await LSPClient.create({
         serverID: server.id,
         server: handle,
