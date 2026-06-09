@@ -1367,6 +1367,37 @@ export type Config = {
       model?: string
     }
   }
+  /**
+   * Timeout configuration for agent turns, provider requests, and tool execution
+   */
+  timeout?: {
+    /**
+     * Max wall-clock seconds for one agent turn (default: 900 = 15min)
+     */
+    invoke_sec?: number
+    provider?: {
+      /**
+       * Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.
+       */
+      idle_sec?: number
+      /**
+       * Wall-clock timeout per HTTP request in seconds (default: 900 = 15min)
+       */
+      wall_sec?: number
+    }
+    tool?: {
+      /**
+       * Default timeout per tool execution in seconds (default: 300 = 5min)
+       */
+      default_sec?: number
+      /**
+       * Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }
+       */
+      overrides?: {
+        [key: string]: number
+      }
+    }
+  }
   watcher?: {
     ignore?: Array<string>
   }

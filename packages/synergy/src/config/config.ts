@@ -1305,6 +1305,15 @@ export namespace Config {
             .describe("Max wall-clock seconds for one agent turn (default: 900 = 15min)"),
           provider: z
             .object({
+              ttfb_sec: z
+                .number()
+                .positive()
+                .optional()
+                .describe(
+                  "Max seconds to wait for first byte (TTFB) from provider. " +
+                    "Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). " +
+                    "Default: 600 = 10min",
+                ),
               idle_sec: z
                 .number()
                 .min(0)
@@ -1312,9 +1321,14 @@ export namespace Config {
                 .describe("Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk."),
               wall_sec: z
                 .number()
-                .positive()
+                .min(0)
                 .optional()
-                .describe("Wall-clock timeout per HTTP request in seconds (default: 900 = 15min)"),
+                .describe(
+                  "Hard wall-clock timeout per HTTP request in seconds " +
+                    "(0 = disabled, default: 0). CAUTION: conflicts with streaming — " +
+                    "will interrupt normal token output. Only enable if you need a " +
+                    "hard cap beyond idle+TTFB",
+                ),
             })
             .optional(),
           tool: z
