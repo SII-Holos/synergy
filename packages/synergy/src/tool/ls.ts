@@ -51,12 +51,35 @@ export const ListTool = Tool.define("list", {
       },
     })
 
+    const TIMEOUT_MS = 15_000
     const ignoreGlobs = IGNORE_PATTERNS.map((p) => `!${p}*`).concat(params.ignore?.map((p) => `!${p}`) || [])
     const files = []
-    for await (const file of Ripgrep.files({ cwd: searchPath, glob: ignoreGlobs })) {
-      files.push(file)
-      if (files.length >= LIMIT) break
+    let timedOut = false
+
+    // Combine local timeout with session abort signal
+    const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
+    const combinedSignal = ctx.abort ? AbortSignal.any([ctx.abort, timeoutSignal]) : timeoutSignal
+
+    try {
+      for await (const file of Ripgrep.files({ cwd: searchPath, glob: ignoreGlobs, signal: combinedSignal })) {
+        files.push(file)
+        if (files.length >= LIMIT) break
+      }
+    } catch {
+      // Subprocess was killed — check if it was our timeout
+      if (timeoutSignal.aborted && !ctx.abort?.aborted) {
+        timedOut = true
+      }
     }
+
+    if (timedOut) {
+      throw new Error(
+        `list stopped after ${TIMEOUT_MS}ms before completing the listing.\n` +
+          `The directory may be too large. Specify a more specific path or add ignore patterns.`,
+      )
+    }
+
+    const truncated = files.length >= LIMIT
 
     // Build directory structure
     const dirs = new Set<string>()
@@ -96,8 +119,8 @@ export const ListTool = Tool.define("list", {
       }
 
       // Render files
-      const files = filesByDir.get(dirPath) || []
-      for (const file of files.sort()) {
+      const dirFiles = filesByDir.get(dirPath) || []
+      for (const file of dirFiles.sort()) {
         output += `${childIndent}${file}\n`
       }
 

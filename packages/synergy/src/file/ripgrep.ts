@@ -218,6 +218,7 @@ export namespace Ripgrep {
     hidden?: boolean
     follow?: boolean
     maxDepth?: number
+    signal?: AbortSignal
   }) {
     const args = [await filepath(), "--files", "--glob=!.git/*"]
     if (input.follow !== false) args.push("--follow")
@@ -246,6 +247,10 @@ export namespace Ripgrep {
       maxBuffer: 1024 * 1024 * 20,
     })
 
+    // Wire abort signal to kill the subprocess
+    const onAbort = () => proc.kill()
+    input.signal?.addEventListener("abort", onAbort, { once: true })
+
     const reader = proc.stdout.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
@@ -254,6 +259,7 @@ export namespace Ripgrep {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        if (input.signal?.aborted) break
 
         buffer += decoder.decode(value, { stream: true })
         // Handle both Unix (\n) and Windows (\r\n) line endings
@@ -265,8 +271,10 @@ export namespace Ripgrep {
         }
       }
 
-      if (buffer) yield buffer
+      // Don't yield partial buffer on abort — content may be incomplete
+      if (buffer && !input.signal?.aborted) yield buffer
     } finally {
+      input.signal?.removeEventListener("abort", onAbort)
       reader.releaseLock()
       await proc.exited
     }
