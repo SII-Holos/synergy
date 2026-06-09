@@ -175,8 +175,11 @@ export namespace File {
         return
       }
 
+      const INDEX_TIMEOUT_MS = 30_000
+      const timeoutSignal = AbortSignal.timeout(INDEX_TIMEOUT_MS)
       const set = new Set<string>()
-      for await (const file of Ripgrep.files({ cwd: Instance.directory })) {
+      for await (const file of Ripgrep.files({ cwd: Instance.directory, signal: timeoutSignal })) {
+        if (timeoutSignal.aborted) break
         result.files.push(file)
         let current = file
         while (true) {
