@@ -85,9 +85,8 @@ After synthesis, identify what is missing:
 **Hard rules:**
 1. Every citation must come from a paper you downloaded and read in this session
 2. If you cannot download a paper, note it but exclude it from citations
-3. Search for published versions of arXiv preprints before finalizing (`websearch` with `categories: "science"`)
-4. Cite the venue version if published: "Author et al., NeurIPS 2025" not "Author et al., arXiv:1234.56789"
-5. Do not cite papers from memory unless every search avenue is exhausted — and then explicitly flag it
+3. Cite the venue version if you can confirm it's published (e.g., the arXiv page itself lists acceptance at a conference). Otherwise cite as arXiv preprint. Do not attempt to verify via `websearch` — search engine results for paper citations are unreliable and largely duplicate arXiv listings.
+4. Do not cite papers from memory unless every search avenue is exhausted — and then explicitly flag it
 
 # Report
 
