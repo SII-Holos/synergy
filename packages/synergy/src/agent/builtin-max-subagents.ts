@@ -11,6 +11,8 @@ import { createFixtureBuilderAgent } from "./prompt/fixture-builder/builder"
 import { createImplementationEngineerAgent } from "./prompt/implementation-engineer/builder"
 import { createIntentAnalystAgent } from "./prompt/intent-analyst/builder"
 import { createIntegrationEngineerAgent } from "./prompt/integration-engineer/builder"
+import { createLiteratureAnalystAgent } from "./prompt/literature-analyst/builder"
+import { createLiteratureSearcherAgent } from "./prompt/literature-searcher/builder"
 import { createMaintainabilityReviewerAgent } from "./prompt/maintainability-reviewer/builder"
 import { createMemoryCuratorAgent } from "./prompt/memory-curator/builder"
 import { createMigrationArchitectAgent } from "./prompt/migration-architect/builder"
@@ -62,8 +64,9 @@ const FACTORIES = [
   createDocumentationReviewerAgent,
   createDocsResearcherAgent,
   createResearchMethodologistAgent,
+  createLiteratureSearcherAgent,
+  createLiteratureAnalystAgent,
 ]
-
 export function createBuiltinMaxSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const result: Record<string, Agent.Info> = {}
   for (const factory of FACTORIES) {

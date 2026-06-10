@@ -12,6 +12,25 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 
+/**
+ * Derive a human-readable abort reason from an AbortSignal's .reason.
+ */
+function deriveAbortReason(reason: unknown): string {
+  if (reason instanceof DOMException) {
+    if (reason.name === "TimeoutError") {
+      return "The command was interrupted: tool execution timed out."
+    }
+    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
+      return "The command was interrupted: session turn timed out."
+    }
+    return "The command was interrupted: " + (reason.message || reason.name)
+  }
+  if (typeof reason === "string" && reason.length > 0) {
+    return "The command was interrupted: " + reason
+  }
+  return "The command was interrupted."
+}
+
 const log = Log.create({ service: "bash-tool" })
 
 const resolveWasm = (asset: string) => {
@@ -291,16 +310,18 @@ export const LocalBashBackend: BashBackend = {
 
     const output = regProc.output
 
+    const abortReason = deriveAbortReason(ctx.abort.reason)
+    const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
     if (aborted) {
       return {
         title: params.description,
         metadata: {
-          output: truncateMetadataOutput(output + "\n\n<bash_metadata>\nUser aborted the command\n</bash_metadata>"),
+          output: truncateMetadataOutput(output + abortTag),
           exit: child.exitCode,
           description: params.description,
           backend: "local",
         },
-        output: output + "\n\n<bash_metadata>\nUser aborted the command\n</bash_metadata>",
+        output: output + abortTag,
       }
     }
 

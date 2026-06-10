@@ -15,6 +15,18 @@ import { Shell } from "../util/shell"
 import { lastModel } from "./input"
 import { Scope } from "@/scope"
 
+function deriveShellAbortReason(reason: unknown): string {
+  if (reason instanceof DOMException) {
+    if (reason.name === "TimeoutError") return "The command was interrupted: tool execution timed out."
+    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
+      return "The command was interrupted: session turn timed out."
+    }
+    return "The command was interrupted: " + (reason.message || reason.name)
+  }
+  if (typeof reason === "string" && reason.length > 0) return "The command was interrupted: " + reason
+  return "The command was interrupted."
+}
+
 export const ShellInput = z.object({
   sessionID: Identifier.schema("session"),
   agent: z.string(),
@@ -226,7 +238,7 @@ export async function shell(input: ShellInput) {
   })
 
   if (aborted) {
-    output += "\n\n" + ["<metadata>", "User aborted the command", "</metadata>"].join("\n")
+    output += "\n\n" + ["<metadata>", deriveShellAbortReason(abort.reason), "</metadata>"].join("\n")
   }
   msg.time.completed = Date.now()
   msg.finish = "stop"

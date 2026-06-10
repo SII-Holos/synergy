@@ -111,4 +111,4 @@ jobs:
             gh pr merge "$PR_NUMBER" --merge --admin --delete-branch=false --repo "$REPO"
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SYNC_PAT }}

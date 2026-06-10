@@ -330,6 +330,10 @@
     color: var(--text-strong);
     flex-shrink: 0;
   }
+  [data-slot="message-part-separator"] {
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
 
   [data-slot="message-part-actions"] {
     display: flex;

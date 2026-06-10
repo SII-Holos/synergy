@@ -33,13 +33,13 @@ function pathFromProps(props: ToolProps): string {
 
 function pathLabel(path: string): string {
   if (!path) return ""
-  return directoryLabel(path) + getFilename(path)
+  return getDirectory(path) + "/" + getFilename(path)
 }
 
 function directoryLabel(path: string): string {
   const directory = getDirectory(path)
   if (!directory) return ""
-  return directory.endsWith("/") ? directory : `${directory}/`
+  return directory.replace(/\/$/, "")
 }
 
 function shortText(value: unknown, max = 42): string | undefined {
@@ -102,6 +102,7 @@ function AnchoredTrigger(props: {
               fallback={<span data-slot="message-part-filename">{props.path}</span>}
             >
               <span data-slot="message-part-directory">{directoryLabel(props.path!)}</span>
+              <span data-slot="message-part-separator">/</span>
               <span data-slot="message-part-filename">{getFilename(props.path!)}</span>
             </Show>
           </div>
