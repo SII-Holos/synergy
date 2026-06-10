@@ -242,7 +242,8 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
+      log.warn("skipping invalid command definition", { path: item, issues: parsed.error.issues })
+      continue
     }
     return result
   }
@@ -285,7 +286,7 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
+      log.warn("skipping invalid agent definition", { path: item, issues: parsed.error.issues })
     }
     return result
   }
@@ -1639,7 +1640,14 @@ export namespace Config {
 
   async function load(text: string, configFilepath: string) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-      return process.env[varName] || ""
+      const value = process.env[varName]
+      if (value === undefined) {
+        log.warn("environment variable not set for config reference", {
+          var: varName,
+          path: configFilepath,
+        })
+      }
+      return value || ""
     })
 
     const fileMatches = text.match(/\{file:[^}]+\}/g)
@@ -1657,23 +1665,20 @@ export namespace Config {
           filePath = path.join(os.homedir(), filePath.slice(2))
         }
         const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
-        const fileContent = (
-          await Bun.file(resolvedPath)
-            .text()
-            .catch((error) => {
-              const errMsg = `bad file reference: "${match}"`
-              if (error.code === "ENOENT") {
-                throw new InvalidError(
-                  {
-                    path: configFilepath,
-                    message: errMsg + ` ${resolvedPath} does not exist`,
-                  },
-                  { cause: error },
-                )
-              }
-              throw new InvalidError({ path: configFilepath, message: errMsg }, { cause: error })
-            })
-        ).trim()
+        let fileContent: string
+        try {
+          fileContent = (await Bun.file(resolvedPath).text()).trim()
+        } catch (error: any) {
+          log.warn("failed to resolve file reference", {
+            path: configFilepath,
+            reference: match,
+            resolvedPath,
+            error: error.code ?? error.message,
+          })
+          const placeholder = `(file not resolved: ${path.basename(resolvedPath)})`
+          text = text.replace(match, JSON.stringify(placeholder).slice(1, -1))
+          continue
+        }
         // escape newlines/quotes, strip outer quotes
         text = text.replace(match, JSON.stringify(fileContent).slice(1, -1))
       }
@@ -1708,21 +1713,70 @@ export namespace Config {
       if (!parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
       }
-      const data = parsed.data
-      if (data.plugin) {
-        for (let i = 0; i < data.plugin.length; i++) {
-          const plugin = data.plugin[i]
+      const result = parsed.data
+      if (result.plugin) {
+        for (let i = 0; i < result.plugin.length; i++) {
+          const plugin = result.plugin[i]
           try {
-            data.plugin[i] = import.meta.resolve!(plugin, configFilepath)
+            result.plugin[i] = import.meta.resolve!(plugin, configFilepath)
           } catch (err) {}
         }
       }
-      return data
+      return result
+    }
+
+    // Partial recovery: remove invalid sections / section entries and retry.
+    // This allows Synergy to start with usable config even when individual
+    // providers, agents, MCP servers, or channels have schema errors.
+    const stripKeys = new Set<string>()
+    for (const issue of parsed.error.issues) {
+      if (issue.path.length === 0 && issue.code === "invalid_type") {
+        // Root-level type error (e.g. data is not an object) — unrecoverable
+        throw new InvalidError({
+          path: configFilepath,
+          issues: parsed.error.issues,
+        })
+      }
+      const section = String(issue.path[0])
+      stripKeys.add(section)
+    }
+
+    if (stripKeys.size === 0) {
+      throw new InvalidError({
+        path: configFilepath,
+        issues: parsed.error.issues,
+      })
+    }
+
+    log.warn("skipping invalid config sections (will use defaults)", {
+      path: configFilepath,
+      sections: [...stripKeys],
+    })
+
+    for (const key of stripKeys) {
+      delete (data as Record<string, unknown>)[key]
+    }
+
+    const retried = Info.safeParse(data)
+    if (retried.success) {
+      if (!retried.data.$schema) {
+        retried.data.$schema = CONFIG_SCHEMA
+      }
+      const result = retried.data
+      if (result.plugin) {
+        for (let i = 0; i < result.plugin.length; i++) {
+          const plugin = result.plugin[i]
+          try {
+            result.plugin[i] = import.meta.resolve!(plugin, configFilepath)
+          } catch (err) {}
+        }
+      }
+      return result
     }
 
     throw new InvalidError({
       path: configFilepath,
-      issues: parsed.error.issues,
+      issues: retried.error.issues,
     })
   }
   export const JsonError = NamedError.create(

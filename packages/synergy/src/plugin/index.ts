@@ -210,16 +210,16 @@ export namespace Plugin {
         if (showInstallUI) {
           UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
         }
-
         const result = await BunProc.install(pkg, version).catch((err) => {
           if (showInstallUI) {
             UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
           }
+          log.warn("plugin install failed, skipping", { name, error: err.message ?? err })
           failedCount++
-          throw err
+          return undefined
         })
-        if (!result) continue
 
+        if (!result) continue
         if (showInstallUI) {
           installedCount++
           UI.println(
