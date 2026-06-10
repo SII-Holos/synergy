@@ -58,20 +58,38 @@ export namespace Config {
     // This allows organizations to provide default configs that users can override
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
-      if (value.type === "wellknown") {
-        process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
-        const response = await fetch(`${key}/.well-known/synergy`)
-        if (!response.ok) {
-          throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
-        }
-        const wellknown = (await response.json()) as any
-        const remoteConfig = wellknown.config ?? {}
-        // Add $schema to prevent load() from trying to write back to a non-existent file
-        if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
-        result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
-        log.debug("loaded remote config from well-known", { url: key })
-      }
+      if (value.type !== "wellknown") continue
+
+      process.env[value.key] = value.token
+      log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+
+      const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
+        signal: AbortSignal.timeout(5000),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            log.warn("failed to fetch remote config, skipping", {
+              url: `${key}/.well-known/synergy`,
+              status: response.status,
+            })
+            return null
+          }
+          const wellknown = (await response.json()) as any
+          return wellknown.config ?? {}
+        })
+        .catch((err) => {
+          log.warn("failed to fetch remote config, skipping", {
+            url: `${key}/.well-known/synergy`,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return null
+        })
+
+      if (!remoteConfig) continue
+
+      if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
+      result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
+      log.debug("loaded remote config from well-known", { url: key })
     }
 
     // Global user config overrides remote config
@@ -1605,24 +1623,7 @@ export namespace Config {
 
   export const global = lazy(async () => {
     const activeSet = await ConfigSet.activeName()
-    let result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
-
-    // Legacy: migrate from TOML config if it exists
-    await import(path.join(Global.Path.config, "config"), {
-      with: {
-        type: "toml",
-      },
-    })
-      .then(async (mod) => {
-        const { provider, model, ...rest } = mod.default
-        if (provider && model) result.model = `${provider}/${model}`
-        result["$schema"] = Global.Path.configSchemaUrl
-        result = mergeDeep(result, rest)
-        await Bun.write(ConfigSet.defaultFilePath(), JSON.stringify(result, null, 2))
-        await fs.unlink(path.join(Global.Path.config, "config"))
-      })
-      .catch(() => {})
-
+    const result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
     return result
   })
 
