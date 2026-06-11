@@ -40,7 +40,7 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
-import { getAgentVisual } from "@/components/agent-visual"
+import { getAgentVisual, AgentGlyph } from "@/components/agent-visual"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { ModelSelectorPopover } from "@/components/dialog"
@@ -2119,6 +2119,70 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                 </Match>
                 <Match when={store.mode === "normal"}>
+                  {/* Mobile compact toolbar */}
+                  <div class="flex md:hidden items-center gap-1">
+                    <ToolbarSelectorPopover
+                      trigger={
+                        <button
+                          type="button"
+                          class="flex items-center justify-center size-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors"
+                        >
+                          <AgentGlyph agent={currentAgent()} size="small" />
+                        </button>
+                      }
+                      title="Select agent"
+                      contentClass="w-52 max-h-80"
+                    >
+                      {(close) => (
+                        <List
+                          class="p-1"
+                          items={local.agent.list().filter((a) => !a.hidden)}
+                          key={(x) => x.name}
+                          filterKeys={["name"]}
+                          onSelect={(x) => {
+                            if (!x) return
+                            if (sessionHasMessages() && x.external) return
+                            local.agent.set(x.name)
+                            close()
+                          }}
+                        >
+                          {(agent) => {
+                            const visual = getAgentVisual(agent)
+                            return (
+                              <Tooltip
+                                placement="right"
+                                value={
+                                  sessionHasMessages() && agent.external
+                                    ? "Create a new session to use this external agent"
+                                    : undefined
+                                }
+                              >
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                                >
+                                  <div class="min-w-0">
+                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                  </div>
+                                </div>
+                              </Tooltip>
+                            )
+                          }}
+                        </List>
+                      )}
+                    </ToolbarSelectorPopover>
+                    <ModelSelectorPopover>
+                      <button
+                        type="button"
+                        class="flex items-center gap-1 px-2 h-7 rounded-full bg-surface-base border border-border-weak-base hover:bg-surface-raised-base-hover transition-colors text-12-medium text-text-base"
+                      >
+                        <span class="truncate max-w-20">{local.model.current()?.name ?? "Model"}</span>
+                        <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
+                      </button>
+                    </ModelSelectorPopover>
+                  </div>
                   <div class="hidden md:contents">
                     <TooltipKeybind placement="top" title="Cycle agent" keybind={command.keybind("agent.cycle")}>
                       <ToolbarSelectorPopover
