@@ -656,6 +656,13 @@ export namespace SessionInvoke {
 
     evictRecallCache(sessionID)
 
+    // Clear pendingReply — the loop has fully completed and the assistant has
+    // replied. Without this, a crashed/restarted server would see pendingReply=true
+    // on already-finished sessions and incorrectly re-trigger loop() via resumePending().
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
