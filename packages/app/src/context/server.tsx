@@ -14,6 +14,24 @@ export function normalizeServerUrl(input: string) {
   return withProtocol.replace(/\/+$/, "")
 }
 
+export function hostedAgentServerUrl(input: string) {
+  const url = normalizeServerUrl(input)
+  if (!url) return
+
+  try {
+    const parsed = new URL(url)
+    const match = parsed.pathname.match(/^\/agents\/[^/]+/)
+    if (!match) return
+    return `${parsed.origin}${match[0]}`
+  } catch {
+    return
+  }
+}
+
+export function normalizeServerUrlForDefault(input: string, defaultUrl: string) {
+  return hostedAgentServerUrl(defaultUrl) ?? normalizeServerUrl(input)
+}
+
 export function serverDisplayName(url: string) {
   if (!url) return ""
   return url
@@ -29,10 +47,15 @@ function projectsKey(url: string) {
   return url
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
 export const { use: useServer, provider: ServerProvider } = createSimpleContext({
   name: "Server",
   init: (props: { defaultUrl: string }) => {
     const platform = usePlatform()
+    const hostedDefaultUrl = createMemo(() => hostedAgentServerUrl(props.defaultUrl))
 
     const [store, setStore, _, ready] = persisted(
       Persist.global("server", ["server.v3"]),
@@ -45,14 +68,18 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const [active, setActiveRaw] = createSignal("")
 
     function setActive(input: string) {
-      const url = normalizeServerUrl(input)
+      const url = normalizeServerUrlForDefault(input, props.defaultUrl)
       if (!url) return
       setActiveRaw(url)
     }
 
     function add(input: string) {
-      const url = normalizeServerUrl(input)
+      const url = normalizeServerUrlForDefault(input, props.defaultUrl)
       if (!url) return
+      if (hostedDefaultUrl()) {
+        setActiveRaw(url)
+        return
+      }
 
       const fallback = normalizeServerUrl(props.defaultUrl)
       if (fallback && url === fallback) {
@@ -71,6 +98,11 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     function remove(input: string) {
       const url = normalizeServerUrl(input)
       if (!url) return
+      const hostedUrl = hostedDefaultUrl()
+      if (hostedUrl) {
+        setActiveRaw(hostedUrl)
+        return
+      }
 
       const list = store.list.filter((x) => x !== url)
       const next = active() === url ? (list[0] ?? normalizeServerUrl(props.defaultUrl) ?? "") : active()
@@ -83,8 +115,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     createEffect(() => {
       if (!ready()) return
+      const hostedUrl = hostedDefaultUrl()
+      if (hostedUrl && active() !== hostedUrl) {
+        setActiveRaw(hostedUrl)
+        return
+      }
       if (active()) return
-      const url = normalizeServerUrl(props.defaultUrl)
+      const url = normalizeServerUrlForDefault(props.defaultUrl, props.defaultUrl)
       if (!url) return
       setActiveRaw(url)
     })
@@ -94,7 +131,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const [healthy, setHealthy] = createSignal<boolean | undefined>(undefined)
     const [refreshToken, setRefreshToken] = createSignal(0)
 
-    const check = (url: string) => {
+    const checkOnce = (url: string) => {
       const sdk = createSynergyClient({
         baseUrl: url,
         fetch: platform.fetch,
@@ -104,6 +141,14 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         .health()
         .then((x) => x.data?.healthy === true)
         .catch(() => false)
+    }
+
+    const check = async (url: string) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (await checkOnce(url)) return true
+        if (attempt < 2) await wait(600 * (attempt + 1))
+      }
+      return false
     }
 
     createEffect(() => {
