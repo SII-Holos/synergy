@@ -18,8 +18,6 @@ describe("hosted server URL normalization", () => {
   })
 
   test("keeps regular server URL behavior outside hosted mode", () => {
-    expect(normalizeServerUrlForDefault("localhost:4096/", "http://localhost:4096")).toBe(
-      "http://localhost:4096",
-    )
+    expect(normalizeServerUrlForDefault("localhost:4096/", "http://localhost:4096")).toBe("http://localhost:4096")
   })
 })

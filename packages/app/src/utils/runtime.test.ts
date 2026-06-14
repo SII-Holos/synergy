@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { appAccessFromHostedAgentPath, hostedAgentPrefix, isHostedAgentAccess, isHostedMode } from "./runtime"
 
-type HappyDOMWindow = Window & typeof globalThis & {
-  happyDOM: {
-    setURL(url: string): void
+type HappyDOMWindow = Window &
+  typeof globalThis & {
+    happyDOM: {
+      setURL(url: string): void
+    }
   }
-}
 
 function navigateTo(pathname: string) {
   ;(window as HappyDOMWindow).happyDOM.setURL(`http://localhost:8081${pathname}`)
