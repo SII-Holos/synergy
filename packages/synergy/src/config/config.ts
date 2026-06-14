@@ -58,20 +58,38 @@ export namespace Config {
     // This allows organizations to provide default configs that users can override
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
-      if (value.type === "wellknown") {
-        process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
-        const response = await fetch(`${key}/.well-known/synergy`)
-        if (!response.ok) {
-          throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
-        }
-        const wellknown = (await response.json()) as any
-        const remoteConfig = wellknown.config ?? {}
-        // Add $schema to prevent load() from trying to write back to a non-existent file
-        if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
-        result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
-        log.debug("loaded remote config from well-known", { url: key })
-      }
+      if (value.type !== "wellknown") continue
+
+      process.env[value.key] = value.token
+      log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+
+      const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
+        signal: AbortSignal.timeout(5000),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            log.warn("failed to fetch remote config, skipping", {
+              url: `${key}/.well-known/synergy`,
+              status: response.status,
+            })
+            return null
+          }
+          const wellknown = (await response.json()) as any
+          return wellknown.config ?? {}
+        })
+        .catch((err) => {
+          log.warn("failed to fetch remote config, skipping", {
+            url: `${key}/.well-known/synergy`,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return null
+        })
+
+      if (!remoteConfig) continue
+
+      if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
+      result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
+      log.debug("loaded remote config from well-known", { url: key })
     }
 
     // Global user config overrides remote config
@@ -242,7 +260,8 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
+      log.warn("skipping invalid command definition", { path: item, issues: parsed.error.issues })
+      continue
     }
     return result
   }
@@ -285,7 +304,7 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
+      log.warn("skipping invalid agent definition", { path: item, issues: parsed.error.issues })
     }
     return result
   }
@@ -1604,24 +1623,7 @@ export namespace Config {
 
   export const global = lazy(async () => {
     const activeSet = await ConfigSet.activeName()
-    let result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
-
-    // Legacy: migrate from TOML config if it exists
-    await import(path.join(Global.Path.config, "config"), {
-      with: {
-        type: "toml",
-      },
-    })
-      .then(async (mod) => {
-        const { provider, model, ...rest } = mod.default
-        if (provider && model) result.model = `${provider}/${model}`
-        result["$schema"] = Global.Path.configSchemaUrl
-        result = mergeDeep(result, rest)
-        await Bun.write(ConfigSet.defaultFilePath(), JSON.stringify(result, null, 2))
-        await fs.unlink(path.join(Global.Path.config, "config"))
-      })
-      .catch(() => {})
-
+    const result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
     return result
   })
 
@@ -1639,7 +1641,14 @@ export namespace Config {
 
   async function load(text: string, configFilepath: string) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-      return process.env[varName] || ""
+      const value = process.env[varName]
+      if (value === undefined) {
+        log.warn("environment variable not set for config reference", {
+          var: varName,
+          path: configFilepath,
+        })
+      }
+      return value || ""
     })
 
     const fileMatches = text.match(/\{file:[^}]+\}/g)
@@ -1657,23 +1666,20 @@ export namespace Config {
           filePath = path.join(os.homedir(), filePath.slice(2))
         }
         const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
-        const fileContent = (
-          await Bun.file(resolvedPath)
-            .text()
-            .catch((error) => {
-              const errMsg = `bad file reference: "${match}"`
-              if (error.code === "ENOENT") {
-                throw new InvalidError(
-                  {
-                    path: configFilepath,
-                    message: errMsg + ` ${resolvedPath} does not exist`,
-                  },
-                  { cause: error },
-                )
-              }
-              throw new InvalidError({ path: configFilepath, message: errMsg }, { cause: error })
-            })
-        ).trim()
+        let fileContent: string
+        try {
+          fileContent = (await Bun.file(resolvedPath).text()).trim()
+        } catch (error: any) {
+          log.warn("failed to resolve file reference", {
+            path: configFilepath,
+            reference: match,
+            resolvedPath,
+            error: error.code ?? error.message,
+          })
+          const placeholder = `(file not resolved: ${path.basename(resolvedPath)})`
+          text = text.replace(match, JSON.stringify(placeholder).slice(1, -1))
+          continue
+        }
         // escape newlines/quotes, strip outer quotes
         text = text.replace(match, JSON.stringify(fileContent).slice(1, -1))
       }
@@ -1708,21 +1714,70 @@ export namespace Config {
       if (!parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
       }
-      const data = parsed.data
-      if (data.plugin) {
-        for (let i = 0; i < data.plugin.length; i++) {
-          const plugin = data.plugin[i]
+      const result = parsed.data
+      if (result.plugin) {
+        for (let i = 0; i < result.plugin.length; i++) {
+          const plugin = result.plugin[i]
           try {
-            data.plugin[i] = import.meta.resolve!(plugin, configFilepath)
+            result.plugin[i] = import.meta.resolve!(plugin, configFilepath)
           } catch (err) {}
         }
       }
-      return data
+      return result
+    }
+
+    // Partial recovery: remove invalid sections / section entries and retry.
+    // This allows Synergy to start with usable config even when individual
+    // providers, agents, MCP servers, or channels have schema errors.
+    const stripKeys = new Set<string>()
+    for (const issue of parsed.error.issues) {
+      if (issue.path.length === 0 && issue.code === "invalid_type") {
+        // Root-level type error (e.g. data is not an object) — unrecoverable
+        throw new InvalidError({
+          path: configFilepath,
+          issues: parsed.error.issues,
+        })
+      }
+      const section = String(issue.path[0])
+      stripKeys.add(section)
+    }
+
+    if (stripKeys.size === 0) {
+      throw new InvalidError({
+        path: configFilepath,
+        issues: parsed.error.issues,
+      })
+    }
+
+    log.warn("skipping invalid config sections (will use defaults)", {
+      path: configFilepath,
+      sections: [...stripKeys],
+    })
+
+    for (const key of stripKeys) {
+      delete (data as Record<string, unknown>)[key]
+    }
+
+    const retried = Info.safeParse(data)
+    if (retried.success) {
+      if (!retried.data.$schema) {
+        retried.data.$schema = CONFIG_SCHEMA
+      }
+      const result = retried.data
+      if (result.plugin) {
+        for (let i = 0; i < result.plugin.length; i++) {
+          const plugin = result.plugin[i]
+          try {
+            result.plugin[i] = import.meta.resolve!(plugin, configFilepath)
+          } catch (err) {}
+        }
+      }
+      return result
     }
 
     throw new InvalidError({
       path: configFilepath,
-      issues: parsed.error.issues,
+      issues: retried.error.issues,
     })
   }
   export const JsonError = NamedError.create(

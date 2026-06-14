@@ -264,6 +264,10 @@ export namespace RuntimeReload {
             }
           }
         }
+        if (result.changedFields.includes("timeout")) {
+          const { TimeoutConfig } = await import("@/util/timeout-config")
+          TimeoutConfig.invalidate()
+        }
         return
       }
       case "provider": {
@@ -415,6 +419,9 @@ export namespace RuntimeReload {
     }
     if (changed.has("experimental")) {
       cascaded.push("tool_registry")
+    }
+    if (changed.has("timeout")) {
+      cascaded.push("provider")
     }
 
     return unique(cascaded)
