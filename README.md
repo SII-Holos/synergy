@@ -79,6 +79,21 @@ synergy web --attach http://localhost:5000
 synergy send --attach http://localhost:5000 "run the task"
 ```
 
+## Research Portal Integration
+
+Research Portal does not expose Synergy's Web UI to end users. In an AgentBay
+runner, portal-gateway controls Synergy through AgentBay MCP `command_execute`
+and local HTTP calls:
+
+- health: `GET /global/health`
+- create or reuse the project session: `POST /session`
+- send chat: `POST /session/:sessionID/message`
+- answer HITL permission/question prompts:
+  `POST /permission/:requestID/reply` and `POST /question/:requestID/reply`
+
+This means Synergy must keep those local REST routes stable for Portal, but it
+does not need a Portal-specific reverse WebSocket bridge.
+
 Inspect or manage the background service when needed:
 
 ```bash
