@@ -25,6 +25,7 @@ import { createRefactoringEngineerAgent } from "./prompt/refactoring-engineer/bu
 import { createRegressionReproducerAgent } from "./prompt/regression-reproducer/builder"
 import { createRequirementsEngineerAgent } from "./prompt/requirements-engineer/builder"
 import { createResearchMethodologistAgent } from "./prompt/research-methodologist/builder"
+import { createResearchScoutAgent } from "./prompt/research-scout/builder"
 import { createRustQualityEngineerAgent } from "./prompt/rust-quality-engineer/builder"
 import { createSecurityReviewerAgent } from "./prompt/security-reviewer/builder"
 import { createSessionHistorianAgent } from "./prompt/session-historian/builder"
@@ -64,6 +65,7 @@ const FACTORIES = [
   createDocumentationReviewerAgent,
   createDocsResearcherAgent,
   createResearchMethodologistAgent,
+  createResearchScoutAgent,
   createLiteratureSearcherAgent,
   createLiteratureAnalystAgent,
 ]
