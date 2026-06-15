@@ -2,12 +2,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 16px;
   flex-shrink: 0;
   background: var(--bg-surface-stronger);
   border-bottom: 1px solid var(--border-weaker-base);
   gap: 12px;
+
   .stb-folder {
     flex-shrink: 0;
     color: var(--icon-weak);
@@ -40,17 +41,17 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
+  height: 34px;
   padding: 0 10px;
-  border-radius: 14px;
-  background: var(--surface-base);
-  border: 1px solid var(--border-weak-base);
+  border-radius: 8px;
+  background: transparent;
+  border: none;
   color: var(--text-base);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   transition:
     background-color 150ms,
-    border-color 150ms;
+    color 150ms;
 }
 
 .stb-selector-btn:hover {
@@ -63,18 +64,18 @@
 }
 
 .stb-locked:hover {
-  background: var(--surface-base);
+  background: transparent;
 }
 
 .stb-selector-label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100px;
+  max-width: 120px;
 }
 
 .stb-chevron {
-  color: var(--icon-weak);
+  color: var(--icon-base);
   flex-shrink: 0;
 }
 

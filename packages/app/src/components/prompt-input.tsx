@@ -48,7 +48,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
-import { getAgentVisual, AgentGlyph } from "@/components/agent-visual"
+import { getAgentVisual } from "@/components/agent-visual"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -2160,9 +2160,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 trigger={
                   <button
                     type="button"
-                    class="flex items-center gap-1 h-7 px-2.5 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                    class="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
                   >
-                    <AgentGlyph agent={local.agent.current()} size="small" quiet />
+                    <span class="inline-flex items-center justify-center size-5 rounded-full bg-surface-raised-base-hover text-11-medium text-text-base shrink-0">
+                      {getAgentVisual(local.agent.current()).label.charAt(0)}
+                    </span>
                     <span class="text-12-medium text-text-base max-w-[80px] truncate">
                       {getAgentVisual(local.agent.current()).label}
                     </span>

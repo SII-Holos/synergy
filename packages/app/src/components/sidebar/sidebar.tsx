@@ -12,11 +12,14 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
+import { relativeTime } from "@/utils/time"
 import { DialogSettings } from "@/components/dialog/dialog-settings"
 import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
+import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope } from "@/context/layout"
+import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import "./sidebar.css"
 
 interface SidebarProps {
@@ -35,6 +38,9 @@ export function Sidebar(props: SidebarProps) {
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
+
+  const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
+  const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
   const scopes = createMemo(() => layout.scopes.list())
   const dir = createMemo(() => {
@@ -99,6 +105,32 @@ export function Sidebar(props: SidebarProps) {
     navigate(`/${base64Encode(scope.worktree)}/session`)
   }
 
+  const handleAddProject = () => {
+    dialog.show(() => (
+      <DialogSelectDirectory
+        title="Add project"
+        multiple={true}
+        showInitGit={true}
+        onSelect={async (result) => {
+          if (!result) return
+          const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
+          for (const dir of dirs) {
+            layout.scopes.open(dir)
+          }
+        }}
+      />
+    ))
+  }
+
+  const handleSessionClick = (scope: LocalScope, session: Session) => {
+    navigate(`/${base64Encode(scope.worktree)}/session/${session.id}`)
+  }
+
+  const handleFlyoutSessionClick = (session: Session) => {
+    setProjectsFlyoutOpen(false)
+    navigate(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
+  }
+
   return (
     <div
       classList={{
@@ -126,28 +158,26 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
-      {/* Action buttons */}
-      <div class="sb-actions">
-        <Tooltip value="New session" placement="right">
-          <button type="button" class="sb-action-btn" onClick={handleNewSession}>
-            <Icon name="plus" size="normal" />
-            <Show when={isExpanded()}>
+      {/* Action buttons (expanded only) */}
+      <Show when={isExpanded()}>
+        <div class="sb-actions">
+          <Tooltip value="New session" placement="right">
+            <button type="button" class="sb-action-btn" onClick={handleNewSession}>
+              <Icon name="plus" size="normal" />
               <span class="sb-action-label">New session</span>
-            </Show>
-          </button>
-        </Tooltip>
+            </button>
+          </Tooltip>
 
-        <Tooltip value="Search sessions" placement="right">
-          <button type="button" class="sb-action-btn" onClick={props.onSearchOpen}>
-            <Icon name="search" size="normal" />
-            <Show when={isExpanded()}>
+          <Tooltip value="Search sessions" placement="right">
+            <button type="button" class="sb-action-btn" onClick={props.onSearchOpen}>
+              <Icon name="search" size="normal" />
               <span class="sb-action-label">Search</span>
-            </Show>
-          </button>
-        </Tooltip>
-      </div>
+            </button>
+          </Tooltip>
+        </div>
+      </Show>
 
-      {/* Global feature buttons: Holos, Notes, Agenda, Engram */}
+      {/* Global feature buttons */}
       <div class="sb-globals">
         <Tooltip value="Holos" placement="right">
           <button
@@ -211,80 +241,147 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
-      {/* Projects section */}
-      <div class="sb-projects">
-        <Show when={isExpanded()}>
-          <div class="sb-section-label">Projects</div>
-        </Show>
-        <For each={scopes()}>
-          {(scope) => {
-            const isActive = () => scope.worktree === currentDirectory()
-            const [menuOpen, setMenuOpen] = createSignal(false)
+      {/* Projects: collapsed mode = single icon with flyout, expanded = full section */}
+      <Show
+        when={isExpanded()}
+        fallback={
+          <div class="sb-projects-collapsed">
+            <Tooltip value="Projects" placement="right">
+              <button
+                type="button"
+                classList={{
+                  "sb-icon-btn": true,
+                  "sb-projects-flyout-trigger": true,
+                }}
+                onClick={() => setProjectsFlyoutOpen((v) => !v)}
+              >
+                <Icon name="folder-plus" size="normal" />
+              </button>
+            </Tooltip>
+          </div>
+        }
+      >
+        <div class="sb-projects">
+          <div class="sb-projects-header" onClick={() => setProjectsSectionOpen((v) => !v)} role="button" tabindex="0">
+            <Icon
+              name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
+              size="small"
+              class="sb-section-chevron"
+            />
+            <span class="sb-section-title">Projects</span>
+            <Tooltip value="Add project" placement="top">
+              <button
+                type="button"
+                class="sb-projects-header-plus"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleAddProject()
+                }}
+              >
+                <Icon name="plus" size="small" />
+              </button>
+            </Tooltip>
+          </div>
 
-            return (
-              <div class="sb-project-group">
-                <div
-                  classList={{
-                    "sb-project-row": true,
-                    "sb-project-active": isActive(),
-                  }}
-                >
-                  <button type="button" class="sb-project-chevron-btn" onClick={(e) => handleProjectToggle(e, scope)}>
-                    <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
-                  </button>
-                  <button type="button" class="sb-project-body" onClick={() => handleProjectClick(scope.worktree)}>
-                    <Icon name="folder" size="normal" class="sb-project-folder" />
-                    <Show when={isExpanded()}>
-                      <span class="sb-project-name">{getScopeLabel(scope)}</span>
-                    </Show>
-                  </button>
-                  <Show when={isExpanded()}>
-                    <div class="sb-project-actions">
-                      <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
-                        <Icon name="plus" size="small" />
-                      </button>
+          <Show when={projectsSectionOpen()}>
+            <For each={scopes()}>
+              {(scope) => {
+                const isActive = () => scope.worktree === currentDirectory()
+                const [menuOpen, setMenuOpen] = createSignal(false)
+
+                return (
+                  <div class="sb-project-group">
+                    <div
+                      classList={{
+                        "sb-project-row": true,
+                        "sb-project-active": isActive(),
+                      }}
+                    >
                       <button
                         type="button"
-                        class="sb-project-menu-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setMenuOpen((v) => !v)
-                        }}
+                        class="sb-project-chevron-btn"
+                        onClick={(e) => handleProjectToggle(e, scope)}
                       >
-                        <Icon name="ellipsis" size="small" />
+                        <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
                       </button>
-                      <Show when={menuOpen()}>
-                        <>
-                          <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                          <div class="sb-project-menu">
-                            <button type="button" class="sb-menu-item" disabled>
-                              <Icon name="pin" size="small" />
-                              <span>Pin</span>
-                              <span class="sb-menu-disabled-label">Coming soon</span>
-                            </button>
-                            <button type="button" class="sb-menu-item" onClick={(e) => handleProjectEdit(e, scope)}>
-                              <Icon name="pencil" size="small" />
-                              <span>Edit</span>
-                            </button>
+                      <button type="button" class="sb-project-body" onClick={() => handleProjectClick(scope.worktree)}>
+                        <Icon name="folder" size="normal" class="sb-project-folder" />
+                        <span class="sb-project-name">{getScopeLabel(scope)}</span>
+                      </button>
+                      <div class="sb-project-actions">
+                        <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
+                          <Icon name="plus" size="small" />
+                        </button>
+                        <button
+                          type="button"
+                          classList={{
+                            "sb-project-menu-btn": true,
+                            "sb-project-menu-active": menuOpen(),
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMenuOpen((v) => !v)
+                          }}
+                        >
+                          <Icon name="ellipsis" size="small" />
+                        </button>
+                        <Show when={menuOpen()}>
+                          <>
+                            <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                            <div class="sb-project-menu">
+                              <button type="button" class="sb-menu-item" disabled>
+                                <Icon name="pin" size="small" />
+                                <span>Pin</span>
+                                <span class="sb-menu-disabled-label">Coming soon</span>
+                              </button>
+                              <button type="button" class="sb-menu-item" onClick={(e) => handleProjectEdit(e, scope)}>
+                                <Icon name="pencil" size="small" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                class="sb-menu-item sb-menu-item-danger"
+                                onClick={(e) => handleProjectDelete(e, scope)}
+                              >
+                                <Icon name="trash-2" size="small" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </>
+                        </Show>
+                      </div>
+                    </div>
+
+                    {/* Sessions under expanded project */}
+                    <Show when={scope.expanded}>
+                      <div class="sb-sessions">
+                        <For each={layout.nav.projectSessions(scope).slice(0, 20)}>
+                          {(session) => (
                             <button
                               type="button"
-                              class="sb-menu-item sb-menu-item-danger"
-                              onClick={(e) => handleProjectDelete(e, scope)}
+                              class="sb-session-row"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSessionClick(scope, session)
+                              }}
                             >
-                              <Icon name="trash-2" size="small" />
-                              <span>Delete</span>
+                              <Icon name="message-square" size="small" class="sb-session-icon" />
+                              <span class="sb-session-title">{session.title || "Untitled"}</span>
+                              <span class="sb-session-time">
+                                {relativeTime(session.time.updated ?? session.time.created)}
+                              </span>
                             </button>
-                          </div>
-                        </>
-                      </Show>
-                    </div>
-                  </Show>
-                </div>
-              </div>
-            )
-          }}
-        </For>
-      </div>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
+                )
+              }}
+            </For>
+          </Show>
+        </div>
+      </Show>
 
       {/* Spacer */}
       <div class="sb-spacer" />
@@ -292,30 +389,67 @@ export function Sidebar(props: SidebarProps) {
       {/* Bottom: Settings, Connect Provider, Theme */}
       <div class="sb-bottom">
         <Tooltip value="Settings" placement="right">
-          <button type="button" class="sb-icon-btn" onClick={() => dialog.show(() => <DialogSettings />)}>
+          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSettings />)}>
             <Icon name="settings" size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Settings</span>
-            </Show>
+            <span class="sb-bottom-label">Settings</span>
           </button>
         </Tooltip>
         <Tooltip value="Connect Provider" placement="right">
-          <button type="button" class="sb-icon-btn" onClick={() => dialog.show(() => <DialogSelectProvider />)}>
+          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSelectProvider />)}>
             <Icon name="cable" size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Connect Provider</span>
-            </Show>
+            <span class="sb-bottom-label">Connect Provider</span>
           </button>
         </Tooltip>
         <Tooltip value={isDark() ? "Switch to light mode" : "Switch to dark mode"} placement="right">
-          <button type="button" class="sb-icon-btn" onClick={() => theme.setColorScheme(isDark() ? "light" : "dark")}>
+          <button type="button" class="sb-bottom-btn" onClick={() => theme.setColorScheme(isDark() ? "light" : "dark")}>
             <Icon name={isDark() ? "sun" : "moon"} size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">{isDark() ? "Light" : "Dark"}</span>
-            </Show>
+            <span class="sb-bottom-label">{isDark() ? "Light" : "Dark"}</span>
           </button>
         </Tooltip>
       </div>
+
+      {/* Projects flyout (collapsed mode only) */}
+      <Show when={!isExpanded() && projectsFlyoutOpen()}>
+        <div class="sb-projects-flyout-backdrop" onClick={() => setProjectsFlyoutOpen(false)} />
+        <div class="sb-projects-flyout">
+          <div class="sb-flyout-header">Projects</div>
+          <For each={scopes()}>
+            {(scope) => {
+              const sessions = createMemo(() => layout.nav.projectSessions(scope).slice(0, 20))
+              return (
+                <div class="sb-flyout-project-group">
+                  <button
+                    type="button"
+                    class="sb-flyout-project-row"
+                    onClick={() => {
+                      setProjectsFlyoutOpen(false)
+                      handleProjectClick(scope.worktree)
+                    }}
+                  >
+                    <Icon name="folder" size="small" />
+                    <span class="sb-flyout-project-name">{getScopeLabel(scope)}</span>
+                  </button>
+                  <For each={sessions()}>
+                    {(session) => (
+                      <button
+                        type="button"
+                        class="sb-flyout-session-row"
+                        onClick={() => handleFlyoutSessionClick(session)}
+                      >
+                        <Icon name="message-square" size="small" class="sb-flyout-session-icon" />
+                        <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
+                        <span class="sb-flyout-session-time">
+                          {relativeTime(session.time.updated ?? session.time.created)}
+                        </span>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
     </div>
   )
 }
