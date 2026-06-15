@@ -288,22 +288,22 @@ export function HeaderBar() {
   })
 
   return (
-    <header class="h-11 shrink-0 bg-background-weak flex items-center px-3 justify-between border-b border-border-weaker-base/60 relative z-30">
+    <header class="h-11 shrink-0 bg-background-weak flex items-center px-3 justify-between border-b border-border-weaker-base relative z-30">
       <div class="flex items-center gap-1 min-w-0">
         <A
           href="/"
-          class="hidden md:flex items-center justify-center size-6 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
+          class="hidden md:flex items-center justify-center size-6 shrink-0 rounded-lg opacity-80 hover:opacity-100 transition-opacity duration-200"
           onClick={() => panel.close()}
         >
           <img
             src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
             alt="Holos"
-            class="size-6 shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-6"
+            class="size-6 shrink-0"
           />
         </A>
         <button
           type="button"
-          class="md:hidden flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-all"
+          class="md:hidden flex items-center justify-center size-8 shrink-0 rounded-lg hover:bg-surface-raised-base-hover transition-colors"
           onClick={() => {
             panel.close()
             layout.mobileSidebar.toggle()

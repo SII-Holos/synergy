@@ -73,7 +73,6 @@
     rx: 8;
     ry: 8;
   }
-
   [data-slot="diagram-node"] {
     position: absolute;
     border-radius: calc(var(--radius-lg) + 2px);
@@ -87,16 +86,14 @@
     gap: 6px;
     overflow: hidden;
     text-align: left;
-    box-shadow: 0 6px 18px -14px color-mix(in srgb, var(--text-base) 28%, transparent);
+    box-shadow: var(--shadow-xs);
     transition:
       border-color var(--motion-duration-base) var(--motion-ease-standard),
       box-shadow var(--motion-duration-base) var(--motion-ease-standard);
 
     &[data-style="primary"] {
       border-left: 3px solid var(--surface-brand-base);
-      box-shadow:
-        0 1px 3px color-mix(in srgb, var(--text-base) 8%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--surface-brand-base) 12%, transparent);
+      box-shadow: var(--shadow-xs-border);
     }
     &[data-style="dashed"] {
       border-style: dashed;
@@ -335,7 +332,7 @@
     border: 1px solid var(--border-weak-base);
     background: var(--surface-base);
     padding: 10px 12px;
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--text-base) 6%, transparent);
+    box-shadow: var(--shadow-xs);
 
     &[data-style="primary"] {
       border-left: 3px solid var(--surface-brand-base);

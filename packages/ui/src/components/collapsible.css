@@ -72,12 +72,10 @@
   }
 
   &[data-variant="tool"] {
-    background-color: var(--surface-base);
-    border: 1px solid var(--border-weaker-base);
-    border-radius: var(--radius-md);
-    border-left: 3px solid var(--tool-accent, var(--border-weak-base));
-    padding-left: 0;
-    overflow: clip;
+    background-color: var(--surface-raised-base);
+    border: none;
+    border-left: 3px solid var(--tool-accent, var(--border-weaker-base));
+    border-radius: var(--radius-2xl);
     transition:
       border-color var(--motion-duration-base) var(--motion-ease-standard),
       background-color var(--motion-duration-base) var(--motion-ease-standard);

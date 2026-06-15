@@ -12,13 +12,14 @@ a:active,
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-wide) {
-  width: min(calc(100vw - 16px), 560px);
-  height: min(calc(100vh - 16px), 640px);
+  width: min(calc(100vw - 16px), 780px);
+  height: min(calc(100vh - 16px), 600px);
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-wide) [data-slot="dialog-body"] {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 [data-slot="dialog-container"]:has(.dialog-session-export) {
@@ -151,24 +152,11 @@ a:active,
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-
   [data-slot="dialog-container"]:has(.dialog-settings-wide) {
-    height: min(calc(100dvh - 16px), 640px);
+    height: min(calc(100dvh - 16px), 600px);
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {
     height: min(calc(100dvh - 20px), 760px);
-  }
-
-  /* Settings dialog tabs bar — allow horizontal scroll on small screens */
-  .ds-tabs-bar {
-    padding: 4px 8px 0;
-    justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .ds-tabs-bar::-webkit-scrollbar {
-    display: none;
   }
 }

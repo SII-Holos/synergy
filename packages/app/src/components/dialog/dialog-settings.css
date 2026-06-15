@@ -1,63 +1,226 @@
-@keyframes ds-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* ===== Settings dialog layout ===== */
 
-/* Tabs bar — pill style hosted in a clean strip */
-.ds-tabs-bar {
+.ds-settings-layout {
   display: flex;
-  justify-content: center;
-  padding: 4px 20px 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ===== Left navigation rail ===== */
+
+.ds-settings-rail {
+  width: 220px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid color-mix(in oklch, var(--border-base) 16%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base) 40%, transparent);
 }
 
-.ds-tabs-root {
-  height: auto !important;
-  background: transparent !important;
+.ds-settings-rail-top {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  padding-top: 0;
+  overflow-y: auto;
 }
 
-/* Content area */
-.ds-content {
+.ds-rail-set-info {
+  padding: 16px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-rail-set-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-base);
+}
+
+.ds-rail-set-inactive {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--border-base) 24%, transparent);
+  padding: 1px 6px;
+  border-radius: 9999px;
+  align-self: flex-start;
+}
+
+.ds-rail-set-dirty {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--icon-warning-base) 18%, transparent);
+  padding: 1px 6px;
+  border-radius: 9999px;
+  align-self: flex-start;
+}
+
+.ds-rail-set-mode {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--border-base) 24%, transparent);
+  padding: 1px 6px;
+  border-radius: 9999px;
+  align-self: flex-start;
+}
+
+/* ===== Nav items ===== */
+
+.ds-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0;
+}
+
+.ds-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-base);
+  cursor: default;
+  border: none;
+  background: transparent;
+  transition: background-color 0.12s ease;
+  text-align: left;
+}
+
+.ds-nav-item:hover {
+  background: color-mix(in oklch, var(--surface-raised-base-hover) 60%, transparent);
+}
+
+.ds-nav-item-active {
+  background: color-mix(in oklch, var(--surface-raised-base-hover) 80%, transparent);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+/* ===== Rail footer (Form/JSON toggle) ===== */
+
+.ds-settings-rail-footer {
+  padding: 8px;
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 16%, transparent);
+}
+
+.ds-mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border-weak-base) 50%, transparent);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ds-mode-toggle:hover {
+  color: var(--text-base);
+  background: var(--surface-raised-base-hover);
+  border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
+}
+
+.ds-mode-toggle-active {
+  color: var(--text-strong);
+  background: var(--surface-raised-stronger-non-alpha);
+  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+}
+
+/* ===== Right content area ===== */
+
+.ds-settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ds-content-inner {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px 20px;
+  padding: 28px 36px 20px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--border-base) 40%, transparent) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-/* Section container */
-.ds-section {
+.ds-content-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: 0 0 4px;
+  line-height: 1.25;
+}
+
+.ds-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.ds-section-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-weak);
+  margin: 0 0 8px;
+}
+
+/* ===== Setting sections and subsections ===== */
+
+.ds-setting-section {
+  padding: 10px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.ds-section-enter {
-  animation: ds-fade-in 0.2s ease-out both;
+.ds-setting-section + .ds-setting-section {
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 12%, transparent);
+  padding-top: 14px;
 }
 
-/* Section headers (for MCP / Plugins) */
-.ds-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 0 8px;
+.ds-setting-subsection {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base) 60%, transparent);
 }
 
-/* Section labels (for Advanced tab groups) */
+.ds-setting-subsection + .ds-setting-subsection {
+  margin-top: 10px;
+}
+
+.ds-subsection-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-base);
+  margin: 0 0 4px;
+}
+
+/* ===== Section labels (uppercase category headers) ===== */
+
 .ds-section-label {
-  padding: 12px 0 2px;
+  padding: 6px 0 2px;
   user-select: none;
-}
-
-.ds-section-label:first-child {
-  padding-top: 0;
 }
 
 .ds-section-label span {
@@ -68,22 +231,18 @@
   color: var(--text-weaker);
 }
 
-/* Setting row — horizontal label + control */
+/* ===== Setting row ===== */
+
 .ds-setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  transition: background-color 0.15s ease;
+  padding: 8px 0;
 }
 
-.ds-setting-row:hover {
-  background: var(--surface-raised-base);
-}
+/* ===== Segment pill control ===== */
 
-/* Segment pill control — unified track with sliding selection */
 .ds-segment {
   display: flex;
   align-items: center;
@@ -102,7 +261,9 @@
   font-weight: 500;
   color: var(--text-subtle);
   cursor: pointer;
-  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+  transition: all 0.12s ease;
   white-space: nowrap;
 }
 
@@ -119,17 +280,17 @@
     0 0 0 1px color-mix(in oklch, var(--border-base) 30%, transparent);
 }
 
-/* MCP card */
+/* ===== MCP card ===== */
+
 .ds-mcp-card {
   border-radius: 12px;
   border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
   background: var(--surface-raised-base);
   overflow: hidden;
-  transition: border-color 0.15s ease;
 }
 
-.ds-mcp-card:hover {
-  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+.ds-mcp-card + .ds-mcp-card {
+  margin-top: 8px;
 }
 
 .ds-mcp-card-header {
@@ -138,7 +299,7 @@
   justify-content: space-between;
   padding: 10px 14px;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.12s ease;
 }
 
 .ds-mcp-card-header:hover {
@@ -154,21 +315,18 @@
   padding-top: 12px;
 }
 
-/* MCP status dot */
 .ds-mcp-dot {
   width: 6px;
   height: 6px;
   border-radius: 9999px;
   background: var(--text-weaker);
   flex-shrink: 0;
-  transition: background-color 0.2s ease;
 }
 
 .ds-mcp-dot-active {
   background: var(--icon-success-base);
 }
 
-/* MCP type badge */
 .ds-mcp-badge {
   font-size: 10px;
   font-weight: 500;
@@ -180,7 +338,8 @@
   background: color-mix(in oklch, var(--border-weak-base) 40%, transparent);
 }
 
-/* Empty state */
+/* ===== Empty state ===== */
+
 .ds-empty-state {
   display: flex;
   flex-direction: column;
@@ -191,13 +350,15 @@
   color: var(--text-weak);
 }
 
-/* Model role row */
+/* ===== Model role row ===== */
+
 .ds-model-role-row {
   align-items: flex-start;
-  padding: 8px 12px;
+  padding: 8px 0;
 }
 
-/* Model role select */
+/* ===== Model role select ===== */
+
 .ds-model-select {
   width: 100%;
   padding: 6px 10px;
@@ -214,8 +375,8 @@
   padding-right: 30px;
   cursor: pointer;
   transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .ds-model-select:focus {
@@ -227,61 +388,7 @@
   border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
 }
 
-/* Settings context bar */
-.ds-context-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.ds-context-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 9999px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
-  background: color-mix(in oklch, var(--surface-raised-base) 80%, transparent);
-}
-
-.ds-context-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-weaker);
-}
-
-.ds-context-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-base);
-}
-
-/* Panel cards */
-.ds-panel-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 18%, transparent);
-  background: color-mix(in oklch, var(--surface-raised-base) 75%, transparent);
-}
-
-.ds-panel-card + .ds-panel-card {
-  margin-top: 12px;
-}
-
-.ds-panel-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 0 8px;
-}
+/* ===== Config set row ===== */
 
 .ds-config-set-row {
   display: flex;
@@ -290,15 +397,14 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  transition: background-color 0.15s ease;
 }
 
 .ds-config-set-row:hover {
-  background: var(--surface-raised-base);
+  background: color-mix(in oklch, var(--surface-raised-base-hover) 60%, transparent);
 }
 
 .ds-config-set-row-active {
-  background: color-mix(in oklch, var(--surface-raised-base-hover) 75%, transparent);
+  background: color-mix(in oklch, var(--surface-raised-base-hover) 80%, transparent);
 }
 
 .ds-inline-badge {
@@ -320,13 +426,8 @@
   color: var(--text-strong);
 }
 
-.ds-create-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+/* ===== Footer ===== */
 
-/* Footer */
 .ds-footer {
   display: flex;
   justify-content: flex-end;
@@ -336,43 +437,13 @@
   flex-shrink: 0;
 }
 
-/* Mode toggle (Form / JSON) */
-.ds-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-subtle);
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--border-weak-base) 50%, transparent);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
+/* ===== Raw editor ===== */
 
-.ds-mode-toggle:hover {
-  color: var(--text-base);
-  background: var(--surface-raised-base-hover);
-  border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
-}
-
-.ds-mode-toggle-active {
-  color: var(--text-strong);
-  background: var(--surface-raised-stronger-non-alpha);
-  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
-/* Raw editor */
 .ds-raw-editor-container {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: 8px;
 }
 
 .ds-raw-textarea {
@@ -394,8 +465,8 @@
   scrollbar-color: color-mix(in oklch, var(--border-base) 40%, transparent) transparent;
   outline: none;
   transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .ds-raw-textarea:focus {
@@ -411,6 +482,7 @@
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.5;
+  margin-bottom: 8px;
 }
 
 .ds-raw-validation-error {

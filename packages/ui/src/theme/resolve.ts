@@ -204,7 +204,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-weak-hover"] = neutral[6]
   tokens["icon-weak-active"] = neutral[7]
   tokens["icon-weak-selected"] = neutral[8]
-  tokens["icon-weak-disabled"] = neutral[isDark ? 3 : 5]
+  tokens["icon-weak-disabled"] = neutral[isDark ? 4 : 6]
   tokens["icon-weak-focus"] = neutral[8]
   tokens["icon-strong-base"] = neutral[11]
   tokens["icon-strong-hover"] = isDark ? "#f6f3f3" : "#151313"

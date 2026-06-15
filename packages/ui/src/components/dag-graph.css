@@ -4,7 +4,7 @@
   --dag-failed: var(--border-critical-base);
   --dag-blocked: var(--border-info-base);
   --dag-card-shadow: var(--shadow-xs);
-  --dag-grid-dot: rgb(17 0 0 / 0.045);
+  --dag-grid-dot: rgb(17 0 0 / 0.07);
 
   position: relative;
   width: 100%;
@@ -201,48 +201,20 @@
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
+    opacity: 1;
     transition:
       border-color 0.14s ease,
-      background 0.14s ease,
       box-shadow 0.14s ease,
-      opacity 0.14s ease,
       transform 0.14s ease;
 
     &:hover {
       transform: translateY(-1px);
       border-color: var(--border-weak-hover);
-      background: var(--surface-raised-base-hover);
-    }
-
-    &[data-status="completed"] {
-      border-color: color-mix(in srgb, var(--border-success-base) 56%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-success-weak) 34%, var(--surface-raised-base));
-      opacity: 0.86;
-    }
-
-    &[data-status="running"] {
-      border-color: color-mix(in srgb, var(--border-warning-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-warning-weak) 36%, var(--surface-raised-base));
-      box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--border-warning-base) 14%, transparent),
-        var(--dag-card-shadow);
-    }
-
-    &[data-status="blocked"] {
-      border-color: color-mix(in srgb, var(--border-info-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-info-weak) 36%, var(--surface-raised-base));
-    }
-
-    &[data-status="failed"] {
-      border-color: color-mix(in srgb, var(--border-critical-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-critical-weak) 36%, var(--surface-raised-base));
+      box-shadow: var(--shadow-xs-border-base);
     }
 
     &[data-ready="true"] {
-      border-color: color-mix(in srgb, var(--border-warning-base) 56%, var(--border-weaker-base));
-      box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--border-warning-base) 12%, transparent),
-        var(--dag-card-shadow);
+      border-color: var(--border-weak-hover);
     }
   }
 
@@ -285,10 +257,10 @@
 
   [data-slot="dag-graph-status-label"] {
     font-family: var(--font-family-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: var(--font-weight-medium);
     letter-spacing: 0.065em;
-    color: var(--text-weaker);
+    color: var(--text-weak);
 
     [data-status="completed"] & {
       color: var(--text-on-success-base);
@@ -332,10 +304,6 @@
     overflow-wrap: anywhere;
     scrollbar-width: thin;
     scrollbar-color: var(--border-weak-base) transparent;
-
-    [data-status="completed"] & {
-      color: var(--text-weak);
-    }
   }
 
   [data-slot="dag-graph-card-footer"] {
@@ -356,7 +324,7 @@
     border: 1px solid var(--border-weaker-base);
     border-radius: 999px;
     padding: 1px 5px;
-    color: var(--text-weaker);
+    color: var(--text-weak);
     background: var(--surface-inset-base);
     font-family: var(--font-family-mono);
     font-size: 10px;
@@ -381,7 +349,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface-base) 68%, transparent);
     backdrop-filter: blur(8px);
-    color: var(--text-weaker);
+    color: var(--text-weak);
     font-family: var(--font-family-sans);
     font-size: 11px;
     pointer-events: none;

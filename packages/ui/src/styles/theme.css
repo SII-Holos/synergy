@@ -165,6 +165,7 @@
   --text-base: var(--smoke-light-11);
   --text-weak: var(--smoke-light-9);
   --text-weaker: var(--smoke-light-8);
+  --text-subtle: var(--smoke-light-7);
   --text-strong: var(--smoke-light-12);
   --text-invert-base: var(--smoke-dark-alpha-11);
   --text-invert-weak: var(--smoke-dark-alpha-9);
@@ -422,6 +423,7 @@
     --text-base: var(--smoke-dark-10);
     --text-weak: var(--smoke-dark-9);
     --text-weaker: var(--smoke-dark-8);
+    --text-subtle: var(--smoke-dark-7);
     --text-strong: var(--smoke-dark-12);
     --text-invert-base: var(--smoke-dark-alpha-11);
     --text-invert-weak: var(--smoke-dark-alpha-9);

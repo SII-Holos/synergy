@@ -42,7 +42,7 @@
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  color: var(--icon-weak-disabled);
+  color: var(--icon-weak-base);
 }
 
 .hb-utils .hb-btn:hover {

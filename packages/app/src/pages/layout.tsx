@@ -15,8 +15,10 @@ import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
+import { DialogSettings } from "@/components/dialog/dialog-settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
 import { useServer } from "@/context/server"
@@ -29,6 +31,7 @@ import { ScopesPanel } from "@/components/scopes"
 import { HolosPanel } from "@/components/contacts"
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
+import { isGlobalScope as isGlobalScopeUtil } from "@/utils/scope"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -500,6 +503,99 @@ function MobilePanelOverlay() {
   )
 }
 
+function TopSlot() {
+  const panel = usePanel()
+  const navigate = useNavigate()
+  const params = useParams()
+
+  return (
+    <>
+      <RailButton
+        icon="home"
+        label="Home"
+        active={!!params.dir && isGlobalScopeUtil(params.dir ? base64Decode(params.dir) : "")}
+        onClick={() => {
+          navigate(`/${base64Encode("global")}/session`)
+          panel.close()
+        }}
+      />
+      <RailButton
+        icon="layout-grid"
+        label="Projects"
+        active={panel.active() === "scopes"}
+        onClick={() => panel.toggle("scopes")}
+      />
+      <RailButton icon="search" label="Search" active={false} onClick={() => {}} />
+    </>
+  )
+}
+
+function BottomSlot() {
+  const panel = usePanel()
+  const dialog = useDialog()
+  const theme = useTheme()
+  const isDark = () => theme.mode() === "dark"
+
+  return (
+    <div class="flex flex-col items-center gap-1 px-1 mt-auto border-t border-border-weaker-base/60 pt-2">
+      <RailButton
+        icon="notebook-pen"
+        label="Notes"
+        active={panel.active() === "note"}
+        onClick={() => panel.toggle("note")}
+      />
+      <RailButton
+        icon="clipboard-list"
+        label="Agenda"
+        active={panel.active() === "agenda"}
+        onClick={() => panel.toggle("agenda")}
+      />
+      <RailButton
+        icon="brain"
+        label="Engram"
+        active={panel.active() === "engram"}
+        onClick={() => panel.toggle("engram")}
+      />
+      <RailButton
+        icon="users"
+        label="Holos"
+        active={panel.active() === "holos"}
+        onClick={() => panel.toggle("holos")}
+      />
+      <RailButton
+        icon="settings"
+        label="Settings"
+        active={false}
+        onClick={() => dialog.show(() => <DialogSettings />)}
+      />
+      <RailButton
+        icon={isDark() ? "sun" : "moon"}
+        label={isDark() ? "Light" : "Dark"}
+        active={false}
+        onClick={() => theme.setColorScheme(isDark() ? "light" : "dark")}
+      />
+    </div>
+  )
+}
+
+function RailButton(props: { icon: IconName; label: string; active?: boolean; onClick: () => void }) {
+  return (
+    <Tooltip value={props.label} placement="right">
+      <button
+        type="button"
+        classList={{
+          "flex items-center justify-center size-8 rounded-xl shrink-0 transition-colors duration-150": true,
+          "text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover": !props.active,
+          "text-text-interactive-base bg-surface-interactive-base/10": !!props.active,
+        }}
+        onClick={props.onClick}
+      >
+        <Icon name={props.icon} size="normal" />
+      </button>
+    </Tooltip>
+  )
+}
+
 function LayoutContent(props: ParentProps) {
   const panel = usePanel()
   const layout = useLayout()
@@ -548,6 +644,14 @@ function LayoutContent(props: ParentProps) {
       </Show>
       <ConnectionBanner />
       <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
+        <Show when={layout.isDesktop()}>
+          <div class="hidden md:flex shrink-0 w-[48px] flex-col items-center gap-1 py-2 bg-background-weak border-r border-border-weaker-base/60">
+            <div class="flex flex-col items-center gap-1 flex-1 min-h-0 overflow-y-auto px-1">
+              <TopSlot />
+            </div>
+            <BottomSlot />
+          </div>
+        </Show>
         <main
           class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col contain-strict"
           style={{ "min-width": layout.isDesktop() ? `${MAIN_MIN_PX}px` : undefined }}

@@ -1919,10 +1919,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           classList={{
-            "group/prompt-input": true,
             "bg-surface-raised-stronger-non-alpha relative": true,
             "overflow-hidden": true,
-            "focus-within:shadow-xs-border": true,
+            "focus-within:ring-1 focus-within:ring-border-weak-base": true,
             "border border-border-base": !store.dragging,
             "border border-icon-info-active border-dashed": store.dragging,
             "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,

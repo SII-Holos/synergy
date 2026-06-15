@@ -79,6 +79,7 @@
   --color-input-disabled: var(--input-disabled);
   --color-text-weak: var(--text-weak);
   --color-text-weaker: var(--text-weaker);
+  --color-text-subtle: var(--text-subtle);
   --color-text-strong: var(--text-strong);
   --color-text-interactive-base: var(--text-interactive-base);
   --color-text-on-brand-base: var(--text-on-brand-base);

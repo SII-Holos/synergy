@@ -2,7 +2,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--surface-inset-base);
+  background-color: var(--surface-raised-base);
   border: 1px solid var(--border-weaker-base);
   transition: background-color 0.15s ease;
   border-radius: var(--radius-md);

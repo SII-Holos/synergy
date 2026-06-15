@@ -134,7 +134,7 @@ function attachNoteDragData(e: DragEvent, note: NoteInfo) {
 
   const dragImage = document.createElement("div")
   dragImage.className =
-    "flex items-center gap-2 rounded-xl border border-border-base/55 bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
+    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
   dragImage.style.position = "absolute"
   dragImage.style.top = "-1000px"
   dragImage.textContent = title
@@ -153,13 +153,13 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
   return (
     <button
       type="button"
-      class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-base/55 bg-surface-raised-base/95 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_18px_44px_-34px_rgba(28,34,48,0.24)] transition-all hover:-translate-y-0.5 hover:border-border-base/70 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.1),0_24px_54px_-34px_rgba(28,34,48,0.3)] active:scale-[0.985] cursor-pointer"
+      class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer"
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
+        <div class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
           <Icon name="folder" class="size-2.5 text-text-weak" />
           <span class="text-10-medium leading-tight">{props.originName}</span>
         </div>
@@ -188,10 +188,10 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
         </div>
       </Show>
 
-      <div class="mt-auto border-t border-border-base/30 px-3.5 py-3">
+      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
         <div class="flex items-center gap-1.5">
           <Show when={props.note.pinned}>
-            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base ring-1 ring-inset ring-border-base/45">
+            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
               <Icon name="pin" size="small" class="size-3" />
             </span>
           </Show>
@@ -203,7 +203,7 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
           <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
             <For each={(props.note.tags ?? []).slice(0, 3)}>
               {(tag) => (
-                <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-[10px] font-medium leading-none text-text-weak ring-1 ring-inset ring-border-base/45">
+                <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-[10px] font-medium leading-none text-text-weak">
                   {tag}
                 </span>
               )}
@@ -225,7 +225,7 @@ function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () 
   return (
     <button
       type="button"
-      class="min-w-0 rounded-xl border border-border-base/42 bg-surface-raised-base/82 px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-all hover:-translate-y-0.5 hover:border-border-base/65 hover:bg-surface-raised-base hover:shadow-[0_14px_32px_-28px_rgba(28,34,48,0.32)] active:scale-[0.985]"
+      class="min-w-0 rounded-xl border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985]"
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
@@ -246,7 +246,7 @@ function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () 
           </span>
         </Show>
         <Show when={tags()[0]}>
-          <span class="max-w-[5.5rem] truncate rounded-md bg-surface-raised-stronger-non-alpha/72 px-1.5 py-0.5 text-text-weak ring-1 ring-inset ring-border-base/35">
+          <span class="max-w-[5.5rem] truncate rounded-md bg-surface-raised-stronger-non-alpha/72 px-1.5 py-0.5 text-text-weak">
             {tags()[0]}
           </span>
         </Show>
@@ -276,9 +276,8 @@ function ScopeSection(props: {
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
   )
   const sectionClass = createMemo(() => {
-    if (props.expanded) return "border-border-base/55 bg-surface-inset-base/36"
+    if (props.expanded) return "border-border-weak-base bg-surface-inset-base/70"
     if (props.group.isCurrent) return "bg-surface-inset-base/42"
-    return ""
   })
 
   function getOriginName(note: NoteInfo): string | undefined {
@@ -290,7 +289,7 @@ function ScopeSection(props: {
 
   return (
     <section
-      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-base/38 bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
+      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
     >
       <Show when={props.group.isCurrent}>
         <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-text-interactive-base/70" />
@@ -318,7 +317,7 @@ function ScopeSection(props: {
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
-            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-base/38">
+            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-weaker-base">
               <span class="size-1.5 rounded-full bg-text-interactive-base/80" />
               Current
             </span>
@@ -333,7 +332,7 @@ function ScopeSection(props: {
         </button>
         <button
           type="button"
-          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
+          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
           onClick={props.onCreateNote}
           title="New note"
         >
@@ -1034,17 +1033,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="shrink-0 border-b border-border-base/45 bg-surface-raised-base/92 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/92 px-4 py-3">
+          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
               onClick={handleBack}
+              title="Back to list"
             >
               <Icon name="arrow-left" size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2">
               <input
                 type="text"
                 class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
@@ -1056,11 +1056,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base ring-border-base/45 shadow-sm":
-                  baseNote()!.pinned,
-                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                "bg-surface-interactive-base/14 text-text-interactive-base shadow-sm": baseNote()!.pinned,
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.pinned,
               }}
               onClick={togglePin}
@@ -1071,10 +1070,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
               classList={{
-                "bg-surface-diff-add-base/12 text-text-diff-add-base ring-border-base/45 shadow-sm": baseNote()!.global,
-                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                "bg-surface-diff-add-base/12 text-text-diff-add-base shadow-sm": baseNote()!.global,
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.global,
               }}
               onClick={toggleGlobal}
@@ -1085,7 +1084,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
               onClick={downloadNote}
               title="Download as Markdown"
             >
@@ -1094,18 +1093,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
               onClick={deleteNote}
               title="Delete"
             >
-              <Icon name="x" size="small" />
+              <Icon name="trash-2" size="small" />
             </button>
           </div>
         </div>
 
         <Show when={conflict()}>
-          <div class="shrink-0 border-b border-border-warning-base/45 bg-[color:color-mix(in_srgb,var(--surface-warning-base)_12%,var(--surface-raised-base))] px-4 py-3 text-12-regular text-text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] border border-border-warning-base/40 bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
+          <div class="shrink-0 border-b border-border-warning-base bg-surface-raised-base px-4 py-3 text-12-regular text-text-base">
+            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
               <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-warning-base/18 text-icon-warning-base">
                 <div class="size-1.5 rounded-full bg-icon-warning-base" />
               </div>
@@ -1113,14 +1112,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               <Show when={conflict()?.type === "remote-update"}>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-raised-base-hover"
+                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base transition-colors hover:bg-surface-raised-base-hover"
                   onClick={reloadRemote}
                 >
                   Reload remote
                 </button>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-interactive-base/18"
+                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/18"
                   onClick={overwriteRemote}
                 >
                   Overwrite remote
@@ -1130,12 +1129,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </Show>
 
-        <div class="shrink-0 border-b border-border-base/40 bg-surface-raised-base/88 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/88 px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5">
             <For each={tags()}>
               {(tag) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45">
-                  <span>{tag}</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak">
                   <button
                     type="button"
                     class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
@@ -1143,10 +1141,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                   >
                     <Icon name="x" size="small" class="size-2.5" />
                   </button>
+                  {tag}
                 </span>
               )}
             </For>
-            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5">
               <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
@@ -1163,23 +1162,27 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </div>
 
-        <div class="relative flex-1 min-h-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-raised-base)_92%,transparent)_0%,transparent_18%)] px-4 pb-4 pt-3">
-          <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-base/50 bg-surface-raised-base/94 shadow-[inset_0_1px_0_rgba(214,204,190,0.09),0_24px_56px_-42px_rgba(28,34,48,0.34)]">
+        <div class="relative flex-1 min-h-0 bg-background-base px-4 pb-4 pt-3">
+          <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-raised-base">
             <div
               ref={editorRef}
               class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               onClick={handleEditorAreaClick}
             />
-            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-[linear-gradient(to_top,color-mix(in_srgb,var(--surface-raised-base)_96%,transparent),transparent)]" />
+            <div
+              class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
+              style={{ background: "linear-gradient(to top, var(--surface-raised-base), transparent)" }}
+            />
           </div>
           <div ref={bubbleRef} class="note-bubble-menu">
             <Show when={editor()}>
               <BubbleMenuContent editor={editor()!} />
             </Show>
           </div>
-
-          <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 backdrop-blur-sm">
-            {saving() ? "Saving..." : dirty() ? "Unsaved changes" : "Saved"}
+          <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
+            <Show when={saving()} fallback="Saved">
+              Saving...
+            </Show>
           </div>
         </div>
       </Show>
@@ -1243,16 +1246,16 @@ const TIPTAP_STYLES = `
     padding: 0.9em 1.05em;
     font-style: italic;
     color: var(--text-weak);
-    box-shadow: inset 0 1px 0 rgba(214,204,190,0.06);
+    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
   }
   .tiptap pre {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-inset-base) 92%, #10141c 8%), color-mix(in srgb, var(--surface-inset-base) 80%, #0b0f16 20%));
+    background: var(--surface-inset-base);
     border: 1px solid color-mix(in srgb, var(--border-base) 72%, transparent);
     border-radius: 0.95rem;
     padding: 1em 1.05em;
     overflow-x: auto;
     margin-bottom: 0.95em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 14px 34px -28px rgba(16,20,28,0.52);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
   }
   .tiptap pre code {
     background: none;
@@ -1269,7 +1272,7 @@ const TIPTAP_STYLES = `
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85em;
     color: var(--text-strong);
-    box-shadow: inset 0 1px 0 rgba(214,204,190,0.08);
+    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
   }
   .tiptap table {
     border-collapse: collapse;

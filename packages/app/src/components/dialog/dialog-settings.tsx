@@ -4,7 +4,6 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -117,6 +116,21 @@ type SettingsEditMode = "form" | "raw"
 type DialogSettingsProps = {
   initialTab?: string
 }
+
+type NavItem = {
+  id: string
+  label: string
+  icon: string
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: "general", label: "General", icon: "settings" },
+  { id: "models", label: "Models", icon: "cpu" },
+  { id: "mcp", label: "MCP", icon: "cable" },
+  { id: "plugins", label: "Plugins", icon: "package" },
+  { id: "advanced", label: "Advanced", icon: "sliders-horizontal" },
+  { id: "config-sets", label: "Config Sets", icon: "layers" },
+]
 
 export function DialogSettings(props: DialogSettingsProps) {
   const dialog = useDialog()
@@ -1065,36 +1079,52 @@ export function DialogSettings(props: DialogSettingsProps) {
   return (
     <Dialog title="Settings" class="dialog-settings-wide">
       {ready() ? (
-        <div class="flex flex-col gap-0 h-full">
-          <div class="ds-tabs-bar">
-            <Show when={editMode() === "form"}>
-              <Tabs value={activeTab()} onChange={setActiveTab} variant="pill" class="ds-tabs-root">
-                <Tabs.List>
-                  <Tabs.Trigger value="general">General</Tabs.Trigger>
-                  <Tabs.Trigger value="models">Models</Tabs.Trigger>
-                  <Tabs.Trigger value="mcp">MCP</Tabs.Trigger>
-                  <Tabs.Trigger value="plugins">Plugins</Tabs.Trigger>
-                  <Tabs.Trigger value="advanced">Advanced</Tabs.Trigger>
-                  <Tabs.Trigger value="config-sets">Config Sets</Tabs.Trigger>
-                </Tabs.List>
-              </Tabs>
-            </Show>
-            <Show when={editMode() === "raw"}>
-              <div class="flex items-center gap-2 px-2 py-1">
-                <Icon name="code" size="normal" class="text-text-weak" />
-                <span class="text-13-medium text-text-base">Editing raw JSONC</span>
-                <Show when={rawConfig()?.path}>
-                  <span class="text-12-regular text-text-weaker truncate max-w-[240px]">{rawConfig()!.path}</span>
-                </Show>
-              </div>
-            </Show>
-            <div class="ml-auto flex items-center gap-1 pl-3">
+        <div class="ds-settings-layout">
+          {/* Left nav rail */}
+          <div class="ds-settings-rail">
+            <div class="ds-settings-rail-top">
+              <Show when={editMode() === "form"}>
+                <div class="ds-rail-set-info">
+                  <div class="ds-rail-set-name">{selectedSet()?.name ?? activeSet()?.name ?? "default"}</div>
+                  <Show when={!selectedSetIsActive()}>
+                    <span class="ds-rail-set-inactive">Inactive</span>
+                  </Show>
+                  <Show when={hasServerChanges()}>
+                    <span class="ds-rail-set-dirty">Unsaved</span>
+                  </Show>
+                </div>
+              </Show>
+              <Show when={editMode() === "raw"}>
+                <div class="ds-rail-set-info">
+                  <div class="ds-rail-set-name">{editingLabel()}</div>
+                  <span class="ds-rail-set-mode">Raw</span>
+                  <Show when={hasRawChanges()}>
+                    <span class="ds-rail-set-dirty">Unsaved</span>
+                  </Show>
+                </div>
+              </Show>
+              <nav class="ds-settings-nav">
+                <For each={NAV_ITEMS}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      class="ds-nav-item"
+                      classList={{ "ds-nav-item-active": activeTab() === item.id }}
+                      onClick={() => setActiveTab(item.id)}
+                    >
+                      <Icon name={item.icon as any} size="small" />
+                      <span>{item.label}</span>
+                    </button>
+                  )}
+                </For>
+              </nav>
+            </div>
+            <div class="ds-settings-rail-footer">
               <button
                 type="button"
                 class="ds-mode-toggle"
                 classList={{ "ds-mode-toggle-active": editMode() === "raw" }}
                 onClick={() => switchToEditMode(editMode() === "raw" ? "form" : "raw")}
-                title={editMode() === "raw" ? "Switch to form editor" : "Edit raw JSON config"}
               >
                 <Icon name={editMode() === "raw" ? "settings" : "code"} size="small" />
                 <span>{editMode() === "raw" ? "Form" : "JSON"}</span>
@@ -1102,36 +1132,16 @@ export function DialogSettings(props: DialogSettingsProps) {
             </div>
           </div>
 
-          <div class="ds-content">
-            <Show when={editMode() === "form"}>
-              <div class="ds-context-bar">
-                <div class="ds-context-pill">
-                  <span class="ds-context-label">Active</span>
-                  <span class="ds-context-value">{activeSet()?.name ?? "default"}</span>
-                </div>
-                <div class="ds-context-pill">
-                  <span class="ds-context-label">Editing</span>
-                  <span class="ds-context-value">{selectedSet()?.name ?? activeSet()?.name ?? "default"}</span>
-                  <Show when={!selectedSetIsActive()}>
-                    <span class="ds-inline-badge ds-inline-badge-muted">Inactive</span>
-                  </Show>
-                  <Show when={hasServerChanges()}>
-                    <span class="ds-inline-badge ds-inline-badge-dirty">Unsaved</span>
-                  </Show>
-                </div>
-              </div>
-            </Show>
+          {/* Right content area */}
+          <div class="ds-settings-content">
             <Show when={editMode() === "form" && activeTab() === "general"}>
-              <div class="ds-section ds-section-enter">
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Server-backed settings</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        These settings are saved to the Config Set shown in the Editing context above.
-                      </p>
-                    </div>
-                  </div>
+              <div class="ds-content-inner">
+                <h1 class="ds-content-title">General</h1>
+                <div class="ds-setting-section">
+                  <SectionLabel title="Server-backed" />
+                  <p class="ds-section-hint">
+                    These settings are saved to the Config Set <strong>{editingLabel()}</strong>.
+                  </p>
                   <SettingRow
                     title="Snapshot"
                     description="Save file snapshots for undo/redo"
@@ -1154,16 +1164,9 @@ export function DialogSettings(props: DialogSettingsProps) {
                     }
                   />
                 </div>
-
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Local preferences</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        Stored only in this client and never written to any Config Set
-                      </p>
-                    </div>
-                  </div>
+                <div class="ds-setting-section">
+                  <SectionLabel title="Local Preference" />
+                  <p class="ds-section-hint">Stored only in this client and never written to any Config Set.</p>
                   <SettingRow
                     title="Send Shortcut"
                     description="Choose whether Enter sends immediately or inserts a newline"
@@ -1183,15 +1186,11 @@ export function DialogSettings(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "models"}>
-              <div class="ds-section ds-section-enter">
-                <div class="ds-section-header">
-                  <div>
-                    <span class="text-13-medium text-text-base">Model Roles</span>
-                    <p class="text-12-regular text-text-weak mt-0.5">
-                      Assign specific models for different task types. Leave empty to use the default model.
-                    </p>
-                  </div>
-                </div>
+              <div class="ds-content-inner">
+                <h1 class="ds-content-title">Models</h1>
+                <p class="ds-section-hint">
+                  Assign specific models for different task types. Leave empty to use the default model.
+                </p>
                 <Show
                   when={providerModels().length > 0}
                   fallback={
@@ -1216,13 +1215,11 @@ export function DialogSettings(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "mcp"}>
-              <div class="ds-section ds-section-enter">
-                <div class="ds-section-header">
+              <div class="ds-content-inner">
+                <div class="ds-content-header">
                   <div>
-                    <span class="text-13-medium text-text-base">MCP Servers</span>
-                    <p class="text-12-regular text-text-weak mt-0.5">
-                      Configure local (stdio) or remote (HTTP/SSE) servers
-                    </p>
+                    <h1 class="ds-content-title">MCP Servers</h1>
+                    <p class="ds-section-hint">Configure local (stdio) or remote (HTTP/SSE) servers.</p>
                   </div>
                   <IconButton
                     icon="plus"
@@ -1257,13 +1254,11 @@ export function DialogSettings(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "plugins"}>
-              <div class="ds-section ds-section-enter">
-                <div class="ds-section-header">
+              <div class="ds-content-inner">
+                <div class="ds-content-header">
                   <div>
-                    <span class="text-13-medium text-text-base">Plugins</span>
-                    <p class="text-12-regular text-text-weak mt-0.5">
-                      Extend with custom tools, hooks, and integrations
-                    </p>
+                    <h1 class="ds-content-title">Plugins</h1>
+                    <p class="ds-section-hint">Extend with custom tools, hooks, and integrations.</p>
                   </div>
                   <IconButton
                     icon="plus"
@@ -1308,352 +1303,351 @@ export function DialogSettings(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "advanced"}>
-              <div class="ds-section ds-section-enter">
-                <SectionLabel title="Permission" />
-                <SettingRow
-                  title="Default Mode"
-                  description="How tool permission requests are handled"
-                  trailing={
-                    <SegmentPill
-                      value={advanced.permission}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "allow", label: "Allow" },
-                        { value: "ask", label: "Ask" },
-                        { value: "deny", label: "Deny" },
-                      ]}
-                      onChange={(value) => setAdvanced("permission", value)}
-                    />
-                  }
-                />
+              <div class="ds-content-inner">
+                <h1 class="ds-content-title">Advanced</h1>
 
-                <SectionLabel title="Question" />
-                <SettingRow
-                  title="Response Timeout"
-                  description="Auto-expire unanswered questions (0 = no timeout, default 30min)"
-                  trailing={
-                    <SegmentPill
-                      value={advanced.question_timeout}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "0", label: "Never" },
-                        { value: "300", label: "5min" },
-                        { value: "600", label: "10min" },
-                        { value: "1800", label: "30min" },
-                        { value: "3600", label: "60min" },
-                      ]}
-                      onChange={(value) => setAdvanced("question_timeout", value)}
-                    />
-                  }
-                />
-
-                <SectionLabel title="Compaction" />
-                <SettingRow
-                  title="Auto Compact"
-                  description="Compact sessions when context is full"
-                  trailing={
-                    <SegmentPill
-                      value={advanced.compaction_auto}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "true", label: "On" },
-                        { value: "false", label: "Off" },
-                      ]}
-                      onChange={(value) => setAdvanced("compaction_auto", value)}
-                    />
-                  }
-                />
-                <SettingRow
-                  title="Overflow Threshold"
-                  description="Context usage fraction that triggers auto-compaction (0.5–1.0, default 0.85)"
-                  trailing={
-                    <SegmentPill
-                      value={advanced.compaction_overflow_threshold}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "0.70", label: "70%" },
-                        { value: "0.80", label: "80%" },
-                        { value: "0.85", label: "85%" },
-                        { value: "0.90", label: "90%" },
-                        { value: "0.95", label: "95%" },
-                      ]}
-                      onChange={(value) => setAdvanced("compaction_overflow_threshold", value)}
-                    />
-                  }
-                />
-
-                <SectionLabel title="Email" />
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Outgoing email</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        Configure SMTP for sending emails. If you need advanced or provider-specific fields, switch to
-                        the JSON editor.
-                      </p>
-                    </div>
-                  </div>
+                <div class="ds-setting-section">
+                  <SectionLabel title="Permission" />
                   <SettingRow
-                    title="Enabled"
-                    description="Allow email sending and reading for tools"
-                    trailing={<Switch checked={email.enabled} onChange={(value) => setEmail("enabled", value)} />}
-                  />
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <TextField
-                      label="From Address"
-                      type="text"
-                      value={email.fromAddress}
-                      onChange={(value) => setEmail("fromAddress", value)}
-                    />
-                    <TextField
-                      label="From Name"
-                      type="text"
-                      value={email.fromName}
-                      onChange={(value) => setEmail("fromName", value)}
-                    />
-                    <TextField
-                      label="SMTP Host"
-                      type="text"
-                      value={email.smtpHost}
-                      onChange={(value) => setEmail("smtpHost", value)}
-                    />
-                    <TextField
-                      label="SMTP Port"
-                      type="text"
-                      value={email.smtpPort}
-                      onChange={(value) => setEmail("smtpPort", value)}
-                    />
-                    <TextField
-                      label="SMTP Username"
-                      type="text"
-                      value={email.smtpUsername}
-                      onChange={(value) => setEmail("smtpUsername", value)}
-                    />
-                    <TextField
-                      label="SMTP Password"
-                      type="password"
-                      value={email.smtpPassword}
-                      onChange={(value) => setEmail("smtpPassword", value)}
-                    />
-                  </div>
-                  <SettingRow
-                    title="Use TLS/SSL"
-                    description="Controls the SMTP secure flag"
-                    trailing={<Switch checked={email.smtpSecure} onChange={(value) => setEmail("smtpSecure", value)} />}
-                  />
-                </div>
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Incoming email</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        Configure IMAP for reading emails. Leave empty to disable email reading.
-                      </p>
-                    </div>
-                  </div>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <TextField
-                      label="IMAP Host"
-                      type="text"
-                      value={email.imapHost}
-                      onChange={(value) => setEmail("imapHost", value)}
-                    />
-                    <TextField
-                      label="IMAP Port"
-                      type="text"
-                      value={email.imapPort}
-                      onChange={(value) => setEmail("imapPort", value)}
-                    />
-                    <TextField
-                      label="IMAP Username"
-                      type="text"
-                      value={email.imapUsername}
-                      onChange={(value) => setEmail("imapUsername", value)}
-                    />
-                    <TextField
-                      label="IMAP Password"
-                      type="password"
-                      value={email.imapPassword}
-                      onChange={(value) => setEmail("imapPassword", value)}
-                    />
-                  </div>
-                  <SettingRow
-                    title="Use TLS/SSL"
-                    description="Controls the IMAP secure flag"
-                    trailing={<Switch checked={email.imapSecure} onChange={(value) => setEmail("imapSecure", value)} />}
+                    title="Default Mode"
+                    description="How tool permission requests are handled"
+                    trailing={
+                      <SegmentPill
+                        value={advanced.permission}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "allow", label: "Allow" },
+                          { value: "ask", label: "Ask" },
+                          { value: "deny", label: "Deny" },
+                        ]}
+                        onChange={(value) => setAdvanced("permission", value)}
+                      />
+                    }
                   />
                 </div>
 
-                <SectionLabel title="Channels" />
-                <AccountToggleCard
-                  title="Feishu accounts"
-                  description="Enable or disable existing Feishu channel accounts. Add accounts and detailed settings in the JSON editor."
-                  accounts={channels.feishuAccounts}
-                  emptyLabel="No Feishu accounts configured yet. Add them in JSON first."
-                  onToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
-                />
+                <div class="ds-setting-section">
+                  <SectionLabel title="Question" />
+                  <SettingRow
+                    title="Response Timeout"
+                    description="Auto-expire unanswered questions (0 = no timeout, default 30min)"
+                    trailing={
+                      <SegmentPill
+                        value={advanced.question_timeout}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "0", label: "Never" },
+                          { value: "300", label: "5min" },
+                          { value: "600", label: "10min" },
+                          { value: "1800", label: "30min" },
+                          { value: "3600", label: "60min" },
+                        ]}
+                        onChange={(value) => setAdvanced("question_timeout", value)}
+                      />
+                    }
+                  />
+                </div>
 
-                <SectionLabel title="Identity & Memory" />
-                <SettingRow
-                  title="Evolution"
-                  description="Passive experience learning + active memory curation"
-                  trailing={
-                    <SegmentPill
-                      value={identity.evolution}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "true", label: "On" },
-                        { value: "false", label: "Off" },
-                      ]}
-                      onChange={(value) => setIdentity("evolution", value)}
+                <div class="ds-setting-section">
+                  <SectionLabel title="Compaction" />
+                  <SettingRow
+                    title="Auto Compact"
+                    description="Compact sessions when context is full"
+                    trailing={
+                      <SegmentPill
+                        value={advanced.compaction_auto}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "true", label: "On" },
+                          { value: "false", label: "Off" },
+                        ]}
+                        onChange={(value) => setAdvanced("compaction_auto", value)}
+                      />
+                    }
+                  />
+                  <SettingRow
+                    title="Overflow Threshold"
+                    description="Context usage fraction that triggers auto-compaction (0.5–1.0, default 0.85)"
+                    trailing={
+                      <SegmentPill
+                        value={advanced.compaction_overflow_threshold}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "0.70", label: "70%" },
+                          { value: "0.80", label: "80%" },
+                          { value: "0.85", label: "85%" },
+                          { value: "0.90", label: "90%" },
+                          { value: "0.95", label: "95%" },
+                        ]}
+                        onChange={(value) => setAdvanced("compaction_overflow_threshold", value)}
+                      />
+                    }
+                  />
+                </div>
+
+                <div class="ds-setting-section">
+                  <SectionLabel title="Email" />
+                  <div class="ds-setting-subsection">
+                    <h3 class="ds-subsection-title">Outgoing email</h3>
+                    <p class="ds-section-hint">
+                      Configure SMTP for sending emails. For provider-specific fields, switch to the JSON editor.
+                    </p>
+                    <SettingRow
+                      title="Enabled"
+                      description="Allow email sending and reading for tools"
+                      trailing={<Switch checked={email.enabled} onChange={(value) => setEmail("enabled", value)} />}
                     />
-                  }
-                />
-                <Show when={identity.evolution === "true"}>
-                  <div class="ds-panel-card">
-                    <div class="ds-panel-card-header">
-                      <div>
-                        <span class="text-13-medium text-text-base">Recall Tuning</span>
-                        <p class="text-12-regular text-text-weak mt-0.5">
-                          Control how memories and experiences are injected into conversations
-                        </p>
-                      </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <TextField
+                        label="From Address"
+                        type="text"
+                        value={email.fromAddress}
+                        onChange={(value) => setEmail("fromAddress", value)}
+                      />
+                      <TextField
+                        label="From Name"
+                        type="text"
+                        value={email.fromName}
+                        onChange={(value) => setEmail("fromName", value)}
+                      />
+                      <TextField
+                        label="SMTP Host"
+                        type="text"
+                        value={email.smtpHost}
+                        onChange={(value) => setEmail("smtpHost", value)}
+                      />
+                      <TextField
+                        label="SMTP Port"
+                        type="text"
+                        value={email.smtpPort}
+                        onChange={(value) => setEmail("smtpPort", value)}
+                      />
+                      <TextField
+                        label="SMTP Username"
+                        type="text"
+                        value={email.smtpUsername}
+                        onChange={(value) => setEmail("smtpUsername", value)}
+                      />
+                      <TextField
+                        label="SMTP Password"
+                        type="password"
+                        value={email.smtpPassword}
+                        onChange={(value) => setEmail("smtpPassword", value)}
+                      />
                     </div>
                     <SettingRow
-                      title="Memory Similarity"
-                      description="Minimum cosine similarity for contextual memory (default 0.7)"
+                      title="Use TLS/SSL"
+                      description="Controls the SMTP secure flag"
                       trailing={
-                        <SegmentPill
-                          value={identity.memorySimThreshold}
-                          options={[
-                            { value: "", label: "Default" },
-                            { value: "0.5", label: "0.5" },
-                            { value: "0.6", label: "0.6" },
-                            { value: "0.7", label: "0.7" },
-                            { value: "0.8", label: "0.8" },
-                            { value: "0.9", label: "0.9" },
-                          ]}
-                          onChange={(value) => setIdentity("memorySimThreshold", value)}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="Memory per Category"
-                      description="Max contextual memories per category (default 3)"
-                      trailing={
-                        <SegmentPill
-                          value={identity.memoryTopK}
-                          options={[
-                            { value: "", label: "Default" },
-                            { value: "1", label: "1" },
-                            { value: "2", label: "2" },
-                            { value: "3", label: "3" },
-                            { value: "5", label: "5" },
-                            { value: "8", label: "8" },
-                          ]}
-                          onChange={(value) => setIdentity("memoryTopK", value)}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="Experience Similarity"
-                      description="Minimum cosine similarity for experience retrieval (default 0.7)"
-                      trailing={
-                        <SegmentPill
-                          value={identity.experienceSimThreshold}
-                          options={[
-                            { value: "", label: "Default" },
-                            { value: "0.5", label: "0.5" },
-                            { value: "0.6", label: "0.6" },
-                            { value: "0.7", label: "0.7" },
-                            { value: "0.8", label: "0.8" },
-                            { value: "0.9", label: "0.9" },
-                          ]}
-                          onChange={(value) => setIdentity("experienceSimThreshold", value)}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="Experience Count"
-                      description="Number of past experiences to retrieve (default 8)"
-                      trailing={
-                        <SegmentPill
-                          value={identity.experienceTopK}
-                          options={[
-                            { value: "", label: "Default" },
-                            { value: "3", label: "3" },
-                            { value: "5", label: "5" },
-                            { value: "8", label: "8" },
-                            { value: "10", label: "10" },
-                            { value: "15", label: "15" },
-                          ]}
-                          onChange={(value) => setIdentity("experienceTopK", value)}
-                        />
-                      }
-                    />
-                    <SettingRow
-                      title="Exploration Rate"
-                      description="ε-greedy probability for experience exploration (default 0.1)"
-                      trailing={
-                        <SegmentPill
-                          value={identity.experienceEpsilon}
-                          options={[
-                            { value: "", label: "Default" },
-                            { value: "0", label: "0" },
-                            { value: "0.05", label: "0.05" },
-                            { value: "0.1", label: "0.1" },
-                            { value: "0.2", label: "0.2" },
-                            { value: "0.3", label: "0.3" },
-                          ]}
-                          onChange={(value) => setIdentity("experienceEpsilon", value)}
-                        />
+                        <Switch checked={email.smtpSecure} onChange={(value) => setEmail("smtpSecure", value)} />
                       }
                     />
                   </div>
-                </Show>
-                <SettingRow
-                  title="Autonomy"
-                  description="Autonomous background routines like daily self-reflection and agenda planning"
-                  trailing={
-                    <SegmentPill
-                      value={identity.autonomy}
-                      options={[
-                        { value: "", label: "Default" },
-                        { value: "true", label: "On" },
-                        { value: "false", label: "Off" },
-                      ]}
-                      onChange={(value) => setIdentity("autonomy", value)}
+                  <div class="ds-setting-subsection">
+                    <h3 class="ds-subsection-title">Incoming email</h3>
+                    <p class="ds-section-hint">
+                      Configure IMAP for reading emails. Leave empty to disable email reading.
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <TextField
+                        label="IMAP Host"
+                        type="text"
+                        value={email.imapHost}
+                        onChange={(value) => setEmail("imapHost", value)}
+                      />
+                      <TextField
+                        label="IMAP Port"
+                        type="text"
+                        value={email.imapPort}
+                        onChange={(value) => setEmail("imapPort", value)}
+                      />
+                      <TextField
+                        label="IMAP Username"
+                        type="text"
+                        value={email.imapUsername}
+                        onChange={(value) => setEmail("imapUsername", value)}
+                      />
+                      <TextField
+                        label="IMAP Password"
+                        type="password"
+                        value={email.imapPassword}
+                        onChange={(value) => setEmail("imapPassword", value)}
+                      />
+                    </div>
+                    <SettingRow
+                      title="Use TLS/SSL"
+                      description="Controls the IMAP secure flag"
+                      trailing={
+                        <Switch checked={email.imapSecure} onChange={(value) => setEmail("imapSecure", value)} />
+                      }
                     />
-                  }
-                />
+                  </div>
+                </div>
+
+                <div class="ds-setting-section">
+                  <SectionLabel title="Channels" />
+                  <AccountToggleCard
+                    title="Feishu accounts"
+                    description="Enable or disable existing Feishu channel accounts. Add accounts and detailed settings in the JSON editor."
+                    accounts={channels.feishuAccounts}
+                    emptyLabel="No Feishu accounts configured yet. Add them in JSON first."
+                    onToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
+                  />
+                </div>
+
+                <div class="ds-setting-section">
+                  <SectionLabel title="Identity & Memory" />
+                  <SettingRow
+                    title="Evolution"
+                    description="Passive experience learning + active memory curation"
+                    trailing={
+                      <SegmentPill
+                        value={identity.evolution}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "true", label: "On" },
+                          { value: "false", label: "Off" },
+                        ]}
+                        onChange={(value) => setIdentity("evolution", value)}
+                      />
+                    }
+                  />
+                  <Show when={identity.evolution === "true"}>
+                    <div class="ds-setting-subsection">
+                      <h3 class="ds-subsection-title">Recall Tuning</h3>
+                      <p class="ds-section-hint">
+                        Control how memories and experiences are injected into conversations.
+                      </p>
+                      <SettingRow
+                        title="Memory Similarity"
+                        description="Minimum cosine similarity for contextual memory (default 0.7)"
+                        trailing={
+                          <SegmentPill
+                            value={identity.memorySimThreshold}
+                            options={[
+                              { value: "", label: "Default" },
+                              { value: "0.5", label: "0.5" },
+                              { value: "0.6", label: "0.6" },
+                              { value: "0.7", label: "0.7" },
+                              { value: "0.8", label: "0.8" },
+                              { value: "0.9", label: "0.9" },
+                            ]}
+                            onChange={(value) => setIdentity("memorySimThreshold", value)}
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="Memory per Category"
+                        description="Max contextual memories per category (default 3)"
+                        trailing={
+                          <SegmentPill
+                            value={identity.memoryTopK}
+                            options={[
+                              { value: "", label: "Default" },
+                              { value: "1", label: "1" },
+                              { value: "2", label: "2" },
+                              { value: "3", label: "3" },
+                              { value: "5", label: "5" },
+                              { value: "8", label: "8" },
+                            ]}
+                            onChange={(value) => setIdentity("memoryTopK", value)}
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="Experience Similarity"
+                        description="Minimum cosine similarity for experience retrieval (default 0.7)"
+                        trailing={
+                          <SegmentPill
+                            value={identity.experienceSimThreshold}
+                            options={[
+                              { value: "", label: "Default" },
+                              { value: "0.5", label: "0.5" },
+                              { value: "0.6", label: "0.6" },
+                              { value: "0.7", label: "0.7" },
+                              { value: "0.8", label: "0.8" },
+                              { value: "0.9", label: "0.9" },
+                            ]}
+                            onChange={(value) => setIdentity("experienceSimThreshold", value)}
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="Experience Count"
+                        description="Number of past experiences to retrieve (default 8)"
+                        trailing={
+                          <SegmentPill
+                            value={identity.experienceTopK}
+                            options={[
+                              { value: "", label: "Default" },
+                              { value: "3", label: "3" },
+                              { value: "5", label: "5" },
+                              { value: "8", label: "8" },
+                              { value: "10", label: "10" },
+                              { value: "15", label: "15" },
+                            ]}
+                            onChange={(value) => setIdentity("experienceTopK", value)}
+                          />
+                        }
+                      />
+                      <SettingRow
+                        title="Exploration Rate"
+                        description="ε-greedy probability for experience exploration (default 0.1)"
+                        trailing={
+                          <SegmentPill
+                            value={identity.experienceEpsilon}
+                            options={[
+                              { value: "", label: "Default" },
+                              { value: "0", label: "0" },
+                              { value: "0.05", label: "0.05" },
+                              { value: "0.1", label: "0.1" },
+                              { value: "0.2", label: "0.2" },
+                              { value: "0.3", label: "0.3" },
+                            ]}
+                            onChange={(value) => setIdentity("experienceEpsilon", value)}
+                          />
+                        }
+                      />
+                    </div>
+                  </Show>
+                  <SettingRow
+                    title="Autonomy"
+                    description="Autonomous background routines like daily self-reflection and agenda planning"
+                    trailing={
+                      <SegmentPill
+                        value={identity.autonomy}
+                        options={[
+                          { value: "", label: "Default" },
+                          { value: "true", label: "On" },
+                          { value: "false", label: "Off" },
+                        ]}
+                        onChange={(value) => setIdentity("autonomy", value)}
+                      />
+                    }
+                  />
+                </div>
               </div>
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "config-sets"}>
-              <div class="ds-section ds-section-enter">
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Current Set</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        Active controls runtime behavior. Edit picks which Config Set the other tabs are currently
-                        changing.
-                      </p>
-                    </div>
-                  </div>
+              <div class="ds-content-inner">
+                <h1 class="ds-content-title">Config Sets</h1>
+                <div class="ds-setting-section">
+                  <SectionLabel title="All Sets" />
+                  <p class="ds-section-hint">
+                    Active controls runtime behavior. Edit picks which Config Set the other tabs are currently changing.
+                  </p>
                   <For each={globalSync.configSets}>
                     {(set) => (
                       <div class="ds-config-set-row" classList={{ "ds-config-set-row-active": set.active }}>
-                        <div class="flex min-w-0 flex-col gap-0.5">
-                          <div class="flex items-center gap-2 min-w-0">
-                            <span class="text-13-medium text-text-base truncate">{set.name}</span>
-                            <Show when={set.active}>
-                              <span class="ds-inline-badge">Active</span>
-                            </Show>
-                            <Show when={selectedSet()?.name === set.name && !set.active}>
-                              <span class="ds-inline-badge ds-inline-badge-muted">Editing</span>
-                            </Show>
-                          </div>
+                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                          <span class="text-13-medium text-text-base truncate">{set.name}</span>
+                          <Show when={set.active}>
+                            <span class="ds-inline-badge">Active</span>
+                          </Show>
+                          <Show when={selectedSet()?.name === set.name && !set.active}>
+                            <span class="ds-inline-badge ds-inline-badge-muted">Editing</span>
+                          </Show>
                         </div>
                         <div class="flex items-center gap-2">
                           <Button
@@ -1706,18 +1700,10 @@ export function DialogSettings(props: DialogSettingsProps) {
                     )}
                   </For>
                 </div>
-
-                <div class="ds-panel-card">
-                  <div class="ds-panel-card-header">
-                    <div>
-                      <span class="text-13-medium text-text-base">Create Set</span>
-                      <p class="text-12-regular text-text-weak mt-0.5">
-                        Create a new Config Set by copying the current active one, then continue editing it in the
-                        existing tabs.
-                      </p>
-                    </div>
-                  </div>
-                  <div class="ds-create-row">
+                <div class="ds-setting-section">
+                  <SectionLabel title="Create Set" />
+                  <p class="ds-section-hint">Create a new Config Set by copying the current active one.</p>
+                  <div class="flex items-center gap-3">
                     <div class="flex-1 min-w-0">
                       <TextField
                         type="text"
@@ -1741,28 +1727,21 @@ export function DialogSettings(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "raw"}>
-              <div class="ds-section ds-section-enter ds-raw-editor-container">
-                <div class="ds-context-bar">
-                  <div class="ds-context-pill">
-                    <span class="ds-context-label">Editing</span>
-                    <span class="ds-context-value">{editingLabel()}</span>
-                    <Show when={hasRawChanges()}>
-                      <span class="ds-inline-badge ds-inline-badge-dirty">Unsaved</span>
-                    </Show>
-                  </div>
-                  <div class="ml-auto flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="small"
-                      disabled={validatingRaw() || !hasRawChanges()}
-                      onClick={() => void validateRawConfig()}
-                    >
-                      {validatingRaw() ? "Validating..." : "Validate"}
-                    </Button>
-                  </div>
+              <div class="ds-content-inner ds-raw-editor-container">
+                <Show when={rawConfig()?.path}>
+                  <p class="ds-section-hint mb-2 truncate max-w-full">{rawConfig()!.path}</p>
+                </Show>
+                <div class="flex items-center gap-2 mb-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    disabled={validatingRaw() || !hasRawChanges()}
+                    onClick={() => void validateRawConfig()}
+                  >
+                    {validatingRaw() ? "Validating..." : "Validate"}
+                  </Button>
                 </div>
-
                 <Show when={rawValidation.errors.length > 0}>
                   <div class="ds-raw-validation ds-raw-validation-error">
                     <For each={rawValidation.errors}>{(err) => <div class="ds-raw-validation-item">{err}</div>}</For>
@@ -1775,7 +1754,6 @@ export function DialogSettings(props: DialogSettingsProps) {
                     </For>
                   </div>
                 </Show>
-
                 <textarea
                   class="ds-raw-textarea"
                   value={rawText()}
@@ -1792,82 +1770,82 @@ export function DialogSettings(props: DialogSettingsProps) {
                 />
               </div>
             </Show>
-          </div>
 
-          <div class="ds-footer">
-            <Button type="button" variant="ghost" size="large" onClick={closeWithGuard}>
-              Cancel
-            </Button>
-            <Show when={editMode() === "raw"}>
-              <Show when={!selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="large"
-                  disabled={saving() || !hasRawChanges()}
-                  onClick={() => void saveRawConfig({ close: true })}
-                >
-                  {saving() ? "Saving..." : `Save to ${editingLabel()}`}
-                </Button>
+            <div class="ds-footer">
+              <Button type="button" variant="ghost" size="large" onClick={closeWithGuard}>
+                Cancel
+              </Button>
+              <Show when={editMode() === "raw"}>
+                <Show when={!selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="large"
+                    disabled={saving() || !hasRawChanges()}
+                    onClick={() => void saveRawConfig({ close: true })}
+                  >
+                    {saving() ? "Saving..." : `Save to ${editingLabel()}`}
+                  </Button>
+                </Show>
+                <Show when={!selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="large"
+                    disabled={saving()}
+                    onClick={() => void saveRawConfig({ activate: true, close: true })}
+                  >
+                    {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
+                  </Button>
+                </Show>
+                <Show when={selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="large"
+                    disabled={saving() || !hasRawChanges()}
+                    onClick={() => void saveRawConfig({ close: true })}
+                  >
+                    {saving() ? "Saving..." : "Save Changes"}
+                  </Button>
+                </Show>
               </Show>
-              <Show when={!selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  disabled={saving()}
-                  onClick={() => void saveRawConfig({ activate: true, close: true })}
-                >
-                  {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
-                </Button>
+              <Show when={editMode() === "form"}>
+                <Show when={!selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="large"
+                    disabled={saving() || !hasServerChanges()}
+                    onClick={() => void saveServerChanges({ close: true })}
+                  >
+                    {saving() ? "Saving..." : `Save to ${editingLabel()}`}
+                  </Button>
+                </Show>
+                <Show when={!selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="large"
+                    disabled={saving()}
+                    onClick={() => void saveServerChanges({ activate: true, close: true })}
+                  >
+                    {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
+                  </Button>
+                </Show>
+                <Show when={selectedSetIsActive()}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="large"
+                    disabled={saving() || !hasServerChanges()}
+                    onClick={() => void saveServerChanges({ close: true })}
+                  >
+                    {saving() ? "Saving..." : "Save Changes"}
+                  </Button>
+                </Show>
               </Show>
-              <Show when={selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  disabled={saving() || !hasRawChanges()}
-                  onClick={() => void saveRawConfig({ close: true })}
-                >
-                  {saving() ? "Saving..." : "Save Changes"}
-                </Button>
-              </Show>
-            </Show>
-            <Show when={editMode() === "form"}>
-              <Show when={!selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="large"
-                  disabled={saving() || !hasServerChanges()}
-                  onClick={() => void saveServerChanges({ close: true })}
-                >
-                  {saving() ? "Saving..." : `Save to ${editingLabel()}`}
-                </Button>
-              </Show>
-              <Show when={!selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  disabled={saving()}
-                  onClick={() => void saveServerChanges({ activate: true, close: true })}
-                >
-                  {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
-                </Button>
-              </Show>
-              <Show when={selectedSetIsActive()}>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  disabled={saving() || !hasServerChanges()}
-                  onClick={() => void saveServerChanges({ close: true })}
-                >
-                  {saving() ? "Saving..." : "Save Changes"}
-                </Button>
-              </Show>
-            </Show>
+            </div>
           </div>
         </div>
       ) : (
@@ -1905,13 +1883,9 @@ function AccountToggleCard(props: {
   onToggle: (index: number, value: boolean) => void
 }) {
   return (
-    <div class="ds-panel-card">
-      <div class="ds-panel-card-header">
-        <div>
-          <span class="text-13-medium text-text-base">{props.title}</span>
-          <p class="text-12-regular text-text-weak mt-0.5">{props.description}</p>
-        </div>
-      </div>
+    <div class="ds-setting-subsection">
+      <h3 class="ds-subsection-title">{props.title}</h3>
+      <p class="ds-section-hint mb-2">{props.description}</p>
       <Show
         when={props.accounts.length > 0}
         fallback={<div class="text-12-regular text-text-weak">{props.emptyLabel}</div>}

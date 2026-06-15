@@ -42,8 +42,8 @@ export function PromptDock(props: {
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-1.5": true,
-        "pt-12 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent": !props.isNewSession(),
+        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
+        "pt-12": !props.isNewSession(),
       }}
       style={{
         transform: props.isNewSession() ? "translateY(-35vh)" : "translateY(0)",
@@ -130,16 +130,6 @@ export function PromptDock(props: {
                   )}
                 </Show>
                 <div class="relative">
-                  <Show when={props.isGlobal}>
-                    <div
-                      class="absolute -inset-6 rounded-[48px] pointer-events-none"
-                      style={{
-                        background: "radial-gradient(ellipse at center, var(--surface-brand-base) 0%, transparent 70%)",
-                        opacity: 0.35,
-                        filter: "blur(32px)",
-                      }}
-                    />
-                  </Show>
                   <PromptInput
                     ref={props.inputRef}
                     newSessionWorktree={props.newSessionWorktree()}

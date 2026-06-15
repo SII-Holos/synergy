@@ -1,22 +1,16 @@
 @keyframes qa-pop-in {
   0% {
     opacity: 0;
-    transform: scale(0.3) translateY(8px);
-  }
-  50% {
-    transform: scale(1.08) translateY(-2px);
-  }
-  70% {
-    transform: scale(0.96) translateY(1px);
+    transform: translateY(4px);
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0);
   }
 }
 
 .qa-cloud {
-  animation: qa-cloud-in 0.2s ease-out both;
+  animation: qa-cloud-in 0.15s ease-out both;
 }
 
 @keyframes qa-cloud-in {
@@ -31,12 +25,10 @@
 }
 
 .qa-bubble {
-  animation: qa-pop-in var(--motion-duration-slow) var(--motion-ease-emphasized) both;
+  animation: qa-pop-in var(--motion-duration-base) var(--motion-ease-standard) both;
   transition:
-    background-color var(--motion-duration-base) var(--motion-ease-standard),
-    color var(--motion-duration-base) var(--motion-ease-standard),
-    transform var(--motion-duration-base) var(--motion-ease-emphasized),
-    box-shadow var(--motion-duration-base) var(--motion-ease-standard);
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
@@ -61,7 +53,7 @@
 }
 
 .qa-bubble:active {
-  transform: scale(0.92) !important;
+  transform: scale(0.96) !important;
 }
 
 .qa-bubble-icon {
@@ -79,8 +71,6 @@
 .qa-bubble-icon:hover:not(:disabled) {
   background: var(--surface-raised-base-hover);
   color: var(--text-base);
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .qa-bubble-pill {
@@ -88,7 +78,7 @@
   align-items: center;
   gap: 5px;
   padding: 0 10px;
-  height: 30px;
+  height: 28px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-weak-base);
   background: var(--surface-raised-stronger-non-alpha);
@@ -99,6 +89,4 @@
 
 .qa-bubble-pill:hover:not(:disabled) {
   background: var(--surface-raised-base-hover);
-  transform: scale(1.05) translateY(-1px);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 }

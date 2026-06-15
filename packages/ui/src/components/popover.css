@@ -6,11 +6,10 @@
   z-index: 50;
   min-width: 200px;
   max-width: 320px;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-xl);
   background-color: var(--surface-raised-stronger-non-alpha);
 
-  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
-  background-clip: padding-box;
+  border: 1px solid color-mix(in oklch, var(--border-base) 25%, transparent);
   box-shadow: var(--shadow-lg);
 
   transform-origin: var(--kb-popover-content-transform-origin);

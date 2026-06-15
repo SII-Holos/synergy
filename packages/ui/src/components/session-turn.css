@@ -45,11 +45,9 @@
     font-size: var(--font-size-large);
     font-weight: var(--font-weight-semibold, 600);
     color: var(--text-strong);
-    background: var(--session-turn-title-bg) !important;
-    border: 1px solid var(--session-turn-title-border) !important;
-    box-shadow:
-      inset 0 1px 0 var(--session-turn-title-highlight),
-      0 8px 18px -16px var(--session-turn-title-glow);
+    background: var(--surface-raised-base) !important;
+    border: 1px solid var(--border-weak-base) !important;
+    box-shadow: none;
     padding: 7px 13px !important;
     border-radius: 12px !important;
     overflow: hidden;
@@ -61,14 +59,7 @@
   }
 
   div[data-slot="session-turn-title"] h1 {
-    background: var(--session-turn-title-bg) !important;
-  }
-
-  :root {
-    --session-turn-title-bg: color-mix(in srgb, var(--surface-raised-base) 84%, var(--surface-brand-base) 16%);
-    --session-turn-title-border: color-mix(in srgb, var(--border-base) 55%, var(--surface-brand-base) 45%);
-    --session-turn-title-highlight: rgba(255, 255, 255, 0.28);
-    --session-turn-title-glow: color-mix(in srgb, var(--surface-brand-base) 20%, transparent);
+    background: var(--surface-raised-base) !important;
   }
 
   [data-slot="session-turn-title-timestamp"] {
