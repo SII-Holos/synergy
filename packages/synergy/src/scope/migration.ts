@@ -7,6 +7,7 @@ import type { Migration } from "@/migration"
 import type { Info as SessionInfo } from "../session/types"
 import type { Scope } from "./index"
 import { Log } from "@/util/log"
+import { MigrationRegistry } from "@/migration/registry"
 import { existsSync } from "fs"
 import path from "path"
 import fs from "fs/promises"
@@ -183,6 +184,7 @@ export const migrations: Migration[] = [
     },
   },
 ]
+MigrationRegistry.register("scope", migrations)
 
 async function moveFileBasedData(fromScopeID: string, toScopeID: string, dataDir: string) {
   const fromSID = Identifier.asScopeID(fromScopeID)

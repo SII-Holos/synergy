@@ -28,6 +28,7 @@ import { Installation } from "@/global/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { ConfigSet } from "./set"
+import { loadFragments } from "./fragment"
 import { RuntimeSchema } from "../runtime/schema"
 
 export namespace Config {
@@ -151,12 +152,20 @@ export namespace Config {
           result.agent ??= {}
           result.plugin ??= []
         }
+        // Load synergy.d/ fragments
+        const fragmentDir = path.join(dir, "synergy.d")
+        const fragments = await loadFragments(fragmentDir)
+        for (const fragment of fragments) {
+          result = mergeConfigConcatArrays(result, fragment as Info) as Info
+        }
+        // Re-apply defaults after fragment merge (fragment widens result type)
+        result.agent ??= {}
+        result.plugin ??= []
       }
 
       const exists = existsSync(path.join(dir, "node_modules"))
       const installing = installDependencies(dir)
       if (!exists) await installing
-
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
       result.plugin.push(...(await loadPlugin(dir)))

@@ -244,7 +244,7 @@ export namespace MCP {
             resources[key] = {}
             void prewarmDiscoveryCaches(key, result.mcpClient, timeout).catch((error) => {
               log.warn("failed to prewarm discovery caches", {
-                clientName: name,
+                clientName: key,
                 error,
               })
             })
@@ -606,6 +606,12 @@ export namespace MCP {
     for (const [key, mcp] of Object.entries(config)) {
       if (!isMcpConfigured(mcp)) continue
       result[key] = s.status[key] ?? { status: "disabled" }
+    }
+
+    // Also include runtime-only entries not in config (e.g. plugin MCPs)
+    for (const key of Object.keys(s.status)) {
+      if (result.hasOwnProperty(key)) continue
+      result[key] = s.status[key]
     }
 
     return result

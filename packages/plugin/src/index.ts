@@ -25,6 +25,7 @@ import type { ToolDefinition, ToolResult } from "./tool"
 
 export * from "./tool"
 export type { ToolResult }
+export * from "./manifest"
 
 // ---------------------------------------------------------------------------
 // Plugin Config / Auth / Cache accessors

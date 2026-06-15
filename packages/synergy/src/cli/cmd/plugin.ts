@@ -5,30 +5,24 @@ import {
   type HookCategory,
   type HookDescriptor,
 } from "@ericsanchezok/synergy-plugin/hooks"
+import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
-import { BunProc } from "../../util/bun"
+import { Plugin } from "@/plugin"
 import { PluginSpec } from "../../util/plugin-spec"
 import { Config } from "../../config/config"
-import { Global } from "../../global"
 import { Instance } from "../../scope/instance"
 import { Scope } from "@/scope"
 import { EOL } from "os"
 import path from "path"
-import { existsSync } from "fs"
+import fs from "fs"
 import * as prompts from "@clack/prompts"
+import { read as readManifestFile } from "../../plugin/manifest-reader"
 import type { Argv } from "yargs"
 
-function isPluginInstalled(pkg: string): boolean {
-  const modDir = PluginSpec.isNonRegistry(pkg) ? BunProc.resolvePkgName(pkg) : pkg
-  return existsSync(path.join(Global.Path.cache, "node_modules", modDir))
-}
-
-function formatCategory(category: HookCategory) {
-  return category.padEnd(12)
-}
-
-function printHookList(category?: HookCategory) {
+// ---------------------------------------------------------------------------
+// Helpers
+function formatHookList(category?: HookCategory) {
   const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
   const grouped = category
     ? [[category, hooks] as const]
@@ -51,6 +45,55 @@ function printHookList(category?: HookCategory) {
     process.stdout.write(EOL)
   }
 }
+
+// ---------------------------------------------------------------------------
+
+async function readManifest(pluginDir: string): Promise<PluginManifest | null> {
+  return readManifestFile(pluginDir)
+}
+
+function readPkgVersion(pluginDir: string): string | undefined {
+  try {
+    const pkgPath = path.join(pluginDir, "package.json")
+    const raw = fs.readFileSync(pkgPath, "utf-8")
+    const pkg = JSON.parse(raw)
+    return pkg.version as string | undefined
+  } catch {
+    return undefined
+  }
+}
+
+interface ContributedSummary {
+  skills: number
+  agents: number
+  commands: number
+  mcpServers: number
+}
+
+function getContributed(manifest: PluginManifest | null): ContributedSummary {
+  return {
+    skills: manifest?.contributes?.skills?.length ?? 0,
+    agents: manifest?.contributes?.agents?.length ?? 0,
+    commands: manifest?.contributes?.commands?.length ?? 0,
+    mcpServers: manifest?.contributes?.mcp ? Object.keys(manifest.contributes.mcp).length : 0,
+  }
+}
+
+function printContributed(manifest: PluginManifest | null) {
+  const c = getContributed(manifest)
+  const parts: string[] = []
+  if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
+  if (c.agents > 0) parts.push(`${c.agents} agent${c.agents !== 1 ? "s" : ""}`)
+  if (c.commands > 0) parts.push(`${c.commands} command${c.commands !== 1 ? "s" : ""}`)
+  if (c.mcpServers > 0) parts.push(`${c.mcpServers} MCP server${c.mcpServers !== 1 ? "s" : ""}`)
+  if (parts.length > 0) {
+    UI.println(`  ${UI.Style.TEXT_DIM}Contributes:${UI.Style.TEXT_NORMAL} ${parts.join(", ")}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// hooks
+// ---------------------------------------------------------------------------
 
 export const PluginHooksCommand = cmd({
   command: "hooks",
@@ -84,10 +127,10 @@ export const PluginHooksCommand = cmd({
     process.stdout.write("Current formal plugin hook surface for Synergy." + EOL + EOL)
 
     if (category) {
-      process.stdout.write(`Category: ${formatCategory(category)}` + EOL + EOL)
+      process.stdout.write(`Category: ${category.padEnd(12)}` + EOL + EOL)
     }
 
-    printHookList(category)
+    formatHookList(category)
     process.stdout.write(
       UI.Style.TEXT_DIM +
         "Tip: use --json for structured output. See packages/plugin/README.md for authoring guidance." +
@@ -97,53 +140,197 @@ export const PluginHooksCommand = cmd({
   },
 })
 
-export const PluginUpdateCommand = cmd({
-  command: "update [plugin]",
-  describe: "re-install plugins to get the latest version",
+// ---------------------------------------------------------------------------
+// add <spec>
+// ---------------------------------------------------------------------------
+
+export const PluginAddCommand = cmd({
+  command: "add <spec>",
+  describe: "install and activate a plugin",
   builder: (yargs: Argv) =>
-    yargs.positional("plugin", {
+    yargs.positional("spec", {
       type: "string",
-      describe: "specific plugin spec to update (e.g. github:SII-Holos/holos-inspire)",
+      describe: "plugin spec (e.g. my-plugin, github:org/repo, file://path/to/plugin)",
+      demandOption: true,
+    }),
+  async handler(args) {
+    const spec = args.spec as string
+    const spinner = prompts.spinner()
+    spinner.start(`Adding plugin ${spec}`)
+
+    try {
+      const plugin = await Plugin.add(spec)
+      const manifest = await Plugin.manifest(plugin.id)
+
+      spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
+      UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
+
+      const version = readPkgVersion(plugin.pluginDir)
+      if (version) {
+        UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
+      }
+
+      printContributed(manifest)
+
+      if (manifest?.description) {
+        UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
+      UI.error(message)
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
+// remove <id>
+// ---------------------------------------------------------------------------
+
+export const PluginRemoveCommand = cmd({
+  command: "remove <id>",
+  describe: "uninstall and deactivate a plugin",
+  builder: (yargs: Argv) =>
+    yargs
+      .positional("id", {
+        type: "string",
+        describe: "plugin id to remove",
+        demandOption: true,
+      })
+      .option("force", {
+        type: "boolean",
+        describe: "skip confirmation prompt",
+        default: false,
+      }),
+  async handler(args) {
+    const pluginId = args.id as string
+
+    const plugin = await Plugin.get(pluginId)
+    if (!plugin) {
+      UI.error(`Plugin not found: ${pluginId}`)
+      return
+    }
+
+    if (!args.force) {
+      const confirmed = await prompts.confirm({
+        message: `Remove plugin "${plugin.name ?? pluginId}"? This will uninstall and clean up all configuration.`,
+      })
+      if (confirmed !== true) {
+        UI.println(UI.Style.TEXT_DIM + "Cancelled." + UI.Style.TEXT_NORMAL)
+        return
+      }
+    }
+
+    const spinner = prompts.spinner()
+    spinner.start(`Removing plugin ${plugin.name ?? pluginId}`)
+
+    try {
+      await Plugin.remove(pluginId)
+      spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Removed ${plugin.name ?? pluginId}`)
+      UI.println(`${UI.Style.TEXT_DIM}Plugin uninstalled and configuration cleaned up.${UI.Style.TEXT_NORMAL}`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
+      UI.error(message)
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
+// update [id]
+// ---------------------------------------------------------------------------
+
+export const PluginUpdateCommand = cmd({
+  command: "update [id]",
+  describe: "update plugins to their latest version",
+  builder: (yargs: Argv) =>
+    yargs.positional("id", {
+      type: "string",
+      describe: "plugin id to update (omit to update all)",
     }),
   async handler(args) {
     await Instance.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
       async fn() {
         const config = await Config.get()
-        const plugins = config.plugin ?? []
+        const configSpecs = config.plugin ?? []
 
-        if (plugins.length === 0) {
+        if (configSpecs.length === 0) {
           UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
           return
         }
 
-        const toUpdate = args.plugin ? [args.plugin as string] : plugins
+        // Determine which specs to update
+        let specsToUpdate: { spec: string; id: string }[] = []
 
-        if (args.plugin && !plugins.includes(args.plugin as string)) {
-          UI.error(`Plugin "${args.plugin}" is not in your configuration.`)
+        if (args.id) {
+          const targetId = args.id as string
+          const targetPlugin = await Plugin.get(targetId)
+          if (!targetPlugin) {
+            UI.error(`Plugin not found: ${targetId}`)
+            return
+          }
+          // Find the config spec matching this plugin
+          const matchedSpec = await findConfigSpec(targetPlugin.pluginDir, configSpecs)
+          if (!matchedSpec) {
+            UI.error(`Could not find config entry for plugin "${targetId}". Update the spec manually in synergy.jsonc.`)
+            return
+          }
+          specsToUpdate.push({ spec: matchedSpec, id: targetId })
+        } else {
+          // Update all — find loaded plugin for each config spec
+          for (const spec of configSpecs) {
+            const plugin = await Plugin.lookupSpec(spec)
+            if (plugin) {
+              specsToUpdate.push({ spec, id: plugin.id })
+            }
+          }
+        }
+
+        if (specsToUpdate.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No installed plugins to update." + UI.Style.TEXT_NORMAL)
           return
         }
 
         let succeeded = 0
         let failed = 0
 
-        for (const pluginSpec of toUpdate) {
-          const { pkg, version } = PluginSpec.parse(pluginSpec)
+        // Phase 1: remove all with autoReload: false
+        for (const { spec, id } of specsToUpdate) {
           const spinner = prompts.spinner()
-          spinner.start(`Updating ${pluginSpec}`)
+          spinner.start(`Updating ${SpecToDisplay(spec)}`)
 
           try {
-            await BunProc.invalidateCache(pkg)
-            await BunProc.install(pkg, version)
-            spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            const plugin = await Plugin.get(id)
+            const oldVersion = plugin ? readPkgVersion(plugin.pluginDir) : undefined
+
+            await Plugin.remove(id, { autoReload: false })
+            await Plugin.add(spec, { autoReload: false })
+
+            // Read new version after install
+            const updatedPlugin = await Plugin.get(id)
+            const newVersion = updatedPlugin ? readPkgVersion(updatedPlugin.pluginDir) : undefined
+
+            const versionInfo =
+              oldVersion && newVersion
+                ? ` ${UI.Style.TEXT_DIM}(${oldVersion} → ${newVersion})${UI.Style.TEXT_NORMAL}`
+                : ""
+
+            spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}${versionInfo}`)
             succeeded++
           } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e)
-            spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginSpec}`)
+            spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}`)
             UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
             failed++
           }
         }
+
+        // Phase 2: reload once
+        const spinner = prompts.spinner()
+        spinner.start("Reloading plugins")
+        await Plugin.reload()
+        spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugins reloaded`)
 
         UI.println(
           `${UI.Style.TEXT_DIM}Updated ${succeeded} plugin${succeeded !== 1 ? "s" : ""}${failed > 0 ? `, ${failed} failed` : ""}${UI.Style.TEXT_NORMAL}`,
@@ -153,39 +340,204 @@ export const PluginUpdateCommand = cmd({
   },
 })
 
+// ---------------------------------------------------------------------------
+// list [--verbose] [--json]
+// ---------------------------------------------------------------------------
+
 export const PluginListCommand = cmd({
   command: "list",
-  describe: "list configured plugins and their install status",
-  builder: (yargs: Argv) => yargs,
-  async handler() {
+  describe: "list installed plugins",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("verbose", {
+        alias: "v",
+        type: "boolean",
+        describe: "show detailed plugin info (version, contributions, manifest)",
+        default: false,
+      })
+      .option("json", {
+        type: "boolean",
+        describe: "output as JSON",
+        default: false,
+      }),
+  async handler(args) {
     await Instance.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
       async fn() {
         const config = await Config.get()
-        const plugins = config.plugin ?? []
+        const configSpecs = config.plugin ?? []
+        const loaded = await Plugin.loaded()
+        if (args.json) {
+          const result = []
+          for (const p of loaded) {
+            const m = await readManifest(p.pluginDir)
+            const version = readPkgVersion(p.pluginDir)
+            result.push({
+              id: p.id,
+              name: p.name,
+              version: version ?? null,
+              pluginDir: p.pluginDir,
+              contributed: getContributed(m),
+              manifest: m
+                ? {
+                    name: m.name,
+                    version: m.version,
+                    description: m.description,
+                    author: m.author,
+                    homepage: m.homepage,
+                  }
+                : null,
+            })
+          }
+          process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+          return
+        }
 
-        if (plugins.length === 0) {
+        if (configSpecs.length === 0) {
           UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
           return
         }
 
-        for (const pluginSpec of plugins) {
-          const { pkg } = PluginSpec.parse(pluginSpec)
-          const installed = isPluginInstalled(pkg)
+        for (const spec of configSpecs) {
+          const displayName = PluginSpec.displayName(spec)
+          const plugin = loaded.find(
+            (p) => PluginSpec.displayName(spec) === p.id || p.name === PluginSpec.displayName(spec),
+          )
+          const installed = plugin != null
           const status = installed
-            ? `${UI.Style.TEXT_SUCCESS}✔ installed${UI.Style.TEXT_NORMAL}`
+            ? `${UI.Style.TEXT_SUCCESS}✔ loaded${UI.Style.TEXT_NORMAL}`
             : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
-          UI.println(`${pluginSpec.padEnd(36)} ${status}`)
+
+          UI.println(`${displayName.padEnd(36)} ${status}`)
+
+          if (args.verbose && installed && plugin) {
+            const version = readPkgVersion(plugin.pluginDir)
+            if (version) {
+              UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
+            }
+            UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
+
+            const manifest = await readManifest(plugin.pluginDir)
+            if (manifest) {
+              UI.println(`  ${UI.Style.TEXT_DIM}Manifest:${UI.Style.TEXT_NORMAL} ${manifest.name} v${manifest.version}`)
+              if (manifest.description) {
+                UI.println(`    ${manifest.description}`)
+              }
+            }
+            printContributed(manifest)
+          }
         }
       },
     })
   },
 })
 
+// ---------------------------------------------------------------------------
+// search <query>
+// ---------------------------------------------------------------------------
+
+export const PluginSearchCommand = cmd({
+  command: "search <query>",
+  describe: "search the npm registry for Synergy plugins",
+  builder: (yargs: Argv) =>
+    yargs.positional("query", {
+      type: "string",
+      describe: "search query (keywords: synergy-plugin recommended)",
+      demandOption: true,
+    }),
+  async handler(args) {
+    const query = `synergy-plugin ${args.query as string}`
+    const spinner = prompts.spinner()
+    spinner.start(`Searching npm for "${query}"`)
+
+    try {
+      const proc = Bun.spawn(["bun", "x", "npm", "search", query, "--json"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const code = await proc.exited
+      if (code !== 0) {
+        spinner.stop(`${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} npm search failed`)
+        UI.println(`${UI.Style.TEXT_DIM}Search requires network access and the npm registry.${UI.Style.TEXT_NORMAL}`)
+        return
+      }
+
+      const stdout = await Bun.readableStreamToText(proc.stdout!)
+      let results: any[]
+      try {
+        results = JSON.parse(stdout)
+      } catch {
+        spinner.stop(`${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Could not parse search results`)
+        return
+      }
+
+      spinner.stop(
+        `${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Found ${results.length} result${results.length !== 1 ? "s" : ""}`,
+      )
+      process.stdout.write(EOL)
+
+      const maxNameLen = Math.min(Math.max(...results.map((r: any) => String(r.name ?? "").length), 8), 40)
+      const maxVerLen = Math.min(Math.max(...results.map((r: any) => String(r.version ?? "").length), 7), 12)
+
+      for (const entry of results.slice(0, 20)) {
+        const name = String(entry.name ?? "").padEnd(maxNameLen)
+        const version = String(entry.version ?? "").padEnd(maxVerLen)
+        const description = String(entry.description ?? "").slice(0, 72)
+        process.stdout.write(
+          `  ${UI.Style.TEXT_HIGHLIGHT}${name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}${version}${UI.Style.TEXT_NORMAL} ${description}` +
+            EOL,
+        )
+      }
+
+      if (results.length > 20) {
+        process.stdout.write(
+          EOL +
+            UI.Style.TEXT_DIM +
+            `  ...and ${results.length - 20} more results. Refine your query for fewer results.` +
+            UI.Style.TEXT_NORMAL +
+            EOL,
+        )
+      }
+    } catch {
+      spinner.stop(`${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Search requires network access`)
+      UI.println(
+        `${UI.Style.TEXT_DIM}Could not reach the npm registry. Please check your network connection.${UI.Style.TEXT_NORMAL}`,
+      )
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Helpers (dependency)
+// ---------------------------------------------------------------------------
+
+function SpecToDisplay(spec: string): string {
+  return PluginSpec.displayName(spec)
+}
+
+async function findConfigSpec(pluginDir: string, configSpecs: string[]): Promise<string | undefined> {
+  for (const spec of configSpecs) {
+    const plugin = await Plugin.lookupSpec(spec)
+    if (plugin && plugin.pluginDir === pluginDir) return spec
+  }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Top-level plugin command
+// ---------------------------------------------------------------------------
+
 export const PluginCommand = cmd({
   command: "plugin",
-  describe: "inspect plugin capabilities and metadata",
+  describe: "install, remove, update, and inspect plugins",
   builder: (yargs: Argv) =>
-    yargs.command(PluginHooksCommand).command(PluginUpdateCommand).command(PluginListCommand).demandCommand(),
+    yargs
+      .command(PluginHooksCommand)
+      .command(PluginAddCommand)
+      .command(PluginRemoveCommand)
+      .command(PluginUpdateCommand)
+      .command(PluginListCommand)
+      .command(PluginSearchCommand)
+      .demandCommand(),
   async handler() {},
 })

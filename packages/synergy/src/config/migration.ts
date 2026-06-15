@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import path from "path"
 import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser"
 import type { Migration } from "../migration"
+import { MigrationRegistry } from "../migration/registry"
 import { ConfigSet } from "./set"
 import { Filesystem } from "../util/filesystem"
 import { Global } from "../global"
@@ -397,3 +398,4 @@ export const migrations: Migration[] = [
     },
   },
 ]
+MigrationRegistry.register("config", migrations)
