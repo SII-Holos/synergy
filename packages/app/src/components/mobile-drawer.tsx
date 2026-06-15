@@ -1,11 +1,9 @@
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { useLayout, getAvatarColors, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
@@ -157,7 +155,6 @@ function ScopeListView(props: {
       </div>
       <For each={scopes()}>
         {(scope) => {
-          const colors = createMemo(() => getAvatarColors(scope.icon?.color))
           const isActive = createMemo(() => {
             const dir = props.currentDir
             if (!dir) return false
@@ -174,13 +171,7 @@ function ScopeListView(props: {
               }}
               onClick={() => props.onSelectScope(scope)}
             >
-              <Avatar
-                fallback={getScopeLabel(scope)}
-                src={scope.icon?.url}
-                size="small"
-                background={colors().background}
-                foreground={colors().foreground}
-              />
+              <Icon name="folder" size="normal" class="shrink-0" />
               <span
                 classList={{
                   "text-14-medium truncate": true,

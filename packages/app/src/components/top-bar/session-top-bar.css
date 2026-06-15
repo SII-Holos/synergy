@@ -8,6 +8,17 @@
   background: var(--bg-surface-stronger);
   border-bottom: 1px solid var(--border-weaker-base);
   gap: 12px;
+  .stb-folder {
+    flex-shrink: 0;
+    color: var(--icon-weak);
+  }
+
+  .stb-slash {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-subtle);
+    font-family: ui-monospace, monospace;
+  }
 }
 
 .stb-left {
@@ -16,26 +27,6 @@
   gap: 8px;
   min-width: 0;
   overflow: hidden;
-}
-
-.stb-scope {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
-}
-
-.stb-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-strong);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
 }
 
 .stb-right {

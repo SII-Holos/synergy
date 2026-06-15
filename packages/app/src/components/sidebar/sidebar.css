@@ -127,30 +127,64 @@
   margin-bottom: 1px;
 }
 
-.sb-project-btn {
+/* ===== Project row (4-zone) ===== */
+
+.sb-project-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   width: 100%;
   height: 36px;
-  padding: 0 8px;
   border-radius: 8px;
-  color: var(--text-base);
   transition: background-color 150ms;
-  overflow: hidden;
 }
 
-.sb-project-btn:hover {
+.sb-project-row:hover {
   background: var(--surface-raised-base-hover);
 }
 
 .sb-project-active {
   background: var(--surface-interactive-base);
-  color: var(--text-interactive-base);
 }
 
 .sb-project-active:hover {
   background: var(--surface-interactive-base);
+}
+
+/* Chevron toggle */
+.sb-project-chevron-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 36px;
+  flex-shrink: 0;
+  color: var(--icon-weak);
+  border-radius: 8px 0 0 8px;
+  transition: color 150ms;
+}
+
+.sb-project-chevron-btn:hover {
+  color: var(--icon-base);
+}
+
+/* Body: folder + name — main click target */
+.sb-project-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  height: 36px;
+  padding: 0 4px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-base);
+  transition: color 150ms;
+}
+
+.sb-project-folder {
+  flex-shrink: 0;
+  color: var(--icon-base);
 }
 
 .sb-project-name {
@@ -164,71 +198,98 @@
   text-align: left;
 }
 
-.sb-project-chevron {
-  flex-shrink: 0;
-  color: var(--icon-weak);
-  margin-left: auto;
-}
-
-.sb-session-list {
-  padding: 0 0 2px 8px;
-}
-
-.sb-session-btn {
+/* Right-side actions */
+.sb-project-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 32px;
-  padding: 0 8px 0 32px;
-  border-radius: 6px;
-  color: var(--text-weak);
-  transition:
-    background-color 150ms,
-    color 150ms;
-  overflow: hidden;
-}
-
-.sb-session-btn:hover {
-  background: var(--surface-raised-base-hover);
-  color: var(--text-base);
-}
-
-.sb-session-active {
-  background: var(--surface-interactive-base);
-  color: var(--text-interactive-base);
-}
-
-.sb-session-active:hover {
-  background: var(--surface-interactive-base);
-}
-
-.sb-session-title {
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-  flex: 1;
-  min-width: 0;
-}
-
-.sb-session-child-count {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-subtle);
-  background: var(--surface-raised-base-hover);
-  padding: 1px 5px;
-  border-radius: 4px;
+  gap: 0;
   flex-shrink: 0;
-  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 100ms;
 }
 
-.sb-session-empty {
-  text-align: left;
-  padding: 4px 8px 4px 32px;
-  font-size: 11px;
+.sb-project-row:hover .sb-project-actions {
+  opacity: 1;
+}
+
+.sb-project-plus-btn,
+.sb-project-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 36px;
+  flex-shrink: 0;
+  color: var(--icon-weak);
+  border-radius: 6px;
+  transition: color 100ms;
+}
+
+.sb-project-plus-btn:hover,
+.sb-project-menu-btn:hover {
+  color: var(--icon-base);
+}
+
+/* Dropdown menu */
+.sb-project-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.sb-project-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 90;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface-raised-stronger-non-alpha);
+  border: 1px solid var(--border-base);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-base);
+  transition: background-color 100ms;
+}
+
+.sb-menu-item:hover:not(:disabled) {
+  background: var(--surface-raised-base-hover);
+}
+
+.sb-menu-item:disabled {
   color: var(--text-subtle);
+  cursor: default;
+}
+
+.sb-menu-disabled-label {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sb-menu-item-danger {
+  color: var(--text-critical);
+}
+
+.sb-menu-item-danger:hover:not(:disabled) {
+  background: var(--surface-critical-base);
 }
 
 .sb-spacer {

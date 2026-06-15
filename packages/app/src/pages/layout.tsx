@@ -354,14 +354,6 @@ export default function Layout(props: ParentProps) {
       },
     ]
 
-    commands.push({
-      id: "theme.scheme.cycle",
-      title: "Cycle color scheme",
-      category: "Theme",
-      keybind: "mod+shift+s",
-      onSelect: () => cycleColorScheme(1),
-    })
-
     for (const scheme of colorSchemeOrder) {
       commands.push({
         id: `theme.scheme.${scheme}`,

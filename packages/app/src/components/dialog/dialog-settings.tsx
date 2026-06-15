@@ -13,6 +13,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "./dialog-confirm"
+import { DialogSelectModel } from "./dialog-select-model"
 import "./dialog-settings.css"
 
 type ProviderModel = {
@@ -1191,6 +1192,14 @@ export function DialogSettings(props: DialogSettingsProps) {
                 <p class="ds-section-hint">
                   Assign specific models for different task types. Leave empty to use the default model.
                 </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  onClick={() => dialog.show(() => <DialogSelectModel />)}
+                >
+                  Manage models
+                </Button>
                 <Show
                   when={providerModels().length > 0}
                   fallback={
