@@ -55,14 +55,14 @@ const PROMPTS: PromptAction[] = [
     label: "Audit",
     description: "Audit recent changes and ensure quality",
     prompt:
-      "Audit all recent changes thoroughly. Create a DAG to track each review phase. Run through this pipeline, fixing issues after each phase before continuing to the next: (1) Readability — are names self-describing? Does each unit have a single, clear responsibility? Are concerns grouped cohesively, not scattered? (2) Structural hygiene — is there dead code, leftover transitional code, unused imports, stale layers, or speculative abstraction? Remove what does not earn its place. (3) Design integrity — does any logic wrap itself in unnecessary functions, wrappers, or indirection that add callsite depth without adding clarity or reuse? Does any module have responsibilities that belong elsewhere? (4) Error and edge-case handling — are error paths covered? Are null, empty, boundary, and failure states handled explicitly? (5) Consistency — do naming, error handling, module layout, and import style match surrounding conventions? Run quality gates (format, lint, typecheck, tests) after every fix phase. At the end, confirm all gates are green.",
+      "Audit your recent changes — list issues only, do NOT fix them yet. Evaluate along these axes: (1) Readability — are names self-describing? Does each unit have a single clear responsibility, or does it scatter related concerns? (2) Structural hygiene — dead code, leftover transitional code, unused imports, stale layers, speculative abstraction? Flag anything that doesn't earn its place. (3) Design integrity — unnecessary wrappers, indirection, functions that add callsite depth without clarity or reuse? Every layer must justify itself. (4) Error handling — are error paths covered? Are null, empty, boundary, and failure states handled explicitly? (5) Consistency — do naming, error handling, module layout, and imports match surrounding conventions? Be specific — cite file names, line ranges, and concrete examples. I'll review your findings before deciding what to fix.",
   },
   {
     icon: "zap",
     label: "Start",
     description: "Start implementing the current plan",
     prompt:
-      "Begin implementation. Create a DAG to plan and track the work, including these phases: map the relevant code → design the approach → test (write failing tests first) → implement → verify (run quality gates) → review (security, performance, API compatibility where applicable). Apply professional engineering standards: behavior is tested before implementation, names communicate domain meaning, structure is locally consistent and free of dead code, quality checks pass mechanically. If any phase uncovers a deeper issue that requires refactoring rather than layering a fix, address it. Verify at the end that all quality gates are green.",
+      "Your proposal looks good — go ahead and implement it. Prioritize clean, professional code: no redundant logic, no dead code, no leftover patches. Behavior should be tested, names should communicate domain meaning, structure should be locally consistent. If the right solution requires refactoring at a deeper level rather than layering fixes on top, do that. Quality checks must pass at the end. Treat the codebase with care — every line should earn its place.",
   },
 ]
 
