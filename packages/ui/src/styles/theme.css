@@ -331,7 +331,6 @@
     color-scheme: dark;
     --text-mix-blend-mode: plus-lighter;
 
-    /* OC-1 fallback variables (dark) */
     --background-base: var(--smoke-dark-1);
     --background-weak: var(--smoke-dark-2);
     --background-strong: var(--smoke-dark-2);

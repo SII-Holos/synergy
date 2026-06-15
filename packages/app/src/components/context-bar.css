@@ -47,7 +47,7 @@
 }
 
 .context-indicator[data-level="warning"] .context-indicator-label {
-  color: var(--text-warning-base, #f59e0b);
+  color: var(--text-on-warning-base, #f59e0b);
 }
 
 .context-indicator[data-level="danger"] .context-indicator-fill {
@@ -55,5 +55,5 @@
 }
 
 .context-indicator[data-level="danger"] .context-indicator-label {
-  color: var(--text-critical-base, #ef4444);
+  color: var(--text-on-critical-base, #ef4444);
 }

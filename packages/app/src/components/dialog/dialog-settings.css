@@ -165,7 +165,7 @@
 }
 
 .ds-mcp-dot-active {
-  background: var(--icon-success);
+  background: var(--icon-success-base);
 }
 
 /* MCP type badge */
@@ -304,7 +304,7 @@
 .ds-inline-badge {
   padding: 2px 6px;
   border-radius: 9999px;
-  background: color-mix(in oklch, var(--icon-success) 14%, transparent);
+  background: color-mix(in oklch, var(--icon-success-base) 14%, transparent);
   color: var(--text-strong);
   font-size: 11px;
   font-weight: 600;
@@ -316,7 +316,7 @@
 }
 
 .ds-inline-badge-dirty {
-  background: color-mix(in oklch, var(--icon-warning) 18%, transparent);
+  background: color-mix(in oklch, var(--icon-warning-base) 18%, transparent);
   color: var(--text-strong);
 }
 
@@ -414,14 +414,14 @@
 }
 
 .ds-raw-validation-error {
-  background: color-mix(in oklch, var(--icon-danger) 10%, transparent);
-  border: 1px solid color-mix(in oklch, var(--icon-danger) 25%, transparent);
+  background: color-mix(in oklch, var(--icon-critical-base) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--icon-critical-base) 25%, transparent);
   color: var(--text-strong);
 }
 
 .ds-raw-validation-warning {
-  background: color-mix(in oklch, var(--icon-warning) 10%, transparent);
-  border: 1px solid color-mix(in oklch, var(--icon-warning) 25%, transparent);
+  background: color-mix(in oklch, var(--icon-warning-base) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--icon-warning-base) 25%, transparent);
   color: var(--text-strong);
 }
 

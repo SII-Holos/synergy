@@ -232,7 +232,7 @@
 }
 
 .sid-state-badge.is-needs-input {
-  color: var(--text-warning-base);
+  color: var(--text-on-warning-base);
   background: color-mix(in srgb, var(--icon-warning-base) 12%, transparent);
   border-color: color-mix(in srgb, var(--icon-warning-base) 20%, transparent);
 }

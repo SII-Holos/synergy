@@ -47,7 +47,7 @@
   pointer-events: none;
   background: var(--surface-raised-base-hover);
   border-color: var(--border-base);
-  color: var(--text-disabled);
+  color: var(--text-weak);
   box-shadow: none;
 }
 
@@ -55,7 +55,7 @@
   cursor: not-allowed;
   background: var(--surface-raised-base-hover);
   border-color: var(--border-base);
-  color: var(--text-disabled);
+  color: var(--text-weak);
   box-shadow: none;
   opacity: 1;
 }

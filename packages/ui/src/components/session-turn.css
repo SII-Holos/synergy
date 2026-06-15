@@ -71,15 +71,6 @@
     --session-turn-title-glow: color-mix(in srgb, var(--surface-brand-base) 20%, transparent);
   }
 
-  [data-color-scheme="dark"],
-  [data-theme="dark"],
-  .dark {
-    --session-turn-title-bg: color-mix(in srgb, var(--surface-raised-base) 78%, var(--surface-brand-base) 22%);
-    --session-turn-title-border: color-mix(in srgb, var(--border-base) 42%, var(--surface-brand-base) 58%);
-    --session-turn-title-highlight: rgba(255, 255, 255, 0.06);
-    --session-turn-title-glow: color-mix(in srgb, var(--surface-brand-base) 34%, transparent);
-  }
-
   [data-slot="session-turn-title-timestamp"] {
     font-size: 0.75rem;
     color: var(--text-weak);
@@ -98,14 +89,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-text-dimmed);
+    color: var(--text-weak);
     font-size: 0.8125rem;
   }
 
   [data-slot="session-turn-mailbox-link"] {
     all: unset;
     cursor: pointer;
-    color: var(--color-text-link);
+    color: var(--text-interactive-base);
     text-decoration: underline;
     text-decoration-color: transparent;
     transition: text-decoration-color 0.15s;

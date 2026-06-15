@@ -342,7 +342,7 @@
     z-index: 1;
     padding: 0.15rem 0.4rem;
     border-radius: var(--radius-sm);
-    background-color: var(--surface-raised-solid);
+    background-color: var(--surface-raised-stronger-non-alpha);
     color: var(--text-strong);
     font-size: 0.6875rem;
     font-weight: var(--font-weight-medium);
