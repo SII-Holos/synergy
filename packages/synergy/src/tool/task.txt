@@ -38,9 +38,7 @@ Use the **`task_output`** tool to check on running background tasks:
 
 Use **`task_list()`** to list all visible background tasks at once.
 
-**No need to set an agenda watch.** When a background task completes, you will be notified automatically — no need to use \`agenda_watch\` or poll manually.
-
-Subagents commonly run 5–30 minutes for non-trivial work (code exploration, multi-file implementation, research, review). Still running is normal — the system handles it.
+**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** When a background task finishes, the system delivers its result and wakes you automatically — no watch, schedule, or manual polling is needed. Setting one would be redundant.
 
 ## Usage notes
 

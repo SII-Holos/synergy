@@ -1,12 +1,12 @@
-Set a one-time wake-up in THIS session. Use when you need to pause and come back later — e.g. wait for a deploy, let a process run, or check results after a delay.
+Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**:
+- Start with a short delay (3–5min) to check an external process, experiment, or pipeline.
+- Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions.
 
-When the time comes, you are woken up in this session with the prompt as your instruction. No new session is created. The watch auto-completes after firing.
+Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing.
 
-Examples:
-- "Check pipeline health in 30 minutes": agenda_watch(title="Check pipeline", delay="30m", prompt="Check if...")
-- "Revisit in 2 hours": agenda_watch(title="Revisit analysis", delay="2h", prompt="Continue the analysis...")
+When the watch fires, you continue in this session with full conversation history. The watch auto-completes after firing.
 
-After the watch fires, you continue working in this session with full conversation history.
+**Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed.
 
 Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires.
-If you need a RECURRING task (cron, every), use agenda_schedule instead.
+If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.

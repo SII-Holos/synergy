@@ -1,14 +1,13 @@
-Create a scheduled task that runs in its own separate session, isolated from this conversation. Use for recurring jobs (cron, every) or one-off future tasks that don't need the current conversation's context.
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief.
 
-Each execution runs in a session that has no access to this conversation — the prompt must be a complete, self-contained brief. One-shot tasks (at, delay) get a fresh session per fire. Recurring tasks (cron, every) reuse a persistent session across fires, accumulating their own conversation history.
+Triggers:
+- `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron
+- `{type:"every", interval:"30m"}` — recurring at a fixed interval
 
-Provide a trigger to set the schedule:
-- {type:"cron", expr:"0 9 * * *"} — recurring cron schedule. Add tz for timezone, e.g. tz:"Asia/Shanghai"
-- {type:"every", interval:"30m"} — recurring at a fixed interval, e.g. "30m", "6h", "1d"
-- {type:"at", at:1742569200000} — one-time at an absolute Unix timestamp (ms)
-- {type:"delay", delay:"2h"} — one-time after a relative delay
+By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery.
 
-By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery, or wake=false to deliver without waking.
+**If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only.
+
+**Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion.
 
 Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
-If you need to pause and resume later in THIS session, use agenda_watch instead.

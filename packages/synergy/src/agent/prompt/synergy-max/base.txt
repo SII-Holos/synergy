@@ -545,8 +545,8 @@ Use `scan_files` for text search and `parse_code` for AST-aware code search when
 
 When using `bash`:
 - Quote paths with spaces.
-- For long-running commands, use `background: true` or `yieldSeconds`.
-- After backgrounding, use `process` tool: `poll` (with `block: true` to wait), `log`, `send-keys`, `kill`.
+- For medium-duration commands (builds, tests, installs), use `background: true` or `yieldSeconds`. After backgrounding, use `process` tool: `poll` (with `block: true` to wait), `log`, `send-keys`, `kill`.
+- For long-running commands (experiments, training, large downloads, servers), use `tmux` or `nohup` with output redirected to a log file. Then use recursive `agenda_watch` to monitor progress — check the log, assess health, and set another watch with an adjusted interval.
 - Do not poll in a tight loop.
 
 ## DAG Tools
@@ -596,7 +596,13 @@ Use session tools directly for quick targeted lookups. Route to `session-histori
 
 ## Agenda
 
-Use agenda tools directly for scheduling reminders, watches, and recurring tasks.
+`agenda_watch` sets a one-time delayed wake-up in this session. Use it for:
+- **Recursive adaptive monitoring**: check an external process/experiment/pipeline, assess health, then set another watch with an adjusted delay if more monitoring is needed. Start short (3-5min), stretch as health stabilizes (e.g. 3min → 10min → 30min). Always include in your watch prompt whether another watch should follow and under what conditions.
+- **Deliberate pauses**: wait for a deploy, batch job, or user review.
+
+**Never use `agenda_watch` to wait for subagents.** When you dispatch via `task()`, the system auto-notifies you on completion — no watch or manual polling is needed.
+
+`agenda_schedule` creates recurring tasks in separate sessions. Only use for strictly periodic schedules (cron/every). If timing needs to adapt based on observed state, use recursive `agenda_watch` instead.
 
 ## Control Plane
 
