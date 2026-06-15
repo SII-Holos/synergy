@@ -116,6 +116,3 @@ None, or environment/dependency blockers.
 
 ## Reusable Context
 Facts for downstream agents.
-
-## Next
-Recommended next action.

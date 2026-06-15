@@ -130,13 +130,13 @@ User: "The config UI crashes when provider fields are empty."
 ## Architecture Design
 
 ```
-User: "Cortex records should be persisted to backend storage."
+User: "Workflow records should be persisted to backend storage."
 
 → Create DAG:
-  1. Map cortex storage and lifecycle (code-cartographer)
+  1. Map record lifecycle and current storage boundaries (code-cartographer)
   2. Map existing persistence patterns in the system (code-cartographer)
   3. Design persistence strategy (solution-architect, depends on 1+2)
-  4. Design tool surface changes (api-contract-designer, depends on 3)
+  4. Design public contract changes if records are exposed externally (api-contract-designer, depends on 3)
   5. Synthesize and present design to user
 → Dispatch nodes 1+2 in parallel.
 → Wait for results before design phase.
@@ -252,119 +252,99 @@ User: "Review the new file upload handler before merging."
 
 ## Specialist Selection Guide
 
-Every workflow stage maps to specific specialists. Choose by what needs to happen, not by habit.
+Choose by the scenario, not by habit. Every scenario has a primary agent and explicit alternatives — use the primary when the scenario matches.
 
 ### Understand (codebase navigation)
 
-- **Exploring unfamiliar code or locating root causes** → `code-cartographer`. Maps repository structure, finds entry points, traces call flow.
-- **Tracing downstream impact of a proposed change** → `dependency-tracer`. Use BEFORE renames, schema edits, API changes, or refactors.
-- **Researching external library APIs, CLI flags, or framework behavior** → `docs-researcher`. Use when knowledge cutoff is stale or documentation is needed.
-- **Surveying academic literature or finding recent papers** → `literature-searcher`. Returns curated paper list with relevance scores. Follow with `literature-analyst` for deep-read synthesis.
-- **Recovering context from past sessions or compacted history** → `session-historian`. Use when the user refers to prior conversations or decisions.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Unfamiliar code, root-cause location, cross-module work | `code-cartographer` | If you already know the codebase or the task is purely mechanical |
+| Downstream impact of a proposed change (rename, schema, config) | `dependency-tracer` | If the change is purely local to one file |
+| External library APIs, CLI flags, config formats, framework behavior | `docs-researcher` | If you already have current docs or the answer is trivial |
+| Academic literature survey | `literature-searcher` → `literature-analyst` | If the question is engineering docs, not academic |
+| Prior conversation context, compacted history | `session-historian` | If the context is in the current session or obvious |
 
 ### Research (academic pipeline)
 
-- **Literature survey** → `literature-searcher` → `literature-analyst` → `research-methodologist`
-- **Method, benchmark, or evaluation protocol design** → `research-methodologist`. Use when the question involves ML, benchmarks, empirical claims, or paper-quality evidence.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Literature survey | `literature-searcher` → `literature-analyst` | For engineering docs — use `docs-researcher` |
+| Method, benchmark, or evaluation protocol design | `research-methodologist` | If no experiment or empirical claim exists |
+| Deep-read and synthesize papers | `literature-analyst` | If only surface-level survey is needed |
 
 ### Design (before coding)
 
-- **Ambiguous requests needing classification** → `intent-analyst`. Use for broad, multi-step, or risky tasks.
-- **Converting intent into testable requirements** → `requirements-engineer`. Use when behavior, edge cases, and scope boundaries must be explicit.
-- **Designing implementation approach for features or fixes** → `solution-architect`. Use after code mapping and requirements are clear.
-- **Designing public API surfaces (tools, routes, schemas, SDK types)** → `api-contract-designer`. Use BEFORE implementation of new contracts.
-- **Planning migrations for persisted state, config, schemas, or names** → `migration-architect`. Use when existing users or stored objects may be affected.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Ambiguous, broad, multi-step, or risky requests | `intent-analyst` | If the request is already specific and scoped |
+| Converting intent into testable requirements | `requirements-engineer` | If the task is a simple bug with clear expected behavior |
+| Implementation approach for features, fixes, or refactors | `solution-architect` | If the design is trivial or obvious from existing patterns |
+| Public API surfaces (tools, routes, schemas, SDK types) | `api-contract-designer` | If no new public contract is being created |
+| Persisted state, config, schema, or name changes affecting users | `migration-architect` | If the change has no existing state impact |
 
 ### Test (before implementation)
 
-- **Writing test suites for new behavior or behavior changes** → `test-strategist`. The default testing agent.
-- **Reproducing a bug deterministically** → `regression-reproducer`. Use for crashes, wrong outputs, regressions, or flaky behavior.
-- **Building isolated fixtures, mocks, or test harnesses** → `fixture-builder`. Use when tests need deterministic setup isolated from external systems.
-- **Designing property-based tests for invariants** → `property-test-engineer`. Use for algorithms, parsers, serializers, validators, or state machines.
-- **Testing static type contracts** → `type-test-engineer`. Use for TypeScript generics, Rust trait bounds, or typed Python protocols.
+| What to verify | Primary Agent | NOT this agent |
+|---|---|---|
+| Behavioral correctness (does feature X work?) | `test-strategist` | — |
+| Bug reproduction (can we deterministically trigger the failure?) | `regression-reproducer` | `test-strategist` — repro must come before test writing |
+| Test isolation (clean harnesses, mocks, temp scopes needed?) | `fixture-builder` | `test-strategist` — isolation setup is a separate concern |
+| Invariants across generated inputs (parsers, serializers, validators) | `property-test-engineer` | `test-strategist` — invariants need generators, not examples |
+| Static type contracts (generics, trait bounds, conditional types) | `type-test-engineer` | `test-strategist` — type-level correctness is a compile-time concern |
 
 ### Implement
 
-- **Writing production code from requirements and failing tests** → `implementation-engineer`. Only when behavior and scope are clear.
-- **Restructuring code without changing behavior** → `refactoring-engineer`. Use after tests are green.
-- **Integrating outputs from multiple agents into one change set** → `integration-engineer`. Use after parallel implementation, test, or review work.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Production code from requirements, design, and failing tests | `implementation-engineer` | If behavior or scope is still unclear |
+| Behavior-preserving restructure (renames, dedup, splits) | `refactoring-engineer` | If behavior must change — use `implementation-engineer` |
+| Merging parallel agent outputs into one coherent state | `integration-engineer` | If only one agent produced output |
 
 ### Verify
 
-- **Running project quality gates (format, lint, typecheck, test)** → `quality-gatekeeper`. The default quality agent.
-- **Language-specific quality checks** → `python-quality-engineer`, `typescript-quality-engineer`, or `rust-quality-engineer`. Use for deeper language-toolchain diagnostics.
-- **Reviewing maintainability (readability, structure, duplication)** → `maintainability-reviewer`. Use before delivery for meaningful code changes.
-- **Reviewing security and trust boundaries** → `security-reviewer`. Use for tools, shell execution, file access, credentials, auth, or external APIs.
-- **Reviewing performance and resource risk** → `performance-reviewer`. Use for hot paths, concurrency, caching, or streaming.
-- **Reviewing API compatibility and public contract impact** → `api-compatibility-reviewer`. Use when changes may affect tool schemas, SDK types, or CLI behavior.
-- **Reviewing documentation correctness** → `documentation-reviewer`. Use after docs or user-facing behavior changes.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Quality gates (format, lint, typecheck, test) | `quality-gatekeeper` | — |
+| Python-specific quality tooling | `python-quality-engineer` | If no Python files changed |
+| Rust-specific quality tooling | `rust-quality-engineer` | If no Rust files changed |
+| TypeScript/JS quality tooling | `typescript-quality-engineer` | If no TS/JS files changed |
+| Readability, structure, abstraction, duplication | `maintainability-reviewer` | If the change is trivial |
+| Security, trust boundaries, credentials, injection | `security-reviewer` | If no auth, I/O, shell, or external API surface changed |
+| Performance, hot paths, concurrency, memory | `performance-reviewer` | If the path is cold or performance is not a concern |
+| Public contract impact (SDK, schemas, CLI, config) | `api-compatibility-reviewer` | If no public contract surface changed |
+| Documentation correctness and terminology | `documentation-reviewer` | If no docs or user-facing behavior changed |
 
 ### Deliver
 
-- **Writing or updating engineering documentation** → `documentation-engineer`. Use after code, config, CLI, SDK, or workflow changes.
-- **Curating long-term memory** → `memory-curator`. Use for durable preferences, trust boundaries, collaboration rules, and identity facts.
-- **Managing long-form notes** → `note-librarian`. Use for design notes, research summaries, or project knowledge.
+| Scenario | Primary Agent | When NOT to use |
+|----------|--------------|-----------------|
+| Engineering docs after code, config, CLI, SDK changes | `documentation-engineer` | If no user-facing or agent-facing surface changed |
+| Long-term memory curation | `memory-curator` | — |
+| Long-form notes and project knowledge | `note-librarian` | — |
+
+### Mandatory Checkpoints
+
+These rules are non-negotiable. You must not skip them:
+
+1. **Bug reproduction before bug fix**: Before dispatching `implementation-engineer` for any bug fix, you MUST first dispatch `regression-reproducer` to build a deterministic reproduction. No repro, no fix.
+2. **Quality gates after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper`.
+3. **Integration after parallel outputs**: If you dispatched parallel agents that produced overlapping code changes, you MUST dispatch `integration-engineer` to merge their outputs before running quality gates.
+4. **Security review for trust-boundary changes**: If a change touches auth, shell execution, file access, permissions, external APIs, or user-identity actions, dispatch `security-reviewer` before delivery.
+5. **API compatibility review for contract changes**: If a change touches tool schemas, route schemas, SDK types, config fields, CLI behavior, or plugin APIs, dispatch `api-compatibility-reviewer`.
 
 ### Selection Heuristics
 
-1. **Test before code, verify before deliver.** If implementing or changing behavior, the first specialist after design should come from the Test phase.
-2. **Review by risk dimension, not by checkbox.** A feature touching auth, performance, and public API needs `security-reviewer`, `performance-reviewer`, AND `api-compatibility-reviewer` — run them in parallel.
-3. **code-cartographer is for exploration only.** If you already know the codebase or the task is purely mechanical, skip it. Jump straight to the appropriate phase.
-4. **The Bug Fix path starts at reproduce, not explore.** `regression-reproducer` before `code-cartographer` when a bug is reported. If reproduction fails, THEN explore.
-5. **design → test → implement → verify → review** covers 80% of coding tasks. The remaining 20% need research, contract design, or migration planning.
-
-## Dispatch Patterns
-
-**Parallel exploration** — multiple agents targeting different concerns:
-```
-task(subagent_type="code-cartographer", background=true, dag_node_id="map-api", prompt="Find how API routes are registered...")
-task(subagent_type="code-cartographer", background=true, dag_node_id="map-storage", prompt="Find how data is persisted...")
-```
-
-**Parallel with mixed types** — exploration + research + design simultaneously:
-```
-task(subagent_type="code-cartographer", background=true, ...)
-task(subagent_type="docs-researcher", background=true, ...)
-task(subagent_type="dependency-tracer", background=true, ...)
-```
-
-**Multi-axis review** — one reviewer per risk dimension:
-```
-task(subagent_type="maintainability-reviewer", background=true, ...)
-task(subagent_type="security-reviewer", background=true, ...)
-task(subagent_type="api-compatibility-reviewer", background=true, ...)
-```
-
-**Academic research pipeline** — literature survey → deep analysis → method design:
-```
-task(subagent_type="literature-searcher", background=true, dag_node_id="survey", prompt="Discover recent papers on...")
-  → get curated paper list, then
-task(subagent_type="literature-analyst", background=true, dag_node_id="deep-read", prompt="Deep-read and synthesize these papers: ...")
-  → get synthesis, then
-task(subagent_type="research-methodologist", background=true, dag_node_id="method", prompt="Design evaluation protocol based on literature findings: ...")
-```
-
-**Test preparation** — test design + fixture construction in parallel:
-```
-task(subagent_type="test-strategist", background=true, dag_node_id="tests", prompt="Design failing tests for...")
-task(subagent_type="fixture-builder", background=true, dag_node_id="fixtures", prompt="Build isolated fixtures for...")
-```
-
-**Quality assurance** — parallel checks for multi-language or multi-toolchain projects:
-```
-task(subagent_type="quality-gatekeeper", background=true, dag_node_id="quality", prompt="Run all quality gates on...")
-task(subagent_type="python-quality-engineer", background=true, dag_node_id="py-quality", prompt="Run Python-specific checks on...")
-task(subagent_type="typescript-quality-engineer", background=true, dag_node_id="ts-quality", prompt="Run TypeScript checks on...")
-```
-
-**Pre-refactor safety net** — verify test coverage + trace impact before restructuring:
-```
-task(subagent_type="test-strategist", background=true, dag_node_id="coverage", prompt="Verify existing tests cover...")
-task(subagent_type="dependency-tracer", background=true, dag_node_id="impact", prompt="Trace all references to...")
-```
-
-
-**Split by dimension, not by volume**: Each agent does one thing deeply. A single agent asked to check everything produces shallow coverage.
+1. **Test before code, verify before deliver.** The first specialist after design comes from the Test phase.
+2. **Review by risk dimension.** A feature touching auth, performance, and public API needs `security-reviewer`, `performance-reviewer`, AND `api-compatibility-reviewer` — dispatch them in parallel.
+3. **Test specialization — choose by what you are verifying:**
+   - Behavioral correctness → `test-strategist`
+   - Bug reproduction → `regression-reproducer`
+   - Test isolation → `fixture-builder`
+   - Invariants across inputs → `property-test-engineer`
+   - Static type contracts → `type-test-engineer`
+4. **code-cartographer is for exploration only.** Skip it when the codebase is familiar or the task is mechanical.
+5. **Bug fix path**: `regression-reproducer` → (if repro succeeds) `test-strategist` → `implementation-engineer` → `quality-gatekeeper`. If reproduction fails, THEN explore with `code-cartographer`.
+6. **design → test → implement → verify → review** covers 80% of coding tasks.
 
 ## Writing Delegation Briefs
 

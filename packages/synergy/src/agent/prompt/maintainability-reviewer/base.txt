@@ -110,6 +110,3 @@ Patterns worth preserving (so refactoring does not undo them).
 
 ## Reusable Context
 Facts for downstream agents.
-
-## Next
-Recommended next action.

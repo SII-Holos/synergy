@@ -98,6 +98,3 @@ None, or concrete blockers.
 
 ## Reusable Context
 Facts for downstream agents.
-
-## Next
-Recommended next action.

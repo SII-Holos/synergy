@@ -13,23 +13,50 @@ Define correctness before production code changes. Choose the smallest test laye
 Choose the narrowest layer that reaches the behavior:
 
 - **Unit test**: isolated behavior of a single function or module, no external dependencies, fast execution.
-- **Integration test**: behavior that crosses module boundaries, uses real I/O or realistic fakes, exercises a workflow end-to-end within the system.
-- **Contract test**: public API shape, tool schema response, route output, config structure, SDK type surface.
+- **Integration test**: behavior that crosses module boundaries, uses realistic fakes or isolated local resources, and exercises a workflow within the system.
+- **Contract test**: public API shape, request/response format, configuration structure, event/message schema, or exported type surface.
 - **Property test**: invariants across generated inputs — parsers, serializers, normalizers, validators, state machines. Use when example-based tests cannot cover the input space.
 - **Type test**: compile-time contracts — generics, overloads, trait bounds, conditional types. Use when correctness depends on the type system rejecting invalid programs.
-- **Snapshot test**: complex structured output where manual assertion is impractical. Use `insta` (Rust), inline snapshots (Vitest), or `pytest` snapshot plugins.
+- **Snapshot test**: complex structured output where manual assertion is impractical. Use snapshots only for stable semantics, not volatile presentation details.
 - **E2E test**: user-visible workflow depending on multiple systems. Use only when narrower layers cannot reach the behavior.
 
 Escalate to broader layers only when narrower layers provably cannot observe the target behavior.
 
+## First-Principles Test Design
+
+- Start from the intended design logic and user-visible contract. A test should encode what the system ought to do, not what the current implementation happens to do.
+- Derive test cases from requirements, invariants, domain rules, and failure modes. Existing code is evidence about implementation, not the source of truth for correctness.
+- Assert observable outcomes through public interfaces and stable contracts.
+- Write tests that remain valid after a clean refactor. If a test fails because a private helper was renamed, the test is too coupled.
+- Use semantic names for tests, fixtures, variables, and helpers. Names should communicate the domain behavior being verified.
+
 ## Test Design
 
-- Assert through public interfaces and stable contracts.
 - Name tests by the behavior they verify: `test_expired_token_returns_401`, not `test_check_token`.
 - One behavior per test function. Multiple assertions are acceptable when they verify facets of one behavior.
-- Avoid binding to implementation details: internal state, private method calls, exact log messages, or output shape that will change with refactoring.
-- Use descriptive assertion messages or assertion shapes that explain what went wrong.
+- Bind tests to contracts, not internals: avoid private method calls, incidental state, exact log wording, or fragile serialization details.
+- Use descriptive assertion shapes that explain the failed behavior.
 - Prefer factory functions or builders over raw object construction when setup is complex.
+- Add comments only when they explain non-obvious intent. Avoid comments that repeat values or must change every time the code changes.
+
+## Mocking and Isolation
+
+- Use the shortest mock chain that reaches the behavior. A long mock chain is a design smell; ask fixture-builder to create a simpler seam or report the architecture gap.
+- Keep mocks outside real production environments. Tests must not hit real databases, payment systems, email gateways, message queues, cloud accounts, or user data.
+- Prefer dependency injection, in-memory fakes, temporary local resources, or protocol-level interceptors over module-level monkeypatching.
+- Avoid mocks that reimplement the production system. If the mock logic is complex, the test is verifying the mock rather than the system.
+
+## Determinism and Time
+
+- Tests must not depend on wall-clock time, sleeps, real timers, time zones, or execution speed.
+- If behavior depends on time, use an injected clock, fake timer, or fixed timestamp. Never assert elapsed real time unless the task is specifically a performance benchmark.
+- Avoid retry loops and polling in tests. If unavoidable, bound them tightly and isolate them outside the unit test suite.
+
+## Suite Speed
+
+- Favor fast, direct tests. The full suite should be quick enough to run routinely.
+- Push expensive E2E, network, or container tests behind an explicit integration/performance marker when the project supports it.
+- A slow test must justify what narrower fast tests cannot verify.
 
 ## RED Confirmation
 
@@ -99,6 +126,3 @@ None, or concrete blockers.
 
 ## Reusable Context
 Facts for downstream agents.
-
-## Next
-Recommended next action.

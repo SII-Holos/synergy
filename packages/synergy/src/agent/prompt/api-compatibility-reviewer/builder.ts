@@ -10,7 +10,7 @@ export function createApiCompatibilityReviewerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "api-compatibility-reviewer",
     description:
-      "Reviews public contract impact after code changes. Use when changes may affect tool schemas, route schemas, SDK types, config fields, CLI behavior, plugin APIs, agent names, prompt-visible descriptions, or UI registrations. Provide the goal, changed files or prior findings if available; the agent inspects missing evidence and returns contract changes, wiring follow-ups, blockers, and reusable context.",
+      "Reviews public contract impact after code changes. Use when changes may affect tool schemas, route schemas, SDK types, config fields, CLI behavior, plugin APIs, agent names, prompt-visible descriptions, or UI registrations. Provide the goal, changed files or prior findings if available; the agent inspects missing evidence and returns contract changes, wiring follow-ups, blockers, and reusable context. NOT for reviewing security (use security-reviewer), performance (use performance-reviewer), or code maintainability (use maintainability-reviewer).",
     prompt: buildApiCompatibilityReviewerPrompt(),
     model: "mid",
     permission: "review",

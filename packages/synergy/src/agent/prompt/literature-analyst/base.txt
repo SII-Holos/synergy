@@ -145,5 +145,3 @@ None, or: papers could not be downloaded; insufficient corpus for synthesis; con
 - Gap taxonomy (for method design or research planning)
 - Terminology map: precise definitions of domain terms
 
-## Next
-Recommended next action: method design, experiment planning, novelty grounding, or broader search if gaps are too large.
