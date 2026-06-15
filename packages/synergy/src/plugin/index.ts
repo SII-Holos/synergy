@@ -399,7 +399,9 @@ export namespace Plugin {
       await hooks.config?.(config)
       const m = await manifest(id)
       if (m?.contributes?.mcp) {
-        await startForPlugin(id, m.contributes.mcp).catch((err) => log.error("plugin mcp start error", { id, err }))
+        // Plugin-contributed MCP servers may spawn network-backed `npx` processes.
+        // Start them in the background so server readiness, channel bootstrap, and the UI banner are not blocked.
+        void startForPlugin(id, m.contributes.mcp).catch((err) => log.error("plugin mcp start error", { id, err }))
       }
     }
     Bus.subscribeAll(async (input) => {
