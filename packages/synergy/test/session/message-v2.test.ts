@@ -193,6 +193,12 @@ describe("session.message-v2.toModelMessage", () => {
             filename: "img.png",
             data: "https://example.com/img.png",
           },
+          {
+            type: "file",
+            mediaType: "text/plain",
+            filename: "note.txt",
+            data: "https://example.com/note.txt",
+          },
         ],
       },
     ])

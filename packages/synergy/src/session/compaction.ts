@@ -56,12 +56,35 @@ export namespace SessionCompaction {
     )
   }
 
+  const IMAGE_TOKEN_ESTIMATE = 500
+
+  function sanitizeMessagesForEstimation(msgs: ModelMessage[]) {
+    let imageParts = 0
+    const sanitized = msgs.map((msg) => ({
+      ...msg,
+      content: Array.isArray(msg.content)
+        ? msg.content.map((part: any) => {
+            if (part.type === "image") {
+              imageParts++
+              return { ...part, image: "[image]" }
+            }
+            if (part.type === "file") {
+              imageParts++
+              return { ...part, data: "[file data]", mediaType: part.mediaType }
+            }
+            return part
+          })
+        : msg.content,
+    }))
+    return { sanitized, imageParts }
+  }
+
   /**
    * Trim a ModelMessage array so the compaction LLM's input stays within its
    * context window. Keeps the most recent messages (highest signal for
    * summarization) and inserts a marker for omitted history.
    */
-  async function trimMessagesForContext(
+  export async function trimMessagesForContext(
     messages: ModelMessage[],
     budget: number,
     modelID?: string,
@@ -69,28 +92,21 @@ export namespace SessionCompaction {
     const estimateJSON = modelID
       ? (value: unknown) => Token.estimateModelJSONSync(modelID, value)
       : (value: unknown) => Token.estimateJSON(value)
-    const estimated = estimateJSON(messages)
+    const { sanitized, imageParts } = sanitizeMessagesForEstimation(messages)
+    const estimated = estimateJSON(sanitized) + imageParts * IMAGE_TOKEN_ESTIMATE
     if (estimated <= budget) return messages
-
-    // If budget is zero or negative (output + prompt alone exceeds context),
-    // keep only the last 2 messages so the compaction model has *something*
-    // to summarize. The mechanical fallback will catch the failure if even
-    // this is too large.
     const effectiveBudget = Math.max(budget, 0)
-
     let used = 0
     let startIndex = messages.length
     for (let i = messages.length - 1; i >= 0; i--) {
-      const cost = estimateJSON(messages[i])
+      const { sanitized: s, imageParts: ip } = sanitizeMessagesForEstimation([messages[i]])
+      const cost = estimateJSON(s[0]) + ip * IMAGE_TOKEN_ESTIMATE
       if (used + cost > effectiveBudget) break
       used += cost
       startIndex = i
     }
-    // Always include at least the last two messages for minimal context
     startIndex = Math.min(startIndex, Math.max(0, messages.length - 2))
-
     if (startIndex === 0) return messages
-
     log.info("trimming compaction input", {
       originalMessages: messages.length,
       keptMessages: messages.length - startIndex,

@@ -1592,6 +1592,14 @@ export namespace Config {
             .max(1)
             .optional()
             .describe("Fraction of usable context that triggers auto-compaction (default: 0.85)"),
+          maxHistoryImages: z
+            .number()
+            .int()
+            .optional()
+            .default(8)
+            .describe(
+              "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
+            ),
         })
         .optional(),
       experimental: z

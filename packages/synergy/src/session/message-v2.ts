@@ -450,7 +450,36 @@ export namespace MessageV2 {
     return options?.maxLength ? joined.slice(0, options.maxLength) : joined
   }
 
-  export function toModelMessage(input: WithParts[]): ModelMessage[] {
+  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+    // Pass 1: collect unique image hashes in order of first appearance
+    const imageHashSet = new Set<string>()
+    const orderedHashes: string[] = []
+    for (const msg of input) {
+      if (msg.info.role !== "user") continue
+      for (const part of msg.parts) {
+        if (part.type !== "file") continue
+        if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
+        const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+        if (!imageHashSet.has(hash)) {
+          imageHashSet.add(hash)
+          orderedHashes.push(hash)
+        }
+      }
+    }
+
+    let keptHashes: Set<string>
+    if (opts?.maxHistoryImages !== undefined) {
+      const keepCount = Math.max(0, opts.maxHistoryImages)
+      if (keepCount === 0) {
+        keptHashes = new Set()
+      } else {
+        const kept = orderedHashes.slice(-keepCount)
+        keptHashes = new Set(kept)
+      }
+    } else {
+      keptHashes = imageHashSet
+    }
+
     const result: UIMessage[] = []
 
     for (const msg of input) {
@@ -469,7 +498,14 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          // text files and directories are converted into text parts, ignore them
+          if (part.type === "file" && Attachment.isText(part.mime)) {
+            userMessage.parts.push({
+              type: "file",
+              url: part.url,
+              mediaType: part.mime,
+              filename: part.filename,
+            })
+          }
           if (part.type === "file" && !Attachment.isText(part.mime) && part.mime !== "application/x-directory") {
             if (part.localPath) {
               userMessage.parts.push({
@@ -477,12 +513,20 @@ export namespace MessageV2 {
                 text: `[The user attached a file: ${part.filename || path.basename(part.localPath)} (${part.mime}). Local path: ${part.localPath}]`,
               })
             }
-            userMessage.parts.push({
-              type: "file",
-              url: part.url,
-              mediaType: part.mime,
-              filename: part.filename,
-            })
+            const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+            if (keptHashes.has(hash)) {
+              userMessage.parts.push({
+                type: "file",
+                url: part.url,
+                mediaType: part.mime,
+                filename: part.filename,
+              })
+            } else {
+              userMessage.parts.push({
+                type: "text",
+                text: `[Image: ${part.filename} — previously shared]`,
+              })
+            }
           }
         }
       }

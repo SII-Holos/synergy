@@ -244,6 +244,7 @@ export namespace SessionInvoke {
           abort,
           compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
           compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
+          compactionMaxHistoryImages: (await Config.get()).compaction?.maxHistoryImages,
           modelID: lastUser.model.modelID,
           modelLimits: await Promise.all([
             Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
@@ -497,9 +498,8 @@ export namespace SessionInvoke {
             )
           }
         }
-
         const preparedMessages = [
-          ...MessageV2.toModelMessage(sessionMessages),
+          ...MessageV2.toModelMessage(sessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
                 {
