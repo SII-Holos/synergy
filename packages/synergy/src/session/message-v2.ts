@@ -522,9 +522,10 @@ export namespace MessageV2 {
                 filename: part.filename,
               })
             } else {
+              const displayName = part.filename || "unnamed"
               userMessage.parts.push({
                 type: "text",
-                text: `[Image: ${part.filename} — previously shared]`,
+                text: `[Image: ${displayName} — previously shared]`,
               })
             }
           }
