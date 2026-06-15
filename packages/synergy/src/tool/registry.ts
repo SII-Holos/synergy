@@ -50,6 +50,7 @@ import { AttachTool } from "./attach"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
+import { ScanDocumentTool } from "./scan-document"
 import { AstGrepTool } from "./ast-grep"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
@@ -198,6 +199,7 @@ export namespace ToolRegistry {
       ArxivDownloadTool,
       SkillTool,
       LookAtTool,
+      ScanDocumentTool,
       AstGrepTool,
       MemoryWriteTool,
       MemoryEditTool,

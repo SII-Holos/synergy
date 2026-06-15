@@ -49,6 +49,7 @@ function maxPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset 
       save_file: "ask",
       scan_files: "allow",
       parse_code: "allow",
+      scan_document: "allow",
     }),
     ctx.user,
   )

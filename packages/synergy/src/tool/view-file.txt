@@ -13,3 +13,5 @@ Rules:
 - If output is truncated or a region was not displayed, call `view_file` again with an explicit `offset` or `ranges` entry before editing that region.
 - If the output contains a conflict warning, do not use `revise_file` on that file until the conflict markers are resolved. Use `save_file` only when intentionally replacing the whole conflicted file.
 - After `revise_file` or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.
+
+For document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, etc.), use `scan_document` instead. `view_file` does not support binary document extraction — those files are blocked with a clear error message directing you to `scan_document`.

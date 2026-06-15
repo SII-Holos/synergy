@@ -94,7 +94,7 @@ export const ReadTool = Tool.define("read", {
       const text = await Attachment.extractTextFromFile(filepath)
       const lines = text.split("\n")
       const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
-      const offset = params.offset || 0
+      const offset = params.offset ?? 0
 
       const raw: string[] = []
       let bytes = 0
@@ -159,7 +159,7 @@ export const ReadTool = Tool.define("read", {
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
     const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
-    const offset = params.offset || 0
+    const offset = params.offset ?? 0
     const lines = await file.text().then((text) => text.split("\n"))
 
     const raw: string[] = []

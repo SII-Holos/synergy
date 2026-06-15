@@ -908,6 +908,7 @@ export namespace SessionInvoke {
     "ast_grep",
     "glob",
     "look_at",
+    "scan_document",
     "edit",
     "write",
     "websearch",

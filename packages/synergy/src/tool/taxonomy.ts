@@ -95,6 +95,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   view_file: entry("code.read"),
   list: entry("code.read"),
   look_at: entry("code.analyze"),
+  scan_document: entry("code.analyze"),
   edit: entry("code.write", { stateful: true }),
   revise_file: entry("code.write", { stateful: true }),
   write: entry("code.write", { stateful: true }),

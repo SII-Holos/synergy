@@ -1089,6 +1089,37 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "scan_document",
+  render(props) {
+    const args = () => {
+      const parts: string[] = []
+      if (props.input.offset != null) parts.push(`L${props.input.offset}`)
+      if (props.input.limit != null) parts.push(`limit ${props.input.limit}`)
+      return parts
+    }
+    return (
+      <BasicTool
+        {...props}
+        icon="scan-document"
+        trigger={() => ({
+          title: "Read Document",
+          subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
+          args: args(),
+        })}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "ast_grep",
   render(props) {
     const args: string[] = []
