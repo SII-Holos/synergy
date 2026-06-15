@@ -117,6 +117,3 @@ None, or concrete blockers: insufficient data, missing baseline, unmeasurable me
 
 ## Reusable Context
 Facts for downstream agents: experiment matrix, metric definitions, baseline descriptions, seed protocol.
-
-## Next
-Recommended next action (proceed to implementation, gather more data, refine metrics).

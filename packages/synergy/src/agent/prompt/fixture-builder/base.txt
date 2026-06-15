@@ -122,6 +122,3 @@ None, or concrete blockers: missing test framework feature, unavailable dependen
 
 ## Reusable Context
 Facts for test-strategist and implementation-engineer: available fixtures, how to extend them, constraints.
-
-## Next
-Recommended next agent (test-strategist to write tests using these fixtures, or implementation-engineer for implementation).

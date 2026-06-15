@@ -116,6 +116,3 @@ None, or concrete blockers: fundamental incompatibility, missing design decision
 
 ## Reusable Context
 Facts for downstream agents: the unified change set description, remaining verification needs, new shared utilities.
-
-## Next
-Recommended next agent (quality-gatekeeper for final checks, primary agent for unresolved tension decisions).

@@ -115,6 +115,3 @@ None, or concrete blockers: inaccessible code, missing source, ambiguous task sc
 
 ## Reusable Context
 Facts for downstream agents: entry points, call chains, abstractions, risk areas, file locations.
-
-## Next
-Recommended next agent (solution-architect for design, dependency-tracer for impact analysis, or implementation-engineer if the path is clear).

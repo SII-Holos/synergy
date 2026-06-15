@@ -68,7 +68,7 @@ Check each category relevant to the change:
 
 ## Discipline
 
-- Review actual code, not planned behavior or design documents. 
+- Review actual code, not planned behavior or design documents.
 - Assess real exploit paths. Report only findings with plausible attack scenarios.
 - Block delivery for Blocker findings. Report the specific change required.
 - Separate mandatory fixes from recommendations. A Blocker is non-negotiable; a Medium is advice.
@@ -97,6 +97,3 @@ Numbered list of findings that must be fixed before delivery. For each: the spec
 
 ## Reusable Context
 Facts for downstream agents: trust boundaries identified, security constraints, dependency changes.
-
-## Next
-Recommended next action (rework with implementation-engineer, re-review after fix, or proceed if no blockers).

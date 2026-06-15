@@ -133,6 +133,3 @@ None, or concrete blockers: ambiguous requirements, conflicting constraints, mis
 
 ## Reusable Context
 Facts for downstream agents: schemas, semantics, errors, compatibility plan, follow-up checklist.
-
-## Next
-Recommended next agent (implementation-engineer to implement, api-compatibility-reviewer to verify contracts).

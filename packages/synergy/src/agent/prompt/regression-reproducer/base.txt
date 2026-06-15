@@ -102,6 +102,3 @@ None, or concrete blockers that prevent a deterministic reproduction.
 
 ## Reusable Context
 Facts for downstream agents: reproduction command, key files involved, environment requirements, eliminated hypotheses.
-
-## Next
-Recommended next agent (test-strategist for test coverage, implementation-engineer for fix, or further investigation needed).

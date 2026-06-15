@@ -94,6 +94,3 @@ None, or concrete blockers: no documentation available, contradictory sources, p
 
 ## Reusable Context
 Facts for downstream agents: API signatures, version constraints, configuration schemas, known caveats.
-
-## Next
-Recommended next agent (solution-architect to design, implementation-engineer to implement).

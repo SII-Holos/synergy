@@ -73,6 +73,3 @@ None, or concrete blockers that prevent reliable note work.
 
 ## Reusable Context
 Compressed facts the primary agent can pass to downstream subagents.
-
-## Next
-Recommended next action.

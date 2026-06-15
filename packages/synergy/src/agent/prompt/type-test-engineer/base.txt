@@ -123,6 +123,3 @@ None, or concrete blockers: missing type-test tooling, type system limitation th
 
 ## Reusable Context
 Facts for downstream agents: type contracts established, type checking command, new type utilities created.
-
-## Next
-Recommended next agent (test-strategist for runtime test coverage, implementation-engineer for implementation).

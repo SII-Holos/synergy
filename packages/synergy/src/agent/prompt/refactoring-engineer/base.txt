@@ -108,6 +108,3 @@ None, or concrete blockers: broken test not caused by refactoring, public API bo
 
 ## Reusable Context
 Facts for downstream agents: new module structure, renamed symbols, eliminated patterns.
-
-## Next
-Recommended next agent (quality-gatekeeper for verification, test-strategist if tests need updating, solution-architect if a design question was raised).

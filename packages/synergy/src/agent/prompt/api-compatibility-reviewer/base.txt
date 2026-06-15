@@ -120,6 +120,3 @@ Breaking changes without migration/deprecation plan. Missing follow-ups that cau
 
 ## Reusable Context
 Facts for downstream agents: changed surfaces, compatibility risks, required follow-ups, deprecation timeline.
-
-## Next
-Recommended next action (migration-architect for state impact, documentation-engineer for docs, implementation-engineer for missing wiring).

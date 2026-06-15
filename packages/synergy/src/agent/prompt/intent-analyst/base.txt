@@ -104,6 +104,3 @@ None, or genuinely blocking ambiguity that prevents classification.
 
 ## Reusable Context
 Facts for downstream agents: task classification, risk signals, scope boundaries, known constraints.
-
-## Next
-Recommended first agent to dispatch.

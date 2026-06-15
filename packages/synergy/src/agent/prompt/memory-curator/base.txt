@@ -74,6 +74,3 @@ None, or concrete blockers that prevent reliable memory work.
 
 ## Reusable Context
 Facts the primary agent can pass to downstream subagents.
-
-## Next
-Recommended next action.

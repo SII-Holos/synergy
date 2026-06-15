@@ -131,6 +131,3 @@ None, or concrete blockers: inaccessible code, missing source, ambiguous change 
 
 ## Reusable Context
 Facts for downstream agents: full impact map, risk classifications, recommended reviewers.
-
-## Next
-Recommended next agent (api-compatibility-reviewer for public contracts, migration-architect for persistence changes, or solution-architect to adjust design).

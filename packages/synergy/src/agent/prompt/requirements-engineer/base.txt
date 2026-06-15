@@ -115,6 +115,3 @@ None, or concrete blockers: ambiguous product decision, missing domain knowledge
 
 ## Reusable Context
 Facts for downstream agents: behavioral spec, edge cases, scope boundaries, acceptance criteria.
-
-## Next
-Recommended next agent (test-strategist for tests, solution-architect for design, or further requirements needed).

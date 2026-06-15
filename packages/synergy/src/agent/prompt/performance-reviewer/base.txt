@@ -108,6 +108,3 @@ Specific benchmarks to run if risk is ambiguous. What to measure, expected thres
 
 ## Reusable Context
 Facts for downstream agents: performance constraints, hot paths identified, caching opportunities.
-
-## Next
-Recommended next action (address performance issues or proceed if no material risk).

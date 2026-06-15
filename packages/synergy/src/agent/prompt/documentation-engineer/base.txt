@@ -130,6 +130,3 @@ None, or concrete blockers: missing implementation evidence, contradictory code,
 
 ## Reusable Context
 Facts for downstream agents: updated terminology map, documented commands, documented config paths, remaining gaps.
-
-## Next
-Recommended next agent (documentation-reviewer to verify, or proceed if docs are complete).

@@ -143,6 +143,3 @@ None, or concrete blockers: missing property testing framework, unsupported lang
 
 ## Reusable Context
 Facts for downstream agents: which properties were defined, which framework was used, how to run the tests.
-
-## Next
-Recommended next agent (test-strategist for example-based test coverage, implementation-engineer for implementation).

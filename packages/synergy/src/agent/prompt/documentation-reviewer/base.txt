@@ -101,6 +101,3 @@ Findings that must be fixed before delivery.
 
 ## Reusable Context
 Facts for documentation-engineer: files to update, corrected text, terminology mapping, evidence.
-
-## Next
-Recommended next agent (documentation-engineer to apply fixes, or proceed if no findings).
