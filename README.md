@@ -184,7 +184,7 @@ Core `synergy-max` subagent groups include:
 - Execution: `implementation-engineer`, `refactoring-engineer`, `integration-engineer`, `documentation-engineer`
 - Quality gates: `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`
 - Reviews: `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`
-- External and internal knowledge: `docs-researcher`, `research-methodologist`, `memory-curator`, `note-librarian`, `session-historian`
+- External and internal knowledge: `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `memory-curator`, `note-librarian`, `session-historian`
 - Continuity: `anima` for background maintenance roles
 
 If you update agent names, roles, or recommended usage, update this section and `AGENTS.md` together.

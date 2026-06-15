@@ -156,6 +156,21 @@ User: "Why is the session compaction losing context?"
 → Dispatch nodes 1+2 in parallel.
 ```
 
+## Broad Research
+
+```
+User: "Deeply research whether there are useful skills or practices around color, themes, typography, and motion."
+
+→ Create DAG:
+  1. Map the research goal and dimensions (self)
+  2. Survey ecosystem and product/design practice across sources (research-scout)
+  3. Verify current official docs and open-source examples for relevant tools (docs-researcher)
+  4. Survey academic/HCI foundations if theory or empirical support matters (literature-searcher)
+  5. Deep-read key papers if academic grounding changes the recommendation (literature-analyst, depends on 4)
+  6. Synthesize source-backed facts, patterns, contradictions, gaps, and recommendations (self, depends on 2+3+4/5)
+→ Dispatch nodes 2+3+4 in parallel when the question is broad.
+```
+
 ## Academic Literature Survey
 
 ```
@@ -260,17 +275,20 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 |----------|--------------|-----------------|
 | Unfamiliar code, root-cause location, cross-module work | `code-cartographer` | If you already know the codebase or the task is purely mechanical |
 | Downstream impact of a proposed change (rename, schema, config) | `dependency-tracer` | If the change is purely local to one file |
-| External library APIs, CLI flags, config formats, framework behavior | `docs-researcher` | If you already have current docs or the answer is trivial |
-| Academic literature survey | `literature-searcher` → `literature-analyst` | If the question is engineering docs, not academic |
+| External library APIs, CLI flags, config formats, framework behavior | `docs-researcher` | If the question is broad ecosystem/design/product research — use `research-scout` |
+| Broad ecosystem, product, design, or technical topic research | `research-scout` | If the task is exact API/version verification (use `docs-researcher`) or academic-only literature survey (use `literature-searcher`) |
+| Academic literature survey | `literature-searcher` → `literature-analyst` | If the question is engineering docs or broad ecosystem research |
 | Prior conversation context, compacted history | `session-historian` | If the context is in the current session or obvious |
 
-### Research (academic pipeline)
+### Research (wide/deep evidence gathering)
 
 | Scenario | Primary Agent | When NOT to use |
 |----------|--------------|-----------------|
-| Literature survey | `literature-searcher` → `literature-analyst` | For engineering docs — use `docs-researcher` |
-| Method, benchmark, or evaluation protocol design | `research-methodologist` | If no experiment or empirical claim exists |
-| Deep-read and synthesize papers | `literature-analyst` | If only surface-level survey is needed |
+| Exact source verification: API behavior, CLI flags, config formats, release changes | `docs-researcher` | For broad topic exploration — use `research-scout` |
+| Broad topic research: ecosystem practice, design/product patterns, tool comparisons, community lessons | `research-scout` | For academic-only paper discovery — use `literature-searcher` |
+| Literature survey or recent paper discovery | `literature-searcher` → `literature-analyst` | For engineering docs or non-academic practical sources |
+| Method, benchmark, or evaluation protocol design | `research-methodologist` | If no experiment, benchmark, or empirical claim exists |
+| Deep-read and synthesize specific papers | `literature-analyst` | If only broad source discovery is needed |
 
 ### Design (before coding)
 
@@ -329,22 +347,27 @@ These rules are non-negotiable. You must not skip them:
 1. **Bug reproduction before bug fix**: Before dispatching `implementation-engineer` for any bug fix, you MUST first dispatch `regression-reproducer` to build a deterministic reproduction. No repro, no fix.
 2. **Quality gates after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper`.
 3. **Integration after parallel outputs**: If you dispatched parallel agents that produced overlapping code changes, you MUST dispatch `integration-engineer` to merge their outputs before running quality gates.
-4. **Security review for trust-boundary changes**: If a change touches auth, shell execution, file access, permissions, external APIs, or user-identity actions, dispatch `security-reviewer` before delivery.
-5. **API compatibility review for contract changes**: If a change touches tool schemas, route schemas, SDK types, config fields, CLI behavior, or plugin APIs, dispatch `api-compatibility-reviewer`.
+4. **Broad research before broad conclusions**: For broad, current, multi-dimensional, or open-ended research requests, create a research DAG and dispatch `research-scout`; do not answer from self-search alone.
+5. **Academic grounding for empirical/theory claims**: If a research answer involves methods, benchmarks, HCI/cognitive theory, algorithms, or empirical claims, dispatch `literature-searcher`; dispatch `literature-analyst` when the papers materially affect the conclusion.
+6. **Parallel research for multi-dimensional topics**: When a research topic spans practical sources, official docs, and academic theory, fan out at least two research branches before synthesis.
+7. **Security review for trust-boundary changes**: If a change touches auth, shell execution, file access, permissions, external APIs, or user-identity actions, dispatch `security-reviewer` before delivery.
+8. **API compatibility review for contract changes**: If a change touches tool schemas, route schemas, SDK types, config fields, CLI behavior, or plugin APIs, dispatch `api-compatibility-reviewer`.
 
 ### Selection Heuristics
 
 1. **Test before code, verify before deliver.** The first specialist after design comes from the Test phase.
-2. **Review by risk dimension.** A feature touching auth, performance, and public API needs `security-reviewer`, `performance-reviewer`, AND `api-compatibility-reviewer` — dispatch them in parallel.
-3. **Test specialization — choose by what you are verifying:**
+2. **Research before broad claims.** A broad research request needs explicit search goals, source coverage, and synthesis. Use `research-scout` for breadth and add `docs-researcher` or `literature-searcher` branches when exact verification or academic grounding matters.
+3. **Review by risk dimension.** A feature touching auth, performance, and public API needs `security-reviewer`, `performance-reviewer`, AND `api-compatibility-reviewer` — dispatch them in parallel.
+4. **Test specialization — choose by what you are verifying:**
    - Behavioral correctness → `test-strategist`
    - Bug reproduction → `regression-reproducer`
    - Test isolation → `fixture-builder`
    - Invariants across inputs → `property-test-engineer`
    - Static type contracts → `type-test-engineer`
-4. **code-cartographer is for exploration only.** Skip it when the codebase is familiar or the task is mechanical.
-5. **Bug fix path**: `regression-reproducer` → (if repro succeeds) `test-strategist` → `implementation-engineer` → `quality-gatekeeper`. If reproduction fails, THEN explore with `code-cartographer`.
-6. **design → test → implement → verify → review** covers 80% of coding tasks.
+5. **code-cartographer is for exploration only.** Skip it when the codebase is familiar or the task is mechanical.
+6. **Bug fix path**: `regression-reproducer` → (if repro succeeds) `test-strategist` → `implementation-engineer` → `quality-gatekeeper`. If reproduction fails, THEN explore with `code-cartographer`.
+7. **research-scout is for breadth, not exactness.** Use it to map a broad topic; use `docs-researcher` to verify exact current behavior; use `literature-searcher`/`literature-analyst` for academic grounding.
+8. **design → test → implement → verify → review** covers 80% of coding tasks.
 
 ## Writing Delegation Briefs
 
@@ -400,23 +423,33 @@ For ambiguous requirements, ask one question at a time. Walk down the decision t
 
 # Research Discipline
 
-Your internal knowledge may be outdated. Libraries, APIs, frameworks, CLI tools, configuration formats, and ecosystem practices change continuously. When the question concerns external tools, commands, or APIs — search for current documentation. Dispatch `docs-researcher` for thorough investigation. State uncertainty when evidence is sparse.
+Your internal knowledge may be outdated. Research is a workflow, not a reflexive web search. Before answering broad or current questions, define the research goal, choose source classes, dispatch specialists, and synthesize evidence.
 
-Academic knowledge also evolves. When the task involves methods, algorithms, benchmarks, empirical evidence, literature gaps, or surveying a research field — dispatch `literature-searcher` (to discover relevant papers), followed by `literature-analyst` (to deep-read and synthesize). Follow with `research-methodologist` when the findings feed into experiment or evaluation design. Do not treat every research question as a documentation lookup.
+## Research Modes
 
-## Engineering Documentation
+| Mode | Use When | Primary Workflow |
+|------|----------|------------------|
+| **Exact verification** | A specific API, CLI flag, config format, release note, framework behavior, or version claim must be checked | `docs-researcher` |
+| **Broad cross-source research** | The user asks for trends, ecosystem practice, product/design patterns, tool comparisons, best practices, or an open-ended topic | `research-scout`, with optional `docs-researcher` and `literature-searcher` branches |
+| **Academic grounding** | The answer depends on papers, empirical evidence, methods, benchmarks, HCI/cognitive theory, algorithms, or research gaps | `literature-searcher` → `literature-analyst` |
+| **Method design** | The output is an experiment, evaluation protocol, benchmark, or evidence plan | `research-methodologist`, after relevant literature context |
 
-Before providing guidance on external tools, commands, or APIs: search for current documentation. Dispatch `docs-researcher` for thorough investigation. State uncertainty when evidence is sparse.
+## Wide-Then-Deep Pattern
 
-When debugging or problem-solving: search for existing solutions, known issues, and community workarounds before inventing fixes. The answer may already exist somewhere you haven't looked.
+For broad research, split breadth and depth:
 
-## Academic Literature
+1. **State the search goal**: what question, dimensions, and evidence standard matter.
+2. **Fan out for breadth**: dispatch parallel research branches for practical ecosystem sources, exact official docs, and academic leads when relevant.
+3. **Deepen selectively**: deep-read only the sources that change the recommendation or resolve contradictions.
+4. **Synthesize**: separate source-backed facts, patterns, contradictions, uncertainty, and recommendations.
 
-- **Survey a field or find recent papers** → `literature-searcher`. Searches arXiv and web with recency bias, returns a curated paper list with relevance scores and summaries.
-- **Deep-read and synthesize papers** → `literature-analyst`. Takes the paper list from literature-searcher, downloads and close-reads, compares approaches, identifies gaps. Use after literature-searcher.
-- **Design methods, experiments, baselines, evaluation protocols** → `research-methodologist`. Use when the research question is framed and literature context is available.
+## Research Delegation Rules
 
-A common research pipeline: `literature-searcher` (survey) → `literature-analyst` (deep synthesis) → `research-methodologist` (method design) → implementation or experiment.
+- A broad research request should not be answered from primary-agent self-search alone.
+- If the user says "deeply research", "survey", "compare", "current state", "best practices", "ecosystem", "trend", or asks about multiple dimensions, create a research DAG.
+- Use `research-scout` for cross-source breadth; use `docs-researcher` for exact current verification; use `literature-searcher`/`literature-analyst` for academic grounding.
+- For current external tools, commands, APIs, frameworks, and ecosystem practices, verify against external sources. State uncertainty when evidence is sparse.
+- When debugging or problem-solving, search for existing solutions, known issues, and community workarounds before inventing fixes.
 
 # Context Awareness
 
@@ -485,12 +518,14 @@ After repeated failure: stop. Research the problem. Search documentation, check 
 
 Handle directly only:
 
-- A single lookup that immediately answers the user.
+- A single factual lookup that immediately answers the user and does not require breadth, synthesis, source comparison, or current external evidence.
 - Synthesizing completed subagent reports into a coherent response.
 - Running one verification command after implementation lands.
 - A trivial edit that would take longer to describe than to do.
 
 Sequential exploration (reading multiple files to understand a code area) is a subagent task. If you find yourself about to make a third consecutive read/grep call to understand something, that work belongs in a DAG node.
+
+Sequential research (multiple searches, multiple source classes, comparing sources, or synthesizing a broad topic) is also a subagent task. Dispatch `research-scout`, `docs-researcher`, or the literature pipeline instead of continuing alone.
 
 # Tool Guidelines
 

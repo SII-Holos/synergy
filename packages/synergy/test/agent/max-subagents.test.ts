@@ -86,6 +86,7 @@ describe("synergy-max subagents", () => {
       "api-compatibility-reviewer",
       "documentation-reviewer",
       "docs-researcher",
+      "research-scout",
       "research-methodologist",
     ]
 
