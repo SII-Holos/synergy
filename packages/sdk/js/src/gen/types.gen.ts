@@ -1377,11 +1377,15 @@ export type Config = {
     invoke_sec?: number
     provider?: {
       /**
+       * Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min
+       */
+      ttfb_sec?: number
+      /**
        * Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.
        */
       idle_sec?: number
       /**
-       * Wall-clock timeout per HTTP request in seconds (default: 900 = 15min)
+       * Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB
        */
       wall_sec?: number
     }
@@ -1587,6 +1591,10 @@ export type Config = {
      * Fraction of usable context that triggers auto-compaction (default: 0.85)
      */
     overflowThreshold?: number
+    /**
+     * Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.
+     */
+    maxHistoryImages?: number
   }
   experimental?: {
     /**
@@ -3443,6 +3451,34 @@ export type EventServerInstanceDisposed = {
   }
 }
 
+export type EventMcpToolsChanged = {
+  type: "mcp.tools.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpPromptsChanged = {
+  type: "mcp.prompts.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpResourcesChanged = {
+  type: "mcp.resources.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpReady = {
+  type: "mcp.ready"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
 export type EventFileEdited = {
   type: "file.edited"
   properties: {
@@ -3470,34 +3506,6 @@ export type EventFileWatcherUpdated = {
   properties: {
     file: string
     event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventMcpToolsChanged = {
-  type: "mcp.tools.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpPromptsChanged = {
-  type: "mcp.prompts.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpResourcesChanged = {
-  type: "mcp.resources.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpReady = {
-  type: "mcp.ready"
-  properties: {
-    [key: string]: unknown
   }
 }
 
@@ -3960,14 +3968,14 @@ export type Event =
   | EventConfigUpdated
   | EventConfigSetActivated
   | EventServerInstanceDisposed
-  | EventFileEdited
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventFileWatcherUpdated
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
+  | EventFileEdited
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventFileWatcherUpdated
   | EventCommandExecuted
   | EventVcsBranchUpdated
   | EventPermissionAsked
@@ -4192,6 +4200,86 @@ export type GlobalAgendaListResponses = {
 }
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
+export type GlobalSessionSearchData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Filter sessions by title (case-insensitive)
+     */
+    search?: string
+    /**
+     * Number of sessions to skip
+     */
+    offset?: number
+    /**
+     * Maximum number of sessions to return (1-100)
+     */
+    limit?: number
+    /**
+     * Filter to a single scope
+     */
+    scopeID?: string
+    /**
+     * Only top-level sessions (default: true)
+     */
+    parentOnly?: string
+    /**
+     * Include archived sessions (default: false)
+     */
+    includeArchived?: string
+  }
+  url: "/global/session"
+}
+
+export type GlobalSessionSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalSessionSearchError = GlobalSessionSearchErrors[keyof GlobalSessionSearchErrors]
+
+export type GlobalSessionSearchResponses = {
+  /**
+   * Paginated cross-scope session list
+   */
+  200: {
+    data: Array<{
+      id: string
+      title: string
+      scope: {
+        id: string
+        type: "global" | "project"
+        directory: string
+        worktree: string
+        name?: string
+        icon?: {
+          url?: string
+          color?: string
+        }
+      }
+      time: {
+        created: number
+        updated: number
+        archived?: number
+      }
+      pinned?: number
+      parentID?: string
+      lastExchange?: {
+        user?: string
+        assistant?: string
+      }
+    }>
+    total: number
+    offset: number
+    limit: number
+  }
+}
+
+export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
 
 export type AgendaWebhookData = {
   body?: never

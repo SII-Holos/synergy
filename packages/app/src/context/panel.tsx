@@ -9,7 +9,6 @@ export interface PanelDef {
 }
 
 export const PANELS: PanelDef[] = [
-  { id: "scopes", label: "Projects", icon: "layout-grid" },
   { id: "note", label: "Notes", icon: "notebook-pen" },
   { id: "engram", label: "Engram", icon: "brain" },
   { id: "agenda", label: "Agenda", icon: "clipboard-list" },
@@ -22,35 +21,13 @@ export const { use: usePanel, provider: PanelProvider } = createSimpleContext({
   gate: false,
   init: () => {
     const [active, setActive] = createSignal<string | null>(null)
-    const [scopesDrilldown, setScopesDrilldown] = createSignal<string | null>(null)
     const slots = new Map<string, () => JSX.Element>()
 
     return {
       active,
       open: (id: string) => setActive(id),
-      close: () => {
-        setActive(null)
-        setScopesDrilldown(null)
-      },
-      toggle: (id: string) => {
-        setActive((v) => {
-          if (v === id) {
-            setScopesDrilldown(null)
-            return null
-          }
-          return id
-        })
-      },
-      scopes: {
-        drilldown: scopesDrilldown,
-        open(worktree: string) {
-          setScopesDrilldown(worktree)
-          setActive("scopes")
-        },
-        back() {
-          setScopesDrilldown(null)
-        },
-      },
+      close: () => setActive(null),
+      toggle: (id: string) => setActive((v) => (v === id ? null : id)),
       registerSlot: (id: string, render: () => JSX.Element) => {
         slots.set(id, render)
       },

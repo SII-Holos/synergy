@@ -29,7 +29,6 @@ import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { FileProvider } from "@/context/file"
 import { NotificationProvider } from "@/context/notification"
-import { RecentSessionsProvider } from "@/context/recent-sessions"
 import { CommandProvider } from "@/context/command"
 
 import { OnboardingProvider, useOnboarding } from "@/context/onboarding"
@@ -205,11 +204,9 @@ function ConnectedApp() {
                     <PermissionProvider>
                       <LayoutProvider>
                         <NotificationProvider>
-                          <RecentSessionsProvider>
-                            <CommandProvider>
-                              <Layout>{props.children}</Layout>
-                            </CommandProvider>
-                          </RecentSessionsProvider>
+                          <CommandProvider>
+                            <Layout>{props.children}</Layout>
+                          </CommandProvider>
                         </NotificationProvider>
                       </LayoutProvider>
                     </PermissionProvider>

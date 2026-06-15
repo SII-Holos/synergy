@@ -37,6 +37,8 @@ import { HolosPromptInput } from "@/components/session/holos-prompt-input"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
 import { TerminalPanel } from "@/components/session/terminal-panel"
+import { SessionTopBar } from "@/components/top-bar/session-top-bar"
+import { getScopeLabel } from "@/utils/scope"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 
 const handoff = {
@@ -852,6 +854,14 @@ export default function Page() {
           }}
         >
           <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+            <SessionTopBar
+              scopeLabel={() => getScopeLabel(sync.scope, sdk.directory)}
+              sessionTitle={() => {
+                if (isGlobalScope(sdk.directory)) return "Home"
+                if (isHolosConversation()) return holosContact()?.name || holosContact()?.id || "New session"
+                return currentSession()?.title || "New session"
+              }}
+            />
             <Show when={isHolosSession(parentSession())}>
               <div class="shrink-0 px-4 md:px-6 pb-2">
                 <button

@@ -286,6 +286,185 @@
         ]
       }
     },
+    "/global/session": {
+      "get": {
+        "operationId": "global.session.search",
+        "summary": "Global session search",
+        "description": "Search sessions across all scopes, sorted by most recently updated.",
+        "responses": {
+          "200": {
+            "description": "Paginated cross-scope session list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": ["global", "project"]
+                              },
+                              "directory": {
+                                "type": "string"
+                              },
+                              "worktree": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "icon": {
+                                "type": "object",
+                                "properties": {
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "required": ["id", "type", "directory", "worktree"]
+                          },
+                          "time": {
+                            "type": "object",
+                            "properties": {
+                              "created": {
+                                "type": "number"
+                              },
+                              "updated": {
+                                "type": "number"
+                              },
+                              "archived": {
+                                "type": "number"
+                              }
+                            },
+                            "required": ["created", "updated"]
+                          },
+                          "pinned": {
+                            "type": "number"
+                          },
+                          "parentID": {
+                            "type": "string"
+                          },
+                          "lastExchange": {
+                            "type": "object",
+                            "properties": {
+                              "user": {
+                                "type": "string"
+                              },
+                              "assistant": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "required": ["id", "title", "scope", "time"]
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "offset": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["data", "total", "offset", "limit"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter sessions by title (case-insensitive)"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            },
+            "description": "Number of sessions to skip"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            },
+            "description": "Maximum number of sessions to return (1-100)"
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter to a single scope"
+          },
+          {
+            "in": "query",
+            "name": "parentOnly",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only top-level sessions (default: true)"
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Include archived sessions (default: false)"
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.global.session.search({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/agenda/webhook/{token}": {
       "post": {
         "operationId": "agenda.webhook",
@@ -13437,6 +13616,58 @@
               "required": ["template"]
             }
           },
+          "timeout": {
+            "description": "Timeout configuration for agent turns, provider requests, and tool execution",
+            "type": "object",
+            "properties": {
+              "invoke_sec": {
+                "description": "Max wall-clock seconds for one agent turn (default: 900 = 15min)",
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "provider": {
+                "type": "object",
+                "properties": {
+                  "ttfb_sec": {
+                    "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min",
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "idle_sec": {
+                    "description": "Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.",
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "wall_sec": {
+                    "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
+                    "type": "number",
+                    "minimum": 0
+                  }
+                }
+              },
+              "tool": {
+                "type": "object",
+                "properties": {
+                  "default_sec": {
+                    "description": "Default timeout per tool execution in seconds (default: 300 = 5min)",
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "overrides": {
+                    "description": "Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -13817,6 +14048,12 @@
                 "type": "number",
                 "minimum": 0.5,
                 "maximum": 1
+              },
+              "maxHistoryImages": {
+                "description": "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               }
             }
           },
@@ -19013,6 +19250,77 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.mcp.tools.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.tools.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.prompts.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.prompts.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.resources.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.resources.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.ready": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.ready"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.file.edited": {
         "type": "object",
         "properties": {
@@ -19099,77 +19407,6 @@
               }
             },
             "required": ["file", "event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.tools.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.tools.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.prompts.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.prompts.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.resources.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.resources.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.ready": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.ready"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -20461,18 +20698,6 @@
             "$ref": "#/components/schemas/Event.server.instance.disposed"
           },
           {
-            "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
           },
           {
@@ -20483,6 +20708,18 @@
           },
           {
             "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
