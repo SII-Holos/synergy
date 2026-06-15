@@ -46,10 +46,7 @@ export function buildAgentTable(agents: AgentInfo[], primaryName = "synergy"): s
   }
 
   const rows = available.map((a) => {
-    // Show first two sentences so "Use for..." trigger conditions are visible
-    const sentences = a.description?.split(".") || []
-    const trimmed = sentences.slice(0, 2).filter(Boolean).join(".")
-    const desc = trimmed || a.description || "General-purpose agent"
+    const desc = a.description || "General-purpose agent"
     return `| \`${a.name}\` | ${desc} |`
   })
 
