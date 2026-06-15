@@ -599,24 +599,27 @@ export namespace ProviderTransform {
 
     if (model.api.id.includes("gpt-5") && !model.api.id.includes("gpt-5-chat")) {
       if (!model.api.id.includes("codex") && !model.api.id.includes("gpt-5-pro")) {
-        result["reasoningEffort"] = "medium"
-        // Only inject reasoningSummary for providers that support it natively.
-        // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not understand this parameter.
+        // Only inject reasoningEffort for providers that support it natively.
+        // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not support reasoningEffort + tools
+        // on /v1/chat/completions and will return a 400 error.
         if (
           model.api.npm === "@ai-sdk/openai" ||
           model.api.npm === "@ai-sdk/azure" ||
           model.api.npm === "@ai-sdk/github-copilot"
         ) {
+          result["reasoningEffort"] = "medium"
           result["reasoningSummary"] = "auto"
         }
       }
 
-      // Only set textVerbosity for non-chat gpt-5.x models (not codex, not chat variants)
+      // Only set textVerbosity for native openai/azure/copilot providers (Responses API feature).
+      // @ai-sdk/openai-compatible proxies do not support this parameter.
       if (
         model.api.id.includes("gpt-5.") &&
         !model.api.id.includes("codex") &&
         !model.api.id.includes("-chat") &&
-        model.providerID !== "azure"
+        model.providerID !== "azure" &&
+        (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/github-copilot")
       ) {
         result["textVerbosity"] = "low"
       }
@@ -649,7 +652,7 @@ export namespace ProviderTransform {
       if (model.api.id.includes("google")) {
         return { reasoning: { enabled: false } }
       }
-      return { reasoningEffort: "minimal" }
+      return { reasoning: { effort: "minimal" } }
     }
     return {}
   }
