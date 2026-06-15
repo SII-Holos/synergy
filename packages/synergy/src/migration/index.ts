@@ -87,19 +87,23 @@ export async function runMigrations(options?: RunOptions): Promise<void> {
   }
   setActiveMigrationContext(ctx)
   try {
-    await runMigrationsInternal(domains, { dryRun })
+    await runMigrationsInternal(domains, { dryRun, ctx })
   } finally {
     setActiveMigrationContext(undefined)
   }
 }
 
-async function runMigrationsInternal(domains: Map<string, Migration[]>, options: { dryRun: boolean }): Promise<void> {
-  const { dryRun } = options
+async function runMigrationsInternal(
+  domains: Map<string, Migration[]>,
+  options: { dryRun: boolean; ctx: MigrationContext },
+): Promise<void> {
+  const { dryRun, ctx } = options
 
   const domainNames = [...domains.keys()].sort()
-  const isTTY = !!process.stderr.isTTY
   disableWrap()
   stageWrite("\n")
+
+  const upToDateDomains: string[] = []
 
   try {
     for (const domain of domainNames) {
@@ -108,7 +112,7 @@ async function runMigrationsInternal(domains: Map<string, Migration[]>, options:
       const pending = migrations.filter((m) => !(m.id in logData))
 
       if (pending.length === 0) {
-        stageWrite(`  ${progressBar(1)} [${domain}] Migrations up to date\n`)
+        upToDateDomains.push(domain)
         continue
       }
 
@@ -138,8 +142,9 @@ async function runMigrationsInternal(domains: Map<string, Migration[]>, options:
           if (upFn.length === 1) {
             await upFn(progressCb)
           } else {
-            // New-style: two-param up with context
-            await (upFn as (progress: (c: number, t: number) => void, ctx?: unknown) => Promise<void>)(progressCb)
+            // Two-param up with context: up(ctx, progress)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (upFn as any)(ctx, progressCb)
           }
 
           if (!started) stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description}`, true)
@@ -153,6 +158,13 @@ async function runMigrationsInternal(domains: Map<string, Migration[]>, options:
           throw err
         }
       }
+    }
+
+    // Summary: print "up to date" status once for all domains, not per domain
+    if (upToDateDomains.length > 0) {
+      stageWrite(
+        `  ${progressBar(1)} ${upToDateDomains.length} domain${upToDateDomains.length === 1 ? "" : "s"} up to date\n`,
+      )
     }
   } finally {
     enableWrap()

@@ -4,7 +4,6 @@ import { run as runServerRuntime } from "../../server/runtime"
 import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
-import { ensureMigrations } from "../../migration"
 import { Installation } from "../../global/installation"
 import { SingleInstance } from "../../daemon/single-instance"
 
@@ -36,7 +35,6 @@ export const ServerCommand = cmd({
   describe: "start synergy server",
   handler: async (args) => {
     try {
-      await ensureMigrations()
       const network = await resolveNetworkOptions(args)
       const managedService = args.managedService
 
