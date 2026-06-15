@@ -141,21 +141,42 @@ export function Sidebar(props: SidebarProps) {
     >
       {/* Header: Logo + expand toggle */}
       <div class="sb-header">
-        <A href={`/${base64Encode("global")}/session`} class="sb-logo" onClick={() => panel.close()}>
-          <img
-            src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-            alt="Synergy"
-            class="sb-logo-img"
-          />
-          <Show when={isExpanded()}>
+        <Show
+          when={isExpanded()}
+          fallback={
+            <Tooltip value="Expand sidebar" placement="right">
+              <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
+                <img
+                  src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+                  alt="Synergy"
+                  class="sb-collapsed-logo"
+                />
+                <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
+              </button>
+            </Tooltip>
+          }
+        >
+          <A href={`/${base64Encode("global")}/session`} class="sb-logo" onClick={() => panel.close()}>
+            <img
+              src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+              alt="Synergy"
+              class="sb-logo-img"
+            />
             <span class="sb-logo-text">Synergy</span>
-          </Show>
-        </A>
-        <Tooltip value={isExpanded() ? "Collapse sidebar" : "Expand sidebar"} placement="right">
-          <button type="button" class="sb-icon-btn" onClick={() => layout.sidebar.toggle()}>
-            <Icon name={isExpanded() ? "panel-left-close" : "panel-left-open"} size="normal" />
-          </button>
-        </Tooltip>
+          </A>
+          <div class="sb-header-actions">
+            <Tooltip value="Search sessions" placement="right">
+              <button type="button" class="sb-icon-btn" onClick={props.onSearchOpen}>
+                <Icon name="search" size="normal" />
+              </button>
+            </Tooltip>
+            <Tooltip value="Collapse sidebar" placement="right">
+              <button type="button" class="sb-icon-btn" onClick={() => layout.sidebar.toggle()}>
+                <Icon name="panel-left-close" size="normal" />
+              </button>
+            </Tooltip>
+          </div>
+        </Show>
       </div>
 
       {/* Action buttons (expanded only) */}
@@ -163,15 +184,8 @@ export function Sidebar(props: SidebarProps) {
         <div class="sb-actions">
           <Tooltip value="New session" placement="right">
             <button type="button" class="sb-action-btn" onClick={handleNewSession}>
-              <Icon name="plus" size="normal" />
+              <Icon name="pen-line" size="normal" />
               <span class="sb-action-label">New session</span>
-            </button>
-          </Tooltip>
-
-          <Tooltip value="Search sessions" placement="right">
-            <button type="button" class="sb-action-btn" onClick={props.onSearchOpen}>
-              <Icon name="search" size="normal" />
-              <span class="sb-action-label">Search</span>
             </button>
           </Tooltip>
         </div>
@@ -309,9 +323,6 @@ export function Sidebar(props: SidebarProps) {
                         <span class="sb-project-name">{getScopeLabel(scope)}</span>
                       </button>
                       <div class="sb-project-actions">
-                        <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
-                          <Icon name="plus" size="small" />
-                        </button>
                         <button
                           type="button"
                           classList={{
@@ -324,6 +335,9 @@ export function Sidebar(props: SidebarProps) {
                           }}
                         >
                           <Icon name="ellipsis" size="small" />
+                        </button>
+                        <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
+                          <Icon name="plus" size="small" />
                         </button>
                         <Show when={menuOpen()}>
                           <>
@@ -359,13 +373,16 @@ export function Sidebar(props: SidebarProps) {
                           {(session) => (
                             <button
                               type="button"
-                              class="sb-session-row"
+                              classList={{
+                                "sb-session-row": true,
+                                "sb-session-active": session.id === params.id,
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleSessionClick(scope, session)
                               }}
                             >
-                              <Icon name="message-square" size="small" class="sb-session-icon" />
+                              <Icon name="message-circle" size="small" class="sb-session-icon" />
                               <span class="sb-session-title">{session.title || "Untitled"}</span>
                               <span class="sb-session-time">
                                 {relativeTime(session.time.updated ?? session.time.created)}
@@ -382,9 +399,6 @@ export function Sidebar(props: SidebarProps) {
           </Show>
         </div>
       </Show>
-
-      {/* Spacer */}
-      <div class="sb-spacer" />
 
       {/* Bottom: Settings, Connect Provider, Theme */}
       <div class="sb-bottom">
@@ -433,10 +447,13 @@ export function Sidebar(props: SidebarProps) {
                     {(session) => (
                       <button
                         type="button"
-                        class="sb-flyout-session-row"
+                        classList={{
+                          "sb-flyout-session-row": true,
+                          "sb-session-active": session.id === params.id,
+                        }}
                         onClick={() => handleFlyoutSessionClick(session)}
                       >
-                        <Icon name="message-square" size="small" class="sb-flyout-session-icon" />
+                        <Icon name="message-circle" size="small" class="sb-flyout-session-icon" />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
                         <span class="sb-flyout-session-time">
                           {relativeTime(session.time.updated ?? session.time.created)}

@@ -2,12 +2,16 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-surface-weak);
+  background: var(--surface-inset-base);
   border-right: 1px solid var(--border-weaker-base);
   transition: width 200ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   flex-shrink: 0;
   position: relative;
+}
+
+.sb-root svg {
+  stroke-width: 2.35;
 }
 
 .sb-collapsed {
@@ -22,6 +26,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   padding: 8px;
   flex-shrink: 0;
   min-height: 44px;
@@ -52,6 +57,48 @@
   font-weight: 600;
   color: var(--text-strong);
   white-space: nowrap;
+}
+
+.sb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb-collapsed-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--icon-base);
+  transition: background-color 150ms;
+}
+
+.sb-collapsed-toggle:hover {
+  background: var(--surface-raised-base-hover);
+}
+
+.sb-collapsed-logo,
+.sb-collapsed-toggle-icon {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  transition: opacity 120ms;
+}
+
+.sb-collapsed-toggle-icon {
+  opacity: 0;
+}
+
+.sb-collapsed-toggle:hover .sb-collapsed-logo {
+  opacity: 0;
+}
+
+.sb-collapsed-toggle:hover .sb-collapsed-toggle-icon {
+  opacity: 1;
 }
 
 .sb-icon-btn {
@@ -191,11 +238,10 @@
 }
 
 .sb-section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-base);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: 0;
   flex: 1;
 }
 
@@ -225,13 +271,16 @@
   margin-bottom: 1px;
 }
 .sb-project-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0;
   width: 100%;
   height: 36px;
   border-radius: 8px;
-  transition: background-color 150ms;
+  transition:
+    background-color 150ms,
+    box-shadow 150ms;
 }
 
 .sb-project-row:hover {
@@ -248,19 +297,31 @@
 
 /* Chevron toggle */
 .sb-project-chevron-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 36px;
   flex-shrink: 0;
-  color: var(--icon-weak);
+  color: var(--icon-base);
   border-radius: 8px 0 0 8px;
-  transition: color 150ms;
+  opacity: 0;
+  transition:
+    opacity 120ms,
+    color 150ms,
+    background-color 150ms;
 }
 
 .sb-project-chevron-btn:hover {
   color: var(--icon-base);
+}
+.sb-project-row:hover .sb-project-chevron-btn,
+.sb-project-row:focus-within .sb-project-chevron-btn {
+  opacity: 1;
 }
 
 /* Body: folder + name */
@@ -270,7 +331,7 @@
   gap: 8px;
   flex: 1;
   height: 36px;
-  padding: 0 4px;
+  padding: 0 4px 0 8px;
   min-width: 0;
   overflow: hidden;
   color: var(--text-base);
@@ -280,6 +341,11 @@
 .sb-project-folder {
   flex-shrink: 0;
   color: var(--icon-base);
+  transition: opacity 120ms;
+}
+.sb-project-row:hover .sb-project-folder,
+.sb-project-row:focus-within .sb-project-folder {
+  opacity: 0;
 }
 
 .sb-project-name {
@@ -294,18 +360,18 @@
   color: var(--text-base);
 }
 
-/* Right-side actions — always visible dim, highlight on hover */
 .sb-project-actions {
   display: flex;
   align-items: center;
   gap: 0;
   flex-shrink: 0;
-  opacity: 0.45;
+  opacity: 0;
   transition: opacity 150ms;
   position: relative;
 }
 
-.sb-project-row:hover .sb-project-actions {
+.sb-project-row:hover .sb-project-actions,
+.sb-project-row:focus-within .sb-project-actions {
   opacity: 1;
 }
 
@@ -358,6 +424,22 @@
 
 .sb-session-row:hover {
   background: var(--surface-raised-base-hover);
+}
+
+.sb-session-active,
+.sb-session-active:hover {
+  background: var(--surface-interactive-base);
+  color: var(--text-interactive-base);
+}
+
+.sb-session-active .sb-session-title,
+.sb-session-active .sb-flyout-session-title {
+  color: var(--text-interactive-base);
+}
+
+.sb-session-active .sb-session-icon,
+.sb-session-active .sb-flyout-session-icon {
+  color: var(--text-interactive-base);
 }
 
 .sb-session-icon {
@@ -525,11 +607,9 @@
 }
 
 .sb-flyout-header {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-weak);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   padding: 4px 10px 6px;
   border-bottom: 1px solid var(--border-weaker-base);
   margin-bottom: 2px;

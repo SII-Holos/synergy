@@ -2160,12 +2160,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 trigger={
                   <button
                     type="button"
-                    class="flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                    class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
                   >
-                    <span class="inline-flex items-center justify-center size-5 rounded-full bg-surface-raised-base-hover text-11-medium text-text-base shrink-0">
-                      {getAgentVisual(local.agent.current()).label.charAt(0)}
-                    </span>
-                    <span class="text-12-medium text-text-base max-w-[80px] truncate">
+                    <span class="text-12-medium text-text-base whitespace-nowrap">
                       {getAgentVisual(local.agent.current()).label}
                     </span>
                     <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
