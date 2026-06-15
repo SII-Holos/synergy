@@ -49,6 +49,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-weaker"] = neutralAlpha[3]
   tokens["surface-strong"] = isDark ? neutralAlpha[6] : "#ffffff"
   tokens["surface-raised-stronger-non-alpha"] = isDark ? neutral[2] : "#ffffff"
+  tokens["surface-disabled"] = isDark ? neutralAlpha[5] : neutralAlpha[2]
+  tokens["surface-focus"] = withAlpha(interactive[2], isDark ? 0.24 : 0.18) as ColorValue
+  tokens["surface-hover"] = isDark ? neutralAlpha[3] : neutralAlpha[1]
+  tokens["surface-hover-base"] = isDark ? neutralAlpha[2] : neutralAlpha[0]
 
   tokens["surface-brand-base"] = primary[8]
   tokens["surface-brand-hover"] = primary[9]
@@ -105,6 +109,9 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-base"] = neutral[10]
   tokens["text-weak"] = neutral[8]
   tokens["text-weaker"] = neutral[7]
+  tokens["text-subtle"] = neutral[6]
+  tokens["text-error"] = error[isDark ? 8 : 9]
+  tokens["text-stronger"] = isDark ? "#fdfcfc" : "#020202"
   tokens["text-strong"] = neutral[11]
   tokens["text-invert-base"] = isDark ? neutral[10] : neutralAlpha[10]
   tokens["text-invert-weak"] = isDark ? neutral[8] : neutralAlpha[8]
@@ -180,6 +187,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["border-critical-base"] = error[isDark ? 4 : 5]
   tokens["border-critical-hover"] = error[6]
   tokens["border-critical-selected"] = error[8]
+  tokens["border-error"] = error[isDark ? 4 : 5]
   tokens["border-info-base"] = info[5]
   tokens["border-info-hover"] = info[6]
   tokens["border-info-selected"] = info[8]

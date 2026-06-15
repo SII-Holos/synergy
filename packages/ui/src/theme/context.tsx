@@ -37,7 +37,6 @@ function applyThemeCss(mode: "light" | "dark") {
   ${css}
 }`
 
-  document.getElementById("oc-theme-preload")?.remove()
   ensureThemeStyleElement().textContent = fullCss
   document.documentElement.dataset.colorScheme = mode
 }
