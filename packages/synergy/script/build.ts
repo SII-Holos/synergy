@@ -97,9 +97,6 @@ await $`rm -rf dist`
 console.log("building web app")
 await $`bun run --cwd ${path.resolve(dir, "../app")} build`
 
-console.log("building config ui")
-await $`bun run --cwd ${path.resolve(dir, "../config-ui")} build`
-
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`

@@ -43,14 +43,10 @@
 
       /* padding: 8px; */
       /* padding: 8px 8px 0 8px; */
-      border: 1px solid
-        light-dark(
-          color-mix(in oklch, var(--border-base) 15%, transparent),
-          color-mix(in oklch, var(--border-base) 30%, transparent)
-        );
-      border-radius: var(--radius-xl);
+      border: 1px solid color-mix(in oklch, var(--border-base) 30%, transparent);
       background: var(--surface-raised-stronger-non-alpha);
       background-clip: padding-box;
+      border-radius: var(--radius-xl);
       box-shadow: var(--shadow-lg);
 
       animation: contentHide 200ms ease forwards;

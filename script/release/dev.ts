@@ -8,7 +8,6 @@ import { computeDevVersion, configureNpmAuth } from "./shared/runtime"
 import { rewriteVersions } from "./shared/versions"
 import { bunInstall } from "./nodes/bun-install"
 import { buildApp } from "./nodes/build-app"
-import { buildConfigUI } from "./nodes/build-config-ui"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildMetaProtocol } from "./nodes/build-meta-protocol"
@@ -47,7 +46,7 @@ try {
   await bunInstall()
   await Promise.all([generateSchema(), generateSdk(), buildMetaProtocol()])
   await buildPlugin()
-  await Promise.all([buildApp(), buildConfigUI()])
+  await buildApp()
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)

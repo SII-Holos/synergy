@@ -98,6 +98,7 @@
   --background-stronger: #fcfcfc;
   --surface-base: var(--smoke-light-alpha-2);
   --base: var(--smoke-light-alpha-2);
+  --surface-hover-base: #0500000f;
   --surface-base-hover: #0500000f;
   --surface-base-active: var(--smoke-light-alpha-3);
   --surface-base-interactive-active: var(--cobalt-light-alpha-3);
@@ -357,6 +358,7 @@
     --surface-base-hover: var(--smoke-dark-4);
     --surface-base-active: var(--smoke-dark-5);
     --surface-base-interactive-active: var(--cobalt-dark-alpha-2);
+    --surface-hover-base: var(--smoke-dark-4);
     --base2: var(--smoke-dark-3);
     --base3: var(--smoke-dark-3);
     --surface-inset-base: var(--smoke-dark-alpha-3);

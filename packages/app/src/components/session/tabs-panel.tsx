@@ -124,7 +124,7 @@ export function TabsPanel(props: TabsPanelProps) {
                 <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
                   <Show
                     when={props.diffsReady()}
-                    fallback={<div class="px-6 py-4 text-text-weak">Loading changes...</div>}
+                    fallback={<div class="px-6 py-4 text-text-weak">Loading changes…</div>}
                   >
                     <SessionReviewTab
                       diffs={props.diffs}

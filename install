@@ -71,7 +71,6 @@ mkdir -p "$INSTALL_DIR"
 
 has_bundled_assets() {
     [ -f "$ROOT_DIR/app/index.html" ] && \
-    [ -f "$ROOT_DIR/config-ui/index.html" ] && \
     [ -f "$ROOT_DIR/schema/config.schema.json" ]
 }
 
@@ -87,11 +86,6 @@ install_bundle_contents() {
     if [ -d "$bundle_root/app" ]; then
         rm -rf "$ROOT_DIR/app"
         cp -R "$bundle_root/app" "$ROOT_DIR/app"
-    fi
-
-    if [ -d "$bundle_root/config-ui" ]; then
-        rm -rf "$ROOT_DIR/config-ui"
-        cp -R "$bundle_root/config-ui" "$ROOT_DIR/config-ui"
     fi
 
     if [ -d "$bundle_root/schema" ]; then
@@ -388,8 +382,8 @@ install_from_binary() {
     chmod 755 "${INSTALL_DIR}/synergy"
 
     if ! has_bundled_assets; then
-        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI and Config UI assets were not provided.${NC}"
-        print_message warning "${MUTED}Use the release archive installer to install bundled app/config-ui/schema assets.${NC}"
+        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI and schema assets were not provided.${NC}"
+        print_message warning "${MUTED}Use the release archive installer to install bundled app/schema assets.${NC}"
     fi
 }
 

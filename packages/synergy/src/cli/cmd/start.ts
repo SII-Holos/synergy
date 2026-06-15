@@ -133,7 +133,7 @@ async function modelReadinessNotes(url: string): Promise<string[] | undefined> {
     if (!res.ok) return undefined
     const payload = await res.json()
     if (payload?.modelReady === false) {
-      return ['No AI model configured — run "synergy config ui" to set up a provider.']
+      return ['No AI model configured — run "synergy config edit" to set up a provider.']
     }
   } catch {}
   return undefined

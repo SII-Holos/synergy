@@ -46,7 +46,7 @@ Install a specific version:
 curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 1.2.2
 ```
 
-The installer places the runtime binary together with the bundled Web UI, Config UI, and schema assets under `~/.synergy/`, so `synergy web` and `synergy config ui` work without requiring a local source checkout.
+The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
 
 ### If you already have the CLI installed
 
@@ -252,7 +252,6 @@ This repository is a Bun monorepo.
 
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
-- `packages/config-ui` — dedicated configuration UI package
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI components

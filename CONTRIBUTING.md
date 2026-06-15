@@ -100,16 +100,15 @@ There's no enforced commit message format. Clear and descriptive is all we ask.
 
 Knowing where things live saves time:
 
-| Package              | Purpose                                            |
-| -------------------- | -------------------------------------------------- |
-| `packages/synergy`   | Core runtime, server, CLI, agents, tools, sessions |
-| `packages/app`       | Web application                                    |
-| `packages/config-ui` | Configuration UI                                   |
-| `packages/plugin`    | Plugin SDK (`@ericsanchezok/synergy-plugin`)       |
-| `packages/sdk/js`    | TypeScript SDK (`@ericsanchezok/synergy-sdk`)      |
-| `packages/ui`        | Shared UI components                               |
-| `packages/util`      | Shared utilities                                   |
-| `packages/script`    | Build and release tooling                          |
+| Package            | Purpose                                            |
+| ------------------ | -------------------------------------------------- |
+| `packages/synergy` | Core runtime, server, CLI, agents, tools, sessions |
+| `packages/app`     | Web application                                    |
+| `packages/plugin`  | Plugin SDK (`@ericsanchezok/synergy-plugin`)       |
+| `packages/sdk/js`  | TypeScript SDK (`@ericsanchezok/synergy-sdk`)      |
+| `packages/ui`      | Shared UI components                               |
+| `packages/util`    | Shared utilities                                   |
+| `packages/script`  | Build and release tooling                          |
 
 If your change touches one package, scan adjacent packages before assuming an abstraction boundary.
 

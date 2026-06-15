@@ -4,15 +4,13 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Global } from "../../global"
 import { ConfigSet } from "../../config/set"
-import { ConfigUICommand } from "./config-ui"
 import { SetupService } from "../../setup/service"
 import { ConfigSetup } from "../../config/setup"
 
 export const ConfigCommand = cmd({
   command: "config",
   describe: "manage synergy configuration",
-  builder: (yargs) =>
-    yargs.command(ConfigUICommand).command(ConfigEditCommand).command(ConfigPathCommand).command(ConfigImportCommand),
+  builder: (yargs) => yargs.command(ConfigEditCommand).command(ConfigPathCommand).command(ConfigImportCommand),
   async handler() {},
 })
 

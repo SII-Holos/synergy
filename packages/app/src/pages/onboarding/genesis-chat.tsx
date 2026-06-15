@@ -571,7 +571,7 @@ export function GenesisChat(props: GenesisChatProps) {
                 >
                   Run{" "}
                   <code class="font-mono bg-surface-raised-stronger-non-alpha px-1.5 py-0.5 rounded text-text-base">
-                    synergy config ui
+                    synergy config edit
                   </code>{" "}
                   in your terminal to configure a model, then come back here.
                 </p>

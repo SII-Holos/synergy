@@ -35,7 +35,6 @@ Use current terms consistently.
 
 - `packages/synergy` — core runtime, server, CLI, sessions, tools, permissions, integrations, orchestration
 - `packages/app` — main Web application
-- `packages/config-ui` — dedicated configuration UI package
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI component library

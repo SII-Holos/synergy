@@ -911,7 +911,7 @@ export default function Page() {
                         <div class="relative h-full overflow-hidden">
                           <Show
                             when={diffsReady()}
-                            fallback={<div class="px-4 py-4 text-text-weak">Loading changes...</div>}
+                            fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}
                           >
                             <SessionReviewTab
                               diffs={diffs}

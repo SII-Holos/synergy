@@ -91,27 +91,6 @@
         "vite-plugin-solid": "catalog:",
       },
     },
-    "packages/config-ui": {
-      "name": "@ericsanchezok/synergy-config-ui",
-      "version": "1.1.26",
-      "dependencies": {
-        "@ericsanchezok/synergy-ui": "workspace:*",
-        "@kobalte/core": "catalog:",
-        "jsonc-parser": "3.3.1",
-        "lucide-solid": "0.577.0",
-        "solid-js": "catalog:",
-        "tailwindcss": "catalog:",
-      },
-      "devDependencies": {
-        "@tailwindcss/vite": "catalog:",
-        "@tsconfig/node22": "catalog:",
-        "@types/bun": "catalog:",
-        "@typescript/native-preview": "catalog:",
-        "typescript": "catalog:",
-        "vite": "catalog:",
-        "vite-plugin-solid": "catalog:",
-      },
-    },
     "packages/meta-protocol": {
       "name": "@ericsanchezok/meta-protocol",
       "version": "1.1.26",
@@ -508,8 +487,6 @@
     "@ericsanchezok/meta-synergy": ["@ericsanchezok/meta-synergy@workspace:packages/meta-synergy"],
 
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:packages/app"],
-
-    "@ericsanchezok/synergy-config-ui": ["@ericsanchezok/synergy-config-ui@workspace:packages/config-ui"],
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 

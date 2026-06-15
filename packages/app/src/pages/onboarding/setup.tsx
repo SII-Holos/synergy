@@ -158,7 +158,7 @@ export default function Setup(props: SetupProps) {
             <div class="w-full rounded-2xl border border-border-weak-base bg-surface-raised-base/50 p-4 flex flex-col gap-3">
               <div class="text-sm text-text-weak">Run the following command in your terminal:</div>
               <div class="px-3 py-2 rounded-lg bg-background-base font-mono text-sm text-text-base">
-                synergy config ui
+                synergy config edit
               </div>
             </div>
             <Button size="large" onClick={retryModelCheck}>

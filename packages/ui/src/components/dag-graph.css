@@ -4,6 +4,7 @@
   --dag-failed: var(--border-critical-base);
   --dag-blocked: var(--border-info-base);
   --dag-card-shadow: var(--shadow-xs);
+  --dag-grid-dot: rgb(17 0 0 / 0.045);
 
   position: relative;
   width: 100%;
@@ -136,12 +137,7 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
-      background: radial-gradient(
-          circle at 1px 1px,
-          light-dark(rgb(17 0 0 / 0.045), rgb(255 255 255 / 0.04)) 1px,
-          transparent 0
-        )
-        0 0 / 24px 24px;
+      background: radial-gradient(circle at 1px 1px, var(--dag-grid-dot) 1px, transparent 0) 0 0 / 24px 24px;
       opacity: 0.7;
     }
 

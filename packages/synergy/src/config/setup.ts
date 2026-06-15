@@ -513,7 +513,7 @@ export namespace ConfigSetup {
       await RuntimeReload.reload({
         targets: ["config"],
         scope: "global",
-        reason: "config-ui-setup-commit",
+        reason: "cli-setup-commit",
       })
     } catch (error) {
       if (error instanceof Error && error.message.includes("No context found for instance")) {

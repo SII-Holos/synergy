@@ -440,7 +440,7 @@ async function printModelWarning() {
     if (Object.keys(providers).length === 0) {
       const lines = [
         WARN + "  ⚠ No AI model configured" + RESET,
-        DIM + "    Run " + RESET + "synergy config ui" + DIM + " to set up a provider before using Synergy" + RESET,
+        DIM + "    Run " + RESET + "synergy config edit" + DIM + " to set up a provider before using Synergy" + RESET,
         "",
       ]
       Bun.stderr.write(lines.join(EOL) + EOL)

@@ -179,7 +179,7 @@
     line-height: 1.4;
 
     &[data-sentiment="positive"] {
-      color: #34d399;
+      color: var(--text-on-success-base);
     }
     &[data-sentiment="negative"] {
       color: var(--text-on-critical-base);

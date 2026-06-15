@@ -12,7 +12,7 @@
   &[data-variant="error"] {
     background-color: var(--surface-critical-weak);
     border: 1px solid var(--border-critical-base);
-    color: rgba(218, 51, 25, 0.6);
+    color: var(--text-on-critical-base);
 
     /* text-12-regular */
     font-family: var(--font-family-sans);

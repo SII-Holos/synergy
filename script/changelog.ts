@@ -37,7 +37,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
   }
 
   const log =
-    await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages/synergy packages/sdk packages/plugin packages/app packages/config-ui`.text()
+    await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages/synergy packages/sdk packages/plugin packages/app`.text()
   const hashes = log.split("\n").filter(Boolean)
 
   const commits: Commit[] = []
@@ -56,7 +56,6 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
       else if (file.startsWith("packages/app/")) areas.add("app")
       else if (file.startsWith("packages/sdk/")) areas.add("sdk")
       else if (file.startsWith("packages/plugin/")) areas.add("plugin")
-      else if (file.startsWith("packages/config-ui/")) areas.add("app")
     }
 
     if (areas.size === 0) continue

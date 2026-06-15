@@ -16,16 +16,15 @@ Clients connect to the server and provide a working directory (scope). The serve
 
 ## Package Map
 
-| Package              | Role                                                                   |
-| -------------------- | ---------------------------------------------------------------------- |
-| `packages/synergy`   | Core runtime: server, CLI, agents, tools, sessions, config, everything |
-| `packages/app`       | SolidJS web client                                                     |
-| `packages/config-ui` | Configuration UI components                                            |
-| `packages/plugin`    | Plugin SDK for extensions                                              |
-| `packages/sdk/js`    | Generated TypeScript SDK                                               |
-| `packages/ui`        | Shared UI component library                                            |
-| `packages/util`      | Shared utilities and error helpers                                     |
-| `packages/script`    | Build and release tooling                                              |
+| Package            | Role                                                                   |
+| ------------------ | ---------------------------------------------------------------------- |
+| `packages/synergy` | Core runtime: server, CLI, agents, tools, sessions, config, everything |
+| `packages/app`     | SolidJS web client                                                     |
+| `packages/plugin`  | Plugin SDK for extensions                                              |
+| `packages/sdk/js`  | Generated TypeScript SDK                                               |
+| `packages/ui`      | Shared UI component library                                            |
+| `packages/util`    | Shared utilities and error helpers                                     |
+| `packages/script`  | Build and release tooling                                              |
 
 ## Core Domains (`packages/synergy/src/`)
 
