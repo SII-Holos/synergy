@@ -1,4 +1,7 @@
 .sb-root {
+  --sb-hover-bg: color-mix(in srgb, var(--text-base) 7%, transparent);
+  --sb-control-hover-bg: color-mix(in srgb, var(--text-base) 10%, transparent);
+  --sb-active-bg: color-mix(in srgb, var(--text-base) 9%, transparent);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -10,8 +13,16 @@
   position: relative;
 }
 
+[data-color-scheme="light"] .sb-root {
+  background: #f0f0f0;
+}
+
+[data-color-scheme="dark"] .sb-root {
+  background: #202124;
+}
+
 .sb-root svg {
-  stroke-width: 2.35;
+  stroke-width: 2.45;
 }
 
 .sb-collapsed {
@@ -78,7 +89,7 @@
 }
 
 .sb-collapsed-toggle:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-collapsed-logo,
@@ -117,7 +128,7 @@
 
 .sb-icon-btn:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-actions {
@@ -145,7 +156,7 @@
 
 .sb-action-btn:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-action-label {
@@ -182,16 +193,16 @@
 
 .sb-global-btn:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-global-active {
-  color: var(--text-interactive-base);
-  background: var(--surface-interactive-base);
+  color: var(--text-base);
+  background: var(--sb-active-bg);
 }
 
 .sb-global-active:hover {
-  background: var(--surface-interactive-base);
+  background: var(--sb-active-bg);
 }
 
 /* ===== Projects section ===== */
@@ -229,7 +240,7 @@
 }
 
 .sb-projects-header:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-section-chevron {
@@ -261,7 +272,7 @@
 
 .sb-projects-header-plus:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-control-hover-bg);
 }
 
 /* ===== Project row ===== */
@@ -284,15 +295,15 @@
 }
 
 .sb-project-row:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-project-active {
-  background: var(--surface-interactive-base);
+  background: var(--sb-active-bg);
 }
 
 .sb-project-active:hover {
-  background: var(--surface-interactive-base);
+  background: var(--sb-active-bg);
 }
 
 /* Chevron toggle */
@@ -393,12 +404,12 @@
 .sb-project-plus-btn:hover,
 .sb-project-menu-btn:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-control-hover-bg);
 }
 
 .sb-project-menu-active {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-control-hover-bg);
 }
 
 /* ===== Sessions under project (expanded) ===== */
@@ -423,23 +434,23 @@
 }
 
 .sb-session-row:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-session-active,
 .sb-session-active:hover {
-  background: var(--surface-interactive-base);
-  color: var(--text-interactive-base);
+  background: var(--sb-active-bg);
+  color: var(--text-base);
 }
 
 .sb-session-active .sb-session-title,
 .sb-session-active .sb-flyout-session-title {
-  color: var(--text-interactive-base);
+  color: var(--text-base);
 }
 
 .sb-session-active .sb-session-icon,
 .sb-session-active .sb-flyout-session-icon {
-  color: var(--text-interactive-base);
+  color: var(--text-base);
 }
 
 .sb-session-icon {
@@ -457,14 +468,6 @@
   flex: 1;
   min-width: 0;
   text-align: left;
-}
-
-.sb-session-time {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-subtle);
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 /* Dropdown menu */
@@ -504,7 +507,7 @@
 }
 
 .sb-menu-item:hover:not(:disabled) {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-menu-item:disabled {
@@ -558,7 +561,7 @@
 
 .sb-bottom-btn:hover {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-bottom-label {
@@ -634,7 +637,7 @@
 }
 
 .sb-flyout-project-row:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-flyout-project-name {
@@ -659,7 +662,7 @@
 }
 
 .sb-flyout-session-row:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--sb-hover-bg);
 }
 
 .sb-flyout-session-icon {
@@ -677,12 +680,4 @@
   flex: 1;
   min-width: 0;
   text-align: left;
-}
-
-.sb-flyout-session-time {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-subtle);
-  flex-shrink: 0;
-  white-space: nowrap;
 }

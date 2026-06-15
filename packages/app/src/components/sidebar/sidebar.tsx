@@ -277,12 +277,12 @@ export function Sidebar(props: SidebarProps) {
       >
         <div class="sb-projects">
           <div class="sb-projects-header" onClick={() => setProjectsSectionOpen((v) => !v)} role="button" tabindex="0">
+            <span class="sb-section-title">Projects</span>
             <Icon
               name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
               size="small"
               class="sb-section-chevron"
             />
-            <span class="sb-section-title">Projects</span>
             <Tooltip value="Add project" placement="top">
               <button
                 type="button"
@@ -337,7 +337,7 @@ export function Sidebar(props: SidebarProps) {
                           <Icon name="ellipsis" size="small" />
                         </button>
                         <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
-                          <Icon name="plus" size="small" />
+                          <Icon name="pen-line" size="small" />
                         </button>
                         <Show when={menuOpen()}>
                           <>
@@ -382,11 +382,8 @@ export function Sidebar(props: SidebarProps) {
                                 handleSessionClick(scope, session)
                               }}
                             >
-                              <Icon name="message-circle" size="small" class="sb-session-icon" />
+                              <Icon name="file-text" size="small" class="sb-session-icon" />
                               <span class="sb-session-title">{session.title || "Untitled"}</span>
-                              <span class="sb-session-time">
-                                {relativeTime(session.time.updated ?? session.time.created)}
-                              </span>
                             </button>
                           )}
                         </For>
@@ -453,11 +450,8 @@ export function Sidebar(props: SidebarProps) {
                         }}
                         onClick={() => handleFlyoutSessionClick(session)}
                       >
-                        <Icon name="message-circle" size="small" class="sb-flyout-session-icon" />
+                        <Icon name="file-text" size="small" class="sb-flyout-session-icon" />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
-                        <span class="sb-flyout-session-time">
-                          {relativeTime(session.time.updated ?? session.time.created)}
-                        </span>
                       </button>
                     )}
                   </For>
