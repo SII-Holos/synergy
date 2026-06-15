@@ -1596,7 +1596,6 @@ export namespace Config {
             .number()
             .int()
             .optional()
-            .default(8)
             .describe(
               "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
             ),

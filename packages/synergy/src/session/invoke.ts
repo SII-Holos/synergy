@@ -244,7 +244,7 @@ export namespace SessionInvoke {
           abort,
           compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
           compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
-          compactionMaxHistoryImages: (await Config.get()).compaction?.maxHistoryImages,
+          compactionMaxHistoryImages: (await Config.get()).compaction?.maxHistoryImages ?? 8,
           modelID: lastUser.model.modelID,
           modelLimits: await Promise.all([
             Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
