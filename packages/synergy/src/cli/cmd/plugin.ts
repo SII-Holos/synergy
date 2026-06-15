@@ -154,32 +154,37 @@ export const PluginAddCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    const spec = args.spec as string
-    const spinner = prompts.spinner()
-    spinner.start(`Adding plugin ${spec}`)
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const spec = args.spec as string
+        const spinner = prompts.spinner()
+        spinner.start(`Adding plugin ${spec}`)
 
-    try {
-      const plugin = await Plugin.add(spec)
-      const manifest = await Plugin.manifest(plugin.id)
+        try {
+          const plugin = await Plugin.add(spec)
+          const manifest = await Plugin.manifest(plugin.id)
 
-      spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
-      UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
+          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
+          UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
 
-      const version = readPkgVersion(plugin.pluginDir)
-      if (version) {
-        UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
-      }
+          const version = readPkgVersion(plugin.pluginDir)
+          if (version) {
+            UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
+          }
 
-      printContributed(manifest)
+          printContributed(manifest)
 
-      if (manifest?.description) {
-        UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
-      }
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e)
-      spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
-      UI.error(message)
-    }
+          if (manifest?.description) {
+            UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
+          }
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e)
+          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
+          UI.error(message)
+        }
+      },
+    })
   },
 })
 
@@ -203,36 +208,41 @@ export const PluginRemoveCommand = cmd({
         default: false,
       }),
   async handler(args) {
-    const pluginId = args.id as string
+    await Instance.provide({
+      scope: (await Scope.fromDirectory(process.cwd())).scope,
+      async fn() {
+        const pluginId = args.id as string
 
-    const plugin = await Plugin.get(pluginId)
-    if (!plugin) {
-      UI.error(`Plugin not found: ${pluginId}`)
-      return
-    }
+        const plugin = await Plugin.get(pluginId)
+        if (!plugin) {
+          UI.error(`Plugin not found: ${pluginId}`)
+          return
+        }
 
-    if (!args.force) {
-      const confirmed = await prompts.confirm({
-        message: `Remove plugin "${plugin.name ?? pluginId}"? This will uninstall and clean up all configuration.`,
-      })
-      if (confirmed !== true) {
-        UI.println(UI.Style.TEXT_DIM + "Cancelled." + UI.Style.TEXT_NORMAL)
-        return
-      }
-    }
+        if (!args.force) {
+          const confirmed = await prompts.confirm({
+            message: `Remove plugin "${plugin.name ?? pluginId}"? This will uninstall and clean up all configuration.`,
+          })
+          if (confirmed !== true) {
+            UI.println(UI.Style.TEXT_DIM + "Cancelled." + UI.Style.TEXT_NORMAL)
+            return
+          }
+        }
 
-    const spinner = prompts.spinner()
-    spinner.start(`Removing plugin ${plugin.name ?? pluginId}`)
+        const spinner = prompts.spinner()
+        spinner.start(`Removing plugin ${plugin.name ?? pluginId}`)
 
-    try {
-      await Plugin.remove(pluginId)
-      spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Removed ${plugin.name ?? pluginId}`)
-      UI.println(`${UI.Style.TEXT_DIM}Plugin uninstalled and configuration cleaned up.${UI.Style.TEXT_NORMAL}`)
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e)
-      spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
-      UI.error(message)
-    }
+        try {
+          await Plugin.remove(pluginId)
+          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Removed ${plugin.name ?? pluginId}`)
+          UI.println(`${UI.Style.TEXT_DIM}Plugin uninstalled and configuration cleaned up.${UI.Style.TEXT_NORMAL}`)
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e)
+          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
+          UI.error(message)
+        }
+      },
+    })
   },
 })
 
@@ -399,10 +409,8 @@ export const PluginListCommand = cmd({
         }
 
         for (const spec of configSpecs) {
-          const displayName = PluginSpec.displayName(spec)
-          const plugin = loaded.find(
-            (p) => PluginSpec.displayName(spec) === p.id || p.name === PluginSpec.displayName(spec),
-          )
+          const plugin = await Plugin.lookupSpec(spec)
+          const displayName = plugin?.name ?? plugin?.id ?? PluginSpec.displayName(spec)
           const installed = plugin != null
           const status = installed
             ? `${UI.Style.TEXT_SUCCESS}✔ loaded${UI.Style.TEXT_NORMAL}`

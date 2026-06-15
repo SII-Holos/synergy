@@ -162,7 +162,7 @@ export namespace Plugin {
   }
   /** Walk up from a file path to find the nearest directory containing package.json. */
   function findPackageRoot(entryPath: string): string {
-    let dir = path.dirname(entryPath)
+    let dir = existsSync(path.join(entryPath, "package.json")) ? entryPath : path.dirname(entryPath)
     for (let i = 0; i < 10; i++) {
       if (existsSync(path.join(dir, "package.json"))) return dir
       const parent = path.dirname(dir)
@@ -170,6 +170,19 @@ export namespace Plugin {
       dir = parent
     }
     return path.dirname(entryPath)
+  }
+
+  /** Resolve a config plugin spec to the package root Synergy should load from. */
+  function resolveSpecPluginDir(spec: string): string {
+    if (spec.startsWith("file://")) {
+      const filePath = spec.slice("file://".length)
+      const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(Instance.directory, filePath)
+      return findPackageRoot(absolute)
+    }
+    const { pkg } = PluginSpec.parse(spec)
+    const nonRegistry = PluginSpec.isNonRegistry(spec)
+    const resolvedDir = path.join(Global.Path.cache, "node_modules", nonRegistry ? BunProc.resolvePkgName(pkg) : pkg)
+    return findPackageRoot(resolvedDir)
   }
 
   const printedPluginIds = new Set<string>()
@@ -407,6 +420,9 @@ export namespace Plugin {
   export async function add(spec: string, opts: { autoReload?: boolean } = {}): Promise<LoadedPlugin> {
     const { pkg, version } = PluginSpec.parse(spec)
 
+    // Explicit installs should refresh cached registry/git packages.
+    await BunProc.invalidateCache(pkg)
+
     // Install the plugin package
     const result = await BunProc.install(pkg, version)
 
@@ -424,8 +440,8 @@ export namespace Plugin {
     }
 
     // Check minSynergyVersion compatibility
-    if (manifestData?.minSynergyVersion) {
-      const currentVersion = Installation.VERSION === "local" ? "0.0.0" : Installation.VERSION
+    if (manifestData?.minSynergyVersion && Installation.VERSION !== "local") {
+      const currentVersion = Installation.VERSION
       if (!satisfiesMinVersion(currentVersion, manifestData.minSynergyVersion)) {
         throw new Error(
           `Plugin ${spec} requires Synergy >= ${manifestData.minSynergyVersion}, but current version is ${currentVersion}`,
@@ -455,6 +471,7 @@ export namespace Plugin {
     const currentPlugins = config.plugin ?? []
     if (!currentPlugins.includes(spec)) {
       await Config.updateGlobal({ plugin: [...currentPlugins, spec] } as any)
+      await Config.reload("global")
     }
 
     // Reload plugins to load the new one
@@ -495,24 +512,27 @@ export namespace Plugin {
     // Remove from config.plugin[] array
     const config = await Config.get()
     const currentPlugins = config.plugin ?? []
+    let configChanged = false
     const kept = currentPlugins.filter((spec) => {
       const entry = specToPluginId.get(spec)
       if (entry != null) return entry !== pluginId
-      // Fallback: try to resolve the spec path and compare pluginDir
-      const { pkg } = PluginSpec.parse(spec)
-      const nonRegistry = PluginSpec.isNonRegistry(spec)
-      const resolvedDir = path.join(Global.Path.cache, "node_modules", nonRegistry ? BunProc.resolvePkgName(pkg) : pkg)
-      return findPackageRoot(resolvedDir) !== plugin.pluginDir
+      return resolveSpecPluginDir(spec) !== plugin.pluginDir
     })
 
     if (kept.length < currentPlugins.length) {
       await Config.updateGlobal({ plugin: kept } as any)
+      configChanged = true
     }
 
     // Remove pluginConfig.{pluginId}
     if (config.pluginConfig?.[pluginId]) {
       const { [pluginId]: _, ...rest } = config.pluginConfig ?? {}
       await Config.updateGlobal({ pluginConfig: rest } as any)
+      configChanged = true
+    }
+
+    if (configChanged) {
+      await Config.reload("global")
     }
 
     // Clear the spec → pluginId mapping and remove from lockfile
@@ -549,11 +569,9 @@ export namespace Plugin {
   export async function lookupSpec(spec: string): Promise<LoadedPlugin | undefined> {
     const pluginId = specToPluginId.get(spec)
     if (pluginId) return get(pluginId)
+
     const { loaded: loadedPlugins } = await state()
-    const { pkg } = PluginSpec.parse(spec)
-    const nonRegistry = PluginSpec.isNonRegistry(spec)
-    const resolvedDir = path.join(Global.Path.cache, "node_modules", nonRegistry ? BunProc.resolvePkgName(pkg) : pkg)
-    const expectedDir = findPackageRoot(resolvedDir)
+    const expectedDir = resolveSpecPluginDir(spec)
     return loadedPlugins.find((p) => p.pluginDir === expectedDir)
   }
 

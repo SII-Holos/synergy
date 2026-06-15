@@ -68,6 +68,7 @@
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-script": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@napi-rs/canvas": "1.0.0",
     "typescript": "catalog:"
   },
   "repository": {
