@@ -587,6 +587,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           ? getFilename(Array.isArray(input.file_path) ? input.file_path[0] : input.file_path)
           : undefined,
       }
+    case "scan_document":
+      return {
+        icon: "scan-document",
+        title: "Read Document",
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
     case "ast_grep":
       return {
         icon: "braces",

@@ -64,6 +64,7 @@ function anchoredReadTools(): PermissionNext.Ruleset {
     view_file: "allow",
     scan_files: "allow",
     parse_code: "allow",
+    scan_document: "allow",
   })
 }
 

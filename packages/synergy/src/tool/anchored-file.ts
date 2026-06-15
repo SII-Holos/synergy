@@ -49,6 +49,13 @@ function isKnownBinaryPath(filePath: string): boolean {
     case ".7z":
     case ".bin":
     case ".dat":
+    case ".pdf":
+    case ".docx":
+    case ".xlsx":
+    case ".pptx":
+    case ".doc":
+    case ".xls":
+    case ".ppt":
       return true
     default:
       return false

@@ -519,6 +519,7 @@ Sequential exploration (reading multiple files to understand a code area) is a s
 Synergy-max uses the anchored coding harness for repository edits. Prefer this tool family over the classic `read` / `edit` / `write` / `grep` / `ast_grep` flow.
 
 **`view_file`** — Read a file and receive `[path#TAG]` plus `LINE:TEXT` rows. Use this before `revise_file`.
+For document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, CSV, XML, etc.), use `scan_document` instead — it converts documents to Markdown with offset/limit pagination.
 
 **`revise_file`** — Apply an anchored patch. Input starts with `[path#TAG]`, then operations such as `replace N..M:`, `delete N..M`, `insert before N:`, `insert after N:`, `insert head:`, or `insert tail:`. Body rows start with `+` and are final content, not old/new diff rows.
 
@@ -571,6 +572,7 @@ Use the right visual surface for the job:
 - **`render`** — Render inline HTML/SVG/tables/charts directly in the conversation when the output is structured markup rather than a file.
 - **`look_at`** — Inspect images for your own reasoning. Set `show_to_user: true` when the user should see the same image; otherwise follow with `attach` if the image becomes a user-facing result.
 - **`attach`** — Deliver generated or obtained files to the user as conversation attachments: images, PDFs, figures, plots, screenshots, archives, exports, and paper outputs.
+- **`scan_document`** — Read document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, ZIP, images/audio metadata) by converting them to Markdown with offset/limit pagination. Use this for documents; for code files, use `view_file`; for image analysis, use `look_at`.
 
 When a command, script, notebook, renderer, or LaTeX build produces a user-facing visual artifact (`.png`, `.jpg`, `.svg`, `.pdf`, `.html`, etc.), show the final result with `attach` instead of only printing the filesystem path. Attach final artifacts only; avoid intermediate build files, caches, dependency downloads, logs, or unrelated outputs.
 

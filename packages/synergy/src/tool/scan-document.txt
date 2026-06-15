@@ -1,0 +1,16 @@
+Read and paginate through document files by converting them to Markdown.
+
+Use this tool to inspect the content of document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, images, audio, ZIP). Documents are converted to Markdown for LLM consumption. This tool does NOT support editing — use native applications to modify documents.
+
+Use `offset` to skip ahead and `limit` to control how many lines to return (max 2000, default 2000). When the metadata field `truncated` is true, call again with offset incremented by `returned` to read the next chunk.
+
+For code files, use `view_file` instead. For image analysis, use `look_at` instead.
+
+Supported formats: PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), HTML, EPUB, Jupyter (.ipynb), CSV, XML, RSS, Atom, plain text, images (EXIF metadata only), audio (EXIF metadata only), ZIP archives (recursive).
+
+Limitations:
+- Files larger than 50 MB are rejected.
+- Extraction has a 60-second timeout.
+- Password-protected or encrypted documents may fail.
+- Image and audio files return metadata only (no visual analysis or transcription).
+- The output is Markdown, not the original binary content.
