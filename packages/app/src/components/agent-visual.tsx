@@ -36,12 +36,12 @@ const VISUALS: Record<string, AgentVisual> = {
   scholar: { emoji: "🤓", label: "Scholar", color: COLORS.research },
 
   "intent-analyst": { emoji: "🤔", label: "Intent Analyst", color: COLORS.analysis },
-  "requirements-engineer": { emoji: "🧐", label: "Requirements", color: COLORS.analysis },
+  "requirements-engineer": { emoji: "😥", label: "Requirements", color: COLORS.analysis },
   "code-cartographer": { emoji: "😶‍🌫️", label: "Code Map", color: COLORS.analysis },
   "dependency-tracer": { emoji: "🙄", label: "Dependency Trace", color: COLORS.analysis },
 
   "solution-architect": { emoji: "😏", label: "Solution Architect", color: COLORS.design },
-  "api-contract-designer": { emoji: "😌", label: "API Contract", color: COLORS.design },
+  "api-contract-designer": { emoji: "🤫", label: "API Contract", color: COLORS.design },
   "migration-architect": { emoji: "😰", label: "Migration", color: COLORS.design },
 
   "test-strategist": { emoji: "😈", label: "Test Strategy", color: COLORS.test },
@@ -50,14 +50,14 @@ const VISUALS: Record<string, AgentVisual> = {
   "property-test-engineer": { emoji: "🤖", label: "Property Tests", color: COLORS.test },
   "type-test-engineer": { emoji: "😑", label: "Type Tests", color: COLORS.test },
 
-  "implementation-engineer": { emoji: "😤", label: "Implementation", color: COLORS.code },
+  "implementation-engineer": { emoji: "😡", label: "Implementation", color: COLORS.code },
   "refactoring-engineer": { emoji: "😇", label: "Refactor", color: COLORS.code },
   "integration-engineer": { emoji: "🤝", label: "Integration", color: COLORS.code },
   "documentation-engineer": { emoji: "🙂", label: "Docs", color: COLORS.code },
 
   "quality-gatekeeper": { emoji: "😐", label: "Quality Gate", color: COLORS.quality },
   "python-quality-engineer": { emoji: "😜", label: "Python Quality", color: COLORS.quality },
-  "rust-quality-engineer": { emoji: "😤", label: "Rust Quality", color: COLORS.quality },
+  "rust-quality-engineer": { emoji: "😓", label: "Rust Quality", color: COLORS.quality },
   "typescript-quality-engineer": { emoji: "😬", label: "TS Quality", color: COLORS.quality },
 
   "maintainability-reviewer": { emoji: "😒", label: "Maintainability", color: COLORS.review },
@@ -66,14 +66,17 @@ const VISUALS: Record<string, AgentVisual> = {
   "api-compatibility-reviewer": { emoji: "😕", label: "API Compatibility", color: COLORS.review },
   "documentation-reviewer": { emoji: "🙂‍↔️", label: "Doc Review", color: COLORS.review },
 
-  "docs-researcher": { emoji: "🤩", label: "Docs Research", color: COLORS.knowledge },
-  "research-methodologist": { emoji: "🤔", label: "Research Method", color: COLORS.research },
+  "docs-researcher": { emoji: "🫨", label: "Docs Research", color: COLORS.knowledge },
+  "research-methodologist": { emoji: "😖", label: "Research Method", color: COLORS.research },
+  "research-scout": { emoji: "🫣", label: "Research Scout", color: COLORS.research },
+  "literature-searcher": { emoji: "🫢", label: "Literature Search", color: COLORS.research },
+  "literature-analyst": { emoji: "😯", label: "Literature Analyst", color: COLORS.research },
   "memory-curator": { emoji: "🤗", label: "Memory", color: COLORS.knowledge },
   "note-librarian": { emoji: "😊", label: "Notes", color: COLORS.knowledge },
   "session-historian": { emoji: "🤨", label: "Session History", color: COLORS.knowledge },
 
   codex: { emoji: "🫡", label: "Codex", color: COLORS.knowledge, external: true },
-  "claude-code": { emoji: "🤨", label: "Claude Code", color: COLORS.max, external: true },
+  "claude-code": { emoji: "😉", label: "Claude Code", color: COLORS.max, external: true },
   openclaw: { emoji: "🤯", label: "OpenClaw", color: COLORS.external, external: true },
 }
 
