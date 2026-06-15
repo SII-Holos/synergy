@@ -89,7 +89,9 @@
 
   color-scheme: light;
   --text-mix-blend-mode: multiply;
+}
 
+:root:not([data-color-scheme]) {
   --background-base: #f8f7f7;
   --background-weak: var(--smoke-light-3);
   --background-strong: var(--smoke-light-1);
@@ -339,8 +341,10 @@
   --avatar-text-purple: #8445bc;
   --avatar-text-cyan: #0894b3;
   --avatar-text-lime: #5d770d;
+}
 
-  @media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme]) {
     color-scheme: dark;
     --text-mix-blend-mode: plus-lighter;
 

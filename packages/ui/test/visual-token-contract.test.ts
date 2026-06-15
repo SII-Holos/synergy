@@ -50,7 +50,7 @@ const P0_REQUIRED_TOKENS = [
 /** Tokens that MUST NOT appear in P0 CSS files (forbidden / deprecated) */
 const P0_FORBIDDEN_TOKENS = ["font-size-xs", "font-size-2xs", "font-size-3xs", "font-size-medium", "radius-12"]
 
-/** P0 UI component CSS files scoped to Phase 3 */
+/** P0 UI component CSS files covered by the visual token contract */
 const P0_UI_FILES = [
   "src/components/tabs.css",
   "src/components/switch.css",
@@ -61,7 +61,7 @@ const P0_UI_FILES = [
   "src/components/session-turn.css",
 ]
 
-/** P0 app-side CSS files scoped to Phase 3 */
+/** P0 app-side CSS files covered by the visual token contract */
 const P0_APP_FILES = ["../app/src/components/quick-actions.css"]
 
 // ── Valid reference set (post-implementation target) ─────────
@@ -157,7 +157,7 @@ function buildP0ValidTokenSet(): Set<string> {
 // Tests
 // ═══════════════════════════════════════════════════════════════
 
-describe("Phase 3 — Visual Token Contract", () => {
+describe("Visual Token Contract", () => {
   // ── Section 1: Required tokens exist in theme.css ───────────
 
   describe("1. Required P0 tokens declared in theme.css", () => {

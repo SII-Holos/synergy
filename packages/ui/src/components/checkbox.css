@@ -30,7 +30,6 @@
     transition:
       border-color var(--motion-duration-base) var(--motion-ease-standard),
       background-color var(--motion-duration-base) var(--motion-ease-standard);
-    /* background-color: var(--surface-weak); */
   }
 
   [data-slot="checkbox-checkbox-indicator"] {
@@ -42,9 +41,6 @@
     color: var(--icon-base);
     opacity: 0;
   }
-
-  /* [data-slot="checkbox-checkbox-content"] { */
-  /* } */
 
   [data-slot="checkbox-checkbox-label"] {
     user-select: none;

@@ -201,9 +201,6 @@
         }
       }
     }
-
-    /* [data-slot="tabs-content"] { */
-    /* } */
   }
 
   &[data-variant="pill"] {

@@ -623,12 +623,12 @@
 
   /* Accent color based on tool status */
   [data-component="collapsible"][data-tool-status="completed"] {
-    --tool-accent: var(--border-base);
+    --tool-accent: var(--border-success-base);
   }
 
   [data-component="collapsible"][data-tool-status="pending"],
   [data-component="collapsible"][data-tool-status="running"] {
-    --tool-accent: var(--border-weak-base);
+    --tool-accent: var(--border-warning-base);
   }
 
   [data-component="collapsible"][data-tool-status="error"] {

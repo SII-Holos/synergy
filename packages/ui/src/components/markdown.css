@@ -5,8 +5,8 @@
   overflow-wrap: break-word;
   color: var(--text-base);
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-base);
-  line-height: var(--line-height-x-large);
+  font-size: var(--font-size-large);
+  line-height: 1.68;
 
   > *:first-child {
     margin-top: 0;
@@ -22,10 +22,12 @@
   h4,
   h5,
   h6 {
-    color: var(--text-strong);
+    color: var(--markdown-heading);
     font-weight: var(--font-weight-medium);
     margin-top: 1.125rem;
     margin-bottom: 0.5rem;
+    padding-left: 12px;
+    border-left: 3px solid var(--markdown-heading);
     line-height: var(--line-height-large);
   }
 
@@ -106,7 +108,7 @@
   blockquote {
     margin: 1rem 0;
     padding: 0.5rem 0.75rem 0.5rem 0.875rem;
-    border-left: 3px solid color-mix(in srgb, var(--border-weak-base) 88%, transparent);
+    border-left: 3px solid var(--markdown-block-quote);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     color: var(--text-weak);
     background-color: color-mix(in srgb, var(--surface-inset-base) 42%, transparent);
@@ -130,9 +132,9 @@
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 88%, transparent);
-    border-radius: var(--radius-md);
-    background-color: color-mix(in srgb, var(--surface-inset-base) 84%, var(--background-base));
+    border: 1px solid color-mix(in srgb, var(--border-weak-base) 64%, transparent);
+    border-radius: var(--radius-lg);
+    background-color: color-mix(in srgb, var(--surface-inset-base) 92%, var(--background-base));
   }
 
   [data-slot="markdown-code-header"] {
@@ -174,10 +176,10 @@
     font-size: 0.75rem;
     line-height: 1.2;
     transition:
-      background-color 0.15s ease,
-      border-color 0.15s ease,
-      color 0.15s ease,
-      box-shadow 0.15s ease;
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      border-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard),
+      box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   [data-slot="markdown-code-copy"]:hover {

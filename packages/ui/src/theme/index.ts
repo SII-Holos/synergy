@@ -18,7 +18,6 @@ export {
   oklchToRgb,
   generateScale,
   generateNeutralScale,
-  generateAlphaScale,
   mixColors,
   lighten,
   darken,
