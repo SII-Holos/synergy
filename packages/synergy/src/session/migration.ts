@@ -7,6 +7,7 @@ import { Info } from "./types"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 
+import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -316,3 +317,4 @@ export const migrations: Migration[] = [
     },
   },
 ]
+MigrationRegistry.register("session", migrations)

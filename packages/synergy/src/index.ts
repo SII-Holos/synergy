@@ -34,6 +34,7 @@ import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
+import { MigrationCommand } from "./cli/cmd/migration"
 import { ConfigSet } from "./config/set"
 import { registerPluginCommands } from "./cli/plugin-dispatch"
 
@@ -156,6 +157,7 @@ const cli = yargs(hideBin(process.argv))
   .command(PluginCommand)
   .command(DataCommand)
   .command(MigrateCommand)
+  .command(MigrationCommand)
 
 // Register CLI commands from installed plugins (e.g. `synergy inspire login`)
 await registerPluginCommands(cli)

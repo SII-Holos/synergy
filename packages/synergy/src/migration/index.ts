@@ -1,46 +1,62 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
-import { migrations as agenda } from "../agenda/migration"
-import { migrations as config } from "../config/migration"
-import { migrations as engram } from "../engram/migration"
-import { migrations as scope } from "../scope/migration"
-import { migrations as session } from "../session/migration"
-import { UI } from "../cli/ui"
+import { MigrationRegistry } from "./registry"
+import { orderMigrations } from "./order"
+import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } from "./format"
+import { Installation } from "../global/installation"
+import { setActiveMigrationContext } from "./context"
+// Side-effect imports: register domain migrations in MigrationRegistry
+import "../agenda/migration"
+import "../config/migration"
+import "../engram/migration"
+import "../scope/migration"
+import "../session/migration"
+import type { Migration, RunOptions, MigrationContext } from "./types"
 
-export interface Migration {
-  id: string
-  description: string
-  up(progress: (current: number, total: number) => void): Promise<void>
-}
+export type { Migration, RunOptions, RunResult, MigrationContext } from "./types"
 
 const log = Log.create({ service: "migration" })
 
-const BAR_WIDTH = 20
-const PROGRESS_INTERVAL = 200
-
-function collect(): Migration[] {
-  return [...agenda, ...config, ...engram, ...scope, ...session]
-}
-
-function bar(ratio: number) {
-  return UI.progressBar({ ratio, width: BAR_WIDTH })
-}
-
-function write(line: string, overwrite = false) {
-  if (!process.stderr.isTTY) {
-    process.stderr.write(line + (overwrite ? "\n" : ""))
-    return
-  }
-  // \x1b[2K clears the entire line, \r returns to column 0.
-  process.stderr.write((overwrite ? "\x1b[2K\r" : "") + line)
-}
-
-const DISABLE_WRAP = "\x1b[?7l"
-const ENABLE_WRAP = "\x1b[?7h"
-
 let runningMigrations: Promise<void> | undefined
 let migrationsCompleted = false
+
+function collectByDomain(options?: { targetDomain?: string }): Map<string, Migration[]> {
+  const result = new Map<string, Migration[]>()
+  for (const [domain, migrations] of MigrationRegistry.list()) {
+    if (options?.targetDomain && domain !== options.targetDomain) continue
+    result.set(domain, [...migrations])
+  }
+  return result
+}
+
+/**
+ * Migrate old single log file (`meta/migration/log.json`) to per-domain log files.
+ * Idempotent — safe to run multiple times.
+ */
+async function migrateOldTrackingData(): Promise<void> {
+  const oldLogKey = StoragePath.metaMigrationLog()
+  const oldData = await Storage.read<Record<string, number>>(oldLogKey).catch(() => null)
+  if (!oldData) return
+
+  // Group migration IDs by domain using the registry
+  for (const [domain, migrations] of MigrationRegistry.list()) {
+    const domainData: Record<string, number> = {}
+    for (const m of migrations) {
+      if (m.id in oldData) {
+        domainData[m.id] = oldData[m.id]
+      }
+    }
+    if (Object.keys(domainData).length > 0) {
+      await Storage.write(StoragePath.metaMigrationLogDomain(domain), domainData)
+      log.info("migrated tracking data to per-domain log", { domain, count: Object.keys(domainData).length })
+    }
+  }
+
+  // Delete old log
+  await Storage.remove(oldLogKey)
+  log.info("removed old migration log")
+}
 
 export async function ensureMigrations(): Promise<void> {
   if (migrationsCompleted) return
@@ -56,51 +72,189 @@ export function resetMigrations(): void {
   runningMigrations = undefined
 }
 
-export async function runMigrations(): Promise<void> {
-  const all = collect()
-  if (all.length === 0) return
+export async function runMigrations(options?: RunOptions): Promise<void> {
+  await migrateOldTrackingData()
 
-  const logData: Record<string, number> = await Storage.read<Record<string, number>>(
-    StoragePath.metaMigrationLog(),
-  ).catch(() => ({}))
-  const sorted = [...all].sort((a, b) => a.id.localeCompare(b.id))
-  const pending = sorted.filter((m) => !(m.id in logData))
+  const dryRun = options?.dryRun ?? false
+  const domains = collectByDomain({ targetDomain: options?.targetDomain })
+  if (domains.size === 0) return
 
-  if (pending.length === 0) {
-    write(`\n  ${bar(1)} Migrations up to date\n`)
+  // Set up context for migrations that want it (arity-based detection)
+  const ctx: MigrationContext = {
+    log: (msg: string) => log.info(msg),
+    appVersion: Installation.VERSION,
+    dryRun,
+  }
+  setActiveMigrationContext(ctx)
+  try {
+    await runMigrationsInternal(domains, { dryRun })
+  } finally {
+    setActiveMigrationContext(undefined)
+  }
+}
+
+async function runMigrationsInternal(domains: Map<string, Migration[]>, options: { dryRun: boolean }): Promise<void> {
+  const { dryRun } = options
+
+  const domainNames = [...domains.keys()].sort()
+  const isTTY = !!process.stderr.isTTY
+  disableWrap()
+  stageWrite("\n")
+
+  try {
+    for (const domain of domainNames) {
+      const migrations = orderMigrations(domains.get(domain)!)
+      const logData = await loadLogForDomain(domain)
+      const pending = migrations.filter((m) => !(m.id in logData))
+
+      if (pending.length === 0) {
+        stageWrite(`  ${progressBar(1)} [${domain}] Migrations up to date\n`)
+        continue
+      }
+
+      for (const migration of pending) {
+        if (dryRun) {
+          stageWrite(`  [DRY-RUN] [${domain}] ${migration.description}\n`)
+          continue
+        }
+
+        try {
+          let lastProgressTime = 0
+          let started = false
+          // Arity detection: existing migrations have up(progress) with 1 param;
+          // new migrations may have up(context, progress) with 2 params.
+          const upFn = migration.up
+          const progressCb = (current: number, total: number) => {
+            if (!started) started = true
+            const now = Date.now()
+            if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
+            lastProgressTime = now
+            stageWrite(
+              `  ${progressBar(current / total)} [${domain}] ${migration.description} (${current}/${total})`,
+              true,
+            )
+          }
+
+          if (upFn.length === 1) {
+            await upFn(progressCb)
+          } else {
+            // New-style: two-param up with context
+            await (upFn as (progress: (c: number, t: number) => void, ctx?: unknown) => Promise<void>)(progressCb)
+          }
+
+          if (!started) stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description}`, true)
+          stageWrite(`  ${progressBar(1)} [${domain}] ${migration.description} ✓\n`, true)
+          logData[migration.id] = Date.now()
+          await saveLogForDomain(domain, logData)
+          log.info("completed", { id: migration.id, domain })
+        } catch (err) {
+          stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description} ✗\n`, true)
+          log.error("failed", { id: migration.id, domain, error: err instanceof Error ? err : new Error(String(err)) })
+          throw err
+        }
+      }
+    }
+  } finally {
+    enableWrap()
+  }
+}
+
+async function loadLogForDomain(domain: string): Promise<Record<string, number>> {
+  return Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(domain)).catch(() => ({}))
+}
+
+async function saveLogForDomain(domain: string, data: Record<string, number>): Promise<void> {
+  await Storage.write(StoragePath.metaMigrationLogDomain(domain), data)
+}
+
+/**
+ * Rollback migrations up to (and including) the specified migration ID.
+ * Runs `down()` in reverse order for all completed migrations from the
+ * target back to the earliest in the domain.
+ */
+export async function rollbackMigrations(domain: string, targetId: string): Promise<void> {
+  const domainMigrations = MigrationRegistry.list().get(domain)
+  if (!domainMigrations || domainMigrations.length === 0) return
+
+  const ordered = orderMigrations(domainMigrations)
+  const logData = await loadLogForDomain(domain)
+
+  // Find completed migrations to roll back: everything from target backwards that's completed
+  const toRollback: Migration[] = []
+  let foundTarget = false
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const m = ordered[i]
+    if (m.id === targetId) {
+      foundTarget = true
+    }
+    if (foundTarget && m.id in logData) {
+      toRollback.push(m)
+    }
+    if (foundTarget && !(m.id in logData)) {
+      break
+    }
+  }
+
+  if (!foundTarget) {
+    throw new Error(`Migration "${targetId}" not found in domain "${domain}"`)
+  }
+
+  if (toRollback.length === 0) {
+    stageWrite(`  No completed migrations to roll back in domain "${domain}"\n`)
     return
   }
 
-  const isTTY = !!process.stderr.isTTY
-  if (isTTY) process.stderr.write(DISABLE_WRAP)
-  write("\n")
+  disableWrap()
+  stageWrite("\n")
 
   try {
-    for (const migration of pending) {
+    for (const migration of toRollback) {
+      if (!migration.down) {
+        stageWrite(`  [${domain}] ${migration.description} (no down(), unmarked)\n`)
+        delete logData[migration.id]
+        await saveLogForDomain(domain, logData)
+        continue
+      }
+
       try {
-        let lastProgressTime = 0
-        let started = false
-        await migration.up((current, total) => {
-          if (!started) {
-            started = true
-          }
-          const now = Date.now()
-          if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
-          lastProgressTime = now
-          write(`  ${bar(current / total)} ${migration.description} (${current}/${total})`, true)
-        })
-        if (!started) write(`  ${bar(0)} ${migration.description}`, true)
-        write(`  ${bar(1)} ${migration.description} ✓\n`, true)
-        logData[migration.id] = Date.now()
-        await Storage.write(StoragePath.metaMigrationLog(), logData)
-        log.info("completed", { id: migration.id })
+        await migration.down(() => {})
+        stageWrite(`  [${domain}] ${migration.description} rolled back ✓\n`)
+        delete logData[migration.id]
+        await saveLogForDomain(domain, logData)
+        log.info("rolled back", { id: migration.id, domain })
       } catch (err) {
-        write(`  ${bar(0)} ${migration.description} ✗\n`, true)
-        log.error("failed", { id: migration.id, error: err instanceof Error ? err : new Error(String(err)) })
+        stageWrite(`  [${domain}] ${migration.description} rollback ✗\n`)
+        log.error("rollback failed", {
+          id: migration.id,
+          domain,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
         throw err
       }
     }
   } finally {
-    if (isTTY) process.stderr.write(ENABLE_WRAP)
+    enableWrap()
   }
+}
+
+/**
+ * Get migration status for a domain or all domains.
+ */
+export async function getMigrationStatus(
+  domain?: string,
+): Promise<Record<string, { completed: Migration[]; pending: Migration[] }>> {
+  await migrateOldTrackingData()
+
+  const domains = collectByDomain({ targetDomain: domain })
+  const result: Record<string, { completed: Migration[]; pending: Migration[] }> = {}
+
+  for (const [d, migrations] of domains) {
+    const ordered = orderMigrations(migrations)
+    const logData = await loadLogForDomain(d)
+    const completed = ordered.filter((m) => m.id in logData)
+    const pending = ordered.filter((m) => !(m.id in logData))
+    result[d] = { completed, pending }
+  }
+
+  return result
 }
