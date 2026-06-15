@@ -42,7 +42,7 @@
   }
 
   [data-slot="session-turn-title"] h1 {
-    font-size: var(--font-size-lg, 1.125rem);
+    font-size: var(--font-size-large);
     font-weight: var(--font-weight-semibold, 600);
     color: var(--text-strong);
     background: var(--session-turn-title-bg) !important;
@@ -72,7 +72,7 @@
   }
 
   [data-slot="session-turn-title-timestamp"] {
-    font-size: 0.75rem;
+    font-size: var(--font-size-small);
     color: var(--text-weak);
     padding-left: 10px;
     font-weight: var(--font-weight-regular);
@@ -99,7 +99,7 @@
     color: var(--text-interactive-base);
     text-decoration: underline;
     text-decoration-color: transparent;
-    transition: text-decoration-color 0.15s;
+    transition: text-decoration-color var(--motion-duration-fast) var(--motion-ease-standard);
 
     &:hover {
       text-decoration-color: currentColor;
@@ -117,14 +117,14 @@
     align-items: center;
     justify-content: center;
     padding: 3px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--surface-base);
     border: none;
     color: var(--text-weak);
     cursor: pointer;
     transition:
-      background 150ms ease,
-      color 150ms ease;
+      background var(--motion-duration-base) var(--motion-ease-standard),
+      color var(--motion-duration-base) var(--motion-ease-standard);
 
     &:hover {
       background: var(--surface-hover-base, rgba(0, 0, 0, 0.06));
@@ -137,7 +137,7 @@
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--surface-base);
     font-size: var(--font-size-small);
     line-height: var(--line-height-large);
@@ -146,8 +146,8 @@
     user-select: none;
     -webkit-user-select: none;
     transition:
-      background 150ms ease,
-      color 150ms ease;
+      background var(--motion-duration-base) var(--motion-ease-standard),
+      color var(--motion-duration-base) var(--motion-ease-standard);
 
     &[data-expandable="true"] {
       cursor: pointer;
@@ -220,7 +220,7 @@
     cursor: pointer;
     color: var(--text-base);
     font-weight: var(--font-weight-medium);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     padding: 0 2px;
 
     &:hover {

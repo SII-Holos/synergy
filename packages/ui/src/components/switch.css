@@ -22,26 +22,26 @@
     width: 28px;
     height: 16px;
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     border: 1px solid var(--border-weak-base);
     background: var(--surface-base);
     transition:
-      background-color 150ms,
-      border-color 150ms;
+      background-color var(--motion-duration-base) var(--motion-ease-standard),
+      border-color var(--motion-duration-base) var(--motion-ease-standard);
   }
 
   [data-slot="switch-thumb"] {
     width: 12px;
     height: 12px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--icon-base);
     box-shadow:
       0 1px 2px -1px rgba(19, 16, 16, 0.04),
       0 1px 2px 0 rgba(19, 16, 16, 0.06);
     transform: translateX(1px);
     transition:
-      transform 150ms,
-      background-color 150ms;
+      transform var(--motion-duration-base) var(--motion-ease-standard),
+      background-color var(--motion-duration-base) var(--motion-ease-standard);
   }
 
   [data-slot="switch-label"] {

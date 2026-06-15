@@ -3,14 +3,18 @@
   --font-family-sans--font-feature-settings: "ss03" 1;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback";
   --font-family-mono--font-feature-settings: "ss01" 1;
+  --font-feature-settings-mono: "liga" 0, "calt" 0;
 
   --font-size-small: 13px;
   --font-size-base: 14px;
   --font-size-large: 16px;
   --font-size-x-large: 20px;
+  --font-size-x-small: 11px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
+  --font-weight-semibold: 600;
   --line-height-large: 150%;
+  --line-height-normal: 1.5;
   --line-height-x-large: 180%;
   --line-height-2x-large: 200%;
   --letter-spacing-normal: 0;
@@ -46,6 +50,9 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.625rem;
   --radius-2xl: 0.875rem;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.08), 0 1px 1px rgb(15 23 42 / 0.04);
 
   --shadow-xs:
     0 1px 2px -0.5px light-dark(hsl(0 0% 0% / 0.04), hsl(0 0% 0% / 0.06)),
@@ -73,6 +80,12 @@
     0 0 0 1px var(--border-base, rgba(11, 6, 0, 0.2)), 0 1px 2px -1px rgba(19, 16, 16, 0.25),
     0 1px 2px 0 rgba(19, 16, 16, 0.08), 0 1px 3px 0 rgba(19, 16, 16, 0.12), 0 0 0 2px var(--background-weak, #f1f0f0),
     0 0 0 3px var(--border-selected, rgba(0, 74, 255, 0.99));
+
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
 
   color-scheme: light;
   --text-mix-blend-mode: multiply;

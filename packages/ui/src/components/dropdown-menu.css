@@ -12,11 +12,11 @@
   transform-origin: var(--kb-menu-content-transform-origin);
 
   &[data-closed] {
-    animation: dropdown-menu-close 0.15s ease-out;
+    animation: dropdown-menu-close var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   &[data-expanded] {
-    animation: dropdown-menu-open 0.15s ease-out;
+    animation: dropdown-menu-open var(--motion-duration-fast) var(--motion-ease-standard);
   }
 }
 

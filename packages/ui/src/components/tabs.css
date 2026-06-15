@@ -230,7 +230,7 @@
       border-radius: var(--radius-lg);
       gap: 6px;
       height: 28px;
-      transition: all 150ms ease;
+      transition: all var(--motion-duration-base) var(--motion-ease-standard);
 
       /* text-12-medium equivalent */
       font-family: var(--font-family-sans);
