@@ -40,10 +40,14 @@ export async function startForPlugin(pluginId: string, mcpDeclarations: Record<s
   const statuses = await MCP.status()
 
   for (const [serverKey, declaration] of Object.entries(mcpDeclarations)) {
-    // User config wins — skip if user already has a server with the same key
+    // User config wins — skip if user already has a server with the same bare key
     if (statuses[serverKey] !== undefined) continue
 
     const scopedKey = namespaceKey(pluginId, serverKey)
+
+    // Skip if this plugin-scoped server is already running (e.g. from a prior init/reload cycle)
+    if (statuses[scopedKey] !== undefined) continue
+
     const mcpConfig: Config.Mcp = { ...declaration, enabled: true } as Config.Mcp
 
     await MCP.add(scopedKey, mcpConfig)
