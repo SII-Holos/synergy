@@ -22,6 +22,36 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
+    // Reject if there are running subagent tasks for this session.
+    // Subagents auto-notify on completion — an agenda_watch is never needed for them.
+    const { Cortex } = await import("../cortex")
+    const runningSubagents = Cortex.getVisibleTasks(ctx.sessionID).filter((t) => t.status === "running")
+
+    if (runningSubagents.length > 0) {
+      const taskList = runningSubagents.map((t) => `  - ${t.id}: ${t.description} (agent: ${t.agent})`).join("\n")
+
+      return {
+        title: "agenda_watch rejected",
+        output: [
+          `You cannot set an \`agenda_watch\` while subagents are still running.`,
+          ``,
+          `Running subagents (${runningSubagents.length}):`,
+          taskList,
+          ``,
+          `These subagents **auto-notify you on completion** — you will be woken up automatically when they finish.`,
+          `There is NO reason to poll or watch them. No watch is needed.`,
+          ``,
+          `Instead: use \`task_output(task_id="...", mode="progress")\` to check live progress, or continue with other work that does not depend on these results.`,
+        ].join("\n"),
+        metadata: {
+          blocked: true,
+          reason: "running_subagents",
+          runningSubagentCount: runningSubagents.length,
+          runningSubagentIds: runningSubagents.map((t) => t.id),
+        } as Record<string, any>,
+      }
+    }
+
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const trigger = { type: "delay" as const, delay: params.delay }
 
@@ -54,10 +84,10 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
       title: `Watch: ${params.title}`,
       output: [
         `Watch set — you'll be woken up in THIS session.`,
-        "",
+        ``,
         `ID: ${item.id}`,
         `Fires in: ${params.delay} (${firesAt})`,
-        "",
+        ``,
         `When it fires, you receive the prompt as a message and continue with full conversation history.`,
         `To cancel: agenda_cancel(id="${item.id}")`,
       ].join("\n"),
