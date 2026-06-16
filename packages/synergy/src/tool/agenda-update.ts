@@ -13,6 +13,10 @@ const parameters = z.object({
   prompt: z.string().optional().describe("New execution prompt"),
   wake: z.boolean().optional().describe("Whether to wake the origin session on completion"),
   silent: z.boolean().optional().describe("Whether to suppress result delivery"),
+  sessionMode: z
+    .enum(["ephemeral", "persistent"])
+    .optional()
+    .describe("Session mode override. Set 'ephemeral' to create a fresh session on every fire."),
 })
 
 export const AgendaUpdateTool = Tool.define("agenda_update", {
@@ -28,11 +32,13 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     if (params.prompt !== undefined) patch.prompt = params.prompt
     if (params.wake !== undefined) patch.wake = params.wake
     if (params.silent !== undefined) patch.silent = params.silent
+    if (params.sessionMode !== undefined) patch.sessionMode = params.sessionMode
 
     const item = await Agenda.update(params.id, patch, Instance.scope.id)
 
     const lines = ["Agenda item updated.", `ID: ${item.id}`, `Title: ${item.title}`, `Status: ${item.status}`]
     if (item.state.nextRunAt) lines.push(`Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
+    if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
 
     return {
       title: item.title,
