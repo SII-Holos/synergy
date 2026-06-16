@@ -173,11 +173,13 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  opacity: 1;
-  color: color-mix(in srgb, var(--text-weak) 84%, transparent);
+  opacity: 0.72;
+  color: var(--text-weak);
 
   [data-component="markdown"] {
-    margin-top: 24px;
+    margin-top: 16px;
+    font-size: var(--font-size-small);
+    line-height: 1.55;
     font-style: italic !important;
   }
 }
@@ -622,17 +624,9 @@
     margin-top: -8px;
   }
 
-  /* Error state card — match left-bar style */
   > [data-component="card"][data-variant="error"] {
-    border: none;
-    border-left: 2px solid var(--border-critical-base);
-    border-radius: 0;
-  }
-
-  &[data-permission="true"] {
-    [data-component="collapsible"] {
-      border-left: 3px solid var(--border-warning-base);
-    }
+    border: 1px solid var(--border-critical-base);
+    border-radius: var(--radius-lg);
   }
 }
 

@@ -6,6 +6,11 @@
   --dag-card-shadow: var(--shadow-xs);
   --dag-grid-dot: rgb(17 0 0 / 0.07);
 
+  --dag-pending-bg: var(--surface-raised-base);
+  --dag-running-bg: color-mix(in srgb, var(--surface-warning-weak) 55%, var(--surface-raised-base));
+  --dag-completed-bg: color-mix(in srgb, var(--surface-success-weak) 42%, var(--surface-raised-base));
+  --dag-blocked-bg: color-mix(in srgb, var(--surface-info-weak) 44%, var(--surface-raised-base));
+  --dag-failed-bg: color-mix(in srgb, var(--surface-critical-weak) 48%, var(--surface-raised-base));
   position: relative;
   width: 100%;
   min-width: 0;
@@ -193,9 +198,11 @@
   [data-slot="dag-graph-card"] {
     position: absolute;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border-weaker-base);
-    background: var(--surface-raised-base);
-    box-shadow: var(--dag-card-shadow);
+    border: 1px solid var(--border-weak-base);
+    background: var(--dag-pending-bg);
+    box-shadow:
+      var(--dag-card-shadow),
+      0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 75%, transparent);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
@@ -216,6 +223,29 @@
     &[data-ready="true"] {
       border-color: var(--border-weak-hover);
     }
+
+    &[data-status="completed"] {
+      border-color: color-mix(in srgb, var(--dag-done) 72%, var(--border-weak-base));
+      background: var(--dag-completed-bg);
+    }
+
+    &[data-status="running"] {
+      border-color: color-mix(in srgb, var(--dag-accent-border) 82%, var(--border-weak-base));
+      background: var(--dag-running-bg);
+      box-shadow:
+        var(--dag-card-shadow),
+        0 0 0 1px color-mix(in srgb, var(--dag-accent-border) 38%, transparent);
+    }
+
+    &[data-status="blocked"] {
+      border-color: color-mix(in srgb, var(--dag-blocked) 82%, var(--border-weak-base));
+      background: var(--dag-blocked-bg);
+    }
+
+    &[data-status="failed"] {
+      border-color: color-mix(in srgb, var(--dag-failed) 84%, var(--border-weak-base));
+      background: var(--dag-failed-bg);
+    }
   }
 
   [data-slot="dag-graph-card-header"] {
@@ -227,12 +257,12 @@
   }
 
   [data-slot="dag-graph-status-dot"] {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--text-weaker);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 13%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 18%, transparent);
 
     [data-status="completed"] & {
       background: var(--border-success-base);
@@ -296,10 +326,10 @@
     flex: 1;
     overflow: auto;
     padding-right: 3px;
-    color: var(--text-base);
+    color: var(--text-strong);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    line-height: 1.45;
+    font-size: var(--font-size-base);
+    line-height: 1.48;
     word-break: normal;
     overflow-wrap: anywhere;
     scrollbar-width: thin;
