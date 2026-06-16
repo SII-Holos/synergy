@@ -20,6 +20,12 @@ const parameters = z.object({
   global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
   wake: z.boolean().optional().describe("If true, wake this session's agent when execution completes. Default: true"),
   silent: z.boolean().optional().describe("If true, suppress result delivery entirely. Default: false"),
+  sessionMode: z
+    .enum(["ephemeral", "persistent"])
+    .optional()
+    .describe(
+      "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
+    ),
   sessionRefs: z
     .array(
       z.object({
@@ -55,6 +61,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       global: params.global,
       wake: params.wake,
       silent: params.silent,
+      sessionMode: params.sessionMode,
       sessionRefs: params.sessionRefs,
       createdBy: "agent",
       sessionID: ctx.sessionID,
@@ -73,10 +80,11 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     if (item.global) lines.push(`Scope: global`)
     if (item.wake === false) lines.push(`Wake: disabled`)
     if (item.silent) lines.push(`Silent: true`)
+    if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
 
     lines.push(
       "",
-      `Each run executes in a fresh session. Results are delivered back here.`,
+      `Recurring tasks reuse a persistent session across fires by default. Pass sessionMode="ephemeral" to start a fresh session on each fire.`,
       `To pause: agenda_update(id="${item.id}", status="paused")`,
       `To cancel: agenda_cancel(id="${item.id}")`,
       `To view runs: agenda_logs(id="${item.id}")`,

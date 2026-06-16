@@ -85,7 +85,7 @@ export namespace AgendaReactor {
     } else {
       // Normal path — create session, run prompt via SessionInvoke
       const scope = item.origin.scope ?? Scope.global()
-      const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
+      const sessionMode = AgendaTypes.inferSessionMode(item.triggers, item.sessionMode)
       const contextMode = AgendaTypes.inferContextMode(sessionMode)
       const persistent = sessionMode === "persistent"
 
