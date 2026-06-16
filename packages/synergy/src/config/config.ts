@@ -204,7 +204,6 @@ export namespace Config {
       if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
       if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
     }
-    if (result.permission === undefined) result.permission = { "*": "ask" } as any
     if (result.identity) {
       if (result.identity.evolution === undefined) result.identity.evolution = true
       if (result.identity.autonomy === undefined) result.identity.autonomy = true
