@@ -726,40 +726,43 @@ export default function Page() {
         if (initializedSessions.has(sessionID)) return
         initializedSessions.add(sessionID)
 
+        const afterLayoutSettles = (fn: () => void) => {
+          requestAnimationFrame(() => requestAnimationFrame(fn))
+        }
         initScrollFrame = requestAnimationFrame(() => {
           initScrollFrame = undefined
 
           const hash = window.location.hash.slice(1)
           if (!hash) {
-            autoScroll.forceScrollToBottom()
+            afterLayoutSettles(() => autoScroll.forceScrollToBottom())
             return
           }
 
-          const hashTarget = document.getElementById(hash)
-          if (hashTarget) {
-            hashTarget.scrollIntoView({ behavior: "auto", block: "start" })
-            return
-          }
+          afterLayoutSettles(() => {
+            const hashTarget = document.getElementById(hash)
+            if (hashTarget) {
+              hashTarget.scrollIntoView({ behavior: "auto", block: "start" })
+              return
+            }
 
-          const match = hash.match(/^message-(.+)$/)
-          if (match) {
-            const anyMessage = messages().find((message) => message.id === match[1])
-            if (anyMessage) {
-              requestAnimationFrame(() => {
+            const match = hash.match(/^message-(.+)$/)
+            if (match) {
+              const anyMessage = messages().find((message) => message.id === match[1])
+              if (anyMessage) {
                 const el = document.getElementById(hash)
                 if (el) el.scrollIntoView({ behavior: "auto", block: "center" })
-              })
-              return
+                return
+              }
+
+              const msg = visibleUserMessages().find((m) => m.id === match[1])
+              if (msg) {
+                scrollToMessage(msg, "auto")
+                return
+              }
             }
 
-            const msg = visibleUserMessages().find((m) => m.id === match[1])
-            if (msg) {
-              scrollToMessage(msg, "auto")
-              return
-            }
-          }
-
-          autoScroll.forceScrollToBottom()
+            autoScroll.forceScrollToBottom()
+          })
         })
       },
     ),

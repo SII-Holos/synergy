@@ -60,7 +60,7 @@ export function SessionConversation(props: {
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pt-5 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pt-8 md:pb-[calc(var(--prompt-height,10rem)+96px)]"
+      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pb-[calc(var(--prompt-height,10rem)+96px)]"
       contentClassList={{
         "md:max-w-[54rem]": !props.showTabs(),
         "mt-0": props.showTabs(),
@@ -127,10 +127,7 @@ export function SessionConversation(props: {
             <div
               id={props.anchor(msg.id)}
               data-message-id={msg.id}
-              classList={{
-                "min-w-0 w-full max-w-full": true,
-                "last:min-h-[calc(100dvh-5.5rem-var(--prompt-height,8rem)-96px)] md:last:min-h-[calc(100dvh-4.5rem-var(--prompt-height,10rem)-96px)]": true,
-              }}
+              class="min-w-0 w-full max-w-full"
               style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
             >
               <SessionTurn
