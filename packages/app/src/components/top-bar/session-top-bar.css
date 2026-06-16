@@ -2,8 +2,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
-  padding: 0 24px;
+  height: 58px;
+  padding: 0 22px;
   flex-shrink: 0;
   background: var(--bg-surface-stronger);
   border-bottom: 1px solid var(--border-weaker-base);
@@ -20,7 +20,7 @@
 }
 
 .stb-slash {
-  font-size: 24px;
+  font-size: 21px;
   line-height: 1;
   font-weight: 400;
   color: var(--text-subtle);
@@ -47,13 +47,13 @@
   align-items: center;
   gap: 6px;
   min-width: max-content;
-  height: 40px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 11px;
   border-radius: 10px;
   background: transparent;
   border: none;
   color: var(--text-strong);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 650;
   transition:
     background-color 150ms,
@@ -79,7 +79,7 @@
 }
 
 .stb-variant-label {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-weak);
   white-space: nowrap;
@@ -94,9 +94,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   color: var(--icon-base);
   transition:
     color 150ms,

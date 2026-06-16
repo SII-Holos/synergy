@@ -286,10 +286,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (!scope) return []
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
       const stores = dirs.map((dir) => globalSync.child(dir)[0])
-      const sessions = stores
-        .flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-        .toSorted(sortSessions)
-      return sessions.filter((s) => !s.parentID)
+      const byID = new Map<string, Session>()
+      for (const session of stores.flatMap((s) =>
+        s.session.filter((session) => session.scope.directory === s.path.directory),
+      )) {
+        if (!session.parentID) byID.set(session.id, session)
+      }
+      return [...byID.values()].toSorted(sortSessions)
     }
 
     function projectSessionTotal(scope: LocalScope | undefined) {
