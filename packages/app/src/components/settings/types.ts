@@ -1,5 +1,6 @@
 import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { SendShortcut } from "@/context/input"
+import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 
 export type ProviderModel = {
   providerId: string
@@ -32,6 +33,35 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   holos_friend_reply_model: "",
 }
 
+/** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
+export const UI_DEFAULTS = {
+  autoupdate: "true" as string, // backend injects true → UI shows "true" / On
+  snapshot: true,
+  permission: "ask" as string, // resolved from backend { "*": "ask" } object
+  questionTimeout: 1800,
+  compactionAuto: "true" as string,
+  compactionOverflowThreshold: "0.85" as string,
+  identityEvolution: "true" as string,
+  identityAutonomy: "true" as string,
+  memorySimThreshold: "0.7" as string,
+  memoryTopK: "3" as string,
+  experienceSimThreshold: "0.7" as string,
+  experienceTopK: "8" as string,
+  experienceEpsilon: "0.1" as string,
+} as const
+
+/** Resolve Config.permission (object or string) into a simple UI string. */
+export function resolvePermissionForUi(permission: unknown): string {
+  if (!permission) return UI_DEFAULTS.permission
+  if (typeof permission === "string") return permission
+  if (typeof permission === "object" && permission !== null) {
+    const obj = permission as Record<string, unknown>
+    if (obj["*"] === "ask") return "ask"
+    if (obj["*"] === "allow") return "allow"
+    if (obj["*"] === "deny") return "deny"
+  }
+  return UI_DEFAULTS.permission
+}
 export const MODEL_ROLES: Array<{ key: ModelKey; label: string; description: string }> = [
   { key: "model", label: "Default Model", description: "Primary model for conversations and agent tasks" },
   { key: "nano_model", label: "Nano Model", description: "Cheapest model for trivial tasks like title generation" },
@@ -119,12 +149,12 @@ export type DialogSettingsProps = {
 export type NavItem = {
   id: string
   label: string
-  icon: string
+  icon: IconName
 }
 
 export type NavGroup = {
   label: string
-  icon: string
+  icon: IconName
   items: NavItem[]
 }
 

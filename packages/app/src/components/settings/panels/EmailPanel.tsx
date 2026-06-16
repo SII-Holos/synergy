@@ -1,48 +1,13 @@
-import { createSignal, Show } from "solid-js"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
-import { Button } from "@ericsanchezok/synergy-ui/button"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { SettingRow } from "../components/SettingRow"
 import { SectionLabel } from "../components/SectionLabel"
 import { PasswordField } from "../components/PasswordField"
 import type { EmailSettings } from "../types"
-
 export function EmailPanel(props: {
   email: EmailSettings
   onEmailChange: (key: keyof EmailSettings, value: string | boolean) => void
 }) {
-  const [testingSmtp, setTestingSmtp] = createSignal(false)
-  const [testingImap, setTestingImap] = createSignal(false)
-  const [smtpResult, setSmtpResult] = createSignal<{ ok: boolean; message: string } | null>(null)
-  const [imapResult, setImapResult] = createSignal<{ ok: boolean; message: string } | null>(null)
-
-  function testSmtp() {
-    setTestingSmtp(true)
-    setSmtpResult(null)
-    setTimeout(() => {
-      setTestingSmtp(false)
-      setSmtpResult({ ok: true, message: "SMTP connection test not yet implemented" })
-      showToast({
-        title: "Test connection",
-        description: "SMTP connection testing will be available in a future update.",
-      })
-    }, 600)
-  }
-
-  function testImap() {
-    setTestingImap(true)
-    setImapResult(null)
-    setTimeout(() => {
-      setTestingImap(false)
-      setImapResult({ ok: true, message: "IMAP connection test not yet implemented" })
-      showToast({
-        title: "Test connection",
-        description: "IMAP connection testing will be available in a future update.",
-      })
-    }, 600)
-  }
-
   return (
     <div class="ds-content-inner">
       <h1 class="ds-content-title">Email</h1>
@@ -104,14 +69,7 @@ export function EmailPanel(props: {
               <Switch checked={props.email.smtpSecure} onChange={(value) => props.onEmailChange("smtpSecure", value)} />
             }
           />
-          <div class="ds-email-actions">
-            <Button type="button" variant="secondary" size="small" onClick={testSmtp} disabled={testingSmtp()}>
-              {testingSmtp() ? "Testing..." : "Test SMTP Connection"}
-            </Button>
-            <Show when={smtpResult()}>
-              {(result) => <span class={result().ok ? "ds-test-ok" : "ds-test-error"}>{result().message}</span>}
-            </Show>
-          </div>
+          <p class="ds-section-hint ds-test-info">Test connection will be available in a future update.</p>
         </div>
       </div>
 
@@ -151,14 +109,7 @@ export function EmailPanel(props: {
               <Switch checked={props.email.imapSecure} onChange={(value) => props.onEmailChange("imapSecure", value)} />
             }
           />
-          <div class="ds-email-actions">
-            <Button type="button" variant="secondary" size="small" onClick={testImap} disabled={testingImap()}>
-              {testingImap() ? "Testing..." : "Test IMAP Connection"}
-            </Button>
-            <Show when={imapResult()}>
-              {(result) => <span class={result().ok ? "ds-test-ok" : "ds-test-error"}>{result().message}</span>}
-            </Show>
-          </div>
+          <p class="ds-section-hint ds-test-info">Test connection will be available in a future update.</p>
         </div>
       </div>
     </div>

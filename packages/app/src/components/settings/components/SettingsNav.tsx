@@ -10,7 +10,7 @@ export function SettingsNav(props: { activeTab: () => string; onSelect: (id: str
         {(group) => (
           <div class="ds-nav-group">
             <div class="ds-nav-group-header">
-              <Icon name={group.icon as any} size="small" />
+              <Icon name={group.icon} size="small" />
               <span>{group.label}</span>
             </div>
             <For each={group.items}>
@@ -21,7 +21,7 @@ export function SettingsNav(props: { activeTab: () => string; onSelect: (id: str
                   classList={{ "ds-nav-item-active": props.activeTab() === item.id }}
                   onClick={() => props.onSelect(item.id)}
                 >
-                  <Icon name={item.icon as any} size="small" />
+                  <Icon name={item.icon} size="small" />
                   <span>{item.label}</span>
                 </button>
               )}

@@ -11,8 +11,7 @@ import type {
   EmailSettings,
   ChannelSettings,
 } from "../types"
-import { MODEL_DEFAULTS } from "../types"
-
+import { MODEL_DEFAULTS, UI_DEFAULTS, resolvePermissionForUi } from "../types"
 export type EnsureInitParams = {
   cfg: Config | undefined
   setName: string | undefined
@@ -45,11 +44,10 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   if (params.initialized() && params.initializedForSet === setName) return undefined
 
   params.setGeneral({
-    snapshot: cfg.snapshot ?? true,
-    autoupdate: String(cfg.autoupdate ?? "notify"),
+    snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
+    autoupdate: String(cfg.autoupdate ?? UI_DEFAULTS.autoupdate),
     sendShortcut: params.sendShortcut(),
   })
-
   params.setModels({
     model: cfg.model ?? MODEL_DEFAULTS.model,
     nano_model: cfg.nano_model ?? MODEL_DEFAULTS.nano_model,
@@ -102,15 +100,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setAdvanced({
-    compaction_auto: cfg.compaction?.auto !== false ? "true" : "false",
-    compaction_overflow_threshold: String(cfg.compaction?.overflowThreshold ?? 0.85),
-    permission: (() => {
-      const permission = cfg.permission
-      if (!permission) return "ask"
-      if (typeof permission === "string") return permission
-      return "ask"
-    })(),
-    question_timeout: String(cfg.question?.timeout ?? 1800),
+    compaction_auto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
+    compaction_overflow_threshold: String(
+      cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
+    ),
+    permission: resolvePermissionForUi(cfg.permission),
+    question_timeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
   })
 
   params.setEmail({
@@ -143,7 +138,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   const evolution = ident?.evolution
   params.setIdentity({
     evolution: (() => {
-      if (evolution === undefined) return "true"
+      if (evolution === undefined) return UI_DEFAULTS.identityEvolution
       if (typeof evolution === "boolean") return evolution ? "true" : "false"
       const passive = evolution.passive
       const active = evolution.active
@@ -151,7 +146,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       return "true"
     })(),
     autonomy: (() => {
-      if (ident?.autonomy === undefined) return "true"
+      if (ident?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
       return ident.autonomy ? "true" : "false"
     })(),
     memorySimThreshold: (() => {
@@ -161,14 +156,16 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           : undefined
       return typeof retrieve === "object" && retrieve?.simThreshold !== undefined
         ? String(retrieve.simThreshold)
-        : String(0.7)
+        : UI_DEFAULTS.memorySimThreshold
     })(),
     memoryTopK: (() => {
       const retrieve =
         typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
           ? evolution.active.retrieve
           : undefined
-      return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : String(3)
+      return typeof retrieve === "object" && retrieve?.topK !== undefined
+        ? String(retrieve.topK)
+        : UI_DEFAULTS.memoryTopK
     })(),
     experienceSimThreshold: (() => {
       const passive =
@@ -178,7 +175,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.simThreshold !== undefined
         ? String(retrieve.simThreshold)
-        : String(0.7)
+        : UI_DEFAULTS.experienceSimThreshold
     })(),
     experienceTopK: (() => {
       const passive =
@@ -186,7 +183,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           ? evolution.passive
           : undefined
       const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
-      return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined ? String(retrieve.topK) : String(8)
+      return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined
+        ? String(retrieve.topK)
+        : UI_DEFAULTS.experienceTopK
     })(),
     experienceEpsilon: (() => {
       const passive =
@@ -196,7 +195,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.epsilon !== undefined
         ? String(retrieve.epsilon)
-        : String(0.1)
+        : UI_DEFAULTS.experienceEpsilon
     })(),
   })
 

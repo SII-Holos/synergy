@@ -1,5 +1,5 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
-import { MODEL_ROLES } from "../types"
+import { MODEL_ROLES, UI_DEFAULTS, resolvePermissionForUi } from "../types"
 import type {
   GeneralStore,
   ModelsStore,
@@ -10,7 +10,6 @@ import type {
   EmailSettings,
   ChannelSettings,
 } from "../types"
-
 export type BuildPatchParams = {
   cfg: Config
   general: GeneralStore
@@ -34,7 +33,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
   if (general.snapshot !== (cfg.snapshot ?? true)) patch.snapshot = general.snapshot
 
-  const autoupdateOrig = cfg.autoupdate === undefined ? "notify" : String(cfg.autoupdate)
+  const autoupdateOrig = cfg.autoupdate === undefined ? UI_DEFAULTS.autoupdate : String(cfg.autoupdate)
   if (general.autoupdate !== autoupdateOrig) {
     if (general.autoupdate === "true") patch.autoupdate = true
     else if (general.autoupdate === "false") patch.autoupdate = false
@@ -87,7 +86,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
       const env: Record<string, string> = {}
       for (const line of entry.environment.split("\n")) {
         const eq = line.indexOf("=")
-        if (eq > 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+        if (eq >= 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
       }
       if (Object.keys(env).length) base.environment = env
       else delete base.environment
@@ -129,17 +128,12 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     patch.compaction = Object.keys(newCompaction).length > 0 ? newCompaction : undefined
   }
 
-  const origPermission = (() => {
-    const permission = cfg.permission
-    if (!permission) return "ask"
-    if (typeof permission === "string") return permission
-    return "ask"
-  })()
+  const origPermission = resolvePermissionForUi(cfg.permission)
   if (advanced.permission !== origPermission) {
     patch.permission = advanced.permission || undefined
   }
 
-  const origQuestionTimeout = String(cfg.question?.timeout ?? 1800)
+  const origQuestionTimeout = String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout)
   if (advanced.question_timeout !== origQuestionTimeout) {
     patch.question = { timeout: Number(advanced.question_timeout) }
   }
@@ -177,7 +171,11 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
         ...(email.smtpPort.trim() ? { port: Number(email.smtpPort) } : {}),
         secure: email.smtpSecure,
         ...(email.smtpUsername.trim() ? { username: email.smtpUsername.trim() } : {}),
-        ...(email.smtpPassword.trim() ? { password: email.smtpPassword.trim() } : {}),
+        ...(email.smtpPassword.trim()
+          ? { password: email.smtpPassword.trim() }
+          : cfg.email?.smtp?.password
+            ? { password: "__REDACTED__" }
+            : {}),
       }
     }
     if (hasEmailImap) {
@@ -186,7 +184,11 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
         ...(email.imapPort.trim() ? { port: Number(email.imapPort) } : {}),
         secure: email.imapSecure,
         ...(email.imapUsername.trim() ? { username: email.imapUsername.trim() } : {}),
-        ...(email.imapPassword.trim() ? { password: email.imapPassword.trim() } : {}),
+        ...(email.imapPassword.trim()
+          ? { password: email.imapPassword.trim() }
+          : cfg.email?.imap?.password
+            ? { password: "__REDACTED__" }
+            : {}),
       }
     }
   }

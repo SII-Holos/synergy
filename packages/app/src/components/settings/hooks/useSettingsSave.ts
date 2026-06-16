@@ -49,10 +49,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   snapshot: "auto",
   autoupdate: "auto",
   compaction: "auto",
-  "compaction.auto": "auto",
-  "compaction.overflowThreshold": "auto",
   question: "background",
-  "question.timeout": "background",
   permission: "background",
   model: "background",
   nano_model: "background",
@@ -68,8 +65,6 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   plugin: "explicit",
   email: "explicit",
   identity: "explicit",
-  "identity.evolution": "explicit",
-  "identity.autonomy": "explicit",
 }
 
 export function useSettingsSave(ctx: SaveContext) {
@@ -116,7 +111,8 @@ export function useSettingsSave(ctx: SaveContext) {
 
   /** Auto-save: dispatched on change for auto + background fields */
   async function doAutoSave(patch: Record<string, unknown>) {
-    if (Object.keys(patch).length === 0) return
+    const currentPatch = ctx.serverPatch()
+    if (!currentPatch || Object.keys(currentPatch).length === 0) return
     setAutoStatus("saving")
     try {
       await saveServerPatch(patch)
@@ -131,7 +127,8 @@ export function useSettingsSave(ctx: SaveContext) {
 
   /** Background save (debounced) */
   async function doBgSave(patch: Record<string, unknown>) {
-    if (Object.keys(patch).length === 0) return
+    const currentPatch = ctx.serverPatch()
+    if (!currentPatch || Object.keys(currentPatch).length === 0) return
     setBgStatus("saving")
     try {
       await saveServerPatch(patch)
@@ -145,6 +142,17 @@ export function useSettingsSave(ctx: SaveContext) {
     } catch (error: any) {
       setBgStatus("error")
       showToast({ title: "Background save failed", description: error.message })
+    }
+  }
+
+  function cancelDebounces() {
+    if (autoDebounce) {
+      clearTimeout(autoDebounce)
+      autoDebounce = undefined
+    }
+    if (bgDebounce) {
+      clearTimeout(bgDebounce)
+      bgDebounce = undefined
     }
   }
 
@@ -164,8 +172,7 @@ export function useSettingsSave(ctx: SaveContext) {
     setExplicitDirty(false)
 
     // Clear previous debounces
-    if (autoDebounce) clearTimeout(autoDebounce)
-    if (bgDebounce) clearTimeout(bgDebounce)
+    cancelDebounces()
 
     if (isAutoOnly(patch)) {
       autoDebounce = setTimeout(() => {
@@ -399,5 +406,6 @@ export function useSettingsSave(ctx: SaveContext) {
     autoStatus,
     bgStatus,
     explicitDirty,
+    cancelDebounces,
   }
 }

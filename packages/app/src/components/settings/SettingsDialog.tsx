@@ -225,6 +225,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
     }
   })
 
+  const cancelDebouncesRef = { current: () => {} }
+
   function resetEditor() {
     setInitialized(false)
     initializedForSet = undefined
@@ -233,6 +235,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   }
 
   async function refreshAfterConfigChange() {
+    cancelDebouncesRef.current()
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
@@ -346,6 +349,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     closeDialog: () => dialog.close(),
     showConfirm,
   })
+  cancelDebouncesRef.current = save.cancelDebounces
 
   function handleLocalSendShortcut(value: SendShortcut) {
     setGeneral("sendShortcut", value)
@@ -549,7 +553,20 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 Cancel
               </Button>
               <Show when={editMode() === "raw"}>
-                <Show when={!selectedSetIsActive()}>
+                <Show
+                  when={!selectedSetIsActive()}
+                  fallback={
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="large"
+                      disabled={saving() || !hasRawChanges()}
+                      onClick={() => void save.saveRawConfig({ close: true })}
+                    >
+                      {saving() ? "Saving..." : "Save Changes"}
+                    </Button>
+                  }
+                >
                   <Button
                     type="button"
                     variant="secondary"
@@ -559,8 +576,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   >
                     {saving() ? "Saving..." : `Save to ${editingLabel()}`}
                   </Button>
-                </Show>
-                <Show when={!selectedSetIsActive()}>
                   <Button
                     type="button"
                     variant="primary"
@@ -571,20 +586,22 @@ export function SettingsDialog(props: DialogSettingsProps) {
                     {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
                   </Button>
                 </Show>
-                <Show when={selectedSetIsActive()}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="large"
-                    disabled={saving() || !hasRawChanges()}
-                    onClick={() => void save.saveRawConfig({ close: true })}
-                  >
-                    {saving() ? "Saving..." : "Save Changes"}
-                  </Button>
-                </Show>
               </Show>
               <Show when={editMode() === "form" && save.explicitDirty()}>
-                <Show when={!selectedSetIsActive()}>
+                <Show
+                  when={!selectedSetIsActive()}
+                  fallback={
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="large"
+                      disabled={saving()}
+                      onClick={() => void save.saveServerChanges({ close: true })}
+                    >
+                      {saving() ? "Saving..." : "Save Changes"}
+                    </Button>
+                  }
+                >
                   <Button
                     type="button"
                     variant="secondary"
@@ -594,8 +611,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   >
                     {saving() ? "Saving..." : `Save to ${editingLabel()}`}
                   </Button>
-                </Show>
-                <Show when={!selectedSetIsActive()}>
                   <Button
                     type="button"
                     variant="primary"
@@ -604,17 +619,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
                     onClick={() => void save.saveServerChanges({ activate: true, close: true })}
                   >
                     {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
-                  </Button>
-                </Show>
-                <Show when={selectedSetIsActive()}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="large"
-                    disabled={saving()}
-                    onClick={() => void save.saveServerChanges({ close: true })}
-                  >
-                    {saving() ? "Saving..." : "Save Changes"}
                   </Button>
                 </Show>
               </Show>
