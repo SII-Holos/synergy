@@ -49,10 +49,12 @@ export function BasicTool(props: BasicToolProps) {
     if (props.forceOpen) setOpen(true)
   })
 
-  const resolvedTrigger = createMemo(() => {
+  const triggerContent = createMemo(() => {
     const t = props.trigger
-    if (typeof t === "function") return (t as () => TriggerTitleObject)()
-    return isTriggerTitle(t) ? (t as TriggerTitleObject) : undefined
+    const value = typeof t === "function" ? (t as () => TriggerTitleObject | JSX.Element)() : t
+    return isTriggerTitle(value)
+      ? { structured: value, element: undefined }
+      : { structured: undefined, element: value as JSX.Element }
   })
 
   const charsLabel = createMemo(() => {
@@ -68,7 +70,7 @@ export function BasicTool(props: BasicToolProps) {
             <Icon name={props.icon} size="small" />
             <div data-slot="basic-tool-tool-info">
               <Switch>
-                <Match when={resolvedTrigger()}>
+                <Match when={triggerContent().structured}>
                   {(trigger) => (
                     <div data-slot="basic-tool-tool-info-structured">
                       <div data-slot="basic-tool-tool-info-main">
@@ -116,7 +118,7 @@ export function BasicTool(props: BasicToolProps) {
                     </div>
                   )}
                 </Match>
-                <Match when={true}>{props.trigger as JSX.Element}</Match>
+                <Match when={triggerContent().element}>{triggerContent().element}</Match>
               </Switch>
             </div>
           </div>

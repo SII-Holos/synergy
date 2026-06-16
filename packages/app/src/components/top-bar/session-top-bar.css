@@ -1,12 +1,17 @@
 .stb-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 58px;
   padding: 0 22px;
-  flex-shrink: 0;
   background: transparent;
   gap: 16px;
+  pointer-events: none;
 }
 
 .stb-root svg {
@@ -39,6 +44,11 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.stb-left,
+.stb-right {
+  pointer-events: auto;
 }
 
 .stb-selector-btn {
