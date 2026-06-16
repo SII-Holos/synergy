@@ -38,7 +38,7 @@ export function SessionTopBar() {
     <div class="stb-root">
       <div class="stb-left">
         <Show when={!isGlobal()}>
-          <Icon name="folder" size="small" class="stb-folder" />
+          <Icon name="folder" size="normal" class="stb-folder" />
           <span class="stb-slash">/</span>
         </Show>
         {/* Model selector */}
@@ -56,7 +56,7 @@ export function SessionTopBar() {
             <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
               <button type="button" class="stb-selector-btn">
                 <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
-                <Icon name="chevron-down" size="small" class="stb-chevron" />
+                <Icon name="chevron-down" size="normal" class="stb-chevron" />
               </button>
             </TooltipKeybind>
           </ModelSelectorPopover>
@@ -70,9 +70,7 @@ export function SessionTopBar() {
               class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
               onClick={() => local.model.variant.cycle()}
             >
-              <span class="text-12-regular text-text-weak capitalize">
-                {local.model.variant.current() ?? "Default"}
-              </span>
+              <span class="stb-variant-label">{local.model.variant.current() ?? "Default"}</span>
             </button>
           </TooltipKeybind>
         </Show>
@@ -81,7 +79,7 @@ export function SessionTopBar() {
         <Show when={!!params.id && !isGlobal()}>
           <Tooltip value="Export session data" placement="bottom">
             <button type="button" class="stb-icon-btn" onClick={() => dialog.show(() => <DialogSessionExport />)}>
-              <Icon name="download" size="small" />
+              <Icon name="download" size="normal" />
             </button>
           </Tooltip>
         </Show>

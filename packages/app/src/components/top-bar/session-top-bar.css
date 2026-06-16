@@ -2,30 +2,35 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding: 0 16px;
+  height: 64px;
+  padding: 0 24px;
   flex-shrink: 0;
   background: var(--bg-surface-stronger);
   border-bottom: 1px solid var(--border-weaker-base);
-  gap: 12px;
+  gap: 16px;
+}
 
-  .stb-folder {
-    flex-shrink: 0;
-    color: var(--icon-weak);
-  }
+.stb-root svg {
+  stroke-width: 2.35;
+}
 
-  .stb-slash {
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--text-subtle);
-    font-family: ui-monospace, monospace;
-  }
+.stb-folder {
+  flex-shrink: 0;
+  color: var(--icon-base);
+}
+
+.stb-slash {
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-subtle);
+  font-family: ui-monospace, monospace;
 }
 
 .stb-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   overflow: visible;
 }
@@ -33,22 +38,23 @@
 .stb-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .stb-selector-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 8px;
+  gap: 6px;
+  min-width: max-content;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
   background: transparent;
   border: none;
-  color: var(--text-base);
-  font-size: 15px;
-  font-weight: 600;
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 650;
   transition:
     background-color 150ms,
     color 150ms;
@@ -72,6 +78,13 @@
   overflow: visible;
 }
 
+.stb-variant-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-weak);
+  white-space: nowrap;
+}
+
 .stb-chevron {
   color: var(--icon-base);
   flex-shrink: 0;
@@ -81,10 +94,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  color: var(--icon-weak);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: var(--icon-base);
   transition:
     color 150ms,
     background-color 150ms;
