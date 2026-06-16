@@ -1,4 +1,5 @@
 import z from "zod"
+import { Command } from "../command/command"
 import { Worktree } from "./worktree"
 
 export namespace WorktreeCommand {
@@ -56,7 +57,7 @@ export namespace WorktreeCommand {
       .join("\n")
   }
 
-  export async function run(input: Input): Promise<Worktree.CommandResult> {
+  export async function run(input: Input): Promise<Command.Result> {
     switch (input.action) {
       case "list": {
         const items = await Worktree.list()
@@ -126,4 +127,8 @@ export namespace WorktreeCommand {
       }
     }
   }
+
+  Command.registerAction("worktree", async (input) =>
+    WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments)),
+  )
 }

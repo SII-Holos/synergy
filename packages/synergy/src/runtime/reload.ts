@@ -317,7 +317,7 @@ export namespace RuntimeReload {
         return
       }
       case "command": {
-        const { Command } = await import("../skill/command")
+        const { Command } = await import("../command/command")
         await Command.reload()
         return
       }

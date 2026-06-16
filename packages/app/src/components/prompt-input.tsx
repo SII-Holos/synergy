@@ -286,6 +286,7 @@ interface SlashCommand {
   description?: string
   keybind?: string
   type: "builtin" | "custom"
+  kind?: "prompt" | "action"
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -759,6 +760,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: cmd.name,
       description: cmd.description,
       type: "custom" as const,
+      kind: cmd.kind,
     }))
 
     return [...custom, ...builtin]
@@ -1426,6 +1428,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       props.onNewSessionWorktreeReset?.()
     }
+    let createdSessionForSubmit = false
 
     let session = info()
     if (!session && isNewSession) {
@@ -1434,7 +1437,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       } else {
         session = await client.session.create().then((x) => x.data ?? undefined)
       }
-      if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      if (session) {
+        createdSessionForSubmit = true
+        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      }
     }
     if (!session && params.id) {
       await sync.session.sync(params.id)
@@ -1466,6 +1472,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
     }
 
+    const rollbackCreatedSession = async () => {
+      if (!createdSessionForSubmit || !session) return
+      await client.session.delete({ sessionID: session.id }).catch(() => undefined)
+      navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
+    }
+
     if (mode === "shell") {
       clearInput()
       client.session
@@ -1480,6 +1492,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             title: "Failed to send shell command",
             description: errorMessage(err),
           })
+          rollbackCreatedSession()
           restoreInput()
         })
       return
@@ -1547,6 +1560,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               title: "Failed to send command",
               description: errorMessage(err),
             })
+            rollbackCreatedSession()
             restoreInput()
           })
         return
@@ -1794,6 +1808,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           description: errorMessage(err),
         })
         removeOptimisticMessage()
+        rollbackCreatedSession()
         restoreInput()
       })
   }
@@ -1884,7 +1899,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <div class="flex items-center gap-2 shrink-0">
                         <Show when={cmd.type === "custom"}>
                           <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                            custom
+                            {cmd.kind === "action" ? "action" : "prompt"}
                           </span>
                         </Show>
                         <Show when={command.keybind(cmd.id)}>

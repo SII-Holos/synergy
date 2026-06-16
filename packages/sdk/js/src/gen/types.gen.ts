@@ -2548,12 +2548,15 @@ export type CortexTask = {
 export type Command = {
   name: string
   description?: string
+  kind?: "prompt" | "action"
+  surfaces?: Array<"web" | "cli" | "channel">
+  promptVisible?: boolean
   agent?: string
   model?: string
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
-  action?: "worktree"
-  template: string
+  action?: string
+  template?: string
   hints: Array<string>
 }
 

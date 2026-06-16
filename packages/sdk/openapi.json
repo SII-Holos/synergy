@@ -16617,6 +16617,23 @@
           "description": {
             "type": "string"
           },
+          "kind": {
+            "default": "prompt",
+            "type": "string",
+            "enum": ["prompt", "action"]
+          },
+          "surfaces": {
+            "default": ["web", "cli"],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["web", "cli", "channel"]
+            }
+          },
+          "promptVisible": {
+            "default": true,
+            "type": "boolean"
+          },
           "agent": {
             "type": "string"
           },
@@ -16631,8 +16648,7 @@
             "enum": ["command", "mcp", "skill"]
           },
           "action": {
-            "type": "string",
-            "enum": ["worktree"]
+            "type": "string"
           },
           "template": {
             "anyOf": [
@@ -16651,7 +16667,7 @@
             }
           }
         },
-        "required": ["name", "template", "hints"]
+        "required": ["name", "hints"]
       },
       "ProviderAuthMethod": {
         "type": "object",

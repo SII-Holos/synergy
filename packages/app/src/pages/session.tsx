@@ -241,22 +241,43 @@ export default function Page() {
   }, emptyUserMessages)
 
   const emptyTimeline: Message[] = []
+  const isActionCommandMessage = (message: Message) => {
+    const metadata = message.metadata as
+      | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
+      | undefined
+    return metadata?.command?.kind === "action" && metadata.promptVisible === false
+  }
+
+  const mergeTimelineMessages = (items: Message[]) => {
+    const seen = new Set<string>()
+    const result: Message[] = []
+    for (const item of items) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      result.push(item)
+    }
+    result.sort((a, b) => (a.id > b.id ? 1 : -1))
+    return result
+  }
 
   const timeline = createMemo(() => {
     const turns = renderedUserMessages() as Message[]
-    if (!turns || turns.length === 0) return emptyTimeline
     const firstID = turns[0]?.id
     const mailbox: Message[] = []
+    const actionCommands: Message[] = []
     for (const msg of messages()) {
+      if (isActionCommandMessage(msg)) {
+        if (!firstID || msg.id >= firstID) actionCommands.push(msg)
+        continue
+      }
       if (msg.role !== "assistant") continue
       if (!(msg as AssistantMessage).metadata?.mailbox) continue
       if (firstID && msg.id < firstID) continue
       mailbox.push(msg)
     }
-    if (mailbox.length === 0) return turns
-    const result = [...turns, ...mailbox]
-    result.sort((a, b) => (a.id > b.id ? 1 : -1))
-    return result
+    if ((!turns || turns.length === 0) && actionCommands.length === 0) return emptyTimeline
+    if (mailbox.length === 0 && actionCommands.length === 0) return turns
+    return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
   const newSessionWorktree = createMemo(() => {

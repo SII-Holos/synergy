@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import { stream } from "hono/streaming"
 import z from "zod"
+import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
@@ -793,8 +794,17 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      // Fire and forget — errors are surfaced to the client via session event bus.
-      SessionInvoke.command({ ...body, sessionID }).catch(() => {})
+      const command = await Command.require(body.command)
+      if (command.kind === "action") {
+        SessionManager.assertIdle(sessionID)
+        await SessionInvoke.command({ ...body, sessionID })
+        return c.body(null, 204)
+      }
+      // Prompt commands are fire-and-forget because they may run a full model loop.
+      // Keep errors visible in logs instead of silently swallowing them.
+      SessionInvoke.command({ ...body, sessionID }).catch((error) => {
+        log.error("failed to execute async command", { command: body.command, sessionID, error })
+      })
       return c.body(null, 204)
     },
   )

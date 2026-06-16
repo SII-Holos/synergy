@@ -17,8 +17,8 @@ import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
-import { Command } from "../skill/command"
-import { WorktreeCommand } from "../project/worktree-command"
+import { Command } from "../command/command"
+import "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -204,7 +204,7 @@ export namespace SessionInvoke {
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
-          if (!lastUser && msg.info.role === "user") {
+          if (!lastUser && msg.info.role === "user" && MessageV2.isPromptVisible(msg)) {
             const user = msg.info as MessageV2.User
             if (SessionProgress.isReplyRequiredUser(user)) {
               lastUser = user
@@ -1080,15 +1080,25 @@ export namespace SessionInvoke {
   const placeholderRegex = /\$(\d+)/g
   const quoteTrimRegex = /^["']|["']$/g
 
-  async function deterministicCommandResult(
-    input: CommandInput,
-    result: { title: string; output: string; metadata?: Record<string, any> },
-  ) {
+  function commandMetadata(command: Command.Info) {
+    return {
+      command: {
+        name: command.name,
+        kind: command.kind,
+        action: command.action,
+        promptVisible: command.promptVisible,
+      },
+      promptVisible: command.promptVisible,
+    }
+  }
+
+  async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
     const userID = input.messageID ?? Identifier.ascending("message")
     const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
     const parsedModel = input.model
       ? Provider.parseModel(input.model)
       : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
+    const metadata = commandMetadata(command)
 
     const user = await Session.updateMessage({
       id: userID,
@@ -1097,7 +1107,7 @@ export namespace SessionInvoke {
       time: { created: Date.now() },
       agent: agentName,
       model: parsedModel,
-      metadata: { command: input.command },
+      metadata,
     })
     await Session.updatePart({
       id: Identifier.ascending("part"),
@@ -1124,6 +1134,7 @@ export namespace SessionInvoke {
       finish: "stop",
       modelID: parsedModel.modelID,
       providerID: parsedModel.providerID,
+      metadata,
     }
     await Session.updateMessage(msg)
     await Session.updatePart({
@@ -1145,13 +1156,15 @@ export namespace SessionInvoke {
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.get(input.command)
-    if (command?.action === "worktree") {
+    const command = await Command.require(input.command)
+    if (command.kind === "action") {
+      if (!command.action) throw new Command.UnknownActionError({ action: "" })
       return SessionManager.run(input.sessionID, async () => {
-        const result = await WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
-        return deterministicCommandResult(input, result)
+        const result = await Command.runAction({ action: command.action!, input, command })
+        return deterministicCommandResult(input, command, result)
       })
     }
+    if (!command.template) throw new Command.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []

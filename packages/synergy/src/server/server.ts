@@ -20,7 +20,7 @@ import { Scope } from "@/scope"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
 import { Auth } from "../provider/api-key"
-import { Command } from "../skill/command"
+import { Command } from "../command/command"
 import { Global } from "../global"
 import { ScopeRoute } from "./scope"
 import { GitRoute } from "./git"
@@ -159,7 +159,8 @@ export namespace Server {
               ConfigSet.ExistsError.isInstance(err) ||
               ConfigSet.DeleteDefaultError.isInstance(err) ||
               ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree")
+              err.name.startsWith("Worktree") ||
+              err.name.startsWith("Command")
             )
               status = 400
             else status = 500

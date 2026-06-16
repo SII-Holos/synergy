@@ -450,12 +450,21 @@ export namespace MessageV2 {
     return options?.maxLength ? joined.slice(0, options.maxLength) : joined
   }
 
+  export function isPromptVisible(msg: WithParts) {
+    const metadata = msg.info.metadata
+    if (metadata?.promptVisible === false) return false
+    const command = metadata?.command
+    if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
+      return false
+    return true
+  }
+
   export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
     for (const msg of input) {
-      if (msg.info.role !== "user") continue
+      if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
       for (const part of msg.parts) {
         if (part.type !== "file") continue
         if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
@@ -483,7 +492,7 @@ export namespace MessageV2 {
     const result: UIMessage[] = []
 
     for (const msg of input) {
-      if (msg.parts.length === 0) continue
+      if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
 
       if (msg.info.role === "user") {
         const userMessage: UIMessage = {
