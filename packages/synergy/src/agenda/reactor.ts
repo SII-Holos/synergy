@@ -27,7 +27,12 @@ export namespace AgendaReactor {
       return await run(signal, scopeID)
     } catch (err) {
       log.error("execute failed", { itemID: signal.source, error: err instanceof Error ? err : new Error(String(err)) })
-      return { nextRunAt: undefined, sessionID: undefined }
+      // Compute a fallback nextRunAt so the clock entry is not permanently
+      // deleted. If the item cannot be read, return undefined as a last resort.
+      const nextRunAt = await AgendaStore.get(scopeID, signal.source)
+        .then((item) => AgendaStore.computeNextRunAt(item.triggers))
+        .catch(() => undefined)
+      return { nextRunAt, sessionID: undefined }
     }
   }
 

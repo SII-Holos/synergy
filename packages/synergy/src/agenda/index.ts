@@ -143,8 +143,12 @@ export namespace Agenda {
   }
 
   function syncItem(scopeID: string, item: AgendaTypes.Item): void {
-    if (item.state.nextRunAt !== undefined) {
-      AgendaClock.rearm(scopeID, item.id, item.state.nextRunAt)
+    // If nextRunAt is missing (e.g. after a patch that didn't touch triggers),
+    // recompute from the item's triggers rather than silently unloading the
+    // clock entry. Only unload if the triggers genuinely produce no future run.
+    const nextRunAt = item.state.nextRunAt ?? AgendaStore.computeNextRunAt(item.triggers)
+    if (nextRunAt !== undefined) {
+      AgendaClock.rearm(scopeID, item.id, nextRunAt)
     } else {
       AgendaClock.unload(item.id)
     }

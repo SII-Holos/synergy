@@ -56,10 +56,12 @@ export namespace AgendaStore {
           break
         }
         case "delay": {
-          if (fromTime !== undefined) {
-            const target = fromTime + parseDuration(trigger.delay)
-            if (target > now) candidates.push(target)
-          }
+          // When fromTime is provided (e.g. at create time), anchor the delay
+          // to it. When called without fromTime (e.g. after an update), anchor
+          // to now so the item is rescheduled rather than silently dropped.
+          const base = fromTime ?? now
+          const target = base + parseDuration(trigger.delay)
+          if (target > now) candidates.push(target)
           break
         }
         case "every": {
