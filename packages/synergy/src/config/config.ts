@@ -1879,6 +1879,83 @@ export namespace Config {
     }
     return changed
   }
+  /**
+   * Sentinel value used by clients to indicate that a redacted password
+   * field has not changed. When the server receives this value, it merges
+   * the currently stored secret instead of overwriting it with the placeholder.
+   */
+  export const REDACTED_SENTINEL = "__REDACTED__"
+
+  /** Deep-clone config and replace secrets with REDACTED_SENTINEL for safe client exposure. */
+  export function redactForClient(config: Info): Info {
+    const result = structuredClone(config) as Record<string, any>
+    if (result.email?.smtp?.password) result.email.smtp.password = REDACTED_SENTINEL
+    if (result.email?.imap?.password) result.email.imap.password = REDACTED_SENTINEL
+    if (result.channel?.feishu?.accounts) {
+      for (const account of Object.values(result.channel.feishu.accounts) as any[]) {
+        if (account?.appSecret) account.appSecret = REDACTED_SENTINEL
+      }
+    }
+    if (result.identity?.embedding?.apiKey) result.identity.embedding.apiKey = REDACTED_SENTINEL
+    if (result.identity?.rerank?.apiKey) result.identity.rerank.apiKey = REDACTED_SENTINEL
+    if (result.provider) {
+      for (const provider of Object.values(result.provider) as any[]) {
+        if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
+      }
+    }
+    if (result.mcp) {
+      for (const server of Object.values(result.mcp) as any[]) {
+        if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
+      }
+    }
+    return result as Info
+  }
+
+  /**
+   * When an incoming PATCH payload has REDACTED_SENTINEL for any password
+   * field, replace it with the currently stored value so the real secret
+   * is not overwritten with the placeholder.
+   */
+  export function mergeRedactedSecrets(incoming: Info, stored: Info): Info {
+    const result = structuredClone(incoming) as Record<string, any>
+    if (result.email?.smtp?.password === REDACTED_SENTINEL && stored.email?.smtp?.password) {
+      result.email.smtp.password = stored.email.smtp.password
+    }
+    if (result.email?.imap?.password === REDACTED_SENTINEL && stored.email?.imap?.password) {
+      result.email.imap.password = stored.email.imap.password
+    }
+    if (result.channel?.feishu?.accounts && stored.channel?.feishu?.accounts) {
+      for (const [key, account] of Object.entries(result.channel.feishu.accounts) as [string, any][]) {
+        if (account?.appSecret === REDACTED_SENTINEL) {
+          const storedAccount = (stored.channel.feishu.accounts as Record<string, any>)[key]
+          if (storedAccount?.appSecret) account.appSecret = storedAccount.appSecret
+        }
+      }
+    }
+    if (result.identity?.embedding?.apiKey === REDACTED_SENTINEL && stored.identity?.embedding?.apiKey) {
+      result.identity.embedding.apiKey = stored.identity.embedding.apiKey
+    }
+    if (result.identity?.rerank?.apiKey === REDACTED_SENTINEL && stored.identity?.rerank?.apiKey) {
+      result.identity.rerank.apiKey = stored.identity.rerank.apiKey
+    }
+    if (result.provider && stored.provider) {
+      for (const [key, provider] of Object.entries(result.provider) as [string, any][]) {
+        if (provider?.options?.apiKey === REDACTED_SENTINEL) {
+          const storedProvider = (stored.provider as Record<string, any>)[key]
+          if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
+        }
+      }
+    }
+    if (result.mcp && stored.mcp) {
+      for (const [key, server] of Object.entries(result.mcp) as [string, any][]) {
+        if (server?.oauth?.clientSecret === REDACTED_SENTINEL) {
+          const storedServer = (stored.mcp as Record<string, any>)[key]
+          if (storedServer?.oauth?.clientSecret) server.oauth.clientSecret = storedServer.oauth.clientSecret
+        }
+      }
+    }
+    return result as Info
+  }
 
   export async function reload(scope: "global" | "project" = "global") {
     const oldConfig = await state()
@@ -2077,7 +2154,7 @@ export namespace Config {
     await ConfigSet.assertExists(name)
     return {
       ...(await ConfigSet.summary(name)),
-      config: await loadFile(ConfigSet.filePath(name)),
+      config: redactForClient(await loadFile(ConfigSet.filePath(name))),
     }
   }
 
@@ -2092,8 +2169,10 @@ export namespace Config {
 
   export async function configSetUpdate(name: string, config: Info) {
     const parsed = await ConfigSet.assertExists(name)
+    const stored = await loadFile(ConfigSet.filePath(parsed))
+    const merged = mergeRedactedSecrets(config, stored)
     await fs.mkdir(path.dirname(ConfigSet.filePath(parsed)), { recursive: true })
-    await patchFile(ConfigSet.filePath(parsed), config)
+    await patchFile(ConfigSet.filePath(parsed), merged)
     return configSetGet(parsed)
   }
 

@@ -70,7 +70,7 @@ export const ConfigRoute = new Hono()
       },
     }),
     async (c) => {
-      return c.json(await Config.get())
+      return c.json(Config.redactForClient(await Config.get()))
     },
   )
   .patch(
@@ -91,18 +91,16 @@ export const ConfigRoute = new Hono()
         ...errors(400),
       },
     }),
-    validator("json", Config.Info),
     async (c) => {
-      const config = c.req.valid("json")
-      // Read raw body to determine actual user-changed fields for triage
-      let rawBody: Record<string, unknown> = {}
-      try {
-        rawBody = await c.req.json()
-      } catch {
-        // If body can't be re-read, fall through to full reload
-      }
+      // Read raw body first to capture user-sent keys before Zod fills defaults
+      const rawBody = (await c.req.json()) as Record<string, unknown>
       const changedFields = classifyChangedFields(rawBody)
-      await Config.updateGlobal(config)
+
+      // Merge redacted sentinels from client back to stored secrets
+      const storedConfig = await Config.get()
+      const validated = Config.Info.parse(rawBody)
+      const merged = Config.mergeRedactedSecrets(validated, storedConfig)
+      await Config.updateGlobal(merged)
 
       // Field-level triage: skip unnecessary cascading
       const hasCascade = RuntimeReload.inferConfigCascades([...changedFields]).length > 0
@@ -134,7 +132,7 @@ export const ConfigRoute = new Hono()
           warnings: result.warnings,
         })
       }
-      return c.json(await Config.get())
+      return c.json(Config.redactForClient(await Config.get()))
     },
   )
   .get(
@@ -155,7 +153,8 @@ export const ConfigRoute = new Hono()
       },
     }),
     async (c) => {
-      return c.json(await Config.globalRaw())
+      const globalConfig = await Config.globalRaw()
+      return c.json(Config.redactForClient(globalConfig))
     },
   )
   .get(
