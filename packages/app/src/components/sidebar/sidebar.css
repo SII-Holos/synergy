@@ -14,14 +14,14 @@
 }
 
 [data-color-scheme="light"] .sb-root {
-  background: #f0f0f0;
+  background: #ececec;
 }
 
 [data-color-scheme="dark"] .sb-root {
-  --sb-hover-bg: #2a2b2f;
-  --sb-control-hover-bg: #333438;
-  --sb-active-bg: #323338;
-  background: #202124;
+  --sb-hover-bg: #303136;
+  --sb-control-hover-bg: #393a40;
+  --sb-active-bg: #37383e;
+  background: #26272b;
 }
 
 .sb-root svg {

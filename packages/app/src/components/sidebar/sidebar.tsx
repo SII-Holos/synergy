@@ -183,7 +183,7 @@ export function Sidebar(props: SidebarProps) {
         <div class="sb-actions">
           <Tooltip value="New session" placement="right">
             <button type="button" class="sb-action-btn" onClick={handleNewSession}>
-              <Icon name="pen-line" size="normal" />
+              <Icon name="notebook-pen" size="normal" />
               <span class="sb-action-label">New</span>
             </button>
           </Tooltip>

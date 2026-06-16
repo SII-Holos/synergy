@@ -1,9 +1,9 @@
 /* [data-component="dialog-trigger"] { } */
 
 [data-slot="dialog-overlay"] {
-  background-color: hsl(from var(--background-base) h s l / 0.3);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background-color: color-mix(in srgb, var(--background-base) 42%, rgba(0, 0, 0, 0.38));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   z-index: 50;
 
   animation: overlayHide 200ms ease 80ms forwards;

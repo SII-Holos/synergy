@@ -12,8 +12,8 @@ a:active,
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-wide) {
-  width: min(calc(100vw - 16px), 780px);
-  height: min(calc(100vh - 16px), 600px);
+  width: min(calc(100vw - 96px), 1100px);
+  height: min(calc(100vh - 80px), 760px);
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-wide) [data-slot="dialog-body"] {
@@ -153,7 +153,8 @@ a:active,
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   [data-slot="dialog-container"]:has(.dialog-settings-wide) {
-    height: min(calc(100dvh - 16px), 600px);
+    width: min(calc(100vw - 16px), 1100px);
+    height: min(calc(100dvh - 16px), 760px);
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {
