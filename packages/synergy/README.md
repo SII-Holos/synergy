@@ -47,6 +47,23 @@ synergy status
 synergy logs
 ```
 
+## Session worktrees
+
+For Git-backed scopes, use the built-in `/worktree` session command to isolate work in a project-local Git worktree:
+
+```text
+/worktree list
+/worktree new add-rate-limit
+/worktree enter add-rate-limit
+/worktree status
+/worktree leave
+/worktree remove add-rate-limit --force
+```
+
+Synergy-created worktrees live in `.synergy/worktrees/`, and metadata lives in `.synergy/worktrees/.registry/`. New worktrees can run project-local setup from `.synergy/worktree-setup.jsonc` and machine-local overrides from `.synergy/worktree-setup.local.jsonc`.
+
+See the main repository README for the full worktree workflow, setup file format, and cleanup rules.
+
 ## Documentation
 
 For full setup instructions, configuration, development workflow, and the complete package map, see the [main repository README](https://github.com/SII-Holos/synergy).

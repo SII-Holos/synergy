@@ -234,7 +234,19 @@ That scoped directory is where project-specific agents, commands, plugins, skill
 
 ### Session worktrees
 
-For Git-backed scopes, a session can be bound to an isolated git worktree using the built-in `/worktree` command:
+When you want to work on multiple features in the same Git repository at the same time, bind a Synergy session to a Git worktree. The session keeps the same Scope identity, but tools run from the session workspace instead of the main checkout.
+
+Use this when:
+
+- you want two sessions to edit the same repo without stepping on each other's files
+- you want a separate branch for a task before asking an agent to implement it
+- you want to review or test another branch in an isolated checkout
+
+Do not use this for non-Git directories. Normal sessions still work there, but Git worktrees require a Git-backed Scope.
+
+#### Commands
+
+Run these commands in the session prompt:
 
 ```text
 /worktree list
@@ -245,13 +257,71 @@ For Git-backed scopes, a session can be bound to an isolated git worktree using 
 /worktree remove add-rate-limit --force
 ```
 
-Synergy-created worktrees live under the project-local directory:
+What they do:
+
+- `/worktree list` — list all Git worktrees reported by `git worktree list --porcelain`, with Synergy metadata overlaid when available.
+- `/worktree new <name>` — create a new branch and worktree, bind the current session to it, and run worktree setup if configured.
+- `/worktree enter <name-or-id-or-branch-or-path>` — bind the current session to an existing worktree.
+- `/worktree status` — show the current session workspace and whether it has uncommitted changes.
+- `/worktree leave` — move the current session back to the main workspace. This does not delete the worktree.
+- `/worktree remove <name-or-id> [--force]` — remove a worktree. Without `--force`, Synergy refuses to remove a dirty worktree.
+
+After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
+
+#### Where Synergy stores worktrees
+
+Synergy-created worktrees live inside the project:
 
 ```bash
 .synergy/worktrees/
 ```
 
-`/worktree new` records Synergy metadata under `.synergy/worktrees/.registry/`, while `git worktree list --porcelain` remains the authority for which worktrees exist. Project-local setup for new worktrees can be declared in `.synergy/worktree-setup.jsonc`, with private machine overrides in `.synergy/worktree-setup.local.jsonc`.
+Synergy writes metadata under:
+
+```bash
+.synergy/worktrees/.registry/
+```
+
+Git remains the source of truth for existence. If a worktree exists in Git but has no Synergy metadata, it appears as external and can still be entered.
+
+#### Setup for new worktrees
+
+Worktrees are fresh checkouts. They do not automatically inherit ignored files such as `.env.local`, nor do they share dependencies. If a project needs setup, add a project-local setup file:
+
+```jsonc
+// .synergy/worktree-setup.jsonc
+{
+  "copyIgnored": [".env.local"],
+  "setup": ["bun install"],
+  "env": {
+    "NODE_ENV": "development",
+  },
+}
+```
+
+For machine-specific setup, use the local override:
+
+```bash
+.synergy/worktree-setup.local.jsonc
+```
+
+Setup commands run inside the new worktree with these environment variables:
+
+- `ROOT_WORKTREE_PATH` — the main repository checkout
+- `WORKTREE_PATH` — the new worktree path
+- `WORKTREE_NAME` — the generated worktree name
+- `WORKTREE_BRANCH` — the generated branch name
+- `SYNERGY_SCOPE_ID` — the current Scope ID
+
+Only use setup files in repositories you trust. They run local shell commands when `/worktree new` creates a worktree.
+
+#### Notes and cleanup
+
+- New sessions still start in the main workspace by default. Worktree binding is explicit through `/worktree` commands.
+- Child sessions inherit the parent session's current workspace.
+- `/worktree leave` only unbinds the session; it does not remove files.
+- Session archive/delete detaches Synergy metadata from the worktree, but dirty or externally managed worktrees are not automatically deleted.
+- Synergy does not symlink dependency folders by default. Prefer package-manager caches (`bun`, `pnpm`, `uv`) over sharing `node_modules` across worktrees.
 
 ### Resolution order
 
