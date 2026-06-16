@@ -185,7 +185,7 @@ export function Sidebar(props: SidebarProps) {
           <Tooltip value="New session" placement="right">
             <button type="button" class="sb-action-btn" onClick={handleNewSession}>
               <Icon name="pen-line" size="normal" />
-              <span class="sb-action-label">New session</span>
+              <span class="sb-action-label">New</span>
             </button>
           </Tooltip>
         </div>
@@ -232,7 +232,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => panel.toggle("agenda")}
           >
-            <Icon name="clipboard-list" size="normal" />
+            <Icon name="clock" size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Agenda</span>
             </Show>
@@ -247,7 +247,7 @@ export function Sidebar(props: SidebarProps) {
             }}
             onClick={() => panel.toggle("engram")}
           >
-            <Icon name="brain" size="normal" />
+            <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Engram</span>
             </Show>

@@ -5,8 +5,6 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel, isGlobalScope } from "@/utils/scope"
-import { getAvatarColors } from "@/context/layout"
-import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 import "./global-search-modal.css"
 
@@ -125,12 +123,12 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
       <div class="gsm-overlay" onClick={props.onClose} />
       <div ref={containerRef} class="gsm-container" onKeyDown={handleKeyDown}>
         <div class="gsm-search-bar">
-          <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+          <Icon name="search" size="large" class="gsm-search-icon" />
           <input
             ref={inputRef}
             type="text"
             class="gsm-input"
-            placeholder="Search sessions across all projects..."
+            placeholder="Search sessions..."
             value={query()}
             onInput={(e) => handleInput(e.currentTarget.value)}
           />
@@ -151,40 +149,33 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
             </div>
           </Show>
           <For each={groupedResults()}>
-            {(item, index) => {
-              const colors = createMemo(() => getAvatarColors(item.scope.icon?.color))
-              return (
-                <button
-                  type="button"
-                  classList={{
-                    "gsm-item": true,
-                    "is-selected": index() === selectedIdx(),
-                  }}
-                  onMouseEnter={() => setSelectedIdx(index())}
-                  onClick={() => handleSelect(item)}
-                >
-                  <Avatar
-                    fallback={scopeLabel(item.scope)}
-                    src={item.scope.icon?.url}
-                    size="small"
-                    background={colors().background}
-                    foreground={colors().foreground}
-                  />
-                  <div class="gsm-item-content">
-                    <div class="gsm-item-title">{item.title}</div>
-                    <div class="gsm-item-meta">
-                      {scopeLabel(item.scope)}
+            {(item, index) => (
+              <button
+                type="button"
+                classList={{
+                  "gsm-item": true,
+                  "is-selected": index() === selectedIdx(),
+                }}
+                onMouseEnter={() => setSelectedIdx(index())}
+                onClick={() => handleSelect(item)}
+              >
+                <div class="gsm-item-icon">
+                  <Icon name="file-text" size="normal" />
+                </div>
+                <div class="gsm-item-content">
+                  <div class="gsm-item-title">{item.title}</div>
+                  <div class="gsm-item-meta">
+                    {scopeLabel(item.scope)}
+                    <span class="gsm-item-sep">·</span>
+                    {relativeTime(item.time.updated)}
+                    <Show when={item.lastExchange?.user}>
                       <span class="gsm-item-sep">·</span>
-                      {relativeTime(item.time.updated)}
-                      <Show when={item.lastExchange?.user}>
-                        <span class="gsm-item-sep">·</span>
-                        <span class="gsm-item-preview truncate">You: {item.lastExchange!.user}</span>
-                      </Show>
-                    </div>
+                      <span class="gsm-item-preview truncate">You: {item.lastExchange!.user}</span>
+                    </Show>
                   </div>
-                </button>
-              )
-            }}
+                </div>
+              </button>
+            )}
           </For>
         </div>
         <Show when={total() > 0}>
