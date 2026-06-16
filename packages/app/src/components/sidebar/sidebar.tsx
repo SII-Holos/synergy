@@ -12,7 +12,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
-import { DialogSettings } from "@/components/dialog/dialog-settings"
+import { SettingsDialog } from "@/components/settings"
 import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
@@ -399,7 +399,7 @@ export function Sidebar(props: SidebarProps) {
       {/* Bottom: Settings, Connect Provider, Theme */}
       <div class="sb-bottom">
         <Tooltip value="Settings" placement="right">
-          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSettings />)}>
+          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <SettingsDialog />)}>
             <Icon name="settings" size="normal" />
             <span class="sb-bottom-label">Settings</span>
           </button>

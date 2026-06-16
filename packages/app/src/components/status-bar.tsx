@@ -8,7 +8,7 @@ import { DialogSelectServer } from "@/components/dialog"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { DialogSettings } from "@/components/dialog/dialog-settings"
+import { SettingsDialog } from "@/components/settings"
 import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -74,7 +74,7 @@ function ConfigSetStatus() {
           <DropdownMenu.Item
             onSelect={() => {
               setOpen(false)
-              dialog.show(() => <DialogSettings initialTab="config-sets" />)
+              dialog.show(() => <SettingsDialog initialTab="config-sets" />)
             }}
           >
             <Icon name="settings" size="small" class="mr-2" />

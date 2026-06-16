@@ -22,6 +22,19 @@ a:active,
   overflow: hidden;
 }
 
+[data-slot="dialog-container"]:has(.dialog-settings-v2) {
+  width: min(900px, 90vw);
+  height: min(720px, 90vh);
+  max-width: 1100px;
+  max-height: 800px;
+}
+
+[data-slot="dialog-container"]:has(.dialog-settings-v2) [data-slot="dialog-body"] {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 [data-slot="dialog-container"]:has(.dialog-session-export) {
   width: min(calc(100vw - 16px), 520px);
 }
@@ -155,6 +168,13 @@ a:active,
   [data-slot="dialog-container"]:has(.dialog-settings-wide) {
     width: min(calc(100vw - 16px), 1100px);
     height: min(calc(100dvh - 16px), 760px);
+  }
+
+  [data-slot="dialog-container"]:has(.dialog-settings-v2) {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {

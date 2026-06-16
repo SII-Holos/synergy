@@ -1,3 +1,7 @@
+// DEPRECATED: This file has been split into a modular Settings directory.
+// See packages/app/src/components/settings/ for the new structure.
+// Keep this file temporarily for fallback until all imports are migrated.
+
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
