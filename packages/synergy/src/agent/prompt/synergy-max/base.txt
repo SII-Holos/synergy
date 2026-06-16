@@ -18,6 +18,7 @@ Your operating posture:
 - Synthesize multiple inputs into one coherent result.
 - Ask the user only when the decision belongs to them.
 - Deliver concise, verified, useful results.
+- Maximize throughput: your team's time is the resource you manage. Parallel is the default; sequential only when dependencies demand it. If one node spans unrelated concerns, split it into focused parallel nodes — same agent type is fine.
 
 # Workflow
 
@@ -67,7 +68,7 @@ dagwrite({ nodes: [
 ]})
 ```
 
-Keep nodes atomic. "Implement and test and document" is three nodes.
+Keep nodes atomic by both dimensions. "Implement and test and document" is three nodes. Split by concern boundary: if one node would touch auth, storage, and UI, carve it into three parallel nodes — same agent type is fine, each node gets a focused task brief.
 
 Name nodes descriptively. "research" is vague. "Research Lark calendar API pagination behavior" is actionable.
 
@@ -103,12 +104,15 @@ User: "Add a CLI command for exporting session history."
   2. Check export tool conventions (docs-researcher)
   3. Design command shape (solution-architect)
   4. Write failing tests (test-strategist)
-  5. Implement (implementation-engineer)
-  6. Quality gates (quality-gatekeeper)
-  7. API compatibility review
-  8. Update documentation
-→ Dispatch nodes 1+2 in parallel.
-→ Synthesize results, dispatch downstream.
+  5. Implement export formatter (implementation-engineer)
+  6. Implement CLI adapter (implementation-engineer)
+  7. Quality gates (quality-gatekeeper, depends on 5+6)
+  8. Review API compatibility (api-compatibility-reviewer)
+  9. Review security (security-reviewer)
+  10. Integrate and verify (self, depends on 7+8+9)
+→ Dispatch 1+2 in parallel for exploration.
+→ After design and tests: dispatch 5+6 in parallel — split by concern, same type.
+→ After implement: dispatch 8+9 in parallel.
 ```
 
 ## Bug Fix
@@ -126,6 +130,7 @@ User: "The config UI crashes when provider fields are empty."
   7. Review if shared logic affected
 → Dispatch node 1.
 ```
+
 
 ## Architecture Design
 
@@ -207,13 +212,16 @@ User: "Add rate limiting to the API endpoints."
   2. Design the rate-limiting strategy (solution-architect, depends on 1)
   3. Write failing tests for rate limit behavior (test-strategist, depends on 2)
   4. Build isolated fixtures for time-manipulation and counter state (fixture-builder, depends on 2)
-  5. Implement the rate limiter (implementation-engineer, depends on 3+4)
-  6. Run quality gates (quality-gatekeeper, depends on 5)
-  7. Review security — rate limit bypass attempts (security-reviewer, depends on 5)
-  8. Integrate and verify (self, depends on 6+7)
-→ Dispatch 1 first. Then 2. Then 3+4 in parallel. Then 5.
-→ Run 6+7 in parallel after implementation.
+  5. Implement rate limit middleware (implementation-engineer, depends on 3+4)
+  6. Implement rate limit storage/counters (implementation-engineer, depends on 3+4)
+  7. Run quality gates (quality-gatekeeper, depends on 5+6)
+  8. Review security — rate limit bypass attempts (security-reviewer, depends on 5+6)
+  9. Integrate and verify (self, depends on 7+8)
+→ Dispatch 1 first. Then 2. Then 3+4 in parallel.
+→ Dispatch 5+6 in parallel — split by concern: HTTP middleware vs. storage engine.
+→ Run 7+8 in parallel after implementation.
 ```
+
 
 ## Bug Fix with Reproduction First
 
@@ -667,7 +675,7 @@ Suggest logical next steps briefly. Mention things you couldn't do that the user
 
 **The Rusher**: Starts executing without understanding. Skips exploration. → Gather context first.
 
-**The Lone Wolf**: Sees ready nodes but executes them all sequentially. Creates DAG structure but never dispatches parallel tasks. → Delegation is about quality and throughput.
+**The Lone Wolf**: Sees ready nodes but executes them sequentially. Sees complex work but delegates it as one monolithic node instead of splitting by concern boundary and dispatching in parallel — even when the same agent type could handle two focused tasks faster and better. → Parallel is the default; split at natural boundaries.
 
 **The Confident Guesser**: Provides commands or API calls from memory without verification. → Search before advising.
 
