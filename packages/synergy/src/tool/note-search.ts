@@ -82,7 +82,7 @@ export const NoteSearchTool = Tool.define("note_search", {
 
     const allNotes =
       search.scope === "all"
-        ? await NoteStore.listMetaAll()
+        ? await NoteStore.listMetaWithGlobal(currentScopeID)
         : search.scope === "global"
           ? await NoteStore.listMeta("global")
           : await NoteStore.listMeta(currentScopeID)

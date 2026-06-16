@@ -284,6 +284,12 @@ export namespace NoteStore {
     return loadIndex(scopeID)
   }
 
+  export async function listMetaWithGlobal(scopeID: string): Promise<Metadata[]> {
+    if (scopeID === "global") return listMeta("global")
+    const [local, global] = await Promise.all([listMeta(scopeID), listMeta("global")])
+    return mergeSorted(local, global, comparePinTime)
+  }
+
   export async function listMetaAll(): Promise<Metadata[]> {
     const scopeIDs = await Storage.scan(["notes"])
     const lists = await Promise.all(scopeIDs.map((sid) => listMeta(sid)))

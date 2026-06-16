@@ -8,7 +8,9 @@ const parameters = z.object({
   scope: z
     .enum(["current", "global", "all"])
     .default("all")
-    .describe("Which scope to list from: 'current' (project only), 'global' (global only), 'all' (both)."),
+    .describe(
+      "Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global).",
+    ),
   since: z
     .string()
     .optional()
@@ -28,7 +30,7 @@ export const NoteListTool = Tool.define("note_list", {
 
     let notes =
       params.scope === "all"
-        ? await NoteStore.listMetaAll()
+        ? await NoteStore.listMetaWithGlobal(currentScopeID)
         : params.scope === "global"
           ? await NoteStore.listMeta("global")
           : await NoteStore.listMeta(currentScopeID)
