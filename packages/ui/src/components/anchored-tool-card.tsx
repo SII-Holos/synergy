@@ -28,7 +28,14 @@ type RangeInfo = {
 
 function pathFromProps(props: ToolProps): string {
   const headerPath = typeof props.input.input === "string" ? props.input.input.match(/^\[([^#\]]+)/)?.[1] : undefined
-  return (props.metadata?.path || props.metadata?.filepath || props.input.filePath || headerPath || "") as string
+  const paths = Array.isArray(props.input.paths) ? props.input.paths.join(", ") : undefined
+  return (props.metadata?.path ||
+    props.metadata?.filepath ||
+    props.input.filePath ||
+    props.input.path ||
+    paths ||
+    headerPath ||
+    "") as string
 }
 
 function pathLabel(path: string): string {

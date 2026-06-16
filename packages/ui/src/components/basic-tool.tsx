@@ -19,9 +19,12 @@ type TriggerTitleObject = {
 export type TriggerTitle = TriggerTitleObject | (() => TriggerTitleObject)
 
 const isTriggerTitle = (val: any): val is TriggerTitle => {
-  if (typeof val === "function") return true
   return (
-    typeof val === "object" && val !== null && "title" in val && (typeof Node === "undefined" || !(val instanceof Node))
+    typeof val === "object" &&
+    val !== null &&
+    Object.prototype.hasOwnProperty.call(val, "title") &&
+    typeof val.title === "string" &&
+    (typeof Node === "undefined" || !(val instanceof Node))
   )
 }
 
