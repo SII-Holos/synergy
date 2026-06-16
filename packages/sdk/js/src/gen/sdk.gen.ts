@@ -309,8 +309,6 @@ import type {
   SessionUnrevertResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
-  SessionWorktreeErrors,
-  SessionWorktreeResponses,
   SkillImportErrors,
   SkillImportResponses,
   SkillImportUrlErrors,
@@ -1557,47 +1555,6 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionPromptAsyncResponses, SessionPromptAsyncErrors, ThrowOnError>({
       url: "/session/{sessionID}/prompt_async",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Run worktree command
-   *
-   * Run a deterministic git worktree workspace command for this session.
-   */
-  public worktree<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      action?: "list" | "new" | "enter" | "status" | "leave" | "remove"
-      target?: string
-      force?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "action" },
-            { in: "body", key: "target" },
-            { in: "body", key: "force" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<SessionWorktreeResponses, SessionWorktreeErrors, ThrowOnError>({
-      url: "/session/{sessionID}/worktree",
       ...options,
       ...params,
       headers: {
@@ -3337,14 +3294,30 @@ export class Config extends HeyApiClient {
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      config?: Config2
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "config" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).patch<ConfigUpdateResponses, ConfigUpdateErrors, ThrowOnError>({
       url: "/config",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

@@ -91,9 +91,11 @@ export const ConfigRoute = new Hono()
         ...errors(400),
       },
     }),
+    validator("json", z.object({ config: Config.Info })),
     async (c) => {
-      // Read raw body first to capture user-sent keys before Zod fills defaults
-      const rawBody = (await c.req.json()) as Record<string, unknown>
+      // Keep the wrapper shape stable for SDK clients while preserving the exact
+      // user-sent config object for changed-field classification.
+      const rawBody = c.req.valid("json").config as Record<string, unknown>
       const changedFields = classifyChangedFields(rawBody)
 
       // Merge redacted sentinels from client back to stored secrets

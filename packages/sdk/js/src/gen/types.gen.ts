@@ -2552,6 +2552,7 @@ export type Command = {
   model?: string
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
+  action?: "worktree"
   template: string
   hints: Array<string>
 }
@@ -4680,7 +4681,9 @@ export type ConfigGetResponses = {
 export type ConfigGetResponse = ConfigGetResponses[keyof ConfigGetResponses]
 
 export type ConfigUpdateData = {
-  body?: never
+  body?: {
+    config: Config
+  }
   path?: never
   query?: {
     directory?: string
@@ -5965,52 +5968,6 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
-
-export type SessionWorktreeData = {
-  body?: {
-    action: "list" | "new" | "enter" | "status" | "leave" | "remove"
-    target?: string
-    force?: boolean
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/worktree"
-}
-
-export type SessionWorktreeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionWorktreeError = SessionWorktreeErrors[keyof SessionWorktreeErrors]
-
-export type SessionWorktreeResponses = {
-  /**
-   * Worktree command result
-   */
-  200: {
-    title: string
-    output: string
-    metadata?: {
-      [key: string]: unknown
-    }
-  }
-}
-
-export type SessionWorktreeResponse = SessionWorktreeResponses[keyof SessionWorktreeResponses]
 
 export type SessionCommandData = {
   body?: {

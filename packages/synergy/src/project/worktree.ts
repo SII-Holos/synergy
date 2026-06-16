@@ -1,13 +1,14 @@
 import { $ } from "bun"
+import { createHash } from "crypto"
 import fs from "fs/promises"
 import path from "path"
-import { createHash } from "crypto"
 import z from "zod"
 import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { Session } from "../session"
+import type { Scope } from "../scope"
 import { Instance } from "../scope/instance"
 import { fn } from "../util/fn"
-import { Session } from "../session"
 
 export namespace Worktree {
   export const Owner = z.discriminatedUnion("type", [
@@ -42,7 +43,6 @@ export namespace Worktree {
       setupError: z.string().optional(),
     })
     .meta({ ref: "Worktree" })
-
   export type Info = z.infer<typeof Info>
 
   export const RegistryInfo = Info.extend({
@@ -67,20 +67,21 @@ export namespace Worktree {
   export const TargetInput = z
     .object({
       sessionID: z.string(),
-      target: z.string().optional(),
+      target: z.string().min(1),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeTargetInput" })
+  export type TargetInput = z.infer<typeof TargetInput>
 
-  export const CommandInput = z
+  export const CommandResult = z
     .object({
-      sessionID: z.string(),
-      action: z.enum(["list", "new", "enter", "status", "leave", "remove"]),
-      target: z.string().optional(),
-      force: z.boolean().optional().default(false),
+      title: z.string(),
+      output: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
     })
-    .meta({ ref: "WorktreeCommandInput" })
-  export type CommandInput = z.infer<typeof CommandInput>
+    .meta({ ref: "WorktreeCommandResult" })
+  export type CommandResult = z.infer<typeof CommandResult>
+
   const SetupInfo = z.object({
     setup: z.array(z.string()).optional().default([]),
     copyIgnored: z.array(z.string()).optional().default([]),
@@ -98,6 +99,8 @@ export namespace Worktree {
     "WorktreeStartCommandFailedError",
     z.object({ message: z.string() }),
   )
+  export const SetupConfigError = NamedError.create("WorktreeSetupConfigError", z.object({ message: z.string() }))
+  export const LockFailedError = NamedError.create("WorktreeLockFailedError", z.object({ message: z.string() }))
   export const NotFoundError = NamedError.create("WorktreeNotFoundError", z.object({ message: z.string() }))
   export const DirtyError = NamedError.create("WorktreeDirtyError", z.object({ message: z.string() }))
 
@@ -175,6 +178,8 @@ export namespace Worktree {
     bare?: boolean
   }
 
+  const activeLocks = new Map<string, number>()
+
   function pick<const T extends readonly string[]>(items: T) {
     return items[Math.floor(Math.random() * items.length)]
   }
@@ -250,6 +255,12 @@ export namespace Worktree {
     await fs.rm(registryPath({ id }, repoRoot), { force: true }).catch(() => {})
   }
 
+  function normalizeRegistryPath(info: RegistryInfo, repoRoot: string): RegistryInfo {
+    const resolved = path.resolve(info.path)
+    if (resolved.startsWith(path.resolve(repoRoot) + path.sep)) return info
+    return { ...info, path: path.join(worktreesRoot(repoRoot), path.basename(resolved)) }
+  }
+
   async function readRegistry(repoRoot = ensureGitScope().repoRoot) {
     const root = registryRoot(repoRoot)
     const entries = await fs.readdir(root).catch(() => [] as string[])
@@ -258,7 +269,8 @@ export namespace Worktree {
       if (!entry.endsWith(".json")) continue
       const parsed = await readJson(path.join(root, entry), RegistryInfo).catch(() => undefined)
       if (!parsed) continue
-      result.set(path.resolve(parsed.path), parsed)
+      const normalized = normalizeRegistryPath(parsed, repoRoot)
+      result.set(path.resolve(normalized.path), normalized)
     }
     return result
   }
@@ -377,11 +389,17 @@ export namespace Worktree {
         .text()
         .catch(() => undefined)
       if (!text) continue
-      const parsed = SetupInfo.parse(parseJsonc(text))
-      result = {
-        setup: [...(result.setup ?? []), ...(parsed.setup ?? [])],
-        copyIgnored: [...(result.copyIgnored ?? []), ...(parsed.copyIgnored ?? [])],
-        env: { ...(result.env ?? {}), ...(parsed.env ?? {}) },
+      try {
+        const parsed = SetupInfo.parse(parseJsonc(text))
+        result = {
+          setup: [...(result.setup ?? []), ...(parsed.setup ?? [])],
+          copyIgnored: [...(result.copyIgnored ?? []), ...(parsed.copyIgnored ?? [])],
+          env: { ...(result.env ?? {}), ...(parsed.env ?? {}) },
+        }
+      } catch (error) {
+        throw new SetupConfigError({
+          message: `Invalid worktree setup file ${filepath}: ${error instanceof Error ? error.message : String(error)}`,
+        })
       }
     }
     return result
@@ -445,6 +463,11 @@ export namespace Worktree {
     throw new NameGenerationFailedError({ message: "Failed to generate a unique worktree name" })
   }
 
+  async function cleanupCreatedWorktree(repoRoot: string, directory: string, branch: string) {
+    await $`git worktree remove --force ${directory}`.quiet().nothrow().cwd(repoRoot)
+    await $`git branch -D ${branch}`.quiet().nothrow().cwd(repoRoot)
+  }
+
   export const create = fn(CreateInput.optional(), async (input) => {
     const parsed = CreateInput.parse(input ?? {})
     const { scope, repoRoot } = ensureGitScope()
@@ -482,21 +505,20 @@ export namespace Worktree {
 
     try {
       const setup = await setupInfo(repoRoot)
-      await copyIgnoredFiles(setup, repoRoot, registry.path)
-      await runSetup(setup, repoRoot, registry.path, registry)
-    } catch (error) {
-      registry.setupFailed = true
-      registry.setupError = error instanceof Error ? error.message : String(error)
-      if (StartCommandFailedError.isInstance(error)) {
-        await writeRegistry(registry, repoRoot)
-        if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
-        return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
+      try {
+        await copyIgnoredFiles(setup, repoRoot, registry.path)
+        await runSetup(setup, repoRoot, registry.path, registry)
+      } catch (error) {
+        registry.setupFailed = true
+        registry.setupError = error instanceof Error ? error.message : String(error)
       }
+      await writeRegistry(registry, repoRoot)
+      if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
+      return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
+    } catch (error) {
+      await cleanupCreatedWorktree(repoRoot, registry.path, registry.branch)
       throw error
     }
-    await writeRegistry(registry, repoRoot)
-    if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
-    return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
   })
 
   function match(info: Info, target: string) {
@@ -541,11 +563,9 @@ export namespace Worktree {
     await updateBinding(info, sessionID, "add")
   }
 
-  export async function enter(input: z.infer<typeof TargetInput>) {
-    const parsed = TargetInput.parse(input)
-    if (!parsed.target) throw new NotFoundError({ message: "Worktree target is required" })
-    const info = await find(parsed.target)
-    await bindSession(parsed.sessionID, info)
+  export async function enter(input: TargetInput) {
+    const info = await find(input.target)
+    await bindSession(input.sessionID, info)
     return info
   }
 
@@ -565,7 +585,7 @@ export namespace Worktree {
         "remove",
       )
     }
-    const scope = session.scope as typeof Instance.scope
+    const scope = session.scope as Scope
     return Session.updateWorkspace(sessionID, { type: "main", path: scope.directory, scopeID: scope.id })
   }
 
@@ -574,7 +594,7 @@ export namespace Worktree {
     const workspace = session.workspace
     const item =
       workspace?.type === "git_worktree" && workspace.worktreeID ? await find(String(workspace.worktreeID)) : undefined
-    const directory = workspace?.path ?? (session.scope as typeof Instance.scope).directory
+    const directory = workspace?.path ?? (session.scope as Scope).directory
     return {
       workspace,
       worktree: item,
@@ -583,9 +603,8 @@ export namespace Worktree {
     }
   }
 
-  export async function remove(input: z.infer<typeof TargetInput>) {
+  export async function remove(input: TargetInput) {
     const parsed = TargetInput.parse(input)
-    if (!parsed.target) throw new NotFoundError({ message: "Worktree target is required" })
     const info = await find(parsed.target)
     if (info.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
     if (!parsed.force && (await isDirty(info.path))) {
@@ -613,13 +632,31 @@ export namespace Worktree {
   }
 
   export async function lock(directory: string) {
+    const resolved = path.resolve(directory)
+    const count = activeLocks.get(resolved) ?? 0
+    activeLocks.set(resolved, count + 1)
+    if (count > 0) return
     const { repoRoot } = ensureGitScope()
-    await $`git worktree lock ${directory}`.quiet().nothrow().cwd(repoRoot)
+    const result = await $`git worktree lock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    if (result.exitCode !== 0) {
+      activeLocks.delete(resolved)
+      throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
+    }
   }
 
   export async function unlock(directory: string) {
+    const resolved = path.resolve(directory)
+    const count = activeLocks.get(resolved) ?? 0
+    if (count > 1) {
+      activeLocks.set(resolved, count - 1)
+      return
+    }
+    activeLocks.delete(resolved)
     const { repoRoot } = ensureGitScope()
-    await $`git worktree unlock ${directory}`.quiet().nothrow().cwd(repoRoot)
+    const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    if (result.exitCode !== 0) {
+      throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
+    }
   }
 
   export async function detachSession(sessionID: string) {
@@ -637,98 +674,5 @@ export namespace Worktree {
       sessionID,
       "remove",
     )
-  }
-
-  const commandArgRegex = /"[^"]*"|'[^']*'|\S+/g
-  const commandQuoteTrimRegex = /^["']|["']$/g
-
-  export function parseCommandArguments(sessionID: string, argumentsText: string): CommandInput {
-    const parts = (argumentsText.match(commandArgRegex) ?? []).map((part) => part.replace(commandQuoteTrimRegex, ""))
-    const action = (parts.shift() ?? "status") as CommandInput["action"]
-    const forceIndex = parts.findIndex((part) => part === "--force" || part === "-f")
-    const force = forceIndex >= 0
-    if (forceIndex >= 0) parts.splice(forceIndex, 1)
-    return CommandInput.parse({ sessionID, action, target: parts.join(" ") || undefined, force })
-  }
-
-  function formatList(items: Info[]) {
-    if (items.length === 0) return "No git worktrees found."
-    return items
-      .map((item) => {
-        const markers = [
-          item.isMain ? "main" : undefined,
-          item.managed ? "managed" : "external",
-          item.stale ? "stale" : undefined,
-        ]
-          .filter(Boolean)
-          .join(", ")
-        const branch = item.branch ? ` @ ${item.branch}` : item.detached ? " @ detached" : ""
-        return `- ${item.name}${branch} (${markers})\n  ${item.path}`
-      })
-      .join("\n")
-  }
-
-  export async function command(input: CommandInput) {
-    const parsed = CommandInput.parse(input)
-    switch (parsed.action) {
-      case "list": {
-        const items = await list()
-        return { title: "Git worktrees", output: formatList(items), metadata: { worktrees: items } }
-      }
-      case "new": {
-        const created = await create({
-          name: parsed.target,
-          sessionID: parsed.sessionID,
-          baseRef: "current",
-          bind: true,
-        })
-        return {
-          title: `Created worktree ${created.name}`,
-          output: `Bound this session to ${created.path}`,
-          metadata: { worktree: created },
-        }
-      }
-      case "enter": {
-        const entered = await enter({ sessionID: parsed.sessionID, target: parsed.target, force: parsed.force })
-        return {
-          title: `Entered worktree ${entered.name}`,
-          output: `Bound this session to ${entered.path}`,
-          metadata: { worktree: entered },
-        }
-      }
-      case "status": {
-        const current = await status(parsed.sessionID)
-        const workspace = current.workspace
-        return {
-          title: "Worktree status",
-          output: workspace
-            ? [
-                `Workspace: ${workspace.type}`,
-                `Path: ${workspace.path}`,
-                current.dirty === undefined ? undefined : `Dirty: ${current.dirty ? "yes" : "no"}`,
-              ]
-                .filter(Boolean)
-                .join("\n")
-            : "This session is using the main workspace.",
-          metadata: current,
-        }
-      }
-      case "leave": {
-        const updated = await leave(parsed.sessionID)
-        return {
-          title: "Left worktree",
-          output: `Bound this session back to ${updated.workspace?.path}`,
-          metadata: { session: updated },
-        }
-      }
-      case "remove": {
-        const removed = await remove({ sessionID: parsed.sessionID, target: parsed.target, force: parsed.force })
-        return {
-          title: `Removed worktree ${removed.name}`,
-          output: `Removed ${removed.path}`,
-          metadata: { worktree: removed },
-        }
-      }
-    }
   }
 }

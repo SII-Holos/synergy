@@ -1400,14 +1400,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             return undefined
           })
 
-        if (!createdWorktree?.directory) {
+        if (!createdWorktree?.path) {
           showToast({
             title: "Failed to create worktree",
             description: "Request failed",
           })
           return
         }
-        sessionDirectory = createdWorktree.directory
+        sessionDirectory = createdWorktree.path
       }
 
       if (worktreeSelection !== "main" && worktreeSelection !== "create") {

@@ -35,6 +35,7 @@ export namespace Command {
       model: z.string().optional(),
       mcp: z.boolean().optional(),
       source: z.enum(["command", "mcp", "skill"]).optional(),
+      action: z.enum(["worktree"]).optional(),
       // workaround for zod not supporting async functions natively so we use getters
       // https://zod.dev/v4/changelog?id=zfunction
       template: z.promise(z.string()).or(z.string()),
@@ -134,6 +135,7 @@ export namespace Command {
         description: "manage this session's git worktree workspace: list, new, enter, status, leave, remove",
         template: "",
         hints: ["list | new <name> | enter <name> | status | leave | remove <name>"],
+        action: "worktree",
       },
     }
 

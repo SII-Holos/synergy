@@ -274,7 +274,9 @@ export namespace Session {
 
     if (!before.time.archived && result.time.archived) {
       const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(result.id).catch(() => undefined)
+      await Worktree.detachSession(result.id).catch((error) => {
+        log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
+      })
     }
     await publishInfo(SessionEvent.Updated, result)
     return withRuntimeInfo(result)
@@ -383,7 +385,9 @@ export namespace Session {
         await remove(child.id)
       }
       const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(sessionID).catch(() => undefined)
+      await Worktree.detachSession(sessionID).catch((error) => {
+        log.warn("failed to detach worktree during session removal", { sessionID, error })
+      })
       SessionManager.unregisterRuntime(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))

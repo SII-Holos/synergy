@@ -18,6 +18,7 @@ import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
 import { Command } from "../skill/command"
+import { WorktreeCommand } from "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -1083,16 +1084,33 @@ export namespace SessionInvoke {
     input: CommandInput,
     result: { title: string; output: string; metadata?: Record<string, any> },
   ) {
-    const agentName = input.agent ?? (await Agent.defaultAgent())
-    const model = input.model
+    const userID = input.messageID ?? Identifier.ascending("message")
+    const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
+    const parsedModel = input.model
       ? Provider.parseModel(input.model)
-      : ((await lastModel(input.sessionID).catch(() => undefined)) ??
-        (await Agent.getAvailableModel(await Agent.get(agentName))))
-    if (!model) throw new Error(`No model available to record command result for ${input.command}`)
+      : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
+
+    const user = await Session.updateMessage({
+      id: userID,
+      role: "user",
+      sessionID: input.sessionID,
+      time: { created: Date.now() },
+      agent: agentName,
+      model: parsedModel,
+      metadata: { command: input.command },
+    })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: user.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
+    })
+
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
-      parentID: input.messageID ?? Identifier.ascending("message"),
+      parentID: user.id,
       role: "assistant",
       mode: agentName,
       agent: agentName,
@@ -1101,10 +1119,11 @@ export namespace SessionInvoke {
         cwd: Instance.directory,
         root: Instance.directory,
       },
-      time: { created: Date.now() },
+      time: { created: Date.now(), completed: Date.now() },
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      modelID: model.modelID,
-      providerID: model.providerID,
+      finish: "stop",
+      modelID: parsedModel.modelID,
+      providerID: parsedModel.providerID,
     }
     await Session.updateMessage(msg)
     await Session.updatePart({
@@ -1119,21 +1138,20 @@ export namespace SessionInvoke {
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
-      messageID: msg.id,
+      messageID: user.id,
     })
     return { info: msg, parts: await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id }) }
   }
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    if (input.command === Command.Default.WORKTREE) {
+    const command = await Command.get(input.command)
+    if (command?.action === "worktree") {
       return SessionManager.run(input.sessionID, async () => {
-        const { Worktree } = await import("../project/worktree")
-        const result = await Worktree.command(Worktree.parseCommandArguments(input.sessionID, input.arguments))
+        const result = await WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
         return deterministicCommandResult(input, result)
       })
     }
-    const command = await Command.get(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []

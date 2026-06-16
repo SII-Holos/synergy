@@ -16,7 +16,6 @@ import { Agent } from "../agent/agent"
 import { Instance } from "../scope/instance"
 import { Log } from "../util/log"
 import { errors } from "./error"
-import { Worktree } from "../project/worktree"
 
 const log = Log.create({ service: "session" })
 
@@ -768,39 +767,6 @@ export const SessionRoute = new Hono()
         const body = c.req.valid("json")
         SessionInvoke.invoke({ ...body, sessionID })
       })
-    },
-  )
-  .post(
-    "/:sessionID/worktree",
-    describeRoute({
-      summary: "Run worktree command",
-      description: "Run a deterministic git worktree workspace command for this session.",
-      operationId: "session.worktree",
-      responses: {
-        200: {
-          description: "Worktree command result",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({
-                  title: z.string(),
-                  output: z.string(),
-                  metadata: z.record(z.string(), z.any()).optional(),
-                }),
-              ),
-            },
-          },
-        },
-        ...errors(400, 404),
-      },
-    }),
-    validator("param", z.object({ sessionID: z.string().meta({ description: "Session ID" }) })),
-    validator("json", Worktree.CommandInput.omit({ sessionID: true })),
-    async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      const body = c.req.valid("json")
-      const result = await SessionManager.run(sessionID, () => Worktree.command({ ...body, sessionID }))
-      return c.json(result)
     },
   )
   .post(
