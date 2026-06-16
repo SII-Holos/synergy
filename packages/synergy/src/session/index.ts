@@ -272,6 +272,10 @@ export namespace Session {
       await writeEndpointIndex(result)
     }
 
+    if (!before.time.archived && result.time.archived) {
+      const { Worktree } = await import("../project/worktree")
+      await Worktree.detachSession(result.id).catch(() => undefined)
+    }
     await publishInfo(SessionEvent.Updated, result)
     return withRuntimeInfo(result)
   }
@@ -378,6 +382,8 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }
+      const { Worktree } = await import("../project/worktree")
+      await Worktree.detachSession(sessionID).catch(() => undefined)
       SessionManager.unregisterRuntime(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))

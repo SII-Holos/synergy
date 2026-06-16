@@ -1079,8 +1079,60 @@ export namespace SessionInvoke {
   const placeholderRegex = /\$(\d+)/g
   const quoteTrimRegex = /^["']|["']$/g
 
+  async function deterministicCommandResult(
+    input: CommandInput,
+    result: { title: string; output: string; metadata?: Record<string, any> },
+  ) {
+    const agentName = input.agent ?? (await Agent.defaultAgent())
+    const model = input.model
+      ? Provider.parseModel(input.model)
+      : ((await lastModel(input.sessionID).catch(() => undefined)) ??
+        (await Agent.getAvailableModel(await Agent.get(agentName))))
+    if (!model) throw new Error(`No model available to record command result for ${input.command}`)
+    const msg: MessageV2.Assistant = {
+      id: Identifier.ascending("message"),
+      sessionID: input.sessionID,
+      parentID: input.messageID ?? Identifier.ascending("message"),
+      role: "assistant",
+      mode: agentName,
+      agent: agentName,
+      cost: 0,
+      path: {
+        cwd: Instance.directory,
+        root: Instance.directory,
+      },
+      time: { created: Date.now() },
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: model.modelID,
+      providerID: model.providerID,
+    }
+    await Session.updateMessage(msg)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: result.output,
+      metadata: result.metadata,
+    })
+    Bus.publish(Command.Event.Executed, {
+      name: input.command,
+      sessionID: input.sessionID,
+      arguments: input.arguments,
+      messageID: msg.id,
+    })
+    return { info: msg, parts: await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id }) }
+  }
+
   export async function command(input: CommandInput) {
     log.info("command", input)
+    if (input.command === Command.Default.WORKTREE) {
+      return SessionManager.run(input.sessionID, async () => {
+        const { Worktree } = await import("../project/worktree")
+        const result = await Worktree.command(Worktree.parseCommandArguments(input.sessionID, input.arguments))
+        return deterministicCommandResult(input, result)
+      })
+    }
     const command = await Command.get(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 

@@ -62,6 +62,7 @@ export namespace Command {
     REVIEW: "review",
     COMMIT: "commit",
     RMSLOP: "rmslop",
+    WORKTREE: "worktree",
   } as const
 
   const subscriptions = Instance.state(
@@ -127,6 +128,12 @@ export namespace Command {
           return PROMPT_RMSLOP
         },
         hints: hints(PROMPT_RMSLOP),
+      },
+      [Default.WORKTREE]: {
+        name: Default.WORKTREE,
+        description: "manage this session's git worktree workspace: list, new, enter, status, leave, remove",
+        template: "",
+        hints: ["list | new <name> | enter <name> | status | leave | remove <name>"],
       },
     }
 

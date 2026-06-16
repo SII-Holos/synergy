@@ -157,7 +157,17 @@ export namespace SessionManager {
     return Instance.provide({
       scope,
       workspace: (session as Info).workspace,
-      fn,
+      fn: async () => {
+        const workspace = (session as Info).workspace
+        if (workspace?.type !== "git_worktree") return fn()
+        const { Worktree } = await import("../project/worktree")
+        await Worktree.lock(workspace.path)
+        try {
+          return await fn()
+        } finally {
+          await Worktree.unlock(workspace.path)
+        }
+      },
     })
   }
 

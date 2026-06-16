@@ -232,6 +232,27 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Session worktrees
+
+For Git-backed scopes, a session can be bound to an isolated git worktree using the built-in `/worktree` command:
+
+```text
+/worktree list
+/worktree new add-rate-limit
+/worktree enter add-rate-limit
+/worktree status
+/worktree leave
+/worktree remove add-rate-limit --force
+```
+
+Synergy-created worktrees live under the project-local directory:
+
+```bash
+.synergy/worktrees/
+```
+
+`/worktree new` records Synergy metadata under `.synergy/worktrees/.registry/`, while `git worktree list --porcelain` remains the authority for which worktrees exist. Project-local setup for new worktrees can be declared in `.synergy/worktree-setup.jsonc`, with private machine overrides in `.synergy/worktree-setup.local.jsonc`.
+
 ### Resolution order
 
 At a high level:

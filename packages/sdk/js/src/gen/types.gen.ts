@@ -1828,14 +1828,44 @@ export type Path = {
 }
 
 export type Worktree = {
+  id: string
   name: string
-  branch: string
-  directory: string
+  branch?: string
+  path: string
+  scopeID: string
+  head?: string
+  baseRef?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  dirty?: boolean
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
 }
 
 export type WorktreeCreateInput = {
   name?: string
-  startCommand?: string
+  sessionID?: string
+  baseRef?: "current" | "fresh"
+  bind?: boolean
 }
 
 export type VcsInfo = {
@@ -1906,6 +1936,13 @@ export type SessionCortexDelegation = {
   error?: string
 }
 
+export type SessionWorkspace = {
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown | string
+}
+
 export type Session = {
   id: string
   scope: SessionScope
@@ -1944,6 +1981,7 @@ export type Session = {
     diff?: string
   }
   cortex?: SessionCortexDelegation
+  workspace?: SessionWorkspace
 }
 
 export type SessionStatus =
@@ -4642,7 +4680,7 @@ export type ConfigGetResponses = {
 export type ConfigGetResponse = ConfigGetResponses[keyof ConfigGetResponses]
 
 export type ConfigUpdateData = {
-  body?: Config
+  body?: never
   path?: never
   query?: {
     directory?: string
@@ -5092,9 +5130,9 @@ export type WorktreeListData = {
 
 export type WorktreeListResponses = {
   /**
-   * List of worktree directories
+   * List of git worktrees
    */
-  200: Array<string>
+  200: Array<Worktree>
 }
 
 export type WorktreeListResponse = WorktreeListResponses[keyof WorktreeListResponses]
@@ -5927,6 +5965,52 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionWorktreeData = {
+  body?: {
+    action: "list" | "new" | "enter" | "status" | "leave" | "remove"
+    target?: string
+    force?: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/worktree"
+}
+
+export type SessionWorktreeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionWorktreeError = SessionWorktreeErrors[keyof SessionWorktreeErrors]
+
+export type SessionWorktreeResponses = {
+  /**
+   * Worktree command result
+   */
+  200: {
+    title: string
+    output: string
+    metadata?: {
+      [key: string]: unknown
+    }
+  }
+}
+
+export type SessionWorktreeResponse = SessionWorktreeResponses[keyof SessionWorktreeResponses]
 
 export type SessionCommandData = {
   body?: {

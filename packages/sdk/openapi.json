@@ -1210,15 +1210,6 @@
             }
           }
         },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Config"
-              }
-            }
-          }
-        },
         "x-codeSamples": [
           {
             "lang": "js",
@@ -2094,16 +2085,16 @@
           }
         ],
         "summary": "List worktrees",
-        "description": "List all sandbox worktrees for the current project.",
+        "description": "List git worktrees for the current project, combining git worktree state with Synergy metadata.",
         "responses": {
           "200": {
-            "description": "List of worktree directories",
+            "description": "List of git worktrees",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/Worktree"
                   }
                 }
               }
@@ -3757,6 +3748,108 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.prompt_async({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/worktree": {
+      "post": {
+        "operationId": "session.worktree",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Run worktree command",
+        "description": "Run a deterministic git worktree workspace command for this session.",
+        "responses": {
+          "200": {
+            "description": "Worktree command result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": ["title", "output"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["list", "new", "enter", "status", "leave", "remove"]
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "force": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.worktree({\n  ...\n})"
           }
         ]
       }
@@ -14670,17 +14763,109 @@
       "Worktree": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
           "branch": {
             "type": "string"
           },
-          "directory": {
+          "path": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "baseRef": {
+            "type": "string"
+          },
+          "detached": {
+            "type": "boolean"
+          },
+          "bare": {
+            "type": "boolean"
+          },
+          "isMain": {
+            "type": "boolean"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "dirty": {
+            "type": "boolean"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "sessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "sessionID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "user"
+                  }
+                },
+                "required": ["type"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "external"
+                  }
+                },
+                "required": ["type"]
+              }
+            ]
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "detached", "gc_candidate", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "lastUsedAt": {
+            "type": "number"
+          },
+          "setupFailed": {
+            "type": "boolean"
+          },
+          "setupError": {
             "type": "string"
           }
         },
-        "required": ["name", "branch", "directory"]
+        "required": ["id", "name", "path", "scopeID"]
       },
       "WorktreeCreateInput": {
         "type": "object",
@@ -14688,8 +14873,17 @@
           "name": {
             "type": "string"
           },
-          "startCommand": {
+          "sessionID": {
             "type": "string"
+          },
+          "baseRef": {
+            "default": "current",
+            "type": "string",
+            "enum": ["current", "fresh"]
+          },
+          "bind": {
+            "default": true,
+            "type": "boolean"
           }
         }
       },
@@ -14875,6 +15069,22 @@
         },
         "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
       },
+      "SessionWorkspace": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "path", "scopeID"],
+        "additionalProperties": {}
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -14992,6 +15202,9 @@
           },
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SessionWorkspace"
           }
         },
         "required": ["id", "scope", "title", "version", "time"]

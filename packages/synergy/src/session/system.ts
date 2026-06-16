@@ -62,6 +62,20 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(new Date())}`,
     ]
 
+    const workspace = Instance.workspace
+    if (workspace) {
+      envLines.push(`  Workspace type: ${workspace.type}`)
+      envLines.push(`  Workspace path: ${workspace.path}`)
+      if (workspace.type === "git_worktree") {
+        if (workspace.name) envLines.push(`  Worktree name: ${workspace.name}`)
+        if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)
+        if (workspace.baseRef) envLines.push(`  Worktree base: ${workspace.baseRef}`)
+        envLines.push(
+          `  Worktree note: this session is isolated from the main checkout; do not remove the worktree or switch branches unless explicitly asked.`,
+        )
+      }
+    }
+
     if (scope.type === "global") {
       if (!endpointType) {
         envLines.push(`  Scope: home`)

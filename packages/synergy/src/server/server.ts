@@ -590,22 +590,23 @@ export namespace Server {
           "/experimental/worktree",
           describeRoute({
             summary: "List worktrees",
-            description: "List all sandbox worktrees for the current project.",
+            description:
+              "List git worktrees for the current project, combining git worktree state with Synergy metadata.",
             operationId: "worktree.list",
             responses: {
               200: {
-                description: "List of worktree directories",
+                description: "List of git worktrees",
                 content: {
                   "application/json": {
-                    schema: resolver(z.array(z.string())),
+                    schema: resolver(Worktree.Info.array()),
                   },
                 },
               },
             },
           }),
           async (c) => {
-            const sandboxes = await Scope.sandboxes(Instance.scope.id)
-            return c.json(sandboxes)
+            const worktrees = await Worktree.list()
+            return c.json(worktrees)
           },
         )
         .get(
