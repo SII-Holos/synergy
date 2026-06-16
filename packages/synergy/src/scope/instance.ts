@@ -5,7 +5,8 @@ import { State } from "./state"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 
-const context = Context.create<Scope>("instance")
+const scopeContext = Context.create<Scope>("instance")
+const workspaceContext = Context.create<import("../session/types").Workspace>("instance.workspace")
 const cache = new Map<string, Promise<Scope>>()
 
 function instanceKey(scope: Scope): string {
@@ -13,14 +14,19 @@ function instanceKey(scope: Scope): string {
 }
 
 export const Instance = {
-  async provide<R>(input: { scope: Scope; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+  async provide<R>(input: {
+    scope: Scope
+    init?: () => Promise<any>
+    fn: () => R
+    workspace?: import("../session/types").Workspace
+  }): Promise<R> {
     const key = instanceKey(input.scope)
     if (!cache.has(key)) {
       Log.Default.info("creating instance", { scopeID: input.scope.id, type: input.scope.type })
       cache.set(
         key,
         iife(async () => {
-          await context.provide(input.scope, async () => {
+          await scopeContext.provide(input.scope, async () => {
             await input.init?.()
           })
           return input.scope
@@ -28,21 +34,28 @@ export const Instance = {
       )
     }
     await cache.get(key)!
-    return context.provide(input.scope, async () => {
+    return scopeContext.provide(input.scope, async () => {
+      if (input.workspace) {
+        return workspaceContext.provide(input.workspace, input.fn)
+      }
       return input.fn()
     })
   },
   get scope(): Scope {
-    return context.use()
+    return scopeContext.use()
   },
   get directory() {
-    return context.use().directory
+    const ws = workspaceContext.tryUse()
+    return ws?.path ?? scopeContext.use().directory
+  },
+  get workspace(): import("../session/types").Workspace | undefined {
+    return workspaceContext.tryUse()
   },
   get worktree() {
-    return context.use().worktree
+    return scopeContext.use().worktree
   },
   contains(targetPath: string): boolean {
-    return Scope.contains(context.use(), targetPath)
+    return Scope.contains(scopeContext.use(), targetPath)
   },
   state<S>(
     init: () => S,
@@ -51,7 +64,7 @@ export const Instance = {
     return State.create(() => instanceKey(Instance.scope), init, dispose)
   },
   async dispose() {
-    const scope = context.use()
+    const scope = scopeContext.use()
     const key = instanceKey(scope)
     Log.Default.info("disposing instance", { scopeID: scope.id })
     await State.dispose(key)
@@ -71,7 +84,7 @@ export const Instance = {
     for (const [_key, value] of cache) {
       const awaited = await value.catch(() => {})
       if (awaited) {
-        await context.provide(awaited, async () => {
+        await scopeContext.provide(awaited, async () => {
           await Instance.dispose()
         })
       }

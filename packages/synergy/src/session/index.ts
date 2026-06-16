@@ -142,11 +142,17 @@ export namespace Session {
     agenda?: { itemID: string }
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
+    workspace?: import("./types").Workspace
   }) {
     const scope = input?.scope ?? Instance.scope
-    const inheritedInteraction =
-      input?.interaction ??
-      (input?.parentID ? (await SessionManager.getSession(input.parentID))?.interaction : undefined)
+    const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
+    const workspace: import("./types").Workspace = input?.workspace ??
+      parent?.workspace ?? {
+        type: "main" as const,
+        path: scope.directory,
+        scopeID: scope.id,
+      }
+    const inheritedInteraction = input?.interaction ?? parent?.interaction
 
     const endpoint = input?.endpoint
 
@@ -161,6 +167,7 @@ export namespace Session {
       interaction: inheritedInteraction,
       agenda: input?.agenda,
       cortex: input?.cortex,
+      workspace,
       time: {
         created: Date.now(),
         updated: Date.now(),
@@ -198,7 +205,8 @@ export namespace Session {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
-      const session = await create()
+      const source = await SessionManager.requireSession(input.sessionID)
+      const session = await create({ workspace: source.workspace })
       const msgs = await messages({ sessionID: input.sessionID })
       for (const msg of msgs) {
         if (input.messageID && msg.info.id >= input.messageID) break
@@ -220,12 +228,17 @@ export namespace Session {
       return session
     },
   )
-
   export const touch = fn(Identifier.schema("session"), async (sessionID) => {
     await update(sessionID, (draft) => {
       draft.time.updated = Date.now()
     })
   })
+
+  export async function updateWorkspace(sessionID: string, workspace: import("./types").Workspace): Promise<Info> {
+    return update(sessionID, (draft) => {
+      draft.workspace = workspace
+    })
+  }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
     const session = await SessionManager.requireSession(id)

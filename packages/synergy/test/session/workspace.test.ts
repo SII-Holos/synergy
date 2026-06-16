@@ -1,0 +1,338 @@
+import { describe, expect, test } from "bun:test"
+import { tmpdir } from "../fixture/fixture"
+import { Session } from "../../src/session"
+import { SessionManager } from "../../src/session/manager"
+import { Instance } from "../../src/scope/instance"
+import { Scope } from "../../src/scope"
+import { Log } from "../../src/util/log"
+import { Info as InfoSchema } from "../../src/session/types"
+
+Log.init({ print: false })
+
+/** Workspace shape the implementation will use */
+interface SessionWorkspace {
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown
+}
+
+describe("session workspace binding", () => {
+  // === Requirement 1: Session.Info can persist optional workspace metadata ===
+
+  describe("Session.Info schema (workspace field)", () => {
+    test("schema accepts optional workspace metadata", () => {
+      const workspace: SessionWorkspace = {
+        type: "main",
+        path: "/some/path",
+        scopeID: "d_abc123",
+      }
+      const data = {
+        id: "ses_0123456789abcdefghijklmnopqrstuvwxyz0123456789ab",
+        scope: { id: "d_abc123" },
+        title: "test session",
+        version: "0.0.0",
+        time: { created: 1, updated: 1 },
+        workspace,
+      }
+      const result = InfoSchema.safeParse(data)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        // Workspace must survive a parse round-trip (not be stripped)
+        expect(result.data).toHaveProperty("workspace")
+        expect((result.data as Record<string, unknown>).workspace).toEqual(workspace)
+      }
+    })
+
+    test("schema allows missing workspace for backwards compatibility", () => {
+      const data = {
+        id: "ses_0123456789abcdefghijklmnopqrstuvwxyz0123456789ab",
+        scope: { id: "d_abc123" },
+        title: "legacy session",
+        version: "0.0.0",
+        time: { created: 1, updated: 1 },
+      }
+      const result = InfoSchema.safeParse(data)
+      expect(result.success).toBe(true)
+      expect((result as { success: true; data: Record<string, unknown> }).data?.workspace).toBeUndefined()
+    })
+  })
+
+  // === Requirement 2: Session.create() with no workspace stores main workspace default ===
+
+  describe("Session.create default workspace", () => {
+    test("creates main workspace default when no workspace provided", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const session = await Session.create({})
+
+            expect(session).toHaveProperty("workspace")
+            const ws = (session as Record<string, unknown>).workspace as SessionWorkspace
+            expect(ws).toBeDefined()
+            expect(ws.type).toBe("main")
+            expect(ws.path).toBe(scope.directory)
+            expect(ws.scopeID).toBe(scope.id)
+
+            const read = await Session.get(session.id)
+            expect(read).toHaveProperty("workspace")
+            const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
+            expect(readWs).toEqual(ws)
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 3: Session.create({ workspace }) stores supplied workspace metadata ===
+
+  describe("Session.create explicit workspace", () => {
+    test("stores supplied workspace metadata", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const customWs: SessionWorkspace = {
+              type: "custom-type",
+              path: "/custom/workspace/path",
+              scopeID: scope.id,
+            }
+
+            const session = await Session.create({ workspace: customWs })
+
+            expect(session).toHaveProperty("workspace")
+            const ws = session.workspace as SessionWorkspace
+            expect(ws).toEqual(customWs)
+
+            const read = await Session.get(session.id)
+            const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
+            expect(readWs).toEqual(customWs)
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 4: Session.updateWorkspace() updates workspace without mutating scope ===
+
+  describe("Session.updateWorkspace", () => {
+    test("updates workspace without mutating scope", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const session = await Session.create({})
+            const originalScopeID = (session.scope as Scope).id
+            const originalScopeDirectory = (session.scope as Scope).directory
+
+            const newWs: SessionWorkspace = {
+              type: "updated-workspace",
+              path: "/new/workspace/path",
+              scopeID: scope.id,
+            }
+
+            const updated = await Session.updateWorkspace(session.id, newWs)
+
+            expect(updated).toHaveProperty("workspace")
+            const ws = updated.workspace as SessionWorkspace
+            expect(ws).toEqual(newWs)
+
+            const updatedScope = updated.scope as Scope
+            expect(updatedScope.id).toBe(originalScopeID)
+            expect(updatedScope.directory).toBe(originalScopeDirectory)
+
+            const read = await Session.get(session.id)
+            const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
+            expect(readWs).toEqual(newWs)
+
+            const readScope = read.scope as Scope
+            expect(readScope.id).toBe(originalScopeID)
+            expect(readScope.directory).toBe(originalScopeDirectory)
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 5: SessionManager.run() makes Instance.directory === session.workspace.path ===
+
+  describe("Instance.directory resolution (via workspace)", () => {
+    test("Instance.directory reflects session workspace path inside run context", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const ws: SessionWorkspace = {
+              type: "main",
+              path: "/workspace-driven-directory",
+              scopeID: scope.id,
+            }
+            const session = await Session.create({ workspace: ws })
+
+            await SessionManager.run(session.id, async () => {
+              expect(Instance.directory).toBe(ws.path)
+              expect(Instance.directory).not.toBe(scope.directory)
+            })
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 6: Instance.workspace and Instance.worktree separation ===
+
+  describe("Instance.workspace and Instance.worktree separation", () => {
+    test("Instance.workspace returns structured metadata", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const ws: SessionWorkspace = {
+              type: "main",
+              path: scope.directory,
+              scopeID: scope.id,
+            }
+            const session = await Session.create({ workspace: ws })
+
+            await SessionManager.run(session.id, async () => {
+              const instWs = Instance.workspace as SessionWorkspace | undefined
+              expect(instWs).toBeDefined()
+              expect(instWs!.type).toBe("main")
+              expect(instWs!.path).toBe(scope.directory)
+              expect(instWs!.scopeID).toBe(scope.id)
+            })
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+
+    test("Instance.worktree is scope.worktree, not workspace.path", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const ws: SessionWorkspace = {
+              type: "main",
+              path: "/some/workspace/path",
+              scopeID: scope.id,
+            }
+            const session = await Session.create({ workspace: ws })
+
+            await SessionManager.run(session.id, async () => {
+              expect(Instance.worktree).toBe(scope.worktree)
+              expect(Instance.worktree).not.toBe(ws.path)
+            })
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 7: Legacy sessions without workspace fall back to scope.directory ===
+
+  describe("legacy session backwards compatibility", () => {
+    test("sessions without workspace resolve Instance.directory to scope.directory", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const { Storage } = await import("../../src/storage/storage")
+            const { StoragePath } = await import("../../src/storage/path")
+            const { Identifier } = await import("../../src/id/id")
+
+            const legacySession = {
+              id: Identifier.descending("session"),
+              scope: { id: scope.id, directory: scope.directory, worktree: scope.worktree },
+              title: "legacy session",
+              version: "0.0.0",
+              time: { created: Date.now(), updated: Date.now() },
+            }
+
+            await Storage.write(
+              StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(legacySession.id)),
+              legacySession,
+            )
+            await Storage.write(
+              StoragePath.sessionIndex(Identifier.asSessionID(legacySession.id)),
+              Session.toIndex(legacySession as any),
+            )
+
+            SessionManager.registerRuntime(legacySession.id)
+
+            await SessionManager.run(legacySession.id, async () => {
+              expect(Instance.directory).toBe(scope.directory)
+            })
+
+            SessionManager.unregisterRuntime(legacySession.id)
+            await Session.remove(legacySession.id).catch(() => {})
+          })(),
+      })
+    })
+  })
+
+  // === Requirement 8: child sessions inherit parent workspace exactly ===
+
+  describe("child session workspace inheritance", () => {
+    test("child sessions inherit parent workspace exactly", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const parentWs: SessionWorkspace = {
+              type: "main",
+              path: "/parent-custom-workspace",
+              scopeID: scope.id,
+            }
+
+            const parent = await Session.create({ workspace: parentWs })
+            const child = await Session.create({ parentID: parent.id })
+
+            expect(child).toHaveProperty("workspace")
+            const parentWsFromSession = parent.workspace as SessionWorkspace
+            const childWs = child.workspace as SessionWorkspace
+            expect(childWs).toEqual(parentWsFromSession)
+
+            await Session.remove(parent.id)
+          })(),
+      })
+    })
+  })
+})
+
+/**
+ * Minimal async-dispose helper for sequential async cleanup in tests.
+ */
+function using(fn: () => Promise<void>): () => Promise<void> {
+  return fn
+}

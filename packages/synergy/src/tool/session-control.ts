@@ -79,7 +79,8 @@ export const SessionControlTool = Tool.define("session_control", {
       return handleStatus(sessionID)
     }
 
-    const withScope = <T>(fn: () => Promise<T>) => Instance.provide({ scope: session.scope as Scope, fn })
+    const withScope = <T>(fn: () => Promise<T>) =>
+      Instance.provide({ scope: session.scope as Scope, workspace: session.workspace, fn })
 
     switch (params.action) {
       case "compact": {

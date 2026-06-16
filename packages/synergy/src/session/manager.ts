@@ -153,8 +153,10 @@ export namespace SessionManager {
   export async function run<T>(input: string | SessionEndpoint.Info, fn: () => Promise<T>): Promise<T> {
     const session = await requireSession(input)
     registerRuntime(session.id)
+    const scope = session.scope as Scope
     return Instance.provide({
-      scope: session.scope as Scope,
+      scope,
+      workspace: (session as Info).workspace,
       fn,
     })
   }

@@ -7,6 +7,17 @@ import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
 
+// Workspace metadata intentionally allows extra fields so future workspace
+// implementations can carry type-specific data without breaking old sessions.
+export const Workspace = z
+  .object({
+    type: z.string(),
+    path: z.string(),
+    scopeID: z.string(),
+  })
+  .passthrough()
+  .meta({ ref: "SessionWorkspace" })
+export type Workspace = z.infer<typeof Workspace>
 const ScopeField = opaque<Scope>(
   z.object({
     id: z.string(),
@@ -101,6 +112,7 @@ export const Info = z
         })
         .optional(),
       cortex: CortexDelegationInfo.optional(),
+      workspace: Workspace.optional(),
     }),
   )
   .meta({

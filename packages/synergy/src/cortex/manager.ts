@@ -74,6 +74,7 @@ export namespace Cortex {
         status: "queued",
         startedAt: Date.now(),
       },
+      workspace: (parent as import("../session/types").Info).workspace,
     })
 
     const task: CortexTypes.Task = {
