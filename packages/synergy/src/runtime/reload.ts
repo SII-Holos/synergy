@@ -21,10 +21,10 @@ export namespace RuntimeReload {
   export const Result = RuntimeSchema.ReloadResult
   export type Result = RuntimeSchema.ReloadResult
 
-  const CONFIG_RESTART_REQUIRED = new Set(["server", "logLevel", "email"])
+  const CONFIG_RESTART_REQUIRED = new Set(["server", "logLevel"])
   const BUILTIN_SOURCE_RESTART_WARNING =
     "Runtime reload refreshes runtime state only. Source edits under packages/synergy/src still require restarting the backend process to load new built-in module code."
-  const CONFIG_LIVE_APPLIED = new Set([
+  export const CONFIG_LIVE_APPLIED = new Set([
     "model",
     "nano_model",
     "mini_model",
@@ -46,8 +46,9 @@ export namespace RuntimeReload {
     "tools",
     "identity",
     "external_agent",
+    "email",
   ])
-  const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout"])
+  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout"])
 
   export const Event = {
     Reloaded: BusEvent.define(

@@ -12,6 +12,12 @@ import { errors } from "./error"
 
 const log = Log.create({ service: "config-route" })
 
+/** Extract top-level keys from the raw request body so we only classify
+ *  fields the user actually sent — not Config.Info defaults filled by Zod. */
+function classifyChangedFields(rawBody: Record<string, unknown>): Set<string> {
+  return new Set(Object.keys(rawBody))
+}
+
 const ConfigSetWithConfig = ConfigSet.Summary.extend({
   config: Config.Info,
 }).meta({ ref: "ConfigSetWithConfig" })
@@ -88,17 +94,46 @@ export const ConfigRoute = new Hono()
     validator("json", Config.Info),
     async (c) => {
       const config = c.req.valid("json")
+      // Read raw body to determine actual user-changed fields for triage
+      let rawBody: Record<string, unknown> = {}
+      try {
+        rawBody = await c.req.json()
+      } catch {
+        // If body can't be re-read, fall through to full reload
+      }
+      const changedFields = classifyChangedFields(rawBody)
       await Config.updateGlobal(config)
-      const result = await RuntimeReload.reload({
-        targets: ["config"],
-        scope: "global",
-        reason: "config.update route",
-      })
-      log.info("config updated", {
-        changedFields: result.changedFields,
-        restartRequired: result.restartRequired,
-        warnings: result.warnings,
-      })
+
+      // Field-level triage: skip unnecessary cascading
+      const hasCascade = RuntimeReload.inferConfigCascades([...changedFields]).length > 0
+      const allClientSide =
+        changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_CLIENT_SIDE.has(f))
+      const allLiveNoCascade =
+        changedFields.size > 0 &&
+        [...changedFields].every((f) => RuntimeReload.CONFIG_LIVE_APPLIED.has(f)) &&
+        !hasCascade
+
+      if (allClientSide) {
+        log.info("config updated (client-side only, skipping reload)", {
+          changedFields: [...changedFields],
+        })
+      } else if (allLiveNoCascade) {
+        await Config.reload("global")
+        log.info("config updated (live-applied, no cascade)", {
+          changedFields: [...changedFields],
+        })
+      } else {
+        const result = await RuntimeReload.reload({
+          targets: ["config"],
+          scope: "global",
+          reason: "config.update route",
+        })
+        log.info("config updated", {
+          changedFields: result.changedFields,
+          restartRequired: result.restartRequired,
+          warnings: result.warnings,
+        })
+      }
       return c.json(await Config.get())
     },
   )

@@ -189,6 +189,27 @@ export namespace Config {
       result.permission = mergeDeep(perms, result.permission ?? {})
     }
 
+    // Apply centralized defaults for fields shown in Settings UI.
+    // These fill undefined values only — user-set values are preserved.
+    if (result.autoupdate === undefined) result.autoupdate = true
+    if (result.snapshot === undefined) result.snapshot = true
+    if (result.default_agent === undefined) result.default_agent = "synergy"
+    if (result.question === undefined) result.question = { timeout: 1800 }
+    else if (result.question.timeout === undefined) result.question.timeout = 1800
+    if (result.compaction === undefined) {
+      result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8 }
+    } else {
+      if (result.compaction.auto === undefined) result.compaction.auto = true
+      if (result.compaction.prune === undefined) result.compaction.prune = true
+      if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
+      if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
+    }
+    if (result.permission === undefined) result.permission = { "*": "ask" } as any
+    if (result.identity) {
+      if (result.identity.evolution === undefined) result.identity.evolution = true
+      if (result.identity.autonomy === undefined) result.identity.autonomy = true
+    }
+
     if (!result.username) result.username = os.userInfo().username
 
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
