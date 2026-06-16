@@ -1,7 +1,7 @@
 .sb-root {
-  --sb-hover-bg: color-mix(in srgb, var(--text-base) 7%, transparent);
-  --sb-control-hover-bg: color-mix(in srgb, var(--text-base) 10%, transparent);
-  --sb-active-bg: color-mix(in srgb, var(--text-base) 9%, transparent);
+  --sb-hover-bg: #e8e8e8;
+  --sb-control-hover-bg: #dadada;
+  --sb-active-bg: #e0e0e0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -18,6 +18,9 @@
 }
 
 [data-color-scheme="dark"] .sb-root {
+  --sb-hover-bg: #2a2b2f;
+  --sb-control-hover-bg: #333438;
+  --sb-active-bg: #323338;
   background: #202124;
 }
 

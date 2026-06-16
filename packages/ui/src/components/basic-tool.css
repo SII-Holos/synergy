@@ -6,9 +6,6 @@
   align-self: stretch;
   gap: 20px;
   justify-content: space-between;
-  background-color: var(--surface-base);
-  border: 1px solid var(--border-weaker-base);
-  border-radius: var(--radius-md);
   padding: 8px 12px;
 
   [data-slot="basic-tool-tool-trigger-content"] {

@@ -60,7 +60,7 @@ export function SessionConversation(props: {
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pt-5 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pt-6 md:pb-[calc(var(--prompt-height,10rem)+96px)]"
+      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pt-5 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pt-8 md:pb-[calc(var(--prompt-height,10rem)+96px)]"
       contentClassList={{
         "md:max-w-[54rem]": !props.showTabs(),
         "mt-0": props.showTabs(),

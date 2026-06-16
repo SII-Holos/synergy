@@ -74,7 +74,6 @@
   &[data-variant="tool"] {
     background-color: var(--surface-raised-base);
     border: none;
-    border-left: 3px solid var(--tool-accent, var(--border-weaker-base));
     border-radius: var(--radius-2xl);
     transition:
       border-color var(--motion-duration-base) var(--motion-ease-standard),

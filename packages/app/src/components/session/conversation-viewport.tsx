@@ -47,7 +47,7 @@ export function ConversationViewport(props: {
           props.onScrollContainer?.(el)
         }}
         onClick={props.autoScroll.handleInteraction}
-        class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar"
+        class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar scroll-pt-14"
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div

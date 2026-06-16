@@ -386,7 +386,7 @@ export function AnchoredSaveTool(props: ToolProps) {
       <Show
         when={existingDiff()}
         fallback={
-          <Show when={content() || filePath()}>
+          <Show when={content() || filePath()} fallback={<RawOutput output={props.output} />}>
             <div data-component="write-content">
               <Dynamic
                 component={codeComponent}
