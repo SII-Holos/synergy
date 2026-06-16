@@ -183,7 +183,7 @@ export function Sidebar(props: SidebarProps) {
         <div class="sb-actions">
           <Tooltip value="New session" placement="right">
             <button type="button" class="sb-action-btn" onClick={handleNewSession}>
-              <Icon name="notebook-pen" size="normal" />
+              <Icon name="square-pen" size="normal" />
               <span class="sb-action-label">New</span>
             </button>
           </Tooltip>
@@ -336,7 +336,7 @@ export function Sidebar(props: SidebarProps) {
                           <Icon name="ellipsis" size="small" />
                         </button>
                         <button type="button" class="sb-project-plus-btn" onClick={(e) => handleProjectPlus(e, scope)}>
-                          <Icon name="pen-line" size="small" />
+                          <Icon name="square-pen" size="small" />
                         </button>
                         <Show when={menuOpen()}>
                           <>

@@ -14,10 +14,6 @@
   pointer-events: none;
 }
 
-.stb-root svg {
-  stroke-width: 2.35;
-}
-
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);
