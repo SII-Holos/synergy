@@ -495,6 +495,15 @@ export namespace Config {
     .meta({ ref: "HolosConfig" })
   export type Holos = z.infer<typeof Holos>
 
+
+  export const SandboxConfig = z
+    .object({
+      defaultMode: z.enum(["workspace", "none"]).optional().describe("Default sandbox mode"),
+      allowOutsideWorkspace: z.boolean().optional().describe("Allow operations outside the workspace root"),
+    })
+    .strict()
+    .meta({ ref: "SandboxConfig" })
+  export type SandboxConfig = z.infer<typeof SandboxConfig>
   export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
   export type Channel = z.infer<typeof Channel>
 
@@ -1520,6 +1529,7 @@ export namespace Config {
         .record(z.string(), Channel)
         .optional()
         .describe("Channel configurations for messaging platform integrations"),
+      sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
       holos: Holos.optional().describe("Holos platform configuration"),
       email: Email.optional().describe("Outgoing email configuration"),
       formatter: z

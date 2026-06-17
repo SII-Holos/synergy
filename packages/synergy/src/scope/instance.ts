@@ -4,6 +4,7 @@ import { Scope } from "."
 import { State } from "./state"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
+import { Filesystem } from "../util/filesystem"
 
 const scopeContext = Context.create<Scope>("instance")
 const workspaceContext = Context.create<import("../session/types").Workspace>("instance.workspace")
@@ -55,6 +56,10 @@ export const Instance = {
     return scopeContext.use().worktree
   },
   contains(targetPath: string): boolean {
+    const ws = workspaceContext.tryUse()
+    if (ws) {
+      return Filesystem.contains(ws.path, targetPath)
+    }
     return Scope.contains(scopeContext.use(), targetPath)
   },
   state<S>(
