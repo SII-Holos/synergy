@@ -43,17 +43,15 @@ export default function Setup(props: SetupProps) {
       return
     }
 
-    const serverUrl = globalSDK.url
-    const fetchFn = platform.fetch ?? globalThis.fetch
-    fetchFn(`${serverUrl}/holos/verify`)
-      .then(async (res) => {
-        if (res.status === 401) {
+    globalSDK.client.holos
+      .verify()
+      .then(() => checkProfile())
+      .catch((error) => {
+        const statusCode = (error as { data?: { statusCode?: number } }).data?.statusCode
+        if (statusCode === 401) {
           auth.logout()
           return
         }
-        checkProfile()
-      })
-      .catch((error) => {
         if (isNetworkError(error)) {
           props.onConnectionError()
           return
@@ -114,8 +112,7 @@ export default function Setup(props: SetupProps) {
   }
 
   const handleSkip = async () => {
-    const fetchFn = platform.fetch ?? globalThis.fetch
-    await fetchFn(`${globalSDK.url}/holos/profile/skip-genesis`, { method: "POST" }).catch(() => {})
+    await globalSDK.client.holos.profile.skipGenesis().catch(() => {})
     setPhase("transition-out")
   }
 

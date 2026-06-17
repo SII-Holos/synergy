@@ -2,7 +2,7 @@ import { Mark } from "@ericsanchezok/synergy-ui/logo"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
 import { createSignal, onMount, Show, Switch, Match } from "solid-js"
-
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 interface LocalCredentials {
   exists: boolean
   agentId?: string
@@ -26,13 +26,13 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
   const [showSecret, setShowSecret] = createSignal(false)
   const [copied, setCopied] = createSignal("")
 
+  const client = createSynergyClient({ baseUrl: props.serverUrl, throwOnError: true })
+
   onMount(async () => {
     try {
-      const res = await fetch(`${props.serverUrl}/holos/credentials/status`)
-      if (res.ok) {
-        const data: LocalCredentials = await res.json()
-        setLocalCreds(data)
-      }
+      const res = await client.holos.credentials2.status()
+      const data: LocalCredentials = res.data!
+      setLocalCreds(data)
     } catch {
       setCredScanFailed(true)
     }
@@ -45,13 +45,12 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
     setWarning("")
 
     try {
-      const res = await fetch(`${props.serverUrl}/holos/verify`)
-      if (res.ok) {
-        const data = await res.json()
-        auth.loginWithToken(data.agentId, { id: data.agentId })
+      const res = await client.holos.verify()
+      const data = res.data
+      if (data) {
+        auth.loginWithToken((data as any).agentId, { id: (data as any).agentId })
       } else {
-        const data = await res.json().catch(() => ({}))
-        setWarning(data.message || "Credential mismatch — this identity is not recognized by Holos.")
+        setWarning("Credential mismatch — this identity is not recognized by Holos.")
         setView("select")
       }
     } catch {
@@ -84,22 +83,12 @@ export default function Welcome(props: { serverUrl: string; callbackUrl: string 
     setError("")
 
     try {
-      const res = await fetch(`${props.serverUrl}/holos/credentials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: credId(), agentSecret: credSecret() }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(data.message || "Invalid credentials")
-        setLoading(false)
-        return
-      }
-
+      await client.holos.credentials({ agentId: credId(), agentSecret: credSecret() })
       auth.loginWithToken(credId(), { id: credId() })
-    } catch {
-      setError("Failed to verify credentials")
+    } catch (err: any) {
+      const message = err?.data?.message || err?.message || "Invalid credentials"
+      setError(message)
+    } finally {
       setLoading(false)
     }
   }

@@ -7,6 +7,51 @@ import type { Info as SessionInfo } from "./types"
 
 export type NavCategory = "project" | "home" | "channel" | "background"
 export const NavCategory = z.enum(["project", "home", "channel", "background"])
+export const SessionNavEntry = z
+  .object({
+    id: z.string(),
+    scopeID: z.string(),
+    scopeType: z.enum(["global", "project"]),
+    title: z.string(),
+    category: NavCategory,
+    lastActivityAt: z.number(),
+    pinned: z.number(),
+    archived: z.boolean(),
+    parentID: z.string().optional(),
+  })
+  .meta({ ref: "SessionNavEntry" })
+
+export const NavCursor = z
+  .object({
+    lastActivityAt: z.number(),
+    id: z.string(),
+  })
+  .meta({ ref: "NavCursor" })
+
+export const SessionNavResponse = z
+  .object({
+    items: SessionNavEntry.array(),
+    nextCursor: NavCursor.nullable(),
+    total: z.number(),
+  })
+  .meta({ ref: "SessionNavResponse" })
+
+export const ScopeNavEntry = z
+  .object({
+    scopeID: z.string(),
+    scopeType: z.enum(["global", "project"]),
+    name: z.string().optional(),
+    directory: z.string(),
+    latestActivityAt: z.number(),
+    sessionCount: z.number(),
+    icon: z
+      .object({
+        url: z.string().optional(),
+        color: z.string().optional(),
+      })
+      .optional(),
+  })
+  .meta({ ref: "ScopeNavEntry" })
 
 export interface DeriveCategoryInput {
   scopeType: "global" | "project"

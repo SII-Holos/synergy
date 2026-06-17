@@ -278,6 +278,19 @@ export type Scope = {
   sandboxes: Array<string>
 }
 
+export type ScopeNavEntry = {
+  scopeID: string
+  scopeType: "global" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: {
+    url?: string
+    color?: string
+  }
+}
+
 export type NotFoundError = {
   name: "NotFoundError"
   data: {
@@ -2035,6 +2048,29 @@ export type WorktreeCreateInput = {
 
 export type VcsInfo = {
   branch: string
+}
+
+export type SessionNavEntry = {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+}
+
+export type NavCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
 }
 
 export type SessionScope = {
@@ -4620,6 +4656,24 @@ export type ScopeCurrentResponses = {
 
 export type ScopeCurrentResponse = ScopeCurrentResponses[keyof ScopeCurrentResponses]
 
+export type ScopeIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/scope/index"
+}
+
+export type ScopeIndexResponses = {
+  /**
+   * Array of scope navigation entries
+   */
+  200: Array<ScopeNavEntry>
+}
+
+export type ScopeIndexResponse = ScopeIndexResponses[keyof ScopeIndexResponses]
+
 export type ScopeRemoveData = {
   body?: never
   path: {
@@ -5416,6 +5470,30 @@ export type VcsGetResponses = {
 }
 
 export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
+
+export type SessionIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    category?: "project" | "home" | "channel" | "background"
+    parentOnly?: "true" | "false"
+    includeArchived?: "true" | "false"
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/session/index"
+}
+
+export type SessionIndexResponses = {
+  /**
+   * Paginated session navigation entries
+   */
+  200: SessionNavResponse
+}
+
+export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
 
 export type SessionListData = {
   body?: never

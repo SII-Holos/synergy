@@ -588,6 +588,43 @@
         ]
       }
     },
+    "/scope/index": {
+      "get": {
+        "operationId": "scope.index",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List scope navigation entries",
+        "description": "Get navigation entries for all known scopes, sorted by latest session activity.",
+        "responses": {
+          "200": {
+            "description": "Array of scope navigation entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScopeNavEntry"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.scope.index({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/scope/{scopeID}": {
       "patch": {
         "operationId": "scope.update",
@@ -2154,6 +2191,88 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.vcs.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/index": {
+      "get": {
+        "operationId": "session.index",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string",
+              "enum": ["project", "home", "channel", "background"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "parentOnly",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorLastActivityAt",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List session navigation entries",
+        "description": "Get paginated session navigation entries for the current scope with filtering and cursor support.",
+        "responses": {
+          "200": {
+            "description": "Paginated session navigation entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNavResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.index({\n  ...\n})"
           }
         ]
       }
@@ -12223,6 +12342,42 @@
         },
         "required": ["id", "type", "directory", "worktree", "time", "sandboxes"]
       },
+      "ScopeNavEntry": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "latestActivityAt": {
+            "type": "number"
+          },
+          "sessionCount": {
+            "type": "number"
+          },
+          "icon": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
+      },
       "NotFoundError": {
         "type": "object",
         "properties": {
@@ -15320,6 +15475,78 @@
           }
         },
         "required": ["branch"]
+      },
+      "SessionNavEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["project", "home", "channel", "background"]
+          },
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "pinned": {
+            "type": "number"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "parentID": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
+      },
+      "NavCursor": {
+        "type": "object",
+        "properties": {
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": ["lastActivityAt", "id"]
+      },
+      "SessionNavResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NavCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
       },
       "SessionScope": {
         "type": "object",
