@@ -72,8 +72,15 @@ function workspaceField(session: Session | undefined, key: string) {
 
 function shortPath(path: string | undefined, root: string | undefined) {
   if (!path) return "—"
-  if (root && path.startsWith(root)) return path === root ? "." : path.slice(root.length + 1)
+  if (root && path === root) return "main checkout"
+  if (root && path.startsWith(root)) return path.slice(root.length + 1)
   return path.replace(/^\/Users\/[^/]+\//, "~/")
+}
+function endpointLabel(session: Session | undefined) {
+  const endpoint = session?.endpoint
+  if (!endpoint) return "Web"
+  if (endpoint.kind === "holos") return "Holos"
+  return endpoint.channel.type
 }
 
 function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
@@ -102,25 +109,20 @@ function DetailRow(props: { label: string; value: string | undefined }) {
 
 function DetailGroup(props: { title: string; children: any }) {
   return (
-    <div class="space-y-1.5">
+    <div class="space-y-1.5 min-w-0">
       <div class="text-12-medium text-text-weak">{props.title}</div>
       {props.children}
     </div>
   )
 }
 
-function StatusPill(props: {
-  icon?: IconName
-  label: string
-  tone?: "base" | "success" | "danger" | "active" | "muted"
-}) {
+function StatusPill(props: { icon?: IconName; label: string; tone?: "base" | "danger" | "active" }) {
   return (
     <div
       classList={{
-        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-12-medium whitespace-nowrap transition-colors": true,
+        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-12-medium whitespace-nowrap transition-colors shrink-0": true,
         "bg-surface-raised-base text-text-base hover:bg-surface-raised-base-hover":
-          !props.tone || props.tone === "base" || props.tone === "muted" || props.tone === "active",
-        "bg-surface-success-subtle text-text-success-base hover:bg-surface-success-base": props.tone === "success",
+          !props.tone || props.tone === "base" || props.tone === "active",
         "bg-surface-critical-subtle text-text-critical-base hover:bg-surface-critical-base": props.tone === "danger",
       }}
     >
@@ -136,7 +138,7 @@ function serverStatusLabel(healthy: boolean | undefined) {
   return "unknown"
 }
 
-function SessionContextStatus() {
+export function StatusBar() {
   const params = useParams()
   const globalSync = useGlobalSync()
   const holos = useHolos()
@@ -177,77 +179,71 @@ function SessionContextStatus() {
   const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
   return (
-    <div class="inline-flex min-w-0 shrink-0 flex-col items-center">
-      <div
-        class="grid w-[min(760px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
-        classList={{ "-translate-y-1": !expanded(), "translate-y-0": expanded() }}
-        style={{ "grid-template-rows": expanded() ? "1fr" : "0fr", opacity: expanded() ? 1 : 0 }}
-      >
-        <div class="overflow-hidden min-h-0">
-          <div class="mb-1 rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha/95 shadow-lg p-3 backdrop-blur-md">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <DetailGroup title="Workspace">
-                <DetailRow label="Scope" value={scopeLabel()} />
-                <DetailRow label="Type" value={isWorktree() ? "git worktree" : "main"} />
-                <DetailRow label="Name" value={workspaceName()} />
-                <DetailRow label="Branch" value={branch()} />
-              </DetailGroup>
-              <DetailGroup title="Session">
-                <DetailRow label="Runtime" value={runtime()} />
-                <DetailRow label="Path" value={shortPath(workspacePath(), scope()?.worktree || directory())} />
-                <DetailRow label="Parent" value={session()?.parentID ? "child session" : "root session"} />
-                <DetailRow label="Endpoint" value={session()?.endpoint?.kind || "web"} />
-              </DetailGroup>
-              <DetailGroup title="Connection">
-                <DetailRow label="Holos" value={holosLabel(holos)} />
-                <DetailRow label="Server" value={`${server.name} · ${serverStatusLabel(server.healthy())}`} />
-                <DetailRow label="Config" value={activeConfig()} />
-              </DetailGroup>
+    <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
+      <Show when={params.dir}>
+        <div
+          class="grid w-[min(760px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
+          classList={{ "-translate-y-1": !expanded(), "translate-y-0": expanded() }}
+          style={{ "grid-template-rows": expanded() ? "1fr" : "0fr", opacity: expanded() ? 1 : 0 }}
+        >
+          <div class="overflow-hidden min-h-0">
+            <div class="rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha/95 shadow-lg p-3 backdrop-blur-md">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-x-5 gap-y-3">
+                <DetailGroup title="Workspace">
+                  <DetailRow label="Scope" value={scopeLabel()} />
+                  <DetailRow label="Type" value={isWorktree() ? "git worktree" : "main"} />
+                  <DetailRow label="Name" value={workspaceName()} />
+                  <DetailRow label="Branch" value={branch()} />
+                </DetailGroup>
+                <DetailGroup title="Session">
+                  <DetailRow label="Runtime" value={runtime()} />
+                  <DetailRow label="Path" value={shortPath(workspacePath(), scope()?.worktree || directory())} />
+                  <DetailRow label="Parent" value={session()?.parentID ? "child session" : "root session"} />
+                  <DetailRow label="Endpoint" value={endpointLabel(session())} />
+                </DetailGroup>
+                <DetailGroup title="Connection">
+                  <DetailRow label="Holos" value={holosLabel(holos)} />
+                  <DetailRow label="Server" value={`${server.name} · ${serverStatusLabel(server.healthy())}`} />
+                  <DetailRow label="Config" value={activeConfig()} />
+                </DetailGroup>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </Show>
 
-      <button
-        type="button"
-        class="max-w-full min-w-0 flex items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
-        onClick={() => setExpanded((value) => !value)}
+      <div
+        class="flex items-center justify-center gap-2 flex-nowrap min-w-0 max-w-full overflow-hidden"
+        style={{ "max-width": "min(100%, 720px)" }}
       >
-        <StatusPill
-          icon={isWorktree() ? "git-branch" : "home"}
-          label={isWorktree() ? `worktree · ${workspaceName()}` : "main"}
-          tone={isWorktree() ? "active" : "base"}
-        />
-        <Show when={branch()}>{(value) => <StatusPill icon="git-branch" label={value()} />}</Show>
-        <StatusPill label={runtime()} tone={runtimeTone(status(), waiting())} />
-        <Icon name={expanded() ? "chevron-down" : "chevron-up"} size="small" class="text-icon-weak mx-1" />
-      </button>
-    </div>
-  )
-}
+        <HolosStatusIndicator />
+        <Show when={params.dir}>
+          <button
+            type="button"
+            class="max-w-full min-w-0 flex items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover shrink min-w-0"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <StatusPill
+              icon={isWorktree() ? "git-branch" : "home"}
+              label={isWorktree() ? `worktree · ${workspaceName()}` : "main"}
+              tone={isWorktree() ? "active" : "base"}
+            />
+            <Show when={branch()}>{(value) => <StatusPill icon="git-branch" label={value()} />}</Show>
+            <StatusPill label={runtime()} tone={runtimeTone(status(), waiting())} />
+            <Icon name={expanded() ? "chevron-down" : "chevron-up"} size="small" class="text-icon-weak mx-1 shrink-0" />
+          </button>
+        </Show>
 
-export function StatusBar() {
-  const params = useParams()
-
-  return (
-    <div
-      class="flex items-center justify-center gap-2 py-1 flex-nowrap min-w-0 overflow-hidden"
-      style={{ "max-width": "min(100%, 720px)" }}
-    >
-      <HolosStatusIndicator />
-      <Show when={params.dir}>
-        <SessionContextStatus />
-      </Show>
-
-      <Show when={params.dir}>
-        <div class="flex items-center gap-0.5 shrink-0">
-          <SessionLspIndicator />
-          <SessionMcpIndicator />
-          <Show when={params.id}>
-            <SessionCortexIndicator sessionID={params.id!} />
-          </Show>
-        </div>
-      </Show>
+        <Show when={params.dir}>
+          <div class="flex items-center gap-0.5 shrink-0">
+            <SessionLspIndicator />
+            <SessionMcpIndicator />
+            <Show when={params.id}>
+              <SessionCortexIndicator sessionID={params.id!} />
+            </Show>
+          </div>
+        </Show>
+      </div>
     </div>
   )
 }
