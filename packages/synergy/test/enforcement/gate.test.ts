@@ -211,6 +211,28 @@ describe("EnforcementGate network classification", () => {
     expect(inspire).toContainEqual({ class: "platform_control", nonBypassable: true })
   })
 
+  test("agora collaboration tools classify as external network and platform control", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("agora_read", {}).capabilities).toContainEqual({
+      class: "network_request",
+      nonBypassable: true,
+    })
+
+    const post = gate.classify("agora_post", {}).capabilities
+    expect(post).toContainEqual({ class: "network_request", nonBypassable: true })
+    expect(post).toContainEqual({ class: "platform_control", nonBypassable: true })
+
+    const join = gate.classify("agora_join", { directory: "/tmp/agora-workspace" }).capabilities
+    expect(join).toContainEqual({ class: "network_request", nonBypassable: true })
+    expect(join).toContainEqual({ class: "platform_control", nonBypassable: true })
+    expect(join).toContainEqual({ class: "file_external", nonBypassable: true })
+  })
+
   test("review profile denies external network and communication tools", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
