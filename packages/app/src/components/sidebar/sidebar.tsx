@@ -41,6 +41,8 @@ export function Sidebar(props: SidebarProps) {
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
   const scopes = createMemo(() => layout.scopes.list())
+  const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
+
   const dir = createMemo(() => {
     if (params.dir) {
       try {
@@ -53,7 +55,6 @@ export function Sidebar(props: SidebarProps) {
   })
   const currentDirectory = createMemo(() => (dir() === "global" ? undefined : dir()))
   const isGlobal = () => !dir() || dir() === "global" || !currentDirectory()
-
   const handleNewSession = async () => {
     if (isGlobal()) {
       showToast({ title: "New Session", description: "Global sessions are coming soon." })
@@ -75,6 +76,13 @@ export function Sidebar(props: SidebarProps) {
       layout.scopes.collapse(scope.worktree)
     } else {
       layout.scopes.expand(scope.worktree)
+    }
+  }
+
+  const handleCollapseAllProjects = (e: MouseEvent) => {
+    e.stopPropagation()
+    for (const scope of scopes()) {
+      if (scope.expanded) layout.scopes.collapse(scope.worktree)
     }
   }
 
@@ -328,6 +336,19 @@ export function Sidebar(props: SidebarProps) {
               size="small"
               class="sb-section-chevron"
             />
+            <span class="sb-projects-header-spacer" />
+            <Show when={hasExpandedProject()}>
+              <Tooltip value="Collapse all projects" placement="top">
+                <button
+                  type="button"
+                  class="sb-projects-header-expand-all"
+                  aria-label="Collapse all projects"
+                  onClick={(e) => handleCollapseAllProjects(e)}
+                >
+                  <Icon name="list-collapse" size="small" />
+                </button>
+              </Tooltip>
+            </Show>
             <Tooltip value="Add project" placement="top">
               <button
                 type="button"

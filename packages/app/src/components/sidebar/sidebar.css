@@ -252,9 +252,14 @@
   font-weight: 500;
   color: var(--text-weak);
   letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.sb-projects-header-spacer {
   flex: 1;
 }
 
+.sb-projects-header-expand-all,
 .sb-projects-header-plus {
   display: flex;
   align-items: center;
@@ -269,6 +274,7 @@
     background-color 150ms;
 }
 
+.sb-projects-header-expand-all:hover,
 .sb-projects-header-plus:hover {
   color: var(--icon-base);
   background: var(--sb-control-hover-bg);
