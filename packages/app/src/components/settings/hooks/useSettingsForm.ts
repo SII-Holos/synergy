@@ -134,65 +134,47 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       : [],
   })
 
-  const ident = cfg.identity
-  const evolution = ident?.evolution
+  const engram = cfg.engram
+  const memory = engram?.memory
+  const experience = engram?.experience
   params.setIdentity({
     evolution: (() => {
-      if (evolution === undefined) return UI_DEFAULTS.identityEvolution
-      if (typeof evolution === "boolean") return evolution ? "true" : "false"
-      const passive = evolution.passive
-      const active = evolution.active
-      if (passive === false && active === false) return "false"
+      const memoryEnabled = memory?.enabled
+      const experienceEncode = experience?.encode
+      const experienceRetrieve = experience?.retrieve
+      if (memoryEnabled === false && experienceEncode === false && experienceRetrieve === false) return "false"
       return "true"
     })(),
     autonomy: (() => {
-      if (ident?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
-      return ident.autonomy ? "true" : "false"
+      if (engram?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
+      return engram.autonomy ? "true" : "false"
     })(),
     memorySimThreshold: (() => {
-      const retrieve =
-        typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
-          ? evolution.active.retrieve
-          : undefined
+      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
       return typeof retrieve === "object" && retrieve?.simThreshold !== undefined
         ? String(retrieve.simThreshold)
         : UI_DEFAULTS.memorySimThreshold
     })(),
     memoryTopK: (() => {
-      const retrieve =
-        typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
-          ? evolution.active.retrieve
-          : undefined
+      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
       return typeof retrieve === "object" && retrieve?.topK !== undefined
         ? String(retrieve.topK)
         : UI_DEFAULTS.memoryTopK
     })(),
     experienceSimThreshold: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.simThreshold !== undefined
         ? String(retrieve.simThreshold)
         : UI_DEFAULTS.experienceSimThreshold
     })(),
     experienceTopK: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined
         ? String(retrieve.topK)
         : UI_DEFAULTS.experienceTopK
     })(),
     experienceEpsilon: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.epsilon !== undefined
         ? String(retrieve.epsilon)
         : UI_DEFAULTS.experienceEpsilon
