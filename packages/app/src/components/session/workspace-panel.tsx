@@ -1,4 +1,4 @@
-import { Show, createMemo, onMount, onCleanup } from "solid-js"
+import { Show, onMount, onCleanup } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"

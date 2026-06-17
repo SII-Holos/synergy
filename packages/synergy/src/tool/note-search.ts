@@ -101,17 +101,12 @@ export const NoteSearchTool = Tool.define("note_search", {
     })
 
     // Phase 1: pre-filter using searchText from index (pre-computed, in-memory)
-    // Falls back to contentText for legacy notes predating the migration
     const candidates = filtered.filter((note) => {
       regex.lastIndex = 0
       if (regex.test(note.title)) return true
       regex.lastIndex = 0
-      // Metadata now includes searchText (derived from content at index time).
-      // contentText may still exist on legacy notes not yet migrated.
-      const text =
-        (note as { searchText?: string; contentText?: string }).searchText ??
-        (note as { contentText?: string }).contentText ??
-        ""
+      // searchText is always populated after migration; no fallback needed
+      const text = (note as { searchText?: string }).searchText ?? ""
       return regex.test(text)
     })
 

@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, onMount, type Accessor, type Component, onCleanup } from "solid-js"
+import { createSignal, createMemo, createEffect, onMount, type Component } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useLayout } from "./layout"
 import { usePanel } from "./panel"

@@ -17785,9 +17785,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "pinned": {
             "type": "boolean"
           },
@@ -17819,7 +17816,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "title", "content", "contentText", "pinned", "global", "tags", "version", "time"]
+        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
       },
       "NoteScopeGroup": {
         "type": "object",
@@ -17847,9 +17844,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "tags": {
             "type": "array",
             "items": {
@@ -17891,9 +17885,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "pinned": {
             "type": "boolean"
           },
