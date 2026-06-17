@@ -70,6 +70,7 @@ export const Info = z
       id: Identifier.schema("session"),
       scope: ScopeField,
       parentID: Identifier.schema("session").optional(),
+      category: z.enum(["project", "home", "channel", "background"]).optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z
         .object({

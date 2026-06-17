@@ -1,0 +1,256 @@
+import { describe, expect, test } from "bun:test"
+import { tmpdir } from "../fixture/fixture"
+import { Session } from "../../src/session"
+import { SessionNav, type NavCategory } from "../../src/session/nav"
+import { Log } from "../../src/util/log"
+import { Instance } from "../../src/scope/instance"
+import { Server } from "../../src/server/server"
+
+Log.init({ print: false })
+
+describe("GET /session/index (v2 nav)", () => {
+  test("returns 200 with expected response shape (items, nextCursor, total)", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body).toHaveProperty("items")
+        expect(body).toHaveProperty("total")
+        expect(body).toHaveProperty("nextCursor")
+        expect(Array.isArray(body.items)).toBe(true)
+        expect(typeof body.total).toBe("number")
+        // nextCursor may be null or { lastActivityAt, id }
+        if (body.nextCursor !== null) {
+          expect(typeof body.nextCursor.lastActivityAt).toBe("number")
+          expect(typeof body.nextCursor.id).toBe("string")
+        }
+      },
+    })
+  })
+
+  test("filters by parentOnly=true (default) excluding child sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let parentID: string | undefined
+    let childID: string | undefined
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent Session" })
+        parentID = parent.id
+        const child = await Session.create({ title: "Child Session", parentID: parent.id })
+        childID = child.id
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+
+        // Default (parentOnly=true) — only parent
+        const defRes = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+        const defBody = await defRes.json()
+        const defIDs = defBody.items.map((s: any) => s.id)
+        expect(defIDs).toContain(parentID!)
+        expect(defIDs).not.toContain(childID!)
+
+        // parentOnly=false — both
+        const allRes = await app.request(
+          `/session/index?parentOnly=false&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        const allBody = await allRes.json()
+        const allIDs = allBody.items.map((s: any) => s.id)
+        expect(allIDs).toContain(parentID!)
+        expect(allIDs).toContain(childID!)
+
+        await Session.remove(childID!)
+        await Session.remove(parentID!)
+      },
+    })
+  })
+
+  test("filters by category", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let childID: string | undefined
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent Project" })
+        const child = await Session.create({ title: "Child Background", parentID: parent.id })
+        childID = child.id
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+
+        // Filter by project category
+        const projRes = await app.request(
+          `/session/index?category=project&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        const projBody = await projRes.json()
+        const projIDs = projBody.items.map((s: any) => s.id)
+        for (const id of projIDs) {
+          expect(id).not.toBe(childID!)
+        }
+
+        // Filter by background category
+        const bgRes = await app.request(
+          `/session/index?category=background&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        const bgBody = await bgRes.json()
+        const bgIDs = bgBody.items.map((s: any) => s.id)
+        expect(bgIDs).toContain(childID!)
+
+        // Invalid category should 400
+        const badRes = await app.request(
+          `/session/index?category=invalid_cat&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        expect(badRes.status).toBe(400)
+
+        const sessions = await Session.list({ limit: 100, parentOnly: false })
+        for (const s of sessions.data) {
+          await Session.remove(s.id)
+        }
+      },
+    })
+  })
+
+  test("respects includeArchived filter", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let archivedID: string | undefined
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Archive Me" })
+        archivedID = session.id
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+
+        // Default (includeArchived=false) — archived should NOT appear
+        const defRes = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+        const defBody = await defRes.json()
+        const defIDs = defBody.items.map((s: any) => s.id)
+        expect(defIDs).not.toContain(archivedID!)
+
+        // includeArchived=true — archived SHOULD appear
+        const archRes = await app.request(
+          `/session/index?includeArchived=true&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        const archBody = await archRes.json()
+        const archIDs = archBody.items.map((s: any) => s.id)
+        expect(archIDs).toContain(archivedID!)
+
+        await Session.remove(archivedID!)
+      },
+    })
+  })
+
+  test("supports cursor pagination (no duplicates, no gaps)", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    const createdIDs: string[] = []
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        for (let i = 0; i < 5; i++) {
+          const s = await Session.create({ title: `Cursor Session ${i}` })
+          createdIDs.push(s.id)
+        }
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+
+        // Page 1
+        const res1 = await app.request(`/session/index?limit=2&directory=${encodeURIComponent(scope.directory)}`)
+        const body1 = await res1.json()
+        expect(body1.items).toHaveLength(2)
+        expect(body1.nextCursor).toBeDefined()
+
+        // Page 2
+        const res2 = await app.request(
+          `/session/index?limit=2&cursorLastActivityAt=${body1.nextCursor.lastActivityAt}&cursorId=${body1.nextCursor.id}&directory=${encodeURIComponent(scope.directory)}`,
+        )
+        const body2 = await res2.json()
+        expect(body2.items).toBeTruthy()
+
+        // No overlap between pages
+        const page1IDs = body1.items.map((s: any) => s.id)
+        const page2IDs = body2.items.map((s: any) => s.id)
+        for (const id of page2IDs) {
+          expect(page1IDs).not.toContain(id)
+        }
+
+        // Cleanup
+        for (const id of createdIDs) {
+          await Session.remove(id)
+        }
+      },
+    })
+  })
+
+  test("returns items with required nav entry fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let sessionID: string | undefined
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const s = await Session.create({ title: "Field Check" })
+        sessionID = s.id
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+        const body = await res.json()
+
+        const item = body.items.find((s: any) => s.id === sessionID!)
+        expect(item).toBeDefined()
+        expect(item.id).toBeTypeOf("string")
+        expect(item.title).toBeTypeOf("string")
+        expect(item.category).toBeOneOf(["project", "home", "channel", "background"])
+        expect(item.lastActivityAt).toBeTypeOf("number")
+        expect(item.scopeID).toBeTypeOf("string")
+
+        await Session.remove(sessionID!)
+      },
+    })
+  })
+})

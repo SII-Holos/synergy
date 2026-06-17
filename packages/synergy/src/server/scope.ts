@@ -5,6 +5,7 @@ import { Instance } from "../scope/instance"
 import { Scope } from "../scope"
 import z from "zod"
 import { errors } from "./error"
+import { SessionNav } from "../session/nav"
 
 export const ScopeRoute = new Hono()
   .get(
@@ -50,6 +51,10 @@ export const ScopeRoute = new Hono()
       return c.json(Instance.scope)
     },
   )
+  .get("/index", async (c) => {
+    const result = await SessionNav.buildScopeIndex()
+    return c.json(result)
+  })
   .patch(
     "/:scopeID",
     describeRoute({
