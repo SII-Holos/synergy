@@ -44,11 +44,21 @@ export namespace Config {
   // ── Schema re-exports from ./schema.ts ──
 
   export const McpLocal = Schema.McpLocal
+  export const McpRetry = Schema.McpRetry
+  export type McpRetry = Schema.McpRetry
+  export const McpToolFilter = Schema.McpToolFilter
+  export type McpToolFilter = Schema.McpToolFilter
+  export const McpTools = Schema.McpTools
+  export type McpTools = Schema.McpTools
+  export const McpToolCache = Schema.McpToolCache
+  export type McpToolCache = Schema.McpToolCache
   export const McpOAuth = Schema.McpOAuth
   export type McpOAuth = Schema.McpOAuth
   export const McpRemote = Schema.McpRemote
   export const Mcp = Schema.Mcp
   export type Mcp = Schema.Mcp
+  export const McpDefaults = Schema.McpDefaults
+  export type McpDefaults = Schema.McpDefaults
   export const FeishuGroupSessionScope = Schema.FeishuGroupSessionScope
   export type FeishuGroupSessionScope = Schema.FeishuGroupSessionScope
   export const ChannelFeishuAccount = Schema.ChannelFeishuAccount
@@ -110,6 +120,42 @@ export namespace Config {
   export type Provider = Schema.Provider
   export const Info = Schema.Info
   export type Info = Schema.Info
+
+  /**
+   * Normalize an MCP server config by applying defaults and legacy timeout
+   * compatibility. Callers should pass `config.experimental?.mcp_timeout` and
+   * `config.mcpDefaults` to fill missing timeouts.
+   */
+  export function normalizeMcp(server: Mcp, defaults?: McpDefaults, defaultCallTimeoutMs?: number): Mcp {
+    const result = { ...server }
+    const legacyTimeout = result.timeout
+
+    if (legacyTimeout !== undefined) {
+      if (result.connectTimeout === undefined) result.connectTimeout = legacyTimeout
+      if (result.listTimeout === undefined) result.listTimeout = legacyTimeout
+      if (result.callTimeout === undefined) result.callTimeout = legacyTimeout
+    }
+
+    if (defaultCallTimeoutMs !== undefined && result.callTimeout === undefined) {
+      result.callTimeout = defaultCallTimeoutMs
+    }
+
+    if (defaults) {
+      if (result.startup === undefined) result.startup = defaults.startup
+      if (result.required === undefined) result.required = defaults.required
+      if (result.connectTimeout === undefined) result.connectTimeout = defaults.connectTimeout
+      if (result.listTimeout === undefined) result.listTimeout = defaults.listTimeout
+      if (result.callTimeout === undefined) result.callTimeout = defaults.callTimeout
+      if (result.idleShutdownMs === undefined) result.idleShutdownMs = defaults.idleShutdownMs
+      if (result.retry === undefined) result.retry = defaults.retry
+      if (result.toolFilter === undefined) result.toolFilter = defaults.toolFilter
+      if (result.tools === undefined) result.tools = defaults.tools
+      if (result.toolCache === undefined) result.toolCache = defaults.toolCache
+    }
+
+    result.startup ??= "eager"
+    return result
+  }
 
   // Custom merge function that concatenates array fields instead of replacing them
   function mergeConfigConcatArrays(target: Info, source: Info): Info {

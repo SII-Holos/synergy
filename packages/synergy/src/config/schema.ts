@@ -3,6 +3,62 @@ import z from "zod"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 
+export const McpRetry = z
+  .object({
+    maxAttempts: z.number().int().positive().optional().describe("Maximum connection attempts before giving up"),
+    backoffMs: z.number().int().positive().optional().describe("Initial backoff delay in ms between retries"),
+    backoffMultiplier: z.number().positive().optional().describe("Multiplier applied to backoff on each retry"),
+    cooldownMs: z.number().int().nonnegative().optional().describe("Cooldown period in ms before a retry cycle resets"),
+  })
+  .strict()
+  .meta({ ref: "McpRetryConfig" })
+export type McpRetry = z.infer<typeof McpRetry>
+
+export const McpToolFilter = z
+  .object({
+    include: z.array(z.string()).optional().describe("Tool names to include (allowlist)"),
+    exclude: z.array(z.string()).optional().describe("Tool names to exclude (blocklist)"),
+  })
+  .strict()
+  .meta({ ref: "McpToolFilterConfig" })
+export type McpToolFilter = z.infer<typeof McpToolFilter>
+
+export const McpTools = z
+  .object({
+    approval: z.enum(["auto", "always", "per_session"]).optional().describe("Tool approval mode"),
+    maxOutputBytes: z.number().int().positive().optional().describe("Maximum tool output size in bytes"),
+  })
+  .strict()
+  .meta({ ref: "McpToolsConfig" })
+export type McpTools = z.infer<typeof McpTools>
+
+export const McpToolCache = z
+  .object({
+    mode: z.enum(["disabled", "session", "persistent"]).optional().describe("Tool list caching mode"),
+    ttlMs: z.number().int().positive().optional().describe("Time-to-live for cached tool list in ms"),
+  })
+  .strict()
+  .meta({ ref: "McpToolCacheConfig" })
+export type McpToolCache = z.infer<typeof McpToolCache>
+
+const McpLifecycleFields = {
+  startup: z.enum(["eager", "lazy", "manual"]).optional().describe("MCP startup mode"),
+  required: z.boolean().optional().describe("If true, this MCP server is required for the configured workflow"),
+  connectTimeout: z.number().int().positive().optional().describe("Timeout in ms for initial connection handshake"),
+  listTimeout: z.number().int().positive().optional().describe("Timeout in ms for listing tools"),
+  callTimeout: z.number().int().positive().optional().describe("Timeout in ms for tool call execution"),
+  retry: McpRetry.optional().describe("Retry policy for connecting to this server"),
+  idleShutdownMs: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("Idle time in ms after which the server is shut down"),
+  toolFilter: McpToolFilter.optional().describe("Filter which tools are exposed from this server"),
+  tools: McpTools.optional().describe("Tool execution behavior config"),
+  toolCache: McpToolCache.optional().describe("Tool list caching behavior"),
+} satisfies z.core.$ZodLooseShape
+
 export const McpLocal = z
   .object({
     type: z.literal("local").describe("Type of MCP server connection"),
@@ -17,7 +73,8 @@ export const McpLocal = z
       .int()
       .positive()
       .optional()
-      .describe("Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified."),
+      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
+    ...McpLifecycleFields,
   })
   .strict()
   .meta({
@@ -54,7 +111,8 @@ export const McpRemote = z
       .int()
       .positive()
       .optional()
-      .describe("Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified."),
+      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
+    ...McpLifecycleFields,
   })
   .strict()
   .meta({
@@ -63,6 +121,9 @@ export const McpRemote = z
 
 export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
 export type Mcp = z.infer<typeof Mcp>
+
+export const McpDefaults = z.object(McpLifecycleFields).strict().meta({ ref: "McpDefaultsConfig" })
+export type McpDefaults = z.infer<typeof McpDefaults>
 
 export const FeishuGroupSessionScope = z
   .enum(["group", "group_sender", "group_topic", "group_topic_sender"])
@@ -999,6 +1060,9 @@ export const Info = z
       )
       .optional()
       .describe("MCP (Model Context Protocol) server configurations"),
+    mcpDefaults: McpDefaults.optional().describe(
+      "Default settings applied to all MCP servers that don't override them",
+    ),
     channel: z
       .record(z.string(), Channel)
       .optional()
