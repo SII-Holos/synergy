@@ -77,7 +77,20 @@ export interface ExecuteResult {
 // Constants
 // ------------------------------------------------------------------
 
-const DEFAULT_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
+const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
+
+const DEFAULT_USER_RUNTIME_READ_ROOTS = (homedir: string): string[] => [
+  path.join(homedir, ".gitconfig"),
+  path.join(homedir, ".config", "git"),
+  path.join(homedir, ".bun"),
+  path.join(homedir, ".synergy", "cache"),
+  path.join(homedir, "Library", "Caches", "bun"),
+  path.join(homedir, "Library", "Caches", "com.oven-sh.bun"),
+]
+
+function defaultRuntimeReadRoots(homedir: string): string[] {
+  return [...DEFAULT_SYSTEM_RUNTIME_READ_ROOTS, ...DEFAULT_USER_RUNTIME_READ_ROOTS(homedir)]
+}
 
 const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
   path.join(workspace, ".git"),
@@ -162,18 +175,12 @@ export namespace SandboxBackend {
     lines.push("(allow default)")
     lines.push("(allow process-exec)")
 
-    // 3. Runtime read roots are documented explicitly even though allow-default
-    // makes them available. They are useful for audit/debugging and keep the
-    // generated profile's intent clear.
-    for (const root of runtimeReadRoots) {
-      lines.push(`(allow file-read* (subpath "${root}"))`)
-    }
-
-    // 4. Deny broad user-data roots, then re-allow the active workspace below.
-    // If the workspace is under the user's home directory, last-match-wins keeps
-    // that workspace accessible while sibling checkouts remain blocked.
     for (const root of dataDenyRoots) {
       lines.push(`(deny file-read* file-write* (subpath "${root}"))`)
+    }
+
+    for (const root of runtimeReadRoots) {
+      lines.push(`(allow file-read* (subpath "${root}") (literal "${root}"))`)
     }
 
     lines.push(`(allow file-read* (subpath "${workspace}"))`)
@@ -225,7 +232,7 @@ export namespace SandboxBackend {
       }
     }
 
-    const runtimeReadRoots = opts.runtimeReadRoots ?? DEFAULT_RUNTIME_READ_ROOTS
+    const runtimeReadRoots = opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())
     const writableRoots = opts.writableRoots ?? [workspace]
     const protectedPaths = opts.protectedPaths ?? DEFAULT_PROTECTED_PATHS(os.homedir(), workspace)
     const dataDenyRoots = opts.dataDenyRoots ?? [os.homedir()]

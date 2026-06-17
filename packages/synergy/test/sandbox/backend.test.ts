@@ -334,6 +334,46 @@ describe("SandboxBackend Seatbelt profile generation", () => {
     expect(denyHome).toBeGreaterThan(-1)
     expect(allowWorkspace).toBeGreaterThan(denyHome)
   })
+
+  test("profile re-allows user runtime roots after broad home deny", () => {
+    const { SandboxBackend } = require("../../src/sandbox/backend")
+
+    const runtimeRoot = "/Users/test/.gitconfig"
+    const profile = SandboxBackend.generateSeatbeltProfile({
+      workspace: "/Users/test/project",
+      sandboxMode: "workspace_write",
+      runtimeReadRoots: [runtimeRoot],
+      writableRoots: ["/Users/test/project"],
+      protectedPaths: [],
+      dataDenyRoots: ["/Users/test"],
+    })
+
+    const denyHome = profile.findIndex(
+      (line: string) => line.includes("deny file-read* file-write*") && line.includes("/Users/test"),
+    )
+    const allowRuntime = profile.findIndex(
+      (line: string) => line.includes("allow file-read*") && line.includes(runtimeRoot),
+    )
+
+    expect(denyHome).toBeGreaterThan(-1)
+    expect(allowRuntime).toBeGreaterThan(denyHome)
+  })
+
+  test("profile allows exact runtime files as literals", () => {
+    const { SandboxBackend } = require("../../src/sandbox/backend")
+
+    const runtimeFile = "/Users/test/.gitconfig"
+    const profile = SandboxBackend.generateSeatbeltProfile({
+      workspace: "/Users/test/project",
+      sandboxMode: "workspace_write",
+      runtimeReadRoots: [runtimeFile],
+      writableRoots: ["/Users/test/project"],
+      protectedPaths: [],
+      dataDenyRoots: ["/Users/test"],
+    })
+
+    expect(profile.join("\n")).toContain(`(allow file-read* (subpath "${runtimeFile}") (literal "${runtimeFile}"))`)
+  })
 })
 
 // ------------------------------------------------------------------

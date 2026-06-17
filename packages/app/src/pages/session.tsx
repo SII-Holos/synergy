@@ -52,6 +52,14 @@ const handoff = {
 }
 
 export default function Page() {
+  return (
+    <WorkspaceProvider>
+      <SessionPageContent />
+    </WorkspaceProvider>
+  )
+}
+
+function SessionPageContent() {
   const layout = useLayout()
   const local = useLocal()
   const file = useFile()
@@ -850,7 +858,7 @@ export default function Page() {
   })
 
   return (
-    <WorkspaceProvider>
+    <>
       <WorkspaceNotesTool />
       <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
@@ -1127,6 +1135,6 @@ export default function Page() {
         </Show>
       </div>
       <WorkspacePanelMobile />
-    </WorkspaceProvider>
+    </>
   )
 }

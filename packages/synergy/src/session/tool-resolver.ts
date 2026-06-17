@@ -132,43 +132,47 @@ export namespace ToolResolver {
   }
 
   function contextFactory(input: Input) {
-    return (args: any, options: ToolCallOptions): Tool.Context => ({
-      sessionID: input.sessionID,
-      abort: options.abortSignal!,
-      messageID: input.processor.message.id,
-      callID: options.toolCallId,
-      extra: { model: input.model },
-      agent: input.agent.name,
-      metadata: async (val: { title?: string; metadata?: any }) => {
-        const match = input.processor.partFromToolCall(options.toolCallId)
-        if (match && match.state.status === "running") {
-          await Session.updatePart({
-            ...match,
-            state: {
-              title: val.title,
-              metadata: val.metadata,
-              status: "running",
-              input: args,
-              time: {
-                start: Date.now(),
+    return (args: any, options: ToolCallOptions): Tool.Context => {
+      const ctx: Tool.Context = {
+        sessionID: input.sessionID,
+        abort: options.abortSignal!,
+        messageID: input.processor.message.id,
+        callID: options.toolCallId,
+        extra: { model: input.model },
+        agent: input.agent.name,
+        metadata: async (val: { title?: string; metadata?: any }) => {
+          const match = input.processor.partFromToolCall(options.toolCallId)
+          if (match && match.state.status === "running") {
+            await Session.updatePart({
+              ...match,
+              state: {
+                title: val.title,
+                metadata: val.metadata,
+                status: "running",
+                input: args,
+                time: {
+                  start: Date.now(),
+                },
               },
+            })
+          }
+        },
+        async ask(req) {
+          await PermissionNext.ask({
+            ...req,
+            sessionID: input.sessionID,
+            tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+            metadata: {
+              ...req.metadata,
+              ...PermissionNext.requestMetadata(input.session),
             },
+            ruleset: PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
+            signal: ctx.abort,
           })
-        }
-      },
-      async ask(req) {
-        await PermissionNext.ask({
-          ...req,
-          sessionID: input.sessionID,
-          tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-          metadata: {
-            ...req.metadata,
-            ...PermissionNext.requestMetadata(input.session),
-          },
-          ruleset: PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
-        })
-      },
-    })
+        },
+      }
+      return ctx
+    }
   }
 
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
@@ -204,6 +208,7 @@ export namespace ToolResolver {
               const combinedAbort = options.abortSignal
                 ? AbortSignal.any([options.abortSignal, toolDeadline])
                 : toolDeadline
+              ctx.abort = combinedAbort
               const toolCtx = { ...ctx, abort: combinedAbort }
 
               try {
@@ -344,6 +349,7 @@ export namespace ToolResolver {
                 const combinedAbort = opts.abortSignal
                   ? AbortSignal.any([opts.abortSignal, toolDeadline])
                   : toolDeadline
+                ctx.abort = combinedAbort
 
                 try {
                   const workspace = Instance.directory

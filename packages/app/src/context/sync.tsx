@@ -5,7 +5,7 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part, PermissionRequest } from "@ericsanchezok/synergy-sdk/client"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -105,7 +105,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             delete draft.session_diff[sessionID]
             delete draft.todo[sessionID]
             delete draft.dag[sessionID]
-            delete draft.permission[sessionID]
+            if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
             delete draft.question[sessionID]
           }),
         )
@@ -168,11 +168,22 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           )
         },
         async sync(sessionID: string) {
+          const syncPermissions = () =>
+            retry(() => sdk.client.permission.list())
+              .then((res) => {
+                const entries = (res.data ?? [])
+                  .filter((entry): entry is PermissionRequest => !!entry?.id && entry.sessionID === sessionID)
+                  .slice()
+                  .sort((a, b) => a.id.localeCompare(b.id))
+                setStore("permission", sessionID, reconcile(entries, { key: "id" }))
+              })
+              .catch(() => {})
+
           const hasSession = getSession(sessionID) !== undefined
           hydrateMessages(sessionID)
 
           const hasMessages = store.message[sessionID] !== undefined
-          if (hasSession && hasMessages) return
+          if (hasSession && hasMessages) return syncPermissions()
 
           const pending = inflight.get(sessionID)
           if (pending) return pending
@@ -198,12 +209,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
 
-          const promise = Promise.all([sessionReq, messagesReq])
+          const permissionReq = syncPermissions()
+
+          const promise = Promise.all([sessionReq, messagesReq, permissionReq])
             .then(() => {})
             .finally(() => {
               inflight.delete(sessionID)
             })
-
           inflight.set(sessionID, promise)
           return promise
         },

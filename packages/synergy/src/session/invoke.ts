@@ -72,6 +72,14 @@ export namespace SessionInvoke {
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
+
+    // Clean up all pending PermissionNext entries for this session before
+    // releasing the runtime. Otherwise the promises block forever and the
+    // entries remain in the pending map as orphans.
+    PermissionNext.clearForSession(sessionID).catch((err) => {
+      log.error("permission cleanup failed", { sessionID, error: err })
+    })
+
     SessionManager.release(sessionID).catch((err) => {
       log.error("release failed", { sessionID, error: err })
     })

@@ -224,6 +224,7 @@ export namespace SessionProcessor {
                       },
 
                       ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                      signal: input.abort,
                     })
                   }
                   break

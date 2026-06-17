@@ -466,7 +466,11 @@ export namespace Cortex {
     updateTaskStatus(taskID, "cancelled")
 
     const run = taskRuns.get(taskID)
-    if (run) await run.catch(() => undefined)
+    // Don't block cancel on processor settle — status is already "cancelled".
+    // The run promise fulfills when the session loop exits (triggered by the
+    // SessionInvoke.cancel call above plus abort signal propagation), after
+    // which the task's finally block in launch() will clean up taskRuns.
+    if (run) run.catch(() => {})
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {

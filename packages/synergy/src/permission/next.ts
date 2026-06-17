@@ -125,6 +125,7 @@ export namespace PermissionNext {
         info: Request
         resolve: () => void
         reject: (e: any) => void
+        cleanup?: () => void
       }
     > = {}
 
@@ -138,25 +139,55 @@ export namespace PermissionNext {
   export const ask = fn(
     Request.partial({ id: true }).extend({
       ruleset: Ruleset,
+      signal: z.instanceof(AbortSignal).optional(),
     }),
     async (input) => {
       const s = await state()
-      const { ruleset, ...request } = input
+      const { ruleset, signal, ...request } = input
+      if (signal?.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError")
+      }
+
       for (const pattern of request.patterns ?? []) {
         const rule = evaluate(request.permission, pattern, ruleset)
-        log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny")
-          throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
+          throw new DeniedError(ruleset.filter((r: Rule) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request))) {
           const id = input.id ?? Identifier.ascending("permission")
           const info: Request = { id, ...request }
           let resolvePending: (() => void) | undefined
           let rejectPending: ((e: any) => void) | undefined
+          let cleanup: (() => void) | undefined
           const pendingPromise = new Promise<void>((resolve, reject) => {
-            resolvePending = resolve
-            rejectPending = reject
+            resolvePending = () => {
+              cleanup?.()
+              resolve()
+            }
+            rejectPending = (error) => {
+              cleanup?.()
+              reject(error)
+            }
+            if (signal) {
+              const onAbort = () => {
+                const pending = s.pending[id]
+                if (!pending) return
+                delete s.pending[id]
+                Bus.publish(Event.Replied, {
+                  sessionID: pending.info.sessionID,
+                  requestID: pending.info.id,
+                  reply: "reject",
+                })
+                pending.reject(new DOMException("The operation was aborted", "AbortError"))
+              }
+              if (signal.aborted) {
+                onAbort()
+                return
+              }
+              signal.addEventListener("abort", onAbort, { once: true })
+              cleanup = () => signal.removeEventListener("abort", onAbort)
+            }
           })
-          s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending! }
+          s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
 
           if (s.allowAll.size > 0 && (await hasAllowAll(s, request.sessionID)) && !isNonBypassable(request)) {
             log.info("allow-all bypass", { sessionID: request.sessionID, permission: request.permission, pattern })
@@ -272,6 +303,26 @@ export namespace PermissionNext {
   export async function registerParent(childSessionID: string, parentSessionID: string) {
     const s = await state()
     s.parents.set(childSessionID, parentSessionID)
+  }
+
+  /**
+   * Reject all pending permission entries for the given session.
+   * Called by SessionInvoke.cancel() to prevent orphaned permissions
+   * that would otherwise leave the tool suspended forever.
+   */
+  export async function clearForSession(sessionID: string) {
+    const s = await state()
+    for (const [id, pending] of Object.entries(s.pending)) {
+      if (pending.info.sessionID === sessionID) {
+        delete s.pending[id]
+        Bus.publish(Event.Replied, {
+          sessionID: pending.info.sessionID,
+          requestID: pending.info.id,
+          reply: "reject",
+        })
+        pending.reject(new DOMException("Session was cancelled", "AbortError"))
+      }
+    }
   }
 
   export async function setAllowAll(sessionID: string, enabled: boolean) {
