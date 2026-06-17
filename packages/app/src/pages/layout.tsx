@@ -441,6 +441,7 @@ export default function Layout(props: ParentProps) {
 }
 
 function GlobalPanelSwitch() {
+  const params = useParams()
   const panel = usePanel()
   return (
     <Switch>
@@ -450,7 +451,7 @@ function GlobalPanelSwitch() {
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
       </Match>
-      <Match when={panel.active() === "note"}>
+      <Match when={panel.active() === "note" && !params.id}>
         <NotePanel />
       </Match>
       <Match when={panel.active() === "holos"}>

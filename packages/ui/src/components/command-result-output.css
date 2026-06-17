@@ -1,21 +1,21 @@
-[data-component="mailbox-message"] {
+[data-component="command-result-output"] {
   min-width: 0;
   width: 100%;
 
-  [data-slot="mailbox-message-container"] {
+  [data-slot="command-result-container"] {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
 
-  [data-slot="mailbox-message-header"] {
+  [data-slot="command-result-header"] {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
   }
 
-  [data-slot="mailbox-message-source"] {
+  [data-slot="command-result-source"] {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -23,30 +23,17 @@
     font-size: 0.8125rem;
   }
 
-  [data-slot="mailbox-message-source-label"] {
+  [data-slot="command-result-label"] {
     color: var(--color-text-weak);
   }
 
-  [data-slot="mailbox-message-source-link"] {
-    all: unset;
-    cursor: pointer;
-    color: var(--color-text-interactive-base);
-    text-decoration: underline;
-    text-decoration-color: transparent;
-    transition: text-decoration-color 0.15s;
-
-    &:hover {
-      text-decoration-color: currentColor;
-    }
-  }
-
-  [data-slot="mailbox-message-time"] {
+  [data-slot="command-result-time"] {
     color: var(--color-text-weak);
     font-size: 0.75rem;
     white-space: nowrap;
   }
 
-  [data-slot="mailbox-message-body"] {
+  [data-slot="command-result-body"] {
     font-size: 0.875rem;
     line-height: 1.5;
     color: var(--color-text-base);
@@ -54,7 +41,7 @@
     user-select: text;
   }
 
-  [data-slot="mailbox-message-markdown"] {
+  [data-slot="command-result-markdown"] {
     & > *:first-child {
       margin-top: 0;
     }

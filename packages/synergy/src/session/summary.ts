@@ -90,6 +90,7 @@ export namespace SessionSummary {
     const messages = [turn.user, ...turn.assistants]
     const msgWithParts = turn.user
     const userMsg = msgWithParts.info as MessageV2.User
+    if (!MessageV2.isPromptVisible(msgWithParts)) return
     const diffs = await computeDiff({ messages })
     userMsg.summary = {
       ...userMsg.summary,

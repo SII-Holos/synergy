@@ -17,17 +17,14 @@ describe("Note conflict payloads", () => {
       fn: async () => {
         const created = await NoteStore.create({
           title: "Test note",
-          contentText: "first",
         })
 
         await NoteStore.update(scope.id, created.id, {
-          contentText: "second",
           expectedVersion: created.version,
         })
 
         await expect(
           NoteStore.update(scope.id, created.id, {
-            contentText: "third",
             expectedVersion: created.version,
           }),
         ).rejects.toMatchObject({

@@ -6,6 +6,7 @@ import { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { iife } from "../util/iife"
 import { LoopJob } from "./loop-job"
+import { Turn } from "./turn"
 
 const log = Log.create({ service: "session.title" })
 
@@ -51,20 +52,15 @@ export async function ensureTitle(input: {
   if (input.session.endpoint) return
   if (!isDefaultTitle(input.session.title)) return
 
-  // Find first non-synthetic user message
-  const firstRealUserIdx = input.history.findIndex(
-    (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
-  )
+  const promptVisibleUsers = input.history.filter((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))
+  if (promptVisibleUsers.length !== 1) return
+
+  const firstRealUser = promptVisibleUsers[0]
+  const firstRealUserIdx = input.history.findIndex((m) => m.info.id === firstRealUser.info.id)
   if (firstRealUserIdx === -1) return
 
-  const isFirst =
-    input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
-      .length === 1
-  if (!isFirst) return
-
-  // Gather all messages up to and including the first real user message for context
-  const contextMessages = input.history.slice(0, firstRealUserIdx + 1)
-  const firstRealUser = contextMessages[firstRealUserIdx]
+  // Gather all prompt-visible context up to and including the first real user message.
+  const contextMessages = input.history.slice(0, firstRealUserIdx + 1).filter(MessageV2.isPromptVisible)
 
   const agent = await Agent.get("title")
   if (!agent) return

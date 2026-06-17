@@ -66,7 +66,10 @@ export namespace Bus {
       }
     }
     GlobalBus.emit("event", {
-      directory: Instance.scope.type === "global" ? "global" : Instance.directory,
+      // Route UI/session events to the scope directory, not the execution cwd.
+      // A session may execute from a worktree workspace while still belonging to
+      // the original scope store that the frontend subscribed to.
+      directory: Instance.scope.type === "global" ? "global" : Instance.scope.directory,
       payload,
     })
     await Promise.all(pending)

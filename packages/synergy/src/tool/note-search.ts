@@ -72,10 +72,10 @@ export const NoteSearchTool = Tool.define("note_search", {
     let regex: RegExp
     try {
       regex = new RegExp(search.pattern, "gi")
-    } catch (err: any) {
+    } catch (err) {
       return {
         title: search.pattern,
-        output: `Invalid regex pattern: ${err?.message ?? String(err)}`,
+        output: `Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`,
         metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
       }
     }
@@ -100,15 +100,17 @@ export const NoteSearchTool = Tool.define("note_search", {
       return true
     })
 
-    // Phase 1: pre-filter using contentText (cheap, no AST conversion)
+    // Phase 1: pre-filter using searchText from index (pre-computed, in-memory)
     const candidates = filtered.filter((note) => {
       regex.lastIndex = 0
       if (regex.test(note.title)) return true
       regex.lastIndex = 0
-      return regex.test(note.contentText)
+      // searchText is always populated after migration; no fallback needed
+      const text = (note as { searchText?: string }).searchText ?? ""
+      return regex.test(text)
     })
 
-    // Phase 2: load full content only for matched notes, generate context lines
+    // Phase 2: load full content for matched notes, generate context lines
     const sections: string[] = []
     let totalMatches = 0
     let matchedNotes = 0
@@ -166,7 +168,8 @@ export const NoteSearchTool = Tool.define("note_search", {
       sections.push(sectionLines.join("\n"))
     }
 
-    const result = await Plugin.trigger(
+    // Fire plugin hook after section assembly (plugins may mutate matched notes)
+    await Plugin.trigger(
       "note.search.after",
       {
         scopeID: currentScopeID,
@@ -177,61 +180,7 @@ export const NoteSearchTool = Tool.define("note_search", {
       },
     )
 
-    const resultSections: string[] = []
-    totalMatches = 0
-    matchedNotes = 0
-
-    for (const note of result.notes) {
-      if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break
-
-      const markdown = NoteMarkdown.toMarkdown(note.content)
-      const lines = markdown.split("\n")
-
-      regex.lastIndex = 0
-      const titleMatch = regex.test(note.title)
-
-      const matchingLineIndices: number[] = []
-      for (let i = 0; i < lines.length; i++) {
-        regex.lastIndex = 0
-        if (regex.test(lines[i])) {
-          matchingLineIndices.push(i)
-        }
-      }
-
-      if (!titleMatch && matchingLineIndices.length === 0) continue
-
-      matchedNotes++
-      const contentMatchCount = Math.min(matchingLineIndices.length, MAX_MATCHES - totalMatches)
-      totalMatches += contentMatchCount
-
-      const header: string[] = [`[${note.id}] "${note.title}"`]
-      if (note.pinned) header.push("[pinned]")
-      if (note.global) header.push("[global]")
-
-      const sectionLines: string[] = [header.join(" ")]
-
-      if (matchingLineIndices.length === 0) {
-        sectionLines.push("  (title match)")
-      } else {
-        const cappedIndices = matchingLineIndices.slice(0, contentMatchCount)
-        const ranges: MatchRange[] = cappedIndices.map((idx) => ({
-          start: Math.max(0, idx - CONTEXT_LINES),
-          end: Math.min(lines.length - 1, idx + CONTEXT_LINES),
-        }))
-        const merged = mergeRanges(ranges, lines.length)
-
-        for (const range of merged) {
-          for (let i = range.start; i <= range.end; i++) {
-            const lineNum = (i + 1).toString()
-            sectionLines.push(`  ${lineNum}: ${lines[i]}`)
-          }
-        }
-      }
-
-      resultSections.push(sectionLines.join("\n"))
-    }
-
-    if (resultSections.length === 0) {
+    if (sections.length === 0) {
       return {
         title: search.pattern,
         output: "No notes match the pattern.",
@@ -239,8 +188,8 @@ export const NoteSearchTool = Tool.define("note_search", {
       }
     }
 
-    const header = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${matchedNotes} note${matchedNotes === 1 ? "" : "s"}:`
-    const output = header + "\n\n" + resultSections.join("\n\n")
+    const summary = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${matchedNotes} note${matchedNotes === 1 ? "" : "s"}:`
+    const output = summary + "\n\n" + sections.join("\n\n")
 
     return {
       title: search.pattern,

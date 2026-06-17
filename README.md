@@ -232,6 +232,17 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Session commands
+
+Synergy uses one command registry with two command kinds:
+
+- **Prompt commands** expand a template and enter the normal conversation flow. Built-ins such as `/review` and project commands from `.synergy/command/*.md` are prompt commands.
+- **Action commands** perform deterministic session/runtime actions. They can be shown in the session timeline, but they are marked as not prompt-visible and are excluded from future model history. `/worktree` is an action command.
+
+Frontend-only shortcuts such as model selection or panel toggles can also use slash syntax, but they are UI actions rather than backend commands. The slash syntax is only an entry point; the command kind decides whether the action talks to the model.
+
+Modules that implement deterministic behavior should register an action handler with the command framework. For example, the worktree implementation lives under `packages/synergy/src/project/`, while the shared command registry lives under `packages/synergy/src/command/`.
+
 ### Session worktrees
 
 When you want to work on multiple features in the same Git repository at the same time, bind a Synergy session to a Git worktree. The session keeps the same Scope identity, but tools run from the session workspace instead of the main checkout.

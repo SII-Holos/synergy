@@ -6,7 +6,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
@@ -128,6 +128,54 @@ export function Sidebar(props: SidebarProps) {
     setProjectsFlyoutOpen(false)
     navigate(`/${base64Encode(worktree === "global" ? "global" : worktree)}/session/${entry.id}`)
   }
+
+  type SessionVisualState = {
+    icon: IconName
+    label: string
+    tone: "default" | "active" | "waiting" | "worktree" | "muted"
+    pulse?: boolean
+  }
+
+  const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState => {
+    const store = globalSync.child(scope.worktree)[0]
+    const status = store.session_status[entry.id]
+    const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
+    const running = status?.type === "busy" || status?.type === "retry"
+    const childTasksRunning = store.cortex.some(
+      (task) => task.parentSessionID === entry.id && task.status === "running",
+    )
+    const fullSession = store.session.find((session) => session.id === entry.id)
+
+    if (running || childTasksRunning)
+      return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
+    if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
+    if (fullSession?.workspace?.type === "git_worktree")
+      return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
+    if (entry.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
+    if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
+    if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+    return { icon: "file-text", label: "Session", tone: "default" }
+  }
+
+  const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
+    const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
+    return (
+      <span
+        classList={{
+          "sb-session-icon-wrap": true,
+          "sb-session-icon-active-tone": visual().tone === "active",
+          "sb-session-icon-waiting-tone": visual().tone === "waiting",
+          "sb-session-icon-worktree-tone": visual().tone === "worktree",
+          "sb-session-icon-muted-tone": visual().tone === "muted",
+          "sb-session-icon-pulse": !!visual().pulse,
+        }}
+        title={visual().label}
+      >
+        <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
+      </span>
+    )
+  }
+
   return (
     <div
       classList={{
@@ -379,7 +427,7 @@ export function Sidebar(props: SidebarProps) {
                                 handleSessionClick(scope, session)
                               }}
                             >
-                              <Icon name="file-text" size="small" class="sb-session-icon" />
+                              <SessionIcon scope={scope} entry={session} />
                               <span class="sb-session-title">{session.title || "Untitled"}</span>
                             </button>
                           )}
@@ -447,7 +495,7 @@ export function Sidebar(props: SidebarProps) {
                         }}
                         onClick={() => handleFlyoutSessionClick(session, scope.worktree)}
                       >
-                        <Icon name="file-text" size="small" class="sb-flyout-session-icon" />
+                        <SessionIcon scope={scope} entry={session} flyout />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
                       </button>
                     )}

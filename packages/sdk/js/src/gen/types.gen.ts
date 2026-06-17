@@ -2548,12 +2548,15 @@ export type CortexTask = {
 export type Command = {
   name: string
   description?: string
+  kind?: "prompt" | "action"
+  surfaces?: Array<"web" | "cli" | "channel">
+  promptVisible?: boolean
   agent?: string
   model?: string
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
-  action?: "worktree"
-  template: string
+  action?: string
+  template?: string
   hints: Array<string>
 }
 
@@ -2921,7 +2924,6 @@ export type NoteInfo = {
   id: string
   title: string
   content: unknown
-  contentText: string
   pinned: boolean
   global: boolean
   originScope?: string
@@ -2942,7 +2944,6 @@ export type NoteScopeGroup = {
 export type NoteCreateInput = {
   title: string
   content?: unknown
-  contentText?: string
   tags?: Array<string>
 }
 
@@ -2958,7 +2959,6 @@ export type NoteConflictError = {
 export type NotePatchInput = {
   title?: string
   content?: unknown
-  contentText?: string
   pinned?: boolean
   global?: boolean
   tags?: Array<string>

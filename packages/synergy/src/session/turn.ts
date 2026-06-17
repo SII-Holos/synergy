@@ -63,7 +63,8 @@ export namespace Turn {
   export function countRecentTurns(messages: MessageV2.WithParts[], count: number): number {
     let turns = 0
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].info.role === "user") turns++
+      const msg = messages[i]
+      if (msg.info.role === "user" && !isSyntheticUser(msg)) turns++
       if (turns >= count) return i
     }
     return 0
@@ -71,6 +72,7 @@ export namespace Turn {
 
   export function isSyntheticUser(msg: MessageV2.WithParts): boolean {
     if (msg.info.role !== "user") return false
+    if (!MessageV2.isPromptVisible(msg)) return true
     if (msg.parts.length === 0) return true
     return msg.parts.every((p) => {
       if (p.type === "text" && p.synthetic) return true

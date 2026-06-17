@@ -1,20 +1,22 @@
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
+import { Log } from "@/util/log"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
 import { Config } from "../config/config"
-import { Instance } from "../scope/instance"
-import { Identifier } from "../id/id"
-import PROMPT_INITIALIZE from "./command-template/initialize.txt"
-import PROMPT_REVIEW from "./command-template/review.txt"
-import PROMPT_COMMIT from "./command-template/commit.txt"
-import PROMPT_RMSLOP from "./command-template/rmslop.txt"
-import { MCP } from "../mcp"
-import { Skill } from "./skill"
 import { ConfigMarkdown } from "../config/markdown"
-import { Log } from "@/util/log"
+import { Identifier } from "../id/id"
+import { MCP } from "../mcp"
+import { Instance } from "../scope/instance"
+import { Skill } from "../skill/skill"
+import PROMPT_COMMIT from "./template/commit.txt"
+import PROMPT_INITIALIZE from "./template/initialize.txt"
+import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_RMSLOP from "./template/rmslop.txt"
 
 export namespace Command {
   const log = Log.create({ service: "command" })
+
   export const Event = {
     Executed: BusEvent.define(
       "command.executed",
@@ -27,26 +29,80 @@ export namespace Command {
     ),
   }
 
+  export const Kind = z.enum(["prompt", "action"])
+  export type Kind = z.infer<typeof Kind>
+
+  export const Surface = z.enum(["web", "cli", "channel"])
+  export type Surface = z.infer<typeof Surface>
+
+  export const Result = z
+    .object({
+      title: z.string(),
+      output: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({ ref: "CommandResult" })
+  export type Result = z.infer<typeof Result>
+
   export const Info = z
     .object({
       name: z.string(),
       description: z.string().optional(),
+      kind: Kind.default("prompt"),
+      surfaces: z.array(Surface).default(["web", "cli"]),
+      promptVisible: z.boolean().default(true),
       agent: z.string().optional(),
       model: z.string().optional(),
       mcp: z.boolean().optional(),
       source: z.enum(["command", "mcp", "skill"]).optional(),
-      action: z.enum(["worktree"]).optional(),
-      // workaround for zod not supporting async functions natively so we use getters
-      // https://zod.dev/v4/changelog?id=zfunction
-      template: z.promise(z.string()).or(z.string()),
+      action: z.string().optional(),
+      // Runtime command templates can be lazy because MCP prompts and file-backed
+      // skills are resolved only when executed. The API shape is normalized by
+      // callers before it reaches clients.
+      template: z.promise(z.string()).or(z.string()).optional(),
       hints: z.array(z.string()),
     })
-    .meta({
-      ref: "Command",
-    })
+    .meta({ ref: "Command" })
 
-  // for some reason zod is inferring `string` for z.promise(z.string()).or(z.string()) so we have to manually override it
-  export type Info = Omit<z.infer<typeof Info>, "template"> & { template: Promise<string> | string }
+  export type Info = Omit<z.infer<typeof Info>, "template"> & { template?: Promise<string> | string }
+
+  export type ActionInput = {
+    messageID?: string
+    sessionID: string
+    agent?: string
+    model?: string
+    arguments: string
+    command: string
+    variant?: string
+    parts?: unknown[]
+  }
+
+  export type ActionHandler = (input: ActionInput, command: Info) => Promise<Result>
+
+  export const NotFoundError = NamedError.create("CommandNotFoundError", z.object({ name: z.string() }))
+  export const UnknownActionError = NamedError.create("CommandUnknownActionError", z.object({ action: z.string() }))
+
+  const actionHandlers = new Map<string, ActionHandler>()
+
+  export function registerAction(action: string, handler: ActionHandler) {
+    actionHandlers.set(action, handler)
+    return () => {
+      if (actionHandlers.get(action) === handler) actionHandlers.delete(action)
+    }
+  }
+
+  export async function runAction(input: { action: string; input: ActionInput; command?: Info }) {
+    const handler = actionHandlers.get(input.action)
+    if (!handler) throw new UnknownActionError({ action: input.action })
+    const command =
+      input.command ??
+      actionCommand({
+        name: input.input.command,
+        action: input.action,
+        hints: [],
+      })
+    return handler(input.input, command)
+  }
 
   export function hints(template: string): string[] {
     const result: string[] = []
@@ -56,6 +112,14 @@ export namespace Command {
     }
     if (template.includes("$ARGUMENTS")) result.push("$ARGUMENTS")
     return result
+  }
+
+  function promptCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
+    return { ...input, kind: "prompt", surfaces: ["web", "cli"], promptVisible: true }
+  }
+
+  function actionCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
+    return { ...input, kind: "action", surfaces: ["web", "cli"], promptVisible: false }
   }
 
   export const Default = {
@@ -84,9 +148,7 @@ export namespace Command {
       return unsubscribers
     },
     async (unsubscribers) => {
-      for (const unsubscribe of unsubscribers) {
-        unsubscribe()
-      }
+      for (const unsubscribe of unsubscribers) unsubscribe()
     },
   )
 
@@ -98,49 +160,48 @@ export namespace Command {
     const cfg = await Config.get()
 
     const result: Record<string, Info> = {
-      [Default.INIT]: {
+      [Default.INIT]: promptCommand({
         name: Default.INIT,
         description: "create/update AGENTS.md",
         get template() {
           return PROMPT_INITIALIZE.replace("${path}", Instance.directory)
         },
         hints: hints(PROMPT_INITIALIZE),
-      },
-      [Default.REVIEW]: {
+      }),
+      [Default.REVIEW]: promptCommand({
         name: Default.REVIEW,
         description: "review changes [commit|branch|pr], defaults to uncommitted",
         get template() {
           return PROMPT_REVIEW.replace("${path}", Instance.directory)
         },
         hints: hints(PROMPT_REVIEW),
-      },
-      [Default.COMMIT]: {
+      }),
+      [Default.COMMIT]: promptCommand({
         name: Default.COMMIT,
         description: "stage, commit, and push changes with a well-crafted message",
         get template() {
           return PROMPT_COMMIT
         },
         hints: hints(PROMPT_COMMIT),
-      },
-      [Default.RMSLOP]: {
+      }),
+      [Default.RMSLOP]: promptCommand({
         name: Default.RMSLOP,
         description: "remove AI-generated code slop from recent changes",
         get template() {
           return PROMPT_RMSLOP
         },
         hints: hints(PROMPT_RMSLOP),
-      },
-      [Default.WORKTREE]: {
+      }),
+      [Default.WORKTREE]: actionCommand({
         name: Default.WORKTREE,
         description: "manage this session's git worktree workspace: list, new, enter, status, leave, remove",
-        template: "",
         hints: ["list | new <name> | enter <name> | status | leave | remove <name>"],
         action: "worktree",
-      },
+      }),
     }
 
     for (const [name, command] of Object.entries(cfg.command ?? {})) {
-      result[name] = {
+      result[name] = promptCommand({
         name,
         agent: command.agent,
         model: command.model,
@@ -149,23 +210,22 @@ export namespace Command {
           return command.template
         },
         hints: hints(command.template),
-      }
+      })
     }
+
     for (const [name, prompt] of Object.entries(await MCP.prompts())) {
-      result[name] = {
+      result[name] = promptCommand({
         name,
         mcp: true,
         source: "mcp",
         description: prompt.description,
         get template() {
-          // since a getter can't be async we need to manually return a promise here
           return new Promise<string>(async (resolve, reject) => {
             const template = await MCP.getPrompt(
               prompt.client,
               prompt.name,
               prompt.arguments
-                ? // substitute each argument with $1, $2, etc.
-                  Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
+                ? Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
                 : {},
             ).catch(reject)
             resolve(
@@ -176,23 +236,22 @@ export namespace Command {
           })
         },
         hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
-      }
+      })
     }
 
     for (const skill of await Skill.all()) {
       if (result[skill.name]) continue
-      result[skill.name] = {
+      result[skill.name] = promptCommand({
         name: skill.name,
         description: skill.description,
         source: "skill",
         get template() {
           if (skill.content) return skill.content
           if (!skill.entryFile) return ""
-          // Lazy-load SKILL.md content for file-based skills
           return ConfigMarkdown.parse(skill.entryFile).then((md) => md?.content ?? "")
         },
         hints: [],
-      }
+      })
     }
 
     return result
@@ -208,6 +267,12 @@ export namespace Command {
   export async function get(name: string) {
     registerMcpSubscriptions()
     return state().then((x) => x[name])
+  }
+
+  export async function require(name: string) {
+    const command = await get(name)
+    if (!command) throw new NotFoundError({ name })
+    return command
   }
 
   export async function list() {

@@ -236,6 +236,7 @@ interface PromptInputProps {
   ref?: (el: HTMLDivElement) => void
   newSessionWorktree?: string
   onNewSessionWorktreeReset?: () => void
+  hideAgentSelector?: boolean
 }
 
 const PLACEHOLDERS = [
@@ -286,6 +287,7 @@ interface SlashCommand {
   description?: string
   keybind?: string
   type: "builtin" | "custom"
+  kind?: "prompt" | "action"
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -759,6 +761,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: cmd.name,
       description: cmd.description,
       type: "custom" as const,
+      kind: cmd.kind,
     }))
 
     return [...custom, ...builtin]
@@ -1426,6 +1429,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       props.onNewSessionWorktreeReset?.()
     }
+    let createdSessionForSubmit = false
 
     let session = info()
     if (!session && isNewSession) {
@@ -1434,7 +1438,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       } else {
         session = await client.session.create().then((x) => x.data ?? undefined)
       }
-      if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      if (session) {
+        createdSessionForSubmit = true
+        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      }
     }
     if (!session && params.id) {
       await sync.session.sync(params.id)
@@ -1466,6 +1473,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
     }
 
+    const rollbackCreatedSession = async () => {
+      if (!createdSessionForSubmit || !session) return
+      await client.session.delete({ sessionID: session.id }).catch(() => undefined)
+      navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
+    }
+
     if (mode === "shell") {
       clearInput()
       client.session
@@ -1480,6 +1493,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             title: "Failed to send shell command",
             description: errorMessage(err),
           })
+          rollbackCreatedSession()
           restoreInput()
         })
       return
@@ -1547,6 +1561,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               title: "Failed to send command",
               description: errorMessage(err),
             })
+            rollbackCreatedSession()
             restoreInput()
           })
         return
@@ -1794,6 +1809,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           description: errorMessage(err),
         })
         removeOptimisticMessage()
+        rollbackCreatedSession()
         restoreInput()
       })
   }
@@ -1884,7 +1900,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <div class="flex items-center gap-2 shrink-0">
                         <Show when={cmd.type === "custom"}>
                           <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                            custom
+                            {cmd.kind === "action" ? "action" : "prompt"}
                           </span>
                         </Show>
                         <Show when={command.keybind(cmd.id)}>
@@ -2155,63 +2171,65 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Show>
                 </Match>
               </Switch>
-              {/* Agent selector */}
-              <ToolbarSelectorPopover
-                trigger={
-                  <button
-                    type="button"
-                    class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                  >
-                    <span class="text-12-medium text-text-base whitespace-nowrap">
-                      {getAgentVisual(local.agent.current()).label}
-                    </span>
-                    <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
-                  </button>
-                }
-                title="Select agent"
-                contentClass="w-52 max-h-80"
-                placement="top-start"
-              >
-                {(close) => (
-                  <List
-                    class="p-1"
-                    items={local.agent.list().filter((a) => !a.hidden)}
-                    key={(x) => x.name}
-                    filterKeys={["name"]}
-                    onSelect={(x) => {
-                      if (!x) return
-                      if (sessionHasMessages() && x.external) return
-                      local.agent.set(x.name)
-                      close()
-                    }}
-                  >
-                    {(agent) => {
-                      const visual = getAgentVisual(agent)
-                      return (
-                        <Tooltip
-                          placement="right"
-                          value={
-                            sessionHasMessages() && agent.external
-                              ? "Create a new session to use this external agent"
-                              : undefined
-                          }
-                        >
-                          <div
-                            classList={{
-                              "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                              "opacity-45": sessionHasMessages() && !!agent.external,
-                            }}
+              <Show when={!props.hideAgentSelector}>
+                {/* Agent selector */}
+                <ToolbarSelectorPopover
+                  trigger={
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                    >
+                      <span class="text-12-medium text-text-base whitespace-nowrap">
+                        {getAgentVisual(local.agent.current()).label}
+                      </span>
+                      <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
+                    </button>
+                  }
+                  title="Select agent"
+                  contentClass="w-52 max-h-80"
+                  placement="top-start"
+                >
+                  {(close) => (
+                    <List
+                      class="p-1"
+                      items={local.agent.list().filter((a) => !a.hidden)}
+                      key={(x) => x.name}
+                      filterKeys={["name"]}
+                      onSelect={(x) => {
+                        if (!x) return
+                        if (sessionHasMessages() && x.external) return
+                        local.agent.set(x.name)
+                        close()
+                      }}
+                    >
+                      {(agent) => {
+                        const visual = getAgentVisual(agent)
+                        return (
+                          <Tooltip
+                            placement="right"
+                            value={
+                              sessionHasMessages() && agent.external
+                                ? "Create a new session to use this external agent"
+                                : undefined
+                            }
                           >
-                            <div class="min-w-0">
-                              <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                            <div
+                              classList={{
+                                "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                "opacity-45": sessionHasMessages() && !!agent.external,
+                              }}
+                            >
+                              <div class="min-w-0">
+                                <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                              </div>
                             </div>
-                          </div>
-                        </Tooltip>
-                      )
-                    }}
-                  </List>
-                )}
-              </ToolbarSelectorPopover>
+                          </Tooltip>
+                        )
+                      }}
+                    </List>
+                  )}
+                </ToolbarSelectorPopover>
+              </Show>
             </div>
             <div class="flex items-center gap-2">
               <input
