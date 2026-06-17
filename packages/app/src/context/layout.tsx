@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store"
-import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useGlobalSync } from "./global-sync"
@@ -44,6 +44,37 @@ export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean 
 export type ReviewDiffStyle = "unified" | "split"
 
 export const SESSION_PAGE_SIZE = 20
+
+// --- Nav v2 types (matches backend SessionNavEntry / ScopeNavEntry) ---
+
+export interface NavEntry {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+}
+
+export interface NavCursor {
+  lastActivityAt: number
+  id: string
+}
+
+export interface ScopeNavEntry {
+  scopeID: string
+  scopeType: "global" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: { url?: string; color?: string }
+}
+
+const NAV_FIRST_PAGE_LIMIT = 50
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
@@ -195,6 +226,119 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     })
 
+    // --- Nav v2 store ---
+
+    const [scopeIndex, setScopeIndex] = createSignal<ScopeNavEntry[]>([])
+    const [navEntries, setNavEntries] = createStore<
+      Record<string, { items: NavEntry[]; nextCursor: NavCursor | null; total: number }>
+    >({})
+
+    const navPending = new Set<string>()
+
+    async function loadScopeIndex() {
+      await globalSdk.client.scope.list()
+      try {
+        const navRes = await fetch(`${globalSdk.url}/scope/index`)
+        if (navRes.ok) {
+          const data = await navRes.json()
+          setScopeIndex((data ?? []) as ScopeNavEntry[])
+        }
+      } catch {
+        // fall through; scope ordering remains localStorage-based
+      }
+    }
+
+    async function loadScopeNav(directory: string, cursor?: NavCursor) {
+      if (navPending.has(directory)) return
+      navPending.add(directory)
+      try {
+        const params = new URLSearchParams({ directory, parentOnly: "true", limit: String(NAV_FIRST_PAGE_LIMIT) })
+        if (cursor) {
+          params.set("cursorLastActivityAt", String(cursor.lastActivityAt))
+          params.set("cursorId", cursor.id)
+        }
+        const res = await fetch(`${globalSdk.url}/session/index?${params}`)
+        if (!res.ok) return
+        const data: { items: NavEntry[]; nextCursor: NavCursor | null; total: number } = await res.json()
+        if (cursor) {
+          const existing = navEntries[directory]
+          const merged = [
+            ...(existing?.items ?? []),
+            ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
+          ]
+          setNavEntries(directory, { items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setNavEntries(directory, { items: data.items, nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(directory)
+      }
+    }
+
+    function categoryFromSession(session: Session): NavEntry["category"] {
+      const value = session as Session & { category?: NavEntry["category"]; cortex?: unknown }
+      if (value.category) return value.category
+      if (session.endpoint?.kind === "channel" || session.endpoint?.kind === "holos") return "channel"
+      if (session.parentID || value.cortex || session.agenda) return "background"
+      return session.scope.id === "global" ? "home" : "project"
+    }
+
+    function navEntryFromSession(session: Session): NavEntry {
+      return {
+        id: session.id,
+        scopeID: session.scope.id,
+        scopeType: session.scope.id === "global" ? "global" : "project",
+        title: session.title,
+        category: categoryFromSession(session),
+        lastActivityAt: session.time.updated ?? session.time.created,
+        pinned: session.pinned ?? 0,
+        archived: !!session.time.archived,
+        parentID: session.parentID,
+      }
+    }
+
+    function syncScopeNavFromSessions(scope: LocalScope, sessions: Session[]) {
+      const existing = navEntries[scope.worktree]
+      if (!existing && sessions.length === 0) return
+      const byID = new Map((existing?.items ?? []).map((entry) => [entry.id, entry]))
+      for (const session of sessions) {
+        if (session.time.archived) {
+          byID.delete(session.id)
+          continue
+        }
+        byID.set(session.id, navEntryFromSession(session))
+      }
+      const items = [...byID.values()].toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+      const current = existing?.items ?? []
+      const unchanged =
+        current.length === items.length &&
+        current.every((entry, index) => {
+          const next = items[index]
+          return (
+            next &&
+            entry.id === next.id &&
+            entry.title === next.title &&
+            entry.lastActivityAt === next.lastActivityAt &&
+            entry.pinned === next.pinned &&
+            entry.archived === next.archived &&
+            entry.parentID === next.parentID
+          )
+        })
+      if (unchanged) return
+      setNavEntries(scope.worktree, {
+        items,
+        nextCursor: existing?.nextCursor ?? null,
+        total: Math.max(existing?.total ?? 0, items.length),
+      })
+    }
+
+    // --- Scope enrichment / color ---
+
     const usedColors = new Set<AvatarColorKey>()
 
     function pickAvailableColor(): AvatarColorKey {
@@ -265,27 +409,60 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     })
 
     const enriched = createMemo(() => server.scopes.list().flatMap(enrich))
-    const list = createMemo(() => enriched().flatMap(colorize))
 
-    onMount(() => {
-      Promise.all(
-        server.scopes.list().map((project) => {
-          return globalSync.scope.loadSessions(project.worktree)
-        }),
-      )
+    const list = createMemo(() => {
+      const raw = enriched().flatMap(colorize)
+      const index = scopeIndex()
+      if (index.length === 0) return raw
+      const order = new Map(index.map((e, i) => [e.scopeID, i]))
+      return raw.toSorted((a, b) => {
+        const aIdx = order.get(a.id ?? "")
+        const bIdx = order.get(b.id ?? "")
+        if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx
+        if (aIdx !== undefined) return -1
+        if (bIdx !== undefined) return 1
+        return 0
+      })
     })
 
-    // Session management: sorting, prefetching, archiving, pinning
+    onMount(() => {
+      loadScopeIndex().then(() => {
+        const projects = list()
+        const loaded = new Set<string>()
+        for (const project of projects) {
+          if (project.expanded) {
+            loadScopeNav(project.worktree)
+            loaded.add(project.worktree)
+          }
+        }
+        const scopeMetadata = new Map(globalSync.data.scope.map((scope) => [scope.id, scope]))
+        let count = 0
+        for (const entry of scopeIndex()) {
+          if (count >= 3) break
+          if (entry.scopeType !== "project") continue
+          const metadata = scopeMetadata.get(entry.scopeID)
+          const dir = metadata?.worktree ?? entry.directory
+          const project = projects.find((candidate) => candidate.worktree === dir || candidate.id === entry.scopeID)
+          const worktree = project?.worktree ?? dir
+          if (worktree && !loaded.has(worktree)) {
+            loadScopeNav(worktree)
+            loaded.add(worktree)
+            count++
+          }
+        }
+      })
+    })
+
     function sortSessions(a: Session, b: Session) {
       const aPinned = a.pinned && a.pinned > 0
       const bPinned = b.pinned && b.pinned > 0
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
       if (aPinned && bPinned) return b.pinned! - a.pinned!
-      return 0
+      return (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created)
     }
 
-    function projectSessions(scope: LocalScope | undefined) {
+    function projectSessions(scope: LocalScope | undefined): Session[] {
       if (!scope) return []
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
       const stores = dirs.map((dir) => globalSync.child(dir)[0])
@@ -298,8 +475,31 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return [...byID.values()].toSorted(sortSessions)
     }
 
+    function projectNavEntries(scope: LocalScope | undefined): NavEntry[] {
+      if (!scope) return []
+      const entry = navEntries[scope.worktree]
+      if (!entry) return []
+      return entry.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+    }
+
+    createEffect(() => {
+      for (const scope of list()) {
+        const sessions = projectSessions(scope)
+        if (sessions.length > 0 || navEntries[scope.worktree]) {
+          syncScopeNavFromSessions(scope, sessions)
+        }
+      }
+    })
+
     function projectSessionTotal(scope: LocalScope | undefined) {
       if (!scope) return 0
+      const existing = navEntries[scope.worktree]
+      if (existing) return existing.total
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
       return dirs.reduce((sum, dir) => {
         const [store] = globalSync.child(dir)
@@ -336,14 +536,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (status?.type === "busy" || status?.type === "retry") info.running++
         }
       }
-      // Sort children by updated desc within each parent
       for (const info of Object.values(result)) {
         info.sessions.sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
       }
       return result
     }
 
-    // Prefetch queue system
     type PrefetchQueue = {
       inflight: Set<string>
       pending: string[]
@@ -461,6 +659,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session.splice(match.index, 1)
         }),
       )
+      const dir = session.scope.directory!
+      const existing = navEntries[dir]
+      if (existing) {
+        setNavEntries(dir, {
+          ...existing,
+          items: existing.items.filter((e) => e.id !== session.id),
+          total: Math.max(0, existing.total - 1),
+        })
+      }
       return nextSession
     }
 
@@ -473,6 +680,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session[match.index].pinned = value
         }),
       )
+      const dir = session.scope.directory!
+      const existing = navEntries[dir]
+      if (existing) {
+        setNavEntries(
+          dir,
+          "items",
+          (items) => items.map((e) => (e.id === session.id ? { ...e, pinned: value } : e)) as NavEntry[],
+        )
+      }
       await globalSdk.client.session.update({
         directory: session.scope.directory,
         sessionID: session.id,
@@ -488,6 +704,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nav: {
         sortSessions,
         projectSessions,
+        projectNavEntries,
         projectSessionTotal,
         childStoreForScope,
         childInfoForScope,
@@ -495,20 +712,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         resetPrefetch,
         archiveSession,
         pinSession,
+        loadScopeNav: (directory: string) => loadScopeNav(directory),
+        navEntries: () => navEntries,
       },
       scopes: {
         list,
         open(directory: string) {
           const root = roots().get(directory) ?? directory
           if (server.scopes.list().find((x) => x.worktree === root)) return
-          globalSync.scope.loadSessions(root)
           server.scopes.open(root)
+          loadScopeNav(root)
         },
         close(directory: string) {
           server.scopes.close(directory)
         },
         expand(directory: string) {
           server.scopes.expand(directory)
+          if (!navEntries[directory]) {
+            loadScopeNav(directory)
+          }
         },
         collapse(directory: string) {
           server.scopes.collapse(directory)
@@ -550,7 +772,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       review: {
-        // TODO: redesign sidebar — disabled for now
         opened: createMemo(() => false),
         diffStyle: createMemo(() => (store.review?.diffStyle ?? "split") as ReviewDiffStyle),
         setDiffStyle(diffStyle: ReviewDiffStyle) {
