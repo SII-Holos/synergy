@@ -27,6 +27,99 @@ import open from "open"
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
+  // Safe base environment variables to pass to local MCP subprocesses
+  // instead of the full process.env (which would leak secrets).
+  const SAFE_BASE_ENV_KEYS = new Set(["PATH", "HOME", "USER", "TMPDIR", "SHELL", "LANG", "XDG_CACHE_HOME"])
+
+  function buildLocalEnv(command: string, explicitEnv?: Record<string, string>): Record<string, string> {
+    const env: Record<string, string> = {}
+    // Include only safe base vars that exist in the current environment
+    for (const key of SAFE_BASE_ENV_KEYS) {
+      if (key in process.env && process.env[key] !== undefined) {
+        env[key] = process.env[key]!
+      }
+    }
+    // Let the MCP SDK resolve `synergy` from PATH
+    if (command === "synergy") {
+      env.BUN_BE_BUN = "1"
+    }
+    // Explicit environment from config takes precedence
+    if (explicitEnv) {
+      Object.assign(env, explicitEnv)
+    }
+    return env
+  }
+
+  // Secret-like patterns in command args and URLs that should be redacted from logs.
+  const SECRET_ARG_PATTERNS = [
+    /token/i,
+    /api[_-]?key/i,
+    /apikey/i,
+    /key/i,
+    /secret/i,
+    /password/i,
+    /bearer/i,
+    /authorization/i,
+  ]
+
+  function isSensitiveArg(arg: string): boolean {
+    return SECRET_ARG_PATTERNS.some((p) => p.test(arg))
+  }
+
+  function redactCommand(command: string[]): string[] {
+    // Simple pairwise scan: if arg looks like a flag/key that precedes a secret, redact the next arg.
+    return command.map((arg, i) => {
+      if (i === 0) return arg
+      // Redact the value if the previous arg looks like a secret flag
+      const prev = command[i - 1]
+      if (prev && prev.startsWith("-") && isSensitiveArg(prev.replace(/^--?/, ""))) {
+        return "[redacted]"
+      }
+      return arg
+    })
+  }
+
+  function redactUrl(url: string): string {
+    try {
+      const parsed = new URL(url)
+      if (!parsed.search) return url
+      const params = new URLSearchParams(parsed.search)
+      let changed = false
+      for (const [key] of params) {
+        if (isSensitiveArg(key)) {
+          params.set(key, "[redacted]")
+          changed = true
+        }
+      }
+      if (!changed) return url
+      parsed.search = params.toString()
+      return parsed.toString()
+    } catch {
+      return url
+    }
+  }
+
+  // Retry and circuit breaker configuration types for the future MCP supervisor.
+  // These define the shape the supervisor will consume; config schema wiring is a
+  // separate task and is not implemented here.
+  export const RetryConfig = z
+    .object({
+      maxRetries: z.number().int().min(0).max(10).default(3),
+      baseDelayMs: z.number().int().min(100).max(60_000).default(1000),
+      maxDelayMs: z.number().int().min(1000).max(300_000).default(30_000),
+      backoffMultiplier: z.number().min(1).max(10).default(2),
+    })
+    .meta({ ref: "McpRetryConfig" })
+  export type RetryConfig = z.infer<typeof RetryConfig>
+
+  export const CircuitBreakerConfig = z
+    .object({
+      failureThreshold: z.number().int().min(1).max(20).default(5),
+      recoveryTimeoutMs: z.number().int().min(1000).max(300_000).default(30_000),
+      halfOpenMaxRequests: z.number().int().min(1).max(10).default(1),
+    })
+    .meta({ ref: "McpCircuitBreakerConfig" })
+  export type CircuitBreakerConfig = z.infer<typeof CircuitBreakerConfig>
   const DEFAULT_TIMEOUT = 30_000
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
     const cfg = await Config.get()
@@ -497,7 +590,7 @@ export namespace MCP {
           log.debug("transport connection failed", {
             key,
             transport: name,
-            url: mcp.url,
+            url: redactUrl(mcp.url),
             error: lastError.message,
           })
           status = {
@@ -516,13 +609,8 @@ export namespace MCP {
         command: cmd,
         args,
         cwd,
-        env: {
-          ...process.env,
-          ...(cmd === "synergy" ? { BUN_BE_BUN: "1" } : {}),
-          ...mcp.environment,
-        },
+        env: buildLocalEnv(cmd, mcp.environment),
       })
-
       const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
       try {
         const client = new Client({
@@ -538,7 +626,7 @@ export namespace MCP {
       } catch (error) {
         log.error("local mcp startup failed", {
           key,
-          command: mcp.command,
+          command: redactCommand(mcp.command),
           cwd,
           error,
         })

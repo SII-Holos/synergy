@@ -353,6 +353,53 @@ export namespace Config {
     return plugins
   }
 
+  // Shared MCP lifecycle fields shared by local and remote
+  export const McpRetry = z
+    .object({
+      maxAttempts: z.number().int().positive().optional().describe("Maximum connection attempts before giving up"),
+      backoffMs: z.number().int().positive().optional().describe("Initial backoff delay in ms between retries"),
+      backoffMultiplier: z.number().positive().optional().describe("Multiplier applied to backoff on each retry"),
+      cooldownMs: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe("Cooldown period in ms before a retry cycle resets"),
+    })
+    .strict()
+    .meta({ ref: "McpRetryConfig" })
+  export type McpRetry = z.infer<typeof McpRetry>
+
+  export const McpToolFilter = z
+    .object({
+      include: z.array(z.string()).optional().describe("Tool names to include (allowlist)"),
+      exclude: z.array(z.string()).optional().describe("Tool names to exclude (blocklist)"),
+    })
+    .strict()
+    .meta({ ref: "McpToolFilterConfig" })
+  export type McpToolFilter = z.infer<typeof McpToolFilter>
+
+  export const McpTools = z
+    .object({
+      approval: z
+        .enum(["auto", "always", "per_session"])
+        .optional()
+        .describe("Tool approval mode: auto, always, or per_session"),
+      maxOutputBytes: z.number().int().positive().optional().describe("Maximum tool output size in bytes"),
+    })
+    .strict()
+    .meta({ ref: "McpToolsConfig" })
+  export type McpTools = z.infer<typeof McpTools>
+
+  export const McpToolCache = z
+    .object({
+      mode: z.enum(["disabled", "session", "persistent"]).optional().describe("Tool list caching mode"),
+      ttlMs: z.number().int().positive().optional().describe("Time-to-live for cached tool list in ms"),
+    })
+    .strict()
+    .meta({ ref: "McpToolCacheConfig" })
+  export type McpToolCache = z.infer<typeof McpToolCache>
+
   export const McpLocal = z
     .object({
       type: z.literal("local").describe("Type of MCP server connection"),
@@ -370,6 +417,24 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      startup: z
+        .enum(["eager", "lazy", "manual"])
+        .optional()
+        .describe("Startup mode: eager (start immediately), lazy (start on first use), or manual"),
+      required: z.boolean().optional().describe("If true, the supervisor will keep trying to connect this server"),
+      connectTimeout: z.number().int().positive().optional().describe("Timeout in ms for initial connection handshake"),
+      listTimeout: z.number().int().positive().optional().describe("Timeout in ms for listing tools"),
+      callTimeout: z.number().int().positive().optional().describe("Timeout in ms for tool call execution"),
+      retry: McpRetry.optional().describe("Retry policy for connecting to this server"),
+      idleShutdownMs: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Idle time in ms after which the server is shut down"),
+      toolFilter: McpToolFilter.optional().describe("Filter which tools are exposed from this server"),
+      tools: McpTools.optional().describe("Tool execution behavior config"),
+      toolCache: McpToolCache.optional().describe("Tool list caching behavior"),
     })
     .strict()
     .meta({
@@ -411,6 +476,24 @@ export namespace Config {
         .describe(
           "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
         ),
+      startup: z
+        .enum(["eager", "lazy", "manual"])
+        .optional()
+        .describe("Startup mode: eager (start immediately), lazy (start on first use), or manual"),
+      required: z.boolean().optional().describe("If true, the supervisor will keep trying to connect this server"),
+      connectTimeout: z.number().int().positive().optional().describe("Timeout in ms for initial connection handshake"),
+      listTimeout: z.number().int().positive().optional().describe("Timeout in ms for listing tools"),
+      callTimeout: z.number().int().positive().optional().describe("Timeout in ms for tool call execution"),
+      retry: McpRetry.optional().describe("Retry policy for connecting to this server"),
+      idleShutdownMs: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Idle time in ms after which the server is shut down"),
+      toolFilter: McpToolFilter.optional().describe("Filter which tools are exposed from this server"),
+      tools: McpTools.optional().describe("Tool execution behavior config"),
+      toolCache: McpToolCache.optional().describe("Tool list caching behavior"),
     })
     .strict()
     .meta({
@@ -419,6 +502,23 @@ export namespace Config {
 
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
+
+  export const McpDefaults = z
+    .object({
+      startup: z.enum(["eager", "lazy", "manual"]).optional().describe("Default startup mode for MCP servers"),
+      required: z.boolean().optional().describe("Default required flag for MCP servers"),
+      connectTimeout: z.number().int().positive().optional().describe("Default connect timeout in ms"),
+      listTimeout: z.number().int().positive().optional().describe("Default list timeout in ms"),
+      callTimeout: z.number().int().positive().optional().describe("Default call timeout in ms"),
+      retry: McpRetry.optional().describe("Default retry policy for MCP servers"),
+      idleShutdownMs: z.number().int().positive().optional().describe("Default idle shutdown in ms"),
+      toolFilter: McpToolFilter.optional().describe("Default tool filter for MCP servers"),
+      tools: McpTools.optional().describe("Default tool execution behavior"),
+      toolCache: McpToolCache.optional().describe("Default tool list caching behavior"),
+    })
+    .strict()
+    .meta({ ref: "McpDefaultsConfig" })
+  export type McpDefaults = z.infer<typeof McpDefaults>
 
   export const FeishuGroupSessionScope = z
     .enum(["group", "group_sender", "group_topic", "group_topic_sender"])
@@ -1516,6 +1616,9 @@ export namespace Config {
         )
         .optional()
         .describe("MCP (Model Context Protocol) server configurations"),
+      mcpDefaults: McpDefaults.optional().describe(
+        "Default settings applied to all MCP servers that don't override them",
+      ),
       channel: z
         .record(z.string(), Channel)
         .optional()
@@ -1656,6 +1759,53 @@ export namespace Config {
     })
 
   export type Info = z.output<typeof Info>
+
+  /**
+   * Normalize an MCP server config by applying defaults and legacy timeout
+   * compatibility. Callers should pass `config.experimental?.mcp_timeout` and
+   * `config.mcpDefaults` to fill missing timeouts.
+   *
+   * - Old `timeout` field maps to `connectTimeout`, `listTimeout`, and
+   *   `callTimeout` when those are missing.
+   * - `experimental.mcp_timeout` maps to `callTimeout` when missing via
+   *   the `defaultCallTimeoutMs` parameter.
+   * - `mcpDefaults` fills in any remaining missing lifecycle fields.
+   */
+  export function normalizeMcp(server: Mcp, defaults?: McpDefaults, defaultCallTimeoutMs?: number): Mcp {
+    const result = { ...server }
+    const legacyTimeout = (result as { timeout?: number }).timeout
+
+    // Map legacy timeout to granular timeouts when missing
+    if (legacyTimeout !== undefined) {
+      if (result.connectTimeout === undefined) result.connectTimeout = legacyTimeout
+      if (result.listTimeout === undefined) result.listTimeout = legacyTimeout
+      if (result.callTimeout === undefined) result.callTimeout = legacyTimeout
+    }
+
+    // experimental.mcp_timeout -> callTimeout
+    if (defaultCallTimeoutMs !== undefined && result.callTimeout === undefined) {
+      result.callTimeout = defaultCallTimeoutMs
+    }
+
+    // Apply mcpDefaults for missing fields
+    if (defaults) {
+      if (result.startup === undefined) result.startup = defaults.startup
+      if (result.required === undefined) result.required = defaults.required
+      if (result.connectTimeout === undefined) result.connectTimeout = defaults.connectTimeout
+      if (result.listTimeout === undefined) result.listTimeout = defaults.listTimeout
+      if (result.callTimeout === undefined) result.callTimeout = defaults.callTimeout
+      if (result.idleShutdownMs === undefined) result.idleShutdownMs = defaults.idleShutdownMs
+      if (result.retry === undefined) result.retry = defaults.retry
+      if (result.toolFilter === undefined) result.toolFilter = defaults.toolFilter
+      if (result.tools === undefined) result.tools = defaults.tools
+      if (result.toolCache === undefined) result.toolCache = defaults.toolCache
+    }
+
+    // Default startup to eager
+    if (result.startup === undefined) result.startup = "eager"
+
+    return result as Mcp
+  }
 
   export const global = lazy(async () => {
     const activeSet = await ConfigSet.activeName()

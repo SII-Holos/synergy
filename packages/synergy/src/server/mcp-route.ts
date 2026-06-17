@@ -1,10 +1,33 @@
-import { Hono } from "hono"
+import { type Context, Hono, type Next } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import z from "zod"
 import { MCP } from "../mcp"
 import { Config } from "../config/config"
 import { errors } from "./error"
+
+function isLoopbackOrigin(input: string): boolean {
+  try {
+    const url = new URL(input)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "::1" ||
+      url.hostname === "0.0.0.0"
+    )
+  } catch {
+    return false
+  }
+}
+
+async function requireLocalhost(c: Context, next: Next) {
+  const origin = c.req.header("origin") || c.req.header("referer") || ""
+  if (origin && !isLoopbackOrigin(origin)) {
+    return c.json({ error: "MCP management routes are restricted to localhost" }, 403)
+  }
+  return next()
+}
 
 export const McpRoute = new Hono()
   .get(
@@ -53,6 +76,7 @@ export const McpRoute = new Hono()
         config: Config.Mcp,
       }),
     ),
+    requireLocalhost,
     async (c) => {
       const { name, config } = c.req.valid("json")
       const result = await MCP.add(name, config)
@@ -81,6 +105,7 @@ export const McpRoute = new Hono()
         ...errors(400, 404),
       },
     }),
+    requireLocalhost,
     async (c) => {
       const name = c.req.param("name")
       const supportsOAuth = await MCP.supportsOAuth(name)
@@ -116,6 +141,7 @@ export const McpRoute = new Hono()
         code: z.string().describe("Authorization code from OAuth callback"),
       }),
     ),
+    requireLocalhost,
     async (c) => {
       const name = c.req.param("name")
       const { code } = c.req.valid("json")
@@ -141,6 +167,7 @@ export const McpRoute = new Hono()
         ...errors(400, 404),
       },
     }),
+    requireLocalhost,
     async (c) => {
       const name = c.req.param("name")
       const supportsOAuth = await MCP.supportsOAuth(name)
@@ -169,6 +196,7 @@ export const McpRoute = new Hono()
         ...errors(404),
       },
     }),
+    requireLocalhost,
     async (c) => {
       const name = c.req.param("name")
       await MCP.removeAuth(name)
@@ -192,6 +220,7 @@ export const McpRoute = new Hono()
       },
     }),
     validator("param", z.object({ name: z.string() })),
+    requireLocalhost,
     async (c) => {
       const { name } = c.req.valid("param")
       await MCP.connect(name)
@@ -215,6 +244,7 @@ export const McpRoute = new Hono()
       },
     }),
     validator("param", z.object({ name: z.string() })),
+    requireLocalhost,
     async (c) => {
       const { name } = c.req.valid("param")
       await MCP.disconnect(name)
