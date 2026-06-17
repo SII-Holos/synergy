@@ -336,5 +336,13 @@ export const migrations: Migration[] = [
       log.info("session nav v2 index and category backfill complete", { scopes: allScopeIDs.length })
     },
   },
+  {
+    id: "20260617-dag-node-result-field",
+    description: "Track DAG Node optional result field addition (schema-only, no data migration)",
+    async up() {
+      // Schema-only change: Node.result is optional and transparent to old data.
+      // No data transformation needed.
+    },
+  },
 ]
 MigrationRegistry.register("session", migrations)

@@ -294,6 +294,10 @@ export namespace Cortex {
       const node = nodes.find((n) => n.id === task.dagNodeId)
       if (!node) return
       node.status = task.status === "completed" ? "completed" : "failed"
+      if (task.result || task.error) {
+        const raw = task.status === "completed" ? (task.result ?? "") : (task.error ?? "")
+        node.result = raw.length > 8192 ? raw.slice(0, 8189) + "..." : raw
+      }
       Dag.autoPromote(nodes)
       await Dag.update({ sessionID: task.parentSessionID, nodes })
       log.info("dag node updated", { dagNodeId: task.dagNodeId, status: node.status })
