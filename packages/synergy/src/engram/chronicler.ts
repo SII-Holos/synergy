@@ -15,8 +15,8 @@ export namespace Chronicler {
     const { Identifier } = await import("../id/id")
 
     const config = await Config.get()
-    const evo = Config.resolveEvolution(config.identity?.evolution)
-    if (!evo.active) return
+    const engram = (config as any).engram as { memory?: { enabled?: boolean } } | undefined
+    if (!engram?.memory?.enabled) return
 
     const agent = await Agent.get("chronicler")
     if (!agent) return

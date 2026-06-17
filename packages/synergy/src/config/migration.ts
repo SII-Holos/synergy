@@ -259,6 +259,106 @@ async function migrateSiiToPluginConfig(filepath: string): Promise<boolean> {
   return true
 }
 
+async function migrateIdentityToEngram(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const identity =
+    config.identity && typeof config.identity === "object" && !Array.isArray(config.identity)
+      ? (config.identity as Record<string, unknown>)
+      : undefined
+
+  if (!identity) return false
+
+  // Map embedding
+  if (identity.embedding && !config.embedding) {
+    config.embedding = identity.embedding
+  }
+
+  // Map rerank
+  if (identity.rerank && !config.rerank) {
+    config.rerank = identity.rerank
+  }
+
+  // Map evolution → engram (only if engram doesn't already exist)
+  if (identity.evolution !== undefined && !config.engram) {
+    const engram: Record<string, unknown> = {}
+    const evolution = identity.evolution
+
+    if (typeof evolution === "boolean") {
+      engram.memory = { enabled: evolution }
+      engram.experience = { encode: evolution, retrieve: evolution }
+    } else if (typeof evolution === "object" && !Array.isArray(evolution)) {
+      const evo = evolution as Record<string, unknown>
+      const engramMemory: Record<string, unknown> = {}
+      const engramExperience: Record<string, unknown> = {}
+
+      // active → memory
+      if (typeof evo.active === "boolean") {
+        engramMemory.enabled = evo.active
+      } else if (typeof evo.active === "object" && !Array.isArray(evo.active)) {
+        const active = evo.active as Record<string, unknown>
+        if (typeof active.retrieve === "boolean") {
+          engramMemory.retrieval = active.retrieve
+        }
+        if (typeof active.memoryDedupThreshold === "number") {
+          engramMemory.dedup = { threshold: active.memoryDedupThreshold }
+        }
+      }
+
+      // passive → experience
+      if (typeof evo.passive === "object" && !Array.isArray(evo.passive)) {
+        const passive = evo.passive as Record<string, unknown>
+        if (typeof passive.encode === "boolean") {
+          engramExperience.encode = passive.encode
+        }
+        if (typeof passive.retrieve === "boolean") {
+          engramExperience.retrieve = passive.retrieve
+        }
+        if (typeof passive.learning === "boolean") {
+          engramExperience.learning = passive.learning
+        }
+      }
+
+      if (Object.keys(engramMemory).length > 0) {
+        engram.memory = engramMemory
+      }
+      if (Object.keys(engramExperience).length > 0) {
+        engram.experience = engramExperience
+      }
+    }
+
+    if (Object.keys(engram).length > 0) {
+      config.engram = engram
+    }
+  }
+
+  // Map autonomy — can coexist with or without existing engram
+  if (identity.autonomy !== undefined) {
+    const engram = (config.engram as Record<string, unknown> | undefined) ?? {}
+    if (engram.autonomy === undefined) {
+      engram.autonomy = identity.autonomy
+    }
+    if (!config.engram) {
+      config.engram = engram
+    }
+  }
+
+  delete config.identity
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, JSON.stringify(config, null, 2) + "\n")
+  log.info("migrated identity config to embedding/rerank/engram", { path: filepath })
+  return true
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
@@ -392,6 +492,29 @@ export const migrations: Migration[] = [
 
         await Bun.write(filepath, text)
         log.info("removed deprecated keys from pluginConfig.inspire", { path: filepath })
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+
+  {
+    id: "20260617-config-identity-to-engram",
+    description: "Migrate identity config to embedding/rerank/engram fields",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        try {
+          await migrateIdentityToEngram(filepath)
+        } catch (err) {
+          log.warn("failed to migrate identity config", {
+            path: filepath,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
         done++
         progress(done, files.length)
       }

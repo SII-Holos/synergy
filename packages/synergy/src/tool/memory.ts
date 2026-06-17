@@ -45,8 +45,7 @@ export const MemoryWriteTool = Tool.define("memory_write", {
     }
 
     const config = await Config.get()
-    const evo = Config.resolveEvolution(config.identity?.evolution)
-    const dedupThreshold = evo.memoryDedupThreshold
+    const dedupThreshold = (config as any).engram?.memory?.dedup?.threshold ?? 0.75
 
     const similar = MemoryRecall.findSimilar(embedding.vector, dedupThreshold)
 
