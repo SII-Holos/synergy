@@ -4,12 +4,8 @@ import { describe, expect, test } from "bun:test"
 // enforcement/gate.test.ts
 //
 // Tests for the EnforcementGate — the centralized choke point that classifies
-// tool calls into CapabilityRequests, applies profile-based rules, and
-// produces execution envelopes with audit records.
-//
-// These tests encode the DESIGN CONTRACT before implementation exists.
-// They MUST fail (RED) with module-not-found or type errors until
-// packages/synergy/src/enforcement/gate.ts is created.
+// tool calls into capabilities, applies profile-based rules, and produces
+// execution envelopes with audit records.
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------
@@ -199,7 +195,7 @@ describe("EnforcementGate network classification", () => {
 // 4. Gate produces execution envelope and audit
 // ------------------------------------------------------------------
 describe("EnforcementGate execution envelope", () => {
-  test("evaluate returns ExecutionEnvelope with profile and capabilities", () => {
+  test("evaluate returns envelope with profile and capabilities", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

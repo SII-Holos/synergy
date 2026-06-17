@@ -401,17 +401,16 @@ describe("workspace boundary enforcement with sandbox", () => {
     })
   })
 
-  test("SandboxRuntime from enforcement respects workspace policy active root", async () => {
+  test("WorkspacePolicy respects active root for boundary checks", async () => {
     const { WorkspacePolicy } = await import("../../src/workspace/policy")
 
-    // Build a policy struct inline — WorkspacePolicy type will exist at runtime
     const policy = WorkspacePolicy.create({
       activeRoot: "/workspace/synergy",
       workspaceType: "main",
       scopeID: "d_test123",
     })
 
-    // SandboxRuntime should reject paths outside the root
+    // WorkspacePolicy should reject paths outside the root
     expect(policy.contains("/workspace/synergy/src/app.ts")).toBe(true)
     expect(policy.contains("/etc/hostname")).toBe(false)
   })
