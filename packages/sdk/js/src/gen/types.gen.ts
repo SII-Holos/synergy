@@ -2924,7 +2924,6 @@ export type NoteInfo = {
   id: string
   title: string
   content: unknown
-  contentText: string
   pinned: boolean
   global: boolean
   originScope?: string
@@ -2945,7 +2944,6 @@ export type NoteScopeGroup = {
 export type NoteCreateInput = {
   title: string
   content?: unknown
-  contentText?: string
   tags?: Array<string>
 }
 
@@ -2961,7 +2959,6 @@ export type NoteConflictError = {
 export type NotePatchInput = {
   title?: string
   content?: unknown
-  contentText?: string
   pinned?: boolean
   global?: boolean
   tags?: Array<string>

@@ -454,7 +454,15 @@ export function NotePanel() {
         const isCurrent = g.scopeID === curID
         let notes = [...g.notes]
         if (q) {
-          notes = notes.filter((n) => n.title.toLowerCase().includes(q) || n.contentText.toLowerCase().includes(q))
+          notes = notes.filter((n) => {
+            if (n.title.toLowerCase().includes(q)) return true
+            try {
+              const text = NoteMarkdown.toMarkdown(n.content).toLowerCase()
+              return text.includes(q)
+            } catch {
+              return false
+            }
+          })
         }
         if (activeTags.size > 0) {
           notes = notes.filter((n) => (n.tags ?? []).some((t) => activeTags.has(t)))
@@ -505,7 +513,7 @@ export function NotePanel() {
     try {
       const result = await sdk.client.note.create({
         directory: dir,
-        noteCreateInput: { title: "", contentText: "" },
+        noteCreateInput: { title: "" },
       })
       if (result.data) {
         await refetch()
@@ -700,7 +708,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       title: title(),
       tags: tags(),
       content,
-      contentText: NoteMarkdown.toMarkdown(content),
     }
   }
 
@@ -734,7 +741,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         notePatchInput: {
           title: draft.title,
           content: draft.content,
-          contentText: draft.contentText,
           tags: draft.tags,
           expectedVersion: base.version,
         },

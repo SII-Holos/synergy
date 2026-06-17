@@ -21,7 +21,6 @@ describe("NoteStore", () => {
         const note = await NoteStore.create(
           {
             title: "Global note",
-            contentText: "shared",
           },
           { scopeID: "global" },
         )
@@ -42,18 +41,16 @@ describe("NoteStore", () => {
       fn: async () => {
         const created = await NoteStore.create({
           title: "Versioned note",
-          contentText: "one",
         })
 
         expect(created.version).toBe(1)
 
         const updated = await NoteStore.update(scope.id, created.id, {
-          contentText: "two",
           expectedVersion: 1,
         })
 
         expect(updated.version).toBe(2)
-        expect(updated.contentText).toBe("two")
+        expect(updated.content).toEqual({ type: "doc", content: [] })
       },
     })
   })
@@ -67,17 +64,14 @@ describe("NoteStore", () => {
       fn: async () => {
         const created = await NoteStore.create({
           title: "Conflict note",
-          contentText: "one",
         })
 
         await NoteStore.update(scope.id, created.id, {
-          contentText: "two",
           expectedVersion: created.version,
         })
 
         await expect(
           NoteStore.update(scope.id, created.id, {
-            contentText: "three",
             expectedVersion: created.version,
           }),
         ).rejects.toBeInstanceOf(NoteError.Conflict)
@@ -98,7 +92,6 @@ describe("NoteStore", () => {
           id: noteID,
           title: "Legacy note",
           content: { type: "doc", content: [] },
-          contentText: "legacy",
           pinned: false,
           global: false,
           tags: [],
@@ -106,12 +99,11 @@ describe("NoteStore", () => {
         })
 
         const updated = await NoteStore.update(scope.id, noteID, {
-          contentText: "migrated",
           expectedVersion: 1,
         })
 
         expect(updated.version).toBe(2)
-        expect(updated.contentText).toBe("migrated")
+        expect(updated.content).toEqual({ type: "doc", content: [] })
       },
     })
   })

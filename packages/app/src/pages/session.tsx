@@ -31,11 +31,15 @@ import { isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
 
 import { useSessionCommands } from "@/components/session/commands"
+import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { HolosConversation, HolosGreeting } from "@/components/session/holos-conversation"
 import { HolosPromptInput } from "@/components/session/holos-prompt-input"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
+import { WorkspacePanel, WorkspacePanelMobile } from "@/components/session/workspace-panel"
+import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
+import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { getScopeLabel } from "@/utils/scope"
@@ -63,6 +67,7 @@ export default function Page() {
   const permission = usePermission()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const workspace = () => layout.workspace(sessionKey())
   const view = createMemo(() => layout.view(sessionKey()))
 
   if (import.meta.env.DEV) {
@@ -395,8 +400,13 @@ export default function Page() {
 
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
-  const currentSessionCortex = createMemo(() => currentSession()?.cortex)
+  const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -840,277 +850,283 @@ export default function Page() {
   })
 
   return (
-    <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
-      <div class="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Mobile tab bar */}
-        <Show when={!isDesktop() && hasReview()}>
-          <Tabs class="h-auto">
-            <Tabs.List>
-              <Tabs.Trigger
-                value="session"
-                class="w-1/2"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "session")}
-              >
-                Session
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="review"
-                class="w-1/2 !border-r-0"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "review")}
-              >
-                {reviewCount()} Files Changed
-              </Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
-        </Show>
-
-        {/* Session panel */}
-        <div
-          classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 min-w-0 h-full bg-background-stronger": true,
-            "flex-1 md:flex-none pt-3 pb-0 md:py-3": true,
-          }}
-          style={{
-            width: isDesktop() && showTabs() ? `${layout.session.width()}px` : "100%",
-            "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
-          }}
-        >
-          <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-            <SessionTopBar />
-            <Show when={isHolosSession(parentSession())}>
-              <div class="shrink-0 px-4 md:px-6 pb-2">
-                <button
-                  type="button"
-                  class="w-full min-w-0 md:max-w-200 md:mx-auto flex items-center justify-between gap-3 rounded-[22px] border border-border-base bg-surface-raised-stronger-non-alpha px-4 py-3 text-left shadow-sm hover:bg-surface-raised-base-hover active:scale-[0.995] transition-all duration-150"
-                  onClick={() => navigate(`/${params.dir}/session/${parentSession()!.id}`)}
+    <WorkspaceProvider>
+      <WorkspaceNotesTool />
+      <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+        <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+          {/* Mobile tab bar */}
+          <Show when={!isDesktop() && hasReview()}>
+            <Tabs class="h-auto">
+              <Tabs.List>
+                <Tabs.Trigger
+                  value="session"
+                  class="w-1/2"
+                  classes={{ button: "w-full" }}
+                  onClick={() => setStore("mobileTab", "session")}
                 >
-                  <div class="min-w-0 flex items-center gap-3">
-                    <div class="size-9 rounded-full bg-surface-brand-base/12 border border-border-base flex items-center justify-center shrink-0">
-                      <Icon name="arrow-left" size="small" />
-                    </div>
-                    <div class="min-w-0">
-                      <div class="text-12-medium text-text-weak">Back to Holos conversation</div>
-                      <div class="text-14-medium text-text-strong truncate">
-                        {parentHolosContact()?.name ?? parentSession()?.title ?? "Return to Holos conversation"}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="hidden md:flex items-center gap-1.5 text-11-medium text-text-subtle shrink-0">
-                    <Icon name="git-branch" size="small" />
-                    <span>Holos branch</span>
-                  </div>
-                </button>
-              </div>
-            </Show>
-            <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
-              <Switch>
-                <Match when={isHolosConversation() && holosContact()}>
-                  <HolosConversation
-                    sessionID={params.id!}
-                    contactName={holosContact()!.name}
-                    contactBio={holosContact()!.bio}
-                    myName={myProfile()?.profile?.name ?? "Me"}
-                    messages={messages}
-                    branchMap={holosBranchMap}
-                    onOpenBranch={(subSessionId, triggerMessageId) =>
-                      navigate(`/${params.dir}/session/${subSessionId}#message-${triggerMessageId}`, {
-                        state: { from: window.location.pathname + window.location.search + window.location.hash },
-                      })
-                    }
-                    onReplyToMessage={(messageId: string) => {
-                      setStore("holosReplyToMessageId", messageId)
-                      requestAnimationFrame(() => {
-                        const textarea = document.querySelector<HTMLTextAreaElement>("[data-holos-input='true']")
-                        textarea?.focus()
-                      })
-                    }}
-                    autoScroll={autoScroll}
-                    setScrollRef={setScrollRef}
-                  />
-                </Match>
-                <Match when={!isNewSession()}>
-                  <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
-                    <Show
-                      when={!mobileReview()}
-                      fallback={
-                        <div class="relative h-full overflow-hidden">
-                          <Show
-                            when={diffsReady()}
-                            fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}
-                          >
-                            <SessionReviewTab
-                              diffs={diffs}
-                              view={view}
-                              diffStyle="unified"
-                              onViewFile={(path) => {
-                                const value = file.tab(path)
-                                tabs().open(value)
-                                file.load(path)
-                              }}
-                              classes={{
-                                root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
-                                header: "px-4",
-                                container: "px-4",
-                              }}
-                            />
-                          </Show>
-                        </div>
-                      }
-                    >
-                      <SessionConversation
-                        sessionID={params.id!}
-                        paramsDir={params.dir!}
-                        timeline={timeline}
-                        visibleUserMessages={visibleUserMessages}
-                        lastUserMessage={lastUserMessage}
-                        activeMessage={activeMessage}
-                        cortexRunning={cortexRunning}
-                        expanded={store.expanded}
-                        onToggleExpanded={toggleStepsExpanded}
-                        showTabs={showTabs}
-                        isWorking={isWorking}
-                        turnStart={store.turnStart}
-                        turnBatch={turnBatch}
-                        onSetTurnStart={(start) => setStore("turnStart", start)}
-                        historyMore={historyMore}
-                        historyLoading={historyLoading}
-                        onLoadMore={() => {
-                          const id = params.id
-                          if (!id) return
-                          setStore("turnStart", 0)
-                          sync.session.history.loadMore(id)
-                        }}
-                        scrolledUp={scrolledUp}
-                        onScrolledUpChange={setScrolledUp}
-                        autoScroll={autoScroll}
-                        onClearHash={clearHash}
-                        onScheduleScrollSpy={scheduleScrollSpy}
-                        setScrollRef={setScrollRef}
-                        isDesktop={isDesktop}
-                        scrollToMessage={scrollToMessage}
-                        anchor={anchor}
-                        terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
-                      />
-                    </Show>
-                  </Show>
-                </Match>
-                <Match when={true}>{null}</Match>
-              </Switch>
-            </div>
-          </div>
-
-          <Show
-            when={isHolosConversation() && holosContact()}
-            fallback={
-              <PromptDock
-                ref={(el) => (promptDock = el)}
-                inputRef={(el) => {
-                  inputRef = el
-                }}
-                isNewSession={isNewSession}
-                showTabs={showTabs}
-                isGlobal={isGlobalScope(sdk.directory)}
-                sessionID={params.id}
-                prompt={prompt}
-                sync={sync}
-                sdk={sdk}
-                navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
-                handoffPrompt={handoff.prompt}
-                parentSession={parentSession}
-                backPath={backPath}
-                newSessionWorktree={newSessionWorktree}
-                onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
-                scopeName={scopeName}
-                branch={branch}
-                lastModified={lastModified}
-                cortex={currentSessionCortex}
-                parentID={() => currentSession()?.parentID}
-              />
-            }
-          >
-            <div
-              ref={(el) => (promptDock = el)}
-              classList={{
-                "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-4 md:px-0 pointer-events-none": true,
-                "pt-12 pb-4 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent":
-                  (messages()?.length ?? 0) > 0,
-                "pb-4": (messages()?.length ?? 0) === 0,
-              }}
-              style={{
-                transform: (messages()?.length ?? 0) === 0 ? "translateY(-35vh)" : "translateY(0)",
-                transition: "transform 400ms ease-out",
-              }}
-            >
-              <div class="w-full min-w-0 md:px-6 md:max-w-200 pointer-events-auto">
-                <Show when={(messages()?.length ?? 0) === 0}>
-                  <HolosGreeting contactName={holosContact()!.name} />
-                </Show>
-                <HolosPromptInput
-                  contactId={holosContact()!.id}
-                  contactName={holosContact()!.name}
-                  sessionId={params.id!}
-                  replyToMessage={holosReplyToMessage()}
-                  replyToParts={holosReplyToMessage() ? (sync.data.part[holosReplyToMessage()!.id] ?? []) : undefined}
-                  onCancelReply={() => setStore("holosReplyToMessageId", undefined)}
-                />
-              </div>
-            </div>
+                  Session
+                </Tabs.Trigger>
+                <Tabs.Trigger
+                  value="review"
+                  class="w-1/2 !border-r-0"
+                  classes={{ button: "w-full" }}
+                  onClick={() => setStore("mobileTab", "review")}
+                >
+                  {reviewCount()} Files Changed
+                </Tabs.Trigger>
+              </Tabs.List>
+            </Tabs>
           </Show>
 
+          {/* Session panel */}
+          <div
+            classList={{
+              "@container relative shrink-0 flex flex-col min-h-0 min-w-0 h-full bg-background-stronger": true,
+              "flex-1 md:flex-none pt-3 pb-0 md:py-3": true,
+            }}
+            style={{
+              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : "100%",
+              "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
+            }}
+          >
+            <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+              <SessionTopBar />
+              <Show when={isHolosSession(parentSession())}>
+                <div class="shrink-0 px-4 md:px-6 pb-2">
+                  <button
+                    type="button"
+                    class="w-full min-w-0 md:max-w-200 md:mx-auto flex items-center justify-between gap-3 rounded-[22px] border border-border-base bg-surface-raised-stronger-non-alpha px-4 py-3 text-left shadow-sm hover:bg-surface-raised-base-hover active:scale-[0.995] transition-all duration-150"
+                    onClick={() => navigate(`/${params.dir}/session/${parentSession()!.id}`)}
+                  >
+                    <div class="min-w-0 flex items-center gap-3">
+                      <div class="size-9 rounded-full bg-surface-brand-base/12 border border-border-base flex items-center justify-center shrink-0">
+                        <Icon name="arrow-left" size="small" />
+                      </div>
+                      <div class="min-w-0">
+                        <div class="text-12-medium text-text-weak">Back to Holos conversation</div>
+                        <div class="text-14-medium text-text-strong truncate">
+                          {parentHolosContact()?.name ?? parentSession()?.title ?? "Return to Holos conversation"}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="hidden md:flex items-center gap-1.5 text-11-medium text-text-subtle shrink-0">
+                      <Icon name="git-branch" size="small" />
+                      <span>Holos branch</span>
+                    </div>
+                  </button>
+                </div>
+              </Show>
+              <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <Switch>
+                  <Match when={isHolosConversation() && holosContact()}>
+                    <HolosConversation
+                      sessionID={params.id!}
+                      contactName={holosContact()!.name}
+                      contactBio={holosContact()!.bio}
+                      myName={myProfile()?.profile?.name ?? "Me"}
+                      messages={messages}
+                      branchMap={holosBranchMap}
+                      onOpenBranch={(subSessionId, triggerMessageId) =>
+                        navigate(`/${params.dir}/session/${subSessionId}#message-${triggerMessageId}`, {
+                          state: { from: window.location.pathname + window.location.search + window.location.hash },
+                        })
+                      }
+                      onReplyToMessage={(messageId: string) => {
+                        setStore("holosReplyToMessageId", messageId)
+                        requestAnimationFrame(() => {
+                          const textarea = document.querySelector<HTMLTextAreaElement>("[data-holos-input='true']")
+                          textarea?.focus()
+                        })
+                      }}
+                      autoScroll={autoScroll}
+                      setScrollRef={setScrollRef}
+                    />
+                  </Match>
+                  <Match when={!isNewSession()}>
+                    <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
+                      <Show
+                        when={!mobileReview()}
+                        fallback={
+                          <div class="relative h-full overflow-hidden">
+                            <Show
+                              when={diffsReady()}
+                              fallback={<div class="px-4 py-4 text-text-weak">Loading changes…</div>}
+                            >
+                              <SessionReviewTab
+                                diffs={diffs}
+                                view={view}
+                                diffStyle="unified"
+                                onViewFile={(path) => {
+                                  const value = file.tab(path)
+                                  tabs().open(value)
+                                  file.load(path)
+                                }}
+                                classes={{
+                                  root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
+                                  header: "px-4",
+                                  container: "px-4",
+                                }}
+                              />
+                            </Show>
+                          </div>
+                        }
+                      >
+                        <SessionConversation
+                          sessionID={params.id!}
+                          paramsDir={params.dir!}
+                          timeline={timeline}
+                          visibleUserMessages={visibleUserMessages}
+                          lastUserMessage={lastUserMessage}
+                          activeMessage={activeMessage}
+                          cortexRunning={cortexRunning}
+                          expanded={store.expanded}
+                          onToggleExpanded={toggleStepsExpanded}
+                          showTabs={showTabs}
+                          isWorking={isWorking}
+                          turnStart={store.turnStart}
+                          turnBatch={turnBatch}
+                          onSetTurnStart={(start) => setStore("turnStart", start)}
+                          historyMore={historyMore}
+                          historyLoading={historyLoading}
+                          onLoadMore={() => {
+                            const id = params.id
+                            if (!id) return
+                            setStore("turnStart", 0)
+                            sync.session.history.loadMore(id)
+                          }}
+                          scrolledUp={scrolledUp}
+                          onScrolledUpChange={setScrolledUp}
+                          autoScroll={autoScroll}
+                          onClearHash={clearHash}
+                          onScheduleScrollSpy={scheduleScrollSpy}
+                          setScrollRef={setScrollRef}
+                          isDesktop={isDesktop}
+                          scrollToMessage={scrollToMessage}
+                          anchor={anchor}
+                          terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
+                        />
+                      </Show>
+                    </Show>
+                  </Match>
+                  <Match when={true}>{null}</Match>
+                </Switch>
+              </div>
+            </div>
+
+            <Show
+              when={isHolosConversation() && holosContact()}
+              fallback={
+                <PromptDock
+                  ref={(el) => (promptDock = el)}
+                  inputRef={(el) => {
+                    inputRef = el
+                  }}
+                  isNewSession={isNewSession}
+                  showTabs={showTabs}
+                  isGlobal={isGlobalScope(sdk.directory)}
+                  sessionID={params.id}
+                  prompt={prompt}
+                  sync={sync}
+                  sdk={sdk}
+                  navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
+                  handoffPrompt={handoff.prompt}
+                  meta={sessionMeta}
+                  parentTitle={parentSession()?.title}
+                  backPath={backPath}
+                  newSessionWorktree={newSessionWorktree}
+                  onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+                  scopeName={scopeName}
+                  branch={branch}
+                  lastModified={lastModified}
+                />
+              }
+            >
+              <div
+                ref={(el) => (promptDock = el)}
+                classList={{
+                  "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-4 md:px-0 pointer-events-none": true,
+                  "pt-12 pb-4 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent":
+                    (messages()?.length ?? 0) > 0,
+                  "pb-4": (messages()?.length ?? 0) === 0,
+                }}
+                style={{
+                  transform: (messages()?.length ?? 0) === 0 ? "translateY(-35vh)" : "translateY(0)",
+                  transition: "transform 400ms ease-out",
+                }}
+              >
+                <div class="w-full min-w-0 md:px-6 md:max-w-200 pointer-events-auto">
+                  <Show when={(messages()?.length ?? 0) === 0}>
+                    <HolosGreeting contactName={holosContact()!.name} />
+                  </Show>
+                  <HolosPromptInput
+                    contactId={holosContact()!.id}
+                    contactName={holosContact()!.name}
+                    sessionId={params.id!}
+                    replyToMessage={holosReplyToMessage()}
+                    replyToParts={holosReplyToMessage() ? (sync.data.part[holosReplyToMessage()!.id] ?? []) : undefined}
+                    onCancelReply={() => setStore("holosReplyToMessageId", undefined)}
+                  />
+                </div>
+              </div>
+            </Show>
+
+            <Show when={isDesktop() && showTabs()}>
+              <ResizeHandle
+                direction="horizontal"
+                size={layout.session.width()}
+                min={450}
+                max={window.innerWidth * 0.45}
+                onResize={layout.session.resize}
+              />
+            </Show>
+          </div>
+
+          {/* Desktop tabs panel */}
           <Show when={isDesktop() && showTabs()}>
-            <ResizeHandle
-              direction="horizontal"
-              size={layout.session.width()}
-              min={450}
-              max={window.innerWidth * 0.45}
-              onResize={layout.session.resize}
+            <TabsPanel
+              activeTab={activeTab}
+              openTab={openTab}
+              tabs={tabs}
+              view={view}
+              layout={layout}
+              file={file}
+              prompt={prompt}
+              command={command}
+              dialog={dialog}
+              reviewTab={reviewTab}
+              contextOpen={contextOpen}
+              openedTabs={openedTabs}
+              info={info}
+              diffs={diffs}
+              diffsReady={diffsReady}
+              messages={messages}
+              visibleUserMessages={visibleUserMessages}
+              handleDragStart={handleDragStart}
+              handleDragOver={handleDragOver}
+              handleDragEnd={handleDragEnd}
+              activeDraggable={store.activeDraggable}
+              handoffFiles={handoff.files}
             />
+          </Show>
+          <Show when={isDesktop() && workspace().opened()}>
+            <WorkspacePanel />
           </Show>
         </div>
 
-        {/* Desktop tabs panel */}
-        <Show when={isDesktop() && showTabs()}>
-          <TabsPanel
-            activeTab={activeTab}
-            openTab={openTab}
-            tabs={tabs}
-            view={view}
+        <Show when={isDesktop() && layout.terminal.opened()}>
+          <TerminalPanel
             layout={layout}
-            file={file}
-            prompt={prompt}
+            terminal={terminal}
             command={command}
-            dialog={dialog}
-            reviewTab={reviewTab}
-            contextOpen={contextOpen}
-            openedTabs={openedTabs}
-            info={info}
-            diffs={diffs}
-            diffsReady={diffsReady}
-            messages={messages}
-            visibleUserMessages={visibleUserMessages}
-            handleDragStart={handleDragStart}
-            handleDragOver={handleDragOver}
-            handleDragEnd={handleDragEnd}
-            activeDraggable={store.activeDraggable}
-            handoffFiles={handoff.files}
+            handoffTerminals={handoff.terminals}
+            handleTerminalDragStart={handleTerminalDragStart}
+            handleTerminalDragOver={handleTerminalDragOver}
+            handleTerminalDragEnd={handleTerminalDragEnd}
+            activeTerminalDraggable={store.activeTerminalDraggable}
           />
         </Show>
       </div>
-
-      <Show when={isDesktop() && layout.terminal.opened()}>
-        <TerminalPanel
-          layout={layout}
-          terminal={terminal}
-          command={command}
-          handoffTerminals={handoff.terminals}
-          handleTerminalDragStart={handleTerminalDragStart}
-          handleTerminalDragOver={handleTerminalDragOver}
-          handleTerminalDragEnd={handleTerminalDragEnd}
-          activeTerminalDraggable={store.activeTerminalDraggable}
-        />
-      </Show>
-    </div>
+      <WorkspacePanelMobile />
+    </WorkspaceProvider>
   )
 }

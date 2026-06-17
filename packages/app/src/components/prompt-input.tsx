@@ -236,6 +236,7 @@ interface PromptInputProps {
   ref?: (el: HTMLDivElement) => void
   newSessionWorktree?: string
   onNewSessionWorktreeReset?: () => void
+  hideAgentSelector?: boolean
 }
 
 const PLACEHOLDERS = [
@@ -2170,63 +2171,65 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Show>
                 </Match>
               </Switch>
-              {/* Agent selector */}
-              <ToolbarSelectorPopover
-                trigger={
-                  <button
-                    type="button"
-                    class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                  >
-                    <span class="text-12-medium text-text-base whitespace-nowrap">
-                      {getAgentVisual(local.agent.current()).label}
-                    </span>
-                    <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
-                  </button>
-                }
-                title="Select agent"
-                contentClass="w-52 max-h-80"
-                placement="top-start"
-              >
-                {(close) => (
-                  <List
-                    class="p-1"
-                    items={local.agent.list().filter((a) => !a.hidden)}
-                    key={(x) => x.name}
-                    filterKeys={["name"]}
-                    onSelect={(x) => {
-                      if (!x) return
-                      if (sessionHasMessages() && x.external) return
-                      local.agent.set(x.name)
-                      close()
-                    }}
-                  >
-                    {(agent) => {
-                      const visual = getAgentVisual(agent)
-                      return (
-                        <Tooltip
-                          placement="right"
-                          value={
-                            sessionHasMessages() && agent.external
-                              ? "Create a new session to use this external agent"
-                              : undefined
-                          }
-                        >
-                          <div
-                            classList={{
-                              "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                              "opacity-45": sessionHasMessages() && !!agent.external,
-                            }}
+              <Show when={!props.hideAgentSelector}>
+                {/* Agent selector */}
+                <ToolbarSelectorPopover
+                  trigger={
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                    >
+                      <span class="text-12-medium text-text-base whitespace-nowrap">
+                        {getAgentVisual(local.agent.current()).label}
+                      </span>
+                      <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
+                    </button>
+                  }
+                  title="Select agent"
+                  contentClass="w-52 max-h-80"
+                  placement="top-start"
+                >
+                  {(close) => (
+                    <List
+                      class="p-1"
+                      items={local.agent.list().filter((a) => !a.hidden)}
+                      key={(x) => x.name}
+                      filterKeys={["name"]}
+                      onSelect={(x) => {
+                        if (!x) return
+                        if (sessionHasMessages() && x.external) return
+                        local.agent.set(x.name)
+                        close()
+                      }}
+                    >
+                      {(agent) => {
+                        const visual = getAgentVisual(agent)
+                        return (
+                          <Tooltip
+                            placement="right"
+                            value={
+                              sessionHasMessages() && agent.external
+                                ? "Create a new session to use this external agent"
+                                : undefined
+                            }
                           >
-                            <div class="min-w-0">
-                              <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                            <div
+                              classList={{
+                                "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                "opacity-45": sessionHasMessages() && !!agent.external,
+                              }}
+                            >
+                              <div class="min-w-0">
+                                <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                              </div>
                             </div>
-                          </div>
-                        </Tooltip>
-                      )
-                    }}
-                  </List>
-                )}
-              </ToolbarSelectorPopover>
+                          </Tooltip>
+                        )
+                      }}
+                    </List>
+                  )}
+                </ToolbarSelectorPopover>
+              </Show>
             </div>
             <div class="flex items-center gap-2">
               <input

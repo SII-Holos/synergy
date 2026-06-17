@@ -30,6 +30,8 @@ export namespace StoragePath {
 
   export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
   export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
+  export const sessionNavIndexRoot = () => ["session_nav_v2"]
+  export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
 
   export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "sessions",

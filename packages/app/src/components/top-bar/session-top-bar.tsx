@@ -8,8 +8,10 @@ import { ModelSelectorPopover } from "@/components/dialog"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
+import { useLayout } from "@/context/layout"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isGlobalScope } from "@/utils/scope"
+import { useSessionMeta } from "@/composables/use-session-meta"
 import "./session-top-bar.css"
 
 export function SessionTopBar() {
@@ -18,13 +20,18 @@ export function SessionTopBar() {
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
+  const layout = useLayout()
 
   const isGlobal = () => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false)
+
+  const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
     return (sync.data.message[params.id] ?? []).length > 0
   })
+
+  const sessionMeta = useSessionMeta(sessionInfo, sessionHasMessages)
 
   const isCurrentAgentExternal = createMemo(() => !!local.agent.current()?.external)
   const isCurrentExternalModelLocked = createMemo(() => {
@@ -42,24 +49,26 @@ export function SessionTopBar() {
           <span class="stb-slash">/</span>
         </Show>
         {/* Model selector */}
-        <Show
-          when={!isCurrentExternalModelLocked()}
-          fallback={
-            <Tooltip placement="bottom" value="Model is locked for this external agent after the session starts">
-              <button type="button" class="stb-selector-btn stb-locked">
-                <span class="stb-selector-label">{local.model.current()?.name ?? "Model locked"}</span>
-              </button>
-            </Tooltip>
-          }
-        >
-          <ModelSelectorPopover>
-            <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
-              <button type="button" class="stb-selector-btn">
-                <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
-                <Icon name="chevron-down" size="normal" class="stb-chevron" />
-              </button>
-            </TooltipKeybind>
-          </ModelSelectorPopover>
+        <Show when={sessionMeta().canSelectModel}>
+          <Show
+            when={!isCurrentExternalModelLocked()}
+            fallback={
+              <Tooltip placement="bottom" value="Model is locked for this external agent after the session starts">
+                <button type="button" class="stb-selector-btn stb-locked">
+                  <span class="stb-selector-label">{local.model.current()?.name ?? "Model locked"}</span>
+                </button>
+              </Tooltip>
+            }
+          >
+            <ModelSelectorPopover>
+              <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
+                <button type="button" class="stb-selector-btn">
+                  <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
+                  <Icon name="chevron-down" size="normal" class="stb-chevron" />
+                </button>
+              </TooltipKeybind>
+            </ModelSelectorPopover>
+          </Show>
         </Show>
 
         {/* Variant cycle */}
@@ -80,6 +89,17 @@ export function SessionTopBar() {
           <Tooltip value="Export session data" placement="bottom">
             <button type="button" class="stb-icon-btn" onClick={() => dialog.show(() => <DialogSessionExport />)}>
               <Icon name="download" size="normal" />
+            </button>
+          </Tooltip>
+        </Show>
+        <Show when={!!params.id}>
+          <Tooltip value="Toggle workspace" placement="bottom">
+            <button
+              type="button"
+              class="stb-icon-btn"
+              onClick={() => layout.workspace(`${params.dir}/${params.id!}`).toggle()}
+            >
+              <Icon name="panel-right" size="normal" />
             </button>
           </Tooltip>
         </Show>
