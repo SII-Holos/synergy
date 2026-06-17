@@ -251,3 +251,116 @@ export const McpRoute = new Hono()
       return c.json(true)
     },
   )
+  .post(
+    "/:name/restart",
+    describeRoute({
+      summary: "Restart MCP server",
+      description: "Disconnect and reconnect an MCP server, resetting retry count.",
+      operationId: "mcp.restart",
+      responses: {
+        200: {
+          description: "MCP server restart initiated",
+          content: {
+            "application/json": {
+              schema: resolver(MCP.Status),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    requireLocalhost,
+    async (c) => {
+      const name = c.req.param("name")
+      const status = await MCP.restart(name)
+      return c.json(status)
+    },
+  )
+  .post(
+    "/:name/refresh",
+    describeRoute({
+      summary: "Refresh MCP server discovery",
+      description: "Re-list tools, prompts, and resources for a connected MCP server.",
+      operationId: "mcp.refresh",
+      responses: {
+        200: {
+          description: "MCP server discovery refreshed",
+          content: {
+            "application/json": {
+              schema: resolver(MCP.Status),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    requireLocalhost,
+    async (c) => {
+      const name = c.req.param("name")
+      const status = await MCP.refresh(name)
+      return c.json(status)
+    },
+  )
+  .get(
+    "/:name/inspect",
+    describeRoute({
+      summary: "Inspect MCP server",
+      description: "Get status and lightweight diagnostics (tool names, resources, prompts) for an MCP server.",
+      operationId: "mcp.inspect",
+      responses: {
+        200: {
+          description: "MCP server inspection result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  status: MCP.Status,
+                  toolNames: z.array(z.string()),
+                  resourceNames: z.array(z.string()),
+                  promptNames: z.array(z.string()),
+                }),
+              ),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    requireLocalhost,
+    async (c) => {
+      const name = c.req.param("name")
+      const result = await MCP.inspect(name)
+      if (!result) {
+        return c.json({ error: `MCP server not found: ${name}` }, 404)
+      }
+      return c.json(result)
+    },
+  )
+  .get(
+    "/:name/test",
+    describeRoute({
+      summary: "Test MCP server",
+      description: "Validate presence and return status snapshot for an MCP server.",
+      operationId: "mcp.test",
+      responses: {
+        200: {
+          description: "MCP server test result",
+          content: {
+            "application/json": {
+              schema: resolver(MCP.Status),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    requireLocalhost,
+    async (c) => {
+      const name = c.req.param("name")
+      const result = await MCP.test(name)
+      if (!result) {
+        return c.json({ error: `MCP server not found: ${name}` }, 404)
+      }
+      return c.json(result)
+    },
+  )

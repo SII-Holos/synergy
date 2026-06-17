@@ -184,6 +184,39 @@ export namespace MCP {
     return { status: mapStatus(handle) }
   }
 
+  // ── Supervisor actions ─────────────────────────────────────────────
+
+  export async function restart(name: string): Promise<Status> {
+    ensureStarted()
+    const handle = await McpSupervisor.restart(name)
+    return mapStatus(handle)
+  }
+
+  export async function refresh(name: string): Promise<Status> {
+    ensureStarted()
+    const handle = await McpSupervisor.refresh(name)
+    return mapStatus(handle)
+  }
+
+  export async function inspect(name: string): Promise<{
+    status: Status
+    toolNames: string[]
+    resourceNames: string[]
+    promptNames: string[]
+  } | null> {
+    ensureStarted()
+    const result = McpSupervisor.inspect(name)
+    if (!result) return null
+    return result
+  }
+
+  export async function test(name: string): Promise<Status | null> {
+    ensureStarted()
+    const result = McpSupervisor.test(name)
+    if (!result) return null
+    return result
+  }
+
   // ── Non-blocking snapshots ─────────────────────────────────────────
 
   export async function tools(): Promise<Record<string, Tool>> {

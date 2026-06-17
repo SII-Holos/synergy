@@ -1,15 +1,4 @@
-import { MCP } from "../mcp"
-import type { Config } from "../config/config"
-
-/**
- * MCP declaration shape from plugin manifests.
- * Same as Config.Mcp without the `enabled` field (that's a user-config concern).
- */
-type McpDeclaration = Omit<Config.Mcp, "enabled">
-
-function isMcpDeclaration(value: unknown): value is McpDeclaration {
-  return typeof value === "object" && value !== null && "type" in value
-}
+import { McpSupervisor } from "../mcp/supervisor"
 
 /**
  * Namespace a server key with the plugin ID.
@@ -37,39 +26,17 @@ export function extractPluginId(key: string): string {
 
 /**
  * Start MCP servers contributed by a plugin.
- * User config always wins — if a server with the same key already exists in user config,
- * the plugin's declaration is skipped.
+ * Delegates to McpSupervisor.registerPluginServers which handles
+ * bare-key shadow, defaults deep-merge, and Config.normalizeMcp.
  */
 export async function startForPlugin(pluginId: string, mcpDeclarations: Record<string, unknown>): Promise<void> {
-  const statuses = await MCP.status()
-
-  for (const [serverKey, declaration] of Object.entries(mcpDeclarations)) {
-    if (!isMcpDeclaration(declaration)) continue
-    // User config wins — skip if user already has a server with the same bare key
-    if (statuses[serverKey] !== undefined) continue
-
-    const scopedKey = namespaceKey(pluginId, serverKey)
-
-    // Skip if this plugin-scoped server is already running (e.g. from a prior init/reload cycle)
-    if (statuses[scopedKey] !== undefined) continue
-
-    const mcpConfig: Config.Mcp = { ...declaration, enabled: true } as Config.Mcp
-
-    await MCP.add(scopedKey, mcpConfig)
-  }
+  await McpSupervisor.registerPluginServers(pluginId, mcpDeclarations)
 }
 
 /**
  * Stop all MCP servers associated with a plugin.
- * Disconnects any MCP client whose key starts with "{pluginId}::".
+ * Delegates to McpSupervisor.unregisterPluginServers.
  */
 export async function stopForPlugin(pluginId: string): Promise<void> {
-  const statuses = await MCP.status()
-  const prefix = `${pluginId}::`
-
-  for (const key of Object.keys(statuses)) {
-    if (key.startsWith(prefix)) {
-      await MCP.disconnect(key)
-    }
-  }
+  await McpSupervisor.unregisterPluginServers(pluginId)
 }

@@ -9,6 +9,7 @@ import {
   PromptListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js"
+import { mergeDeep } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
@@ -118,13 +119,21 @@ const enum HS {
 
 export const Status = z
   .discriminatedUnion("status", [
+    z.object({ status: z.literal("uninitialized") }).meta({ ref: "MCPStatusUninitialized" }),
+    z.object({ status: z.literal("starting") }).meta({ ref: "MCPStatusStarting" }),
+    z.object({ status: z.literal("connecting") }).meta({ ref: "MCPStatusConnecting" }),
+    z.object({ status: z.literal("listing_tools") }).meta({ ref: "MCPStatusListingTools" }),
     z.object({ status: z.literal("connected") }).meta({ ref: "MCPStatusConnected" }),
-    z.object({ status: z.literal("disabled") }).meta({ ref: "MCPStatusDisabled" }),
+    z
+      .object({ status: z.literal("reconnecting"), attempt: z.number(), maxAttempts: z.number() })
+      .meta({ ref: "MCPStatusReconnecting" }),
     z.object({ status: z.literal("failed"), error: z.string() }).meta({ ref: "MCPStatusFailed" }),
+    z.object({ status: z.literal("disabled") }).meta({ ref: "MCPStatusDisabled" }),
     z.object({ status: z.literal("needs_auth") }).meta({ ref: "MCPStatusNeedsAuth" }),
     z
       .object({ status: z.literal("needs_client_registration"), error: z.string() })
       .meta({ ref: "MCPStatusNeedsClientRegistration" }),
+    z.object({ status: z.literal("stopping") }).meta({ ref: "MCPStatusStopping" }),
   ])
   .meta({ ref: "MCPStatus" })
 export type Status = z.infer<typeof Status>
@@ -210,6 +219,10 @@ function redactUrl(url: string): string {
   }
 }
 
+function isServerDeclaration(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && "type" in value
+}
+
 // ---------------------------------------------------------------------------
 // McpHandle — per-server state
 // ---------------------------------------------------------------------------
@@ -244,27 +257,34 @@ function newHandle(name: string, config: Config.Mcp): McpHandle {
 // ---------------------------------------------------------------------------
 // Status mapping
 // ---------------------------------------------------------------------------
-
 export function mapStatus(handle: McpHandle): Status {
   switch (handle.state) {
+    case HS.Uninitialized:
+      return { status: "uninitialized" }
+    case HS.Starting:
+      return { status: "starting" }
+    case HS.Connecting:
+      return { status: "connecting" }
+    case HS.ListingTools:
+      return { status: "listing_tools" }
     case HS.Connected:
       return { status: "connected" }
-    case HS.Disabled:
-      return { status: "disabled" }
+    case HS.Reconnecting:
+      return {
+        status: "reconnecting",
+        attempt: handle.retryCount,
+        maxAttempts: handle.config.retry?.maxAttempts ?? 3,
+      }
     case HS.Failed:
       return { status: "failed", error: handle.lastError ?? "unknown error" }
+    case HS.Disabled:
+      return { status: "disabled" }
     case HS.NeedsAuth:
       return { status: "needs_auth" }
     case HS.NeedsClientRegistration:
       return { status: "needs_client_registration", error: handle.lastError ?? "" }
-    // Transient states map to the best approximation
-    case HS.Uninitialized:
-    case HS.Starting:
-    case HS.Connecting:
-    case HS.ListingTools:
-    case HS.Reconnecting:
     case HS.Stopping:
-      return { status: "failed", error: handle.lastError ?? "connecting..." }
+      return { status: "stopping" }
   }
 }
 
@@ -399,11 +419,157 @@ class McpSupervisorImpl {
     log.info("MCP supervisor reset complete")
   }
 
+  /** Restart: disconnect then reconnect, resetting retry count. */
+  async restart(name: string): Promise<McpHandle> {
+    const handle = this.handles.get(name)
+    if (!handle) {
+      throw new Error(`MCP server not found: ${name}`)
+    }
+    await this.disconnect(name)
+    handle.retryCount = 0
+    handle.lastError = undefined
+    this.scheduleStart(handle)
+    return handle
+  }
+
+  /** Refresh: re-list tools/prompts/resources for a connected handle. */
+  async refresh(name: string): Promise<McpHandle> {
+    const handle = this.handles.get(name)
+    if (!handle) {
+      throw new Error(`MCP server not found: ${name}`)
+    }
+    if (handle.state !== HS.Connected || !handle.client) {
+      return handle
+    }
+    const client = handle.client
+    const gen = handle.generation
+
+    const timeout = handle.config.listTimeout ?? handle.config.timeout ?? DEFAULT_TIMEOUT
+    const tools = await withTimeout(client.listTools(), timeout)
+      .then((r) => r.tools)
+      .catch((e) => {
+        log.error("refresh: listTools failed", { name, error: e })
+        return undefined
+      })
+
+    const prompts = await fetchPromptsForHandle(handle, client).catch((e) => {
+      log.error("refresh: listPrompts failed", { name, error: e })
+      return undefined
+    })
+
+    const resources = await fetchResourcesForHandle(handle, client).catch((e) => {
+      log.error("refresh: listResources failed", { name, error: e })
+      return undefined
+    })
+
+    if (handle.generation === gen) {
+      if (tools) handle.toolDefs = tools
+      if (prompts) handle.prompts = prompts
+      if (resources) handle.resources = resources
+      Bus.publish(ToolsChanged, { server: handle.name })
+      Bus.publish(PromptsChanged, { server: handle.name })
+      Bus.publish(ResourcesChanged, { server: handle.name })
+    }
+    return handle
+  }
+
+  /** Inspect: status + lightweight diagnostics (tool names, resources, prompts). */
+  inspect(name: string):
+    | {
+        status: Status
+        toolNames: string[]
+        resourceNames: string[]
+        promptNames: string[]
+      }
+    | undefined {
+    const handle = this.handles.get(name)
+    if (!handle) return undefined
+    return {
+      status: mapStatus(handle),
+      toolNames: handle.toolDefs.map((t) => t.name),
+      resourceNames: Object.values(handle.resources).map((r) => r.name),
+      promptNames: Object.values(handle.prompts).map((p) => p.name),
+    }
+  }
+
+  /** Test: validate presence and return status snapshot. */
+  test(name: string): Status | undefined {
+    const handle = this.handles.get(name)
+    if (!handle) return undefined
+    return mapStatus(handle)
+  }
+
   /** Lookup a connected client by name (used by getPrompt / readResource). */
   getClient(name: string): Client | undefined {
     const handle = this.handles.get(name)
     if (!handle || handle.state !== HS.Connected || !handle.client) return undefined
     return handle.client
+  }
+
+  // ── Plugin MCP lifecycle ──────────────────────────────────────────
+
+  /**
+   * Register all MCP server declarations from a plugin manifest.
+   *
+   * - Skips non-server entries (defaults, locked).
+   * - Skips server keys that are already defined in user config (bare-key shadow).
+   * - Deep-merges manifest `defaults` into each server declaration.
+   * - Normalizes each declaration through Config.normalizeMcp (applying
+   *   user mcpDefaults + experimental.mcp_timeout).
+   * - Registers using the namespaced key `{pluginId}::{serverKey}`.
+   *
+   * This method is intentionally async (reads Config) but does NOT call
+   * ensureStarted(). Plugin registrations are fire-and-forget — the
+   * supervisor handles scheduling independently.
+   */
+  async registerPluginServers(pluginId: string, manifestMcp: Record<string, unknown>): Promise<void> {
+    const cfg = await Config.get()
+    const userMcp = cfg.mcp ?? {}
+    const defaults =
+      typeof manifestMcp.defaults === "object" && manifestMcp.defaults !== null
+        ? (manifestMcp.defaults as Record<string, unknown>)
+        : {}
+
+    for (const [serverKey, declaration] of Object.entries(manifestMcp)) {
+      // Skip metadata fields
+      if (serverKey === "defaults" || serverKey === "locked") continue
+      if (!isServerDeclaration(declaration)) continue
+
+      // Bare-key shadow: user config wins
+      if (userMcp[serverKey] !== undefined) {
+        log.info("plugin MCP skipped (user config shadow)", { pluginId, serverKey })
+        continue
+      }
+
+      const scopedKey = `${pluginId}::${serverKey}`
+
+      // Skip if already registered (e.g. from a prior init/reload cycle)
+      if (this.get(scopedKey)) {
+        log.info("plugin MCP skipped (already registered)", { pluginId, serverKey })
+        continue
+      }
+
+      const merged = mergeDeep(defaults, declaration as Record<string, unknown>) as Record<string, unknown>
+
+      // Normalize through Config's standard MCP pipeline
+      const normalized = Config.normalizeMcp(merged as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+
+      this.add(scopedKey, normalized)
+      log.info("plugin MCP registered", { pluginId, serverKey, scopedKey, startup: normalized.startup })
+    }
+  }
+
+  /**
+   * Unregister all MCP servers contributed by a plugin.
+   * Disconnects and removes every handle whose name starts with `{pluginId}::`.
+   */
+  async unregisterPluginServers(pluginId: string): Promise<void> {
+    const prefix = `${pluginId}::`
+    const handles = this.getAll().filter((h) => h.name.startsWith(prefix))
+    await Promise.all(handles.map((h) => this.disconnect(h.name)))
+    for (const h of handles) {
+      this.handles.delete(h.name)
+    }
   }
 
   // ── Internal ────────────────────────────────────────────────────────

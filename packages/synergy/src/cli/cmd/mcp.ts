@@ -116,10 +116,28 @@ export const McpListCommand = cmd({
             statusIcon = "✗"
             statusText = "needs client registration"
             hint = "\n    " + status.error
-          } else {
+          } else if (status.status === "failed") {
             statusIcon = "✗"
             statusText = "failed"
             hint = "\n    " + status.error
+          } else if (status.status === "reconnecting") {
+            statusIcon = "⟳"
+            statusText = `reconnecting (${status.attempt}/${status.maxAttempts})`
+          } else if (status.status === "starting") {
+            statusIcon = "◌"
+            statusText = "starting"
+          } else if (status.status === "connecting") {
+            statusIcon = "◌"
+            statusText = "connecting"
+          } else if (status.status === "listing_tools") {
+            statusIcon = "◌"
+            statusText = "listing tools"
+          } else if (status.status === "stopping") {
+            statusIcon = "◌"
+            statusText = "stopping"
+          } else {
+            statusIcon = "○"
+            statusText = "uninitialized"
           }
 
           const typeHint = serverConfig.type === "remote" ? serverConfig.url : serverConfig.command.join(" ")
