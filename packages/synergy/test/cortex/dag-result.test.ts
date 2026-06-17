@@ -1,3 +1,4 @@
+import { DagPatchTool } from "../../src/tool/dag"
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Dag } from "../../src/session/dag"
 import { Cortex } from "../../src/cortex"
@@ -486,6 +487,110 @@ describe("delegated subagent with DAG context (integration)", () => {
         expect(down).toBeDefined()
         // Still gets status/result updated (that's updateDagNode, not context)
         expect(down!.status === "completed" || down!.status === "failed").toBe(true)
+      },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dagpatch immutability: completed nodes reject task_id / session_id mutation
+//
+// DagPatchTool.execute() guards task_id and session_id on completed nodes
+// (dag.ts lines 188-193). We test this by setting up a completed DAG node,
+// calling dagpatch to mutate the protected fields, and verifying the error
+// response and that the node values remain unchanged.
+// ---------------------------------------------------------------------------
+
+describe("dagpatch rejects task_id / session_id mutation on completed nodes", () => {
+  const ctx = {
+    sessionID: "",
+    messageID: "",
+    agent: "developer",
+    abort: AbortSignal.any([]),
+    metadata: () => {},
+    ask: async () => {},
+  }
+
+  test("completed node rejects task_id mutation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        ctx.sessionID = session.id
+
+        const originalTaskId = "existing-task-123"
+        await Dag.update({
+          sessionID: session.id,
+          nodes: [
+            {
+              id: "node-immutable-task",
+              content: "Completed node with task_id",
+              status: "completed",
+              deps: [],
+              task_id: originalTaskId,
+            },
+          ],
+        })
+
+        const patch = await DagPatchTool.init()
+        const result = await patch.execute(
+          {
+            nodes: [{ id: "node-immutable-task", task_id: "new-task-999" }],
+          },
+          ctx as any,
+        )
+
+        expect(result.title).toBe("Patch failed")
+        expect(result.output).toContain("task_id and session_id are immutable")
+
+        // Verify the node's task_id was not changed
+        const nodes = await Dag.get(session.id)
+        const node = nodes.find((n) => n.id === "node-immutable-task")
+        expect(node).toBeDefined()
+        expect(node!.task_id).toBe(originalTaskId)
+      },
+    })
+  })
+
+  test("completed node rejects session_id mutation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        ctx.sessionID = session.id
+
+        const originalSessionId = "existing-secret-session-abc"
+        await Dag.update({
+          sessionID: session.id,
+          nodes: [
+            {
+              id: "node-immutable-session",
+              content: "Completed node with session_id",
+              status: "completed",
+              deps: [],
+              session_id: originalSessionId,
+            },
+          ],
+        })
+
+        const patch = await DagPatchTool.init()
+        const result = await patch.execute(
+          {
+            nodes: [{ id: "node-immutable-session", session_id: "new-session-777" }],
+          },
+          ctx as any,
+        )
+
+        expect(result.title).toBe("Patch failed")
+        expect(result.output).toContain("task_id and session_id are immutable")
+
+        // Verify the node's session_id was not changed
+        const nodes = await Dag.get(session.id)
+        const node = nodes.find((n) => n.id === "node-immutable-session")
+        expect(node).toBeDefined()
+        expect(node!.session_id).toBe(originalSessionId)
       },
     })
   })
