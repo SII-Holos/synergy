@@ -16,31 +16,28 @@ describe("Note conflict payloads", () => {
       scope,
       fn: async () => {
         const created = await NoteStore.create({
-          title: "Test note",
-          contentText: "first",
+          title: "Test note"
         })
 
         await NoteStore.update(scope.id, created.id, {
-          contentText: "second",
-          expectedVersion: created.version,
-        })
+          expectedVersion: created.version
+      })
 
         await expect(
           NoteStore.update(scope.id, created.id, {
-            contentText: "third",
-            expectedVersion: created.version,
-          }),
+            expectedVersion: created.version
+      }),
         ).rejects.toMatchObject({
           name: "NoteConflictError",
           data: {
             expectedVersion: created.version,
             note: expect.objectContaining({
               id: created.id,
-              version: created.version + 1,
-            }),
-          },
-        })
-      },
-    })
+              version: created.version + 1
+      })
+      }
+      })
+      }
+      })
   })
 })

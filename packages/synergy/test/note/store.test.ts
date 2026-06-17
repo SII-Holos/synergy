@@ -20,8 +20,7 @@ describe("NoteStore", () => {
       fn: async () => {
         const note = await NoteStore.create(
           {
-            title: "Global note",
-            contentText: "shared",
+            title: "Global note"
           },
           { scopeID: "global" },
         )
@@ -29,8 +28,8 @@ describe("NoteStore", () => {
         expect(note.global).toBe(true)
         const globalNote = await NoteStore.get("global", note.id)
         expect(globalNote.id).toBe(note.id)
-      },
-    })
+      }
+      })
   })
 
   test("increments version on update", async () => {
@@ -41,21 +40,19 @@ describe("NoteStore", () => {
       scope,
       fn: async () => {
         const created = await NoteStore.create({
-          title: "Versioned note",
-          contentText: "one",
+          title: "Versioned note"
         })
 
         expect(created.version).toBe(1)
 
         const updated = await NoteStore.update(scope.id, created.id, {
-          contentText: "two",
-          expectedVersion: 1,
-        })
+          expectedVersion: 1
+      })
 
         expect(updated.version).toBe(2)
-        expect(updated.contentText).toBe("two")
-      },
-    })
+        expect(updated.content).toBe("two")
+      }
+      })
   })
 
   test("rejects stale expectedVersion", async () => {
@@ -66,23 +63,20 @@ describe("NoteStore", () => {
       scope,
       fn: async () => {
         const created = await NoteStore.create({
-          title: "Conflict note",
-          contentText: "one",
+          title: "Conflict note"
         })
 
         await NoteStore.update(scope.id, created.id, {
-          contentText: "two",
-          expectedVersion: created.version,
-        })
+          expectedVersion: created.version
+      })
 
         await expect(
           NoteStore.update(scope.id, created.id, {
-            contentText: "three",
-            expectedVersion: created.version,
-          }),
+            expectedVersion: created.version
+      }),
         ).rejects.toBeInstanceOf(NoteError.Conflict)
-      },
-    })
+      }
+      })
   })
 
   test("normalizes legacy notes without version during update", async () => {
@@ -97,22 +91,20 @@ describe("NoteStore", () => {
         await Storage.write(StoragePath.note(Identifier.asScopeID(scope.id), noteID), {
           id: noteID,
           title: "Legacy note",
-          content: { type: "doc", content: [] },
-          contentText: "legacy",
+          content: { type: "doc", content: [] }
           pinned: false,
           global: false,
           tags: [],
-          time: { created: now, updated: now },
-        })
+          time: { created: now, updated: now }
+      })
 
         const updated = await NoteStore.update(scope.id, noteID, {
-          contentText: "migrated",
-          expectedVersion: 1,
-        })
+          expectedVersion: 1
+      })
 
         expect(updated.version).toBe(2)
-        expect(updated.contentText).toBe("migrated")
-      },
-    })
+        expect(updated.content).toBe("migrated")
+      }
+      })
   })
 })
