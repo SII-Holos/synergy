@@ -1079,6 +1079,70 @@ export type IdentityConfig = {
   autonomy?: boolean
 }
 
+/**
+ * Retry policy for connecting to this server
+ */
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
+}
+
+/**
+ * Filter which tools are exposed from this server
+ */
+export type McpToolFilterConfig = {
+  /**
+   * Tool names to include (allowlist)
+   */
+  include?: Array<string>
+  /**
+   * Tool names to exclude (blocklist)
+   */
+  exclude?: Array<string>
+}
+
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode: auto, always, or per_session
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
+}
+
 export type McpLocalConfig = {
   /**
    * Type of MCP server connection
@@ -1102,6 +1166,34 @@ export type McpLocalConfig = {
    * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
    */
   timeout?: number
+  /**
+   * Startup mode: eager (start immediately), lazy (start on first use), or manual
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, the supervisor will keep trying to connect this server
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type McpOAuthConfig = {
@@ -1146,6 +1238,68 @@ export type McpRemoteConfig = {
    * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
    */
   timeout?: number
+  /**
+   * Startup mode: eager (start immediately), lazy (start on first use), or manual
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, the supervisor will keep trying to connect this server
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * Default startup mode for MCP servers
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * Default required flag for MCP servers
+   */
+  required?: boolean
+  /**
+   * Default connect timeout in ms
+   */
+  connectTimeout?: number
+  /**
+   * Default list timeout in ms
+   */
+  listTimeout?: number
+  /**
+   * Default call timeout in ms
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Default idle shutdown in ms
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type ChannelFeishuAccountConfig = {
@@ -1501,6 +1655,7 @@ export type Config = {
           enabled: boolean
         }
   }
+  mcpDefaults?: McpDefaultsConfig
   /**
    * Channel configurations for messaging platform integrations
    */
@@ -3349,17 +3504,39 @@ export type Agent = {
   external?: ExternalAgentInfo
 }
 
+export type McpStatusUninitialized = {
+  status: "uninitialized"
+}
+
+export type McpStatusStarting = {
+  status: "starting"
+}
+
+export type McpStatusConnecting = {
+  status: "connecting"
+}
+
+export type McpStatusListingTools = {
+  status: "listing_tools"
+}
+
 export type McpStatusConnected = {
   status: "connected"
 }
 
-export type McpStatusDisabled = {
-  status: "disabled"
+export type McpStatusReconnecting = {
+  status: "reconnecting"
+  attempt: number
+  maxAttempts: number
 }
 
 export type McpStatusFailed = {
   status: "failed"
   error: string
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
 }
 
 export type McpStatusNeedsAuth = {
@@ -3371,12 +3548,22 @@ export type McpStatusNeedsClientRegistration = {
   error: string
 }
 
+export type McpStatusStopping = {
+  status: "stopping"
+}
+
 export type McpStatus =
+  | McpStatusUninitialized
+  | McpStatusStarting
+  | McpStatusConnecting
+  | McpStatusListingTools
   | McpStatusConnected
-  | McpStatusDisabled
+  | McpStatusReconnecting
   | McpStatusFailed
+  | McpStatusDisabled
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
+  | McpStatusStopping
 
 export type ChannelStatus =
   | {
@@ -3518,6 +3705,14 @@ export type EventMcpReady = {
   type: "mcp.ready"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
   }
 }
 
@@ -4014,6 +4209,7 @@ export type Event =
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
+  | EventMcpFailed
   | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
@@ -9337,6 +9533,127 @@ export type McpDisconnectResponses = {
 }
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type McpRestartData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/restart"
+}
+
+export type McpRestartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRestartError = McpRestartErrors[keyof McpRestartErrors]
+
+export type McpRestartResponses = {
+  /**
+   * MCP server restart initiated
+   */
+  200: McpStatus
+}
+
+export type McpRestartResponse = McpRestartResponses[keyof McpRestartResponses]
+
+export type McpRefreshData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/refresh"
+}
+
+export type McpRefreshErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRefreshError = McpRefreshErrors[keyof McpRefreshErrors]
+
+export type McpRefreshResponses = {
+  /**
+   * MCP server discovery refreshed
+   */
+  200: McpStatus
+}
+
+export type McpRefreshResponse = McpRefreshResponses[keyof McpRefreshResponses]
+
+export type McpInspectData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/inspect"
+}
+
+export type McpInspectErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpInspectError = McpInspectErrors[keyof McpInspectErrors]
+
+export type McpInspectResponses = {
+  /**
+   * MCP server inspection result
+   */
+  200: {
+    status: McpStatus
+    toolNames: Array<string>
+    resourceNames: Array<string>
+    promptNames: Array<string>
+  }
+}
+
+export type McpInspectResponse = McpInspectResponses[keyof McpInspectResponses]
+
+export type McpTestData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/test"
+}
+
+export type McpTestErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpTestError = McpTestErrors[keyof McpTestErrors]
+
+export type McpTestResponses = {
+  /**
+   * MCP server test result
+   */
+  200: McpStatus
+}
+
+export type McpTestResponse = McpTestResponses[keyof McpTestResponses]
 
 export type ChannelStatusData = {
   body?: never

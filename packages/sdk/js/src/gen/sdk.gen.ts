@@ -193,9 +193,17 @@ import type {
   McpAuthStartResponses,
   McpConnectResponses,
   McpDisconnectResponses,
+  McpInspectErrors,
+  McpInspectResponses,
   McpLocalConfig,
+  McpRefreshErrors,
+  McpRefreshResponses,
   McpRemoteConfig,
+  McpRestartErrors,
+  McpRestartResponses,
   McpStatusResponses,
+  McpTestErrors,
+  McpTestResponses,
   MemoryCategory,
   MemoryRecallMode,
   NoteCreateErrors,
@@ -5678,6 +5686,126 @@ export class Mcp extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<McpDisconnectResponses, unknown, ThrowOnError>({
       url: "/mcp/{name}/disconnect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Restart MCP server
+   *
+   * Disconnect and reconnect an MCP server, resetting retry count.
+   */
+  public restart<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpRestartResponses, McpRestartErrors, ThrowOnError>({
+      url: "/mcp/{name}/restart",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Refresh MCP server discovery
+   *
+   * Re-list tools, prompts, and resources for a connected MCP server.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpRefreshResponses, McpRefreshErrors, ThrowOnError>({
+      url: "/mcp/{name}/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Inspect MCP server
+   *
+   * Get status and lightweight diagnostics (tool names, resources, prompts) for an MCP server.
+   */
+  public inspect<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpInspectResponses, McpInspectErrors, ThrowOnError>({
+      url: "/mcp/{name}/inspect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Test MCP server
+   *
+   * Validate presence and return status snapshot for an MCP server.
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpTestResponses, McpTestErrors, ThrowOnError>({
+      url: "/mcp/{name}/test",
       ...options,
       ...params,
     })

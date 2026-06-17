@@ -10751,6 +10751,238 @@
         ]
       }
     },
+    "/mcp/{name}/restart": {
+      "post": {
+        "operationId": "mcp.restart",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Restart MCP server",
+        "description": "Disconnect and reconnect an MCP server, resetting retry count.",
+        "responses": {
+          "200": {
+            "description": "MCP server restart initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.restart({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/refresh": {
+      "post": {
+        "operationId": "mcp.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Refresh MCP server discovery",
+        "description": "Re-list tools, prompts, and resources for a connected MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server discovery refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/inspect": {
+      "get": {
+        "operationId": "mcp.inspect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Inspect MCP server",
+        "description": "Get status and lightweight diagnostics (tool names, resources, prompts) for an MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server inspection result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "$ref": "#/components/schemas/MCPStatus"
+                    },
+                    "toolNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "resourceNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "promptNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["status", "toolNames", "resourceNames", "promptNames"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.inspect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/test": {
+      "get": {
+        "operationId": "mcp.test",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Test MCP server",
+        "description": "Validate presence and return status snapshot for an MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server test result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.test({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/channel": {
       "get": {
         "operationId": "channel.status",
@@ -13217,6 +13449,93 @@
         },
         "additionalProperties": false
       },
+      "McpRetryConfig": {
+        "description": "Retry policy for connecting to this server",
+        "type": "object",
+        "properties": {
+          "maxAttempts": {
+            "description": "Maximum connection attempts before giving up",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backoffMs": {
+            "description": "Initial backoff delay in ms between retries",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backoffMultiplier": {
+            "description": "Multiplier applied to backoff on each retry",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "cooldownMs": {
+            "description": "Cooldown period in ms before a retry cycle resets",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolFilterConfig": {
+        "description": "Filter which tools are exposed from this server",
+        "type": "object",
+        "properties": {
+          "include": {
+            "description": "Tool names to include (allowlist)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "description": "Tool names to exclude (blocklist)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolsConfig": {
+        "description": "Tool execution behavior config",
+        "type": "object",
+        "properties": {
+          "approval": {
+            "description": "Tool approval mode: auto, always, or per_session",
+            "type": "string",
+            "enum": ["auto", "always", "per_session"]
+          },
+          "maxOutputBytes": {
+            "description": "Maximum tool output size in bytes",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolCacheConfig": {
+        "description": "Tool list caching behavior",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "Tool list caching mode",
+            "type": "string",
+            "enum": ["disabled", "session", "persistent"]
+          },
+          "ttlMs": {
+            "description": "Time-to-live for cached tool list in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
       "McpLocalConfig": {
         "type": "object",
         "properties": {
@@ -13251,6 +13570,51 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "startup": {
+            "description": "Startup mode: eager (start immediately), lazy (start on first use), or manual",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, the supervisor will keep trying to connect this server",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
           }
         },
         "required": ["type", "command"],
@@ -13317,9 +13681,106 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "startup": {
+            "description": "Startup mode: eager (start immediately), lazy (start on first use), or manual",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, the supervisor will keep trying to connect this server",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
           }
         },
         "required": ["type", "url"],
+        "additionalProperties": false
+      },
+      "McpDefaultsConfig": {
+        "description": "Default settings applied to all MCP servers that don't override them",
+        "type": "object",
+        "properties": {
+          "startup": {
+            "description": "Default startup mode for MCP servers",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "Default required flag for MCP servers",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Default connect timeout in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Default list timeout in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Default call timeout in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Default idle shutdown in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
+          }
+        },
         "additionalProperties": false
       },
       "ChannelFeishuAccountConfig": {
@@ -13850,6 +14311,9 @@
                 }
               ]
             }
+          },
+          "mcpDefaults": {
+            "$ref": "#/components/schemas/McpDefaultsConfig"
           },
           "channel": {
             "description": "Channel configurations for messaging platform integrations",
@@ -18978,6 +19442,46 @@
         },
         "required": ["name", "mode", "permission", "options"]
       },
+      "MCPStatusUninitialized": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "uninitialized"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusStarting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "starting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusConnecting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "connecting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusListingTools": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "listing_tools"
+          }
+        },
+        "required": ["status"]
+      },
       "MCPStatusConnected": {
         "type": "object",
         "properties": {
@@ -18988,15 +19492,21 @@
         },
         "required": ["status"]
       },
-      "MCPStatusDisabled": {
+      "MCPStatusReconnecting": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "const": "disabled"
+            "const": "reconnecting"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "maxAttempts": {
+            "type": "number"
           }
         },
-        "required": ["status"]
+        "required": ["status", "attempt", "maxAttempts"]
       },
       "MCPStatusFailed": {
         "type": "object",
@@ -19010,6 +19520,16 @@
           }
         },
         "required": ["status", "error"]
+      },
+      "MCPStatusDisabled": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "disabled"
+          }
+        },
+        "required": ["status"]
       },
       "MCPStatusNeedsAuth": {
         "type": "object",
@@ -19034,22 +19554,50 @@
         },
         "required": ["status", "error"]
       },
+      "MCPStatusStopping": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "stopping"
+          }
+        },
+        "required": ["status"]
+      },
       "MCPStatus": {
         "anyOf": [
+          {
+            "$ref": "#/components/schemas/MCPStatusUninitialized"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStarting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusConnecting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusListingTools"
+          },
           {
             "$ref": "#/components/schemas/MCPStatusConnected"
           },
           {
-            "$ref": "#/components/schemas/MCPStatusDisabled"
+            "$ref": "#/components/schemas/MCPStatusReconnecting"
           },
           {
             "$ref": "#/components/schemas/MCPStatusFailed"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusDisabled"
           },
           {
             "$ref": "#/components/schemas/MCPStatusNeedsAuth"
           },
           {
             "$ref": "#/components/schemas/MCPStatusNeedsClientRegistration"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStopping"
           }
         ]
       },
@@ -19463,6 +20011,28 @@
           "properties": {
             "type": "object",
             "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["server", "error"]
           }
         },
         "required": ["type", "properties"]
@@ -20854,6 +21424,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
