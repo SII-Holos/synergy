@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show } from "solid-js"
+import { createMemo, createSignal, Show, type JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
@@ -107,7 +107,7 @@ function DetailRow(props: { label: string; value: string | undefined }) {
   )
 }
 
-function DetailGroup(props: { title: string; children: any }) {
+function DetailGroup(props: { title: string; children: JSX.Element }) {
   return (
     <div class="space-y-1.5 min-w-0">
       <div class="text-12-medium text-text-weak">{props.title}</div>
@@ -172,7 +172,7 @@ export function StatusBar() {
     return !!current.permission[id]?.length || !!current.question[id]?.length
   })
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
-  const isWorktree = createMemo(() => workspaceType() === "git_worktree")
+  const isWorktree = () => workspaceType() === "git_worktree"
   const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
   const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
   const workspacePath = createMemo(() => session()?.workspace?.path || session()?.scope.directory || directory())
