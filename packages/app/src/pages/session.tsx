@@ -37,6 +37,9 @@ import { HolosConversation, HolosGreeting } from "@/components/session/holos-con
 import { HolosPromptInput } from "@/components/session/holos-prompt-input"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
+import { WorkspacePanel, WorkspacePanelMobile } from "@/components/session/workspace-panel"
+import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
+import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { getScopeLabel } from "@/utils/scope"
@@ -64,6 +67,7 @@ export default function Page() {
   const permission = usePermission()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const workspace = () => layout.workspace(sessionKey())
   const view = createMemo(() => layout.view(sessionKey()))
 
   if (import.meta.env.DEV) {
@@ -846,6 +850,8 @@ export default function Page() {
   })
 
   return (
+    <WorkspaceProvider>
+      <WorkspaceNotesTool />
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Mobile tab bar */}
@@ -1102,6 +1108,9 @@ export default function Page() {
             handoffFiles={handoff.files}
           />
         </Show>
+        <Show when={isDesktop() && workspace().opened()}>
+          <WorkspacePanel />
+        </Show>
       </div>
 
       <Show when={isDesktop() && layout.terminal.opened()}>
@@ -1117,5 +1126,7 @@ export default function Page() {
         />
       </Show>
     </div>
+      <WorkspacePanelMobile />
+    </WorkspaceProvider>
   )
 }

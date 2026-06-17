@@ -96,6 +96,20 @@ export function useSessionCommands(params: {
       onSelect: () => layout.terminal.toggle(),
     },
     {
+      id: "workspace.toggle",
+      title: "Toggle workspace panel",
+      description: "Open or close the workspace panel",
+      category: "View",
+      keybind: "mod+shift+w",
+      disabled: !routeParams.id,
+      slash: "workspace",
+      onSelect: () => {
+        if (routeParams.id) {
+          layout.workspace(`${routeParams.dir}/${routeParams.id}`).toggle()
+        }
+      },
+    },
+    {
       // TODO: redesign sidebar — disabled for now
       id: "review.toggle",
       title: "Toggle review",

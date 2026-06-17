@@ -8,6 +8,7 @@ import { ModelSelectorPopover } from "@/components/dialog"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
+import { useLayout } from "@/context/layout"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isGlobalScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -19,6 +20,7 @@ export function SessionTopBar() {
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
+  const layout = useLayout()
 
   const isGlobal = () => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false)
 
@@ -87,6 +89,13 @@ export function SessionTopBar() {
           <Tooltip value="Export session data" placement="bottom">
             <button type="button" class="stb-icon-btn" onClick={() => dialog.show(() => <DialogSessionExport />)}>
               <Icon name="download" size="normal" />
+            </button>
+          </Tooltip>
+        </Show>
+        <Show when={!!params.id}>
+          <Tooltip value="Toggle workspace" placement="bottom">
+            <button type="button" class="stb-icon-btn" onClick={() => layout.workspace(`${params.dir}/${params.id!}`).toggle()}>
+              <Icon name="panel-right" size="normal" />
             </button>
           </Tooltip>
         </Show>
