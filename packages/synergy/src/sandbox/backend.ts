@@ -302,6 +302,22 @@ export namespace SandboxBackend {
   }
 
   // ----------------------------------------------------------------
+  // Cleanup
+  // ----------------------------------------------------------------
+
+  /**
+   * Clean up a sandbox temp profile file by exact path.
+   * Best-effort; errors are silently swallowed.
+   */
+  export function cleanupTemp(tempPath: string): void {
+    try {
+      fs.unlinkSync(tempPath)
+    } catch {
+      // best-effort cleanup
+    }
+  }
+
+  // ----------------------------------------------------------------
   // Execution
   // ----------------------------------------------------------------
 
@@ -362,11 +378,7 @@ export namespace SandboxBackend {
     } finally {
       // Clean up temp profile even on failure
       if (tempPath) {
-        try {
-          fs.unlinkSync(tempPath)
-        } catch {
-          // best-effort cleanup
-        }
+        cleanupTemp(tempPath)
       }
     }
   }

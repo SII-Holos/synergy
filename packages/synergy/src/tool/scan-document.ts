@@ -56,16 +56,6 @@ export const ScanDocumentTool = Tool.define("scan_document", {
   async execute(params, ctx) {
     const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
 
-    // Permission checks
-    if (!ctx.extra?.["bypassCwdCheck"] && !Instance.contains(filepath)) {
-      const parentDir = path.dirname(filepath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir],
-        metadata: { filepath, parentDir, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
-      })
-    }
-
     await ctx.ask({
       permission: "scan_document",
       patterns: [filepath],

@@ -35,18 +35,6 @@ export const GrepTool = Tool.define("grep", {
         ? params.path
         : path.resolve(Instance.directory, params.path)
       : Instance.directory
-    if (!Instance.contains(searchPath)) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [searchPath],
-        metadata: {
-          path: searchPath,
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
-    }
 
     const rgPath = await Ripgrep.filepath()
     const args = ["-nH", "--field-match-separator=|", "--regexp", params.pattern]

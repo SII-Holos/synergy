@@ -1,6 +1,6 @@
 import { PathClassifier } from "./classify"
 import { ControlProfileCompiler } from "../control-profile/compiler"
-import type { ProfileId, ProfileRule } from "../control-profile/types"
+import type { ProfileId, ProfileRule, ProfileSandbox } from "../control-profile/types"
 
 export interface Capability {
   class: string
@@ -32,6 +32,7 @@ export interface GateOptions {
   interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
+  originalCheckout?: string
 }
 
 const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo ", "dd "]
@@ -50,6 +51,41 @@ function extractAbsolutePaths(command: string): string[] {
   while ((match = pathPattern.exec(command)) !== null) {
     const candidate = match[1]
     if (candidate.includes("/")) paths.push(candidate)
+  }
+  return paths
+}
+
+function uniqueCapability(caps: Capability[], cap: Capability) {
+  if (caps.some((existing) => existing.class === cap.class && existing.nonBypassable === cap.nonBypassable)) return
+  caps.push(cap)
+}
+
+function classifyPathCapability(
+  caps: Capability[],
+  pathInput: string,
+  options: { activeWorkspace: string; originalCheckout?: string; write?: boolean },
+) {
+  const result = PathClassifier.classifyPath(pathInput, {
+    workspace: options.activeWorkspace,
+    originalCheckout: options.originalCheckout,
+  })
+  if (result.boundary === "inside") {
+    uniqueCapability(caps, { class: options.write ? "file_write" : "file_read", nonBypassable: false })
+  } else {
+    uniqueCapability(caps, { class: "file_external", nonBypassable: true })
+  }
+}
+
+function extractShellPathArguments(command: string, cwd: string): string[] {
+  const paths: string[] = []
+  const commandPattern = /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown)\s+([^;&|]+)/g
+  let match: RegExpExecArray | null
+  while ((match = commandPattern.exec(command)) !== null) {
+    const [, name, rawArgs] = match
+    for (const raw of rawArgs.trim().split(/\s+/)) {
+      if (!raw || raw.startsWith("-") || (name === "chmod" && raw.startsWith("+"))) continue
+      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
+    }
   }
   return paths
 }
@@ -75,8 +111,8 @@ export namespace EnforcementGate {
       interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
+      originalCheckout,
     } = options
-
     const profileId: string = rawProfileId
 
     const resolved = ControlProfileCompiler.resolve(profileId, {
@@ -111,29 +147,45 @@ export namespace EnforcementGate {
       }
 
       // File read operations
-      if (toolName === "read" || toolName === "glob" || toolName === "grep") {
+      if (
+        toolName === "read" ||
+        toolName === "glob" ||
+        toolName === "grep" ||
+        toolName === "view_file" ||
+        toolName === "scan_files" ||
+        toolName === "parse_code"
+      ) {
         const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
         if (filePath) {
-          const result = PathClassifier.classifyPath(filePath, { workspace: activeWorkspace })
-          if (result.boundary === "inside") {
-            caps.push({ class: "file_read", nonBypassable: false })
-          } else {
-            caps.push({ class: "file_external", nonBypassable: true })
-          }
+          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout })
         }
         return { capabilities: caps }
       }
 
       // File write operations
-      if (toolName === "write" || toolName === "edit") {
+      if (toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file") {
         const filePath = args.filePath ?? args.path ?? ""
         if (filePath) {
-          const result = PathClassifier.classifyPath(filePath, { workspace: activeWorkspace })
-          if (result.boundary === "inside") {
-            caps.push({ class: "file_write", nonBypassable: false })
-          } else {
-            caps.push({ class: "file_external", nonBypassable: true })
-          }
+          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
+        }
+        return { capabilities: caps }
+      }
+
+      // Document / attachment tools
+      if (toolName === "scan_document" || toolName === "look_at" || toolName === "attach") {
+        const raw = args.filePath ?? args.file_path ?? ""
+        const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
+        if (filePath) {
+          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout })
+        }
+        return { capabilities: caps }
+      }
+
+      // Agora tools — directory path outside workspace
+      if (toolName === "agora_join" || toolName === "agora_accept") {
+        const dir = args.directory ?? ""
+        if (dir) {
+          classifyPathCapability(caps, dir, { activeWorkspace, originalCheckout, write: true })
         }
         return { capabilities: caps }
       }
@@ -147,13 +199,17 @@ export namespace EnforcementGate {
           caps.push({ class: "shell_destructive", nonBypassable: true })
         }
 
-        // Check for external absolute paths in command
-        const extPaths = extractAbsolutePaths(command)
-        for (const extPath of extPaths) {
-          const result = PathClassifier.classify(extPath, { workspace: activeWorkspace })
+        const cwd = args.workdir ?? activeWorkspace
+        if (args.workdir) {
+          classifyPathCapability(caps, args.workdir, { activeWorkspace, originalCheckout })
+        }
+
+        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
+        for (const candidate of pathCandidates) {
+          const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
-            caps.push({ class: "file_external", nonBypassable: true })
-            break // Only add file_external once
+            uniqueCapability(caps, { class: "file_external", nonBypassable: true })
+            break
           }
         }
 
@@ -166,8 +222,23 @@ export namespace EnforcementGate {
       }
 
       // Network operations
-      if (toolName === "web_fetch" || toolName === "fetch") {
+      if (toolName === "web_fetch" || toolName === "fetch" || toolName === "websearch") {
         caps.push({ class: "network_request", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // email_send — nonBypassable communication
+      if (toolName === "email_send") {
+        caps.push({ class: "communication_email", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // session_send with role=user — identity act
+      if (toolName === "session_send") {
+        const role = args.role ?? ""
+        if (role === "user") {
+          caps.push({ class: "identity_act", nonBypassable: true })
+        }
         return { capabilities: caps }
       }
 
@@ -232,6 +303,12 @@ export namespace EnforcementGate {
     return {
       classify,
       evaluate,
+      getSandbox(): ProfileSandbox {
+        return resolved.sandbox
+      },
+      getWorkspace(): string {
+        return activeWorkspace
+      },
       clearAudit() {
         auditRecords.length = 0
       },

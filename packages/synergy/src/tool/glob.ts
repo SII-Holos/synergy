@@ -28,18 +28,6 @@ export const GlobTool = Tool.define("glob", {
 
     let search = params.path ?? Instance.directory
     search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
-    if (!Instance.contains(search)) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [search],
-        metadata: {
-          path: search,
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
-    }
 
     const TIMEOUT_MS = 15_000
     const limit = 100

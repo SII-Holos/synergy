@@ -1,6 +1,4 @@
 import { spawn } from "child_process"
-import path from "path"
-import { realpathSync } from "fs"
 import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
@@ -11,6 +9,7 @@ import { Instance } from "@/scope/instance"
 import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
+import { SandboxBackend } from "@/sandbox/backend"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -71,8 +70,6 @@ export const LocalBashBackend: BashBackend = {
     if (!tree) {
       throw new Error("Failed to parse command")
     }
-    const directories = new Set<string>()
-    if (!Instance.contains(cwd)) directories.add(cwd)
     const patterns = new Set<string>()
 
     try {
@@ -94,44 +91,12 @@ export const LocalBashBackend: BashBackend = {
           command.push(child.text)
         }
 
-        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
-          for (const arg of command.slice(1)) {
-            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-            const absolute = path.resolve(cwd, arg)
-            let resolved = absolute
-            try {
-              resolved = realpathSync(absolute)
-            } catch {
-              // The target may not exist yet (touch/mkdir/redirection style flows).
-              // Still classify the intended absolute path so workspace-boundary
-              // checks happen before the shell has a chance to create it.
-            }
-            log.info("resolved path", { arg, resolved })
-            const normalized =
-              process.platform === "win32" && resolved.match(/^\/[a-z]\//)
-                ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
-                : resolved
-            if (!Instance.contains(normalized)) directories.add(normalized)
-          }
-        }
-
         if (command.length && command[0] !== "cd") {
           patterns.add(command.join(" "))
         }
       }
     } finally {
       tree.delete()
-    }
-    if (directories.size > 0) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: Array.from(directories),
-        metadata: {
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
     }
 
     if (patterns.size > 0) {
@@ -142,15 +107,49 @@ export const LocalBashBackend: BashBackend = {
       })
     }
 
-    const child = spawn(params.command, {
-      shell,
-      cwd,
-      env: {
-        ...process.env,
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    })
+    const sandboxWrapper = (ctx.extra as any)?.sandboxWrapper
+    const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
+
+    let child: ReturnType<typeof spawn>
+    if (sandboxWrapper) {
+      if (sandboxWrapper.skipReason) {
+        if (sandboxFallback === "deny") {
+          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+        }
+        log.warn("sandbox unavailable, running unsandboxed", {
+          reason: sandboxWrapper.skipReason,
+          fallback: sandboxFallback,
+        })
+        child = spawn(params.command, {
+          shell,
+          cwd,
+          env: {
+            ...process.env,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        })
+      } else {
+        child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+          cwd,
+          env: {
+            ...process.env,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        })
+      }
+    } else {
+      child = spawn(params.command, {
+        shell,
+        cwd,
+        env: {
+          ...process.env,
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    }
 
     const regProc = ProcessRegistry.create({
       command: params.command,
@@ -207,6 +206,9 @@ export const LocalBashBackend: BashBackend = {
         ProcessRegistry.markExited(regProc, code, signal)
       } else {
         ProcessRegistry.remove(regProc.id)
+      }
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
     })
 

@@ -27,21 +27,6 @@ export const ReadTool = Tool.define("read", {
     }
     const title = path.relative(Instance.directory, filepath)
 
-    if (!ctx.extra?.["bypassCwdCheck"] && !Instance.contains(filepath)) {
-      const parentDir = path.dirname(filepath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir],
-        metadata: {
-          filepath,
-          parentDir,
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
-    }
-
     await ctx.ask({
       permission: "read",
       patterns: [filepath],

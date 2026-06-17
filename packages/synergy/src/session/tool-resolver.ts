@@ -15,6 +15,10 @@ import { Session } from "."
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
+import { Instance } from "@/scope/instance"
+import { EnforcementGate } from "@/enforcement/gate"
+import { SandboxBackend } from "@/sandbox/backend"
+import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -34,6 +38,20 @@ export namespace ToolResolver {
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
+  }
+
+  /**
+   * Derive an external path string from tool args for use in nonBypassable
+   * permission asks triggered by the enforcement gate.
+   */
+  function externalPathFromArgs(toolName: string, args: Record<string, any>): string {
+    if (toolName === "bash") return (args.workdir ?? args.command) as string
+    if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
+    if (toolName === "look_at" || toolName === "attach") {
+      const raw = args.file_path ?? args.filePath ?? ""
+      return Array.isArray(raw) ? (raw[0] ?? "") : String(raw)
+    }
+    return (args.filePath ?? args.path ?? args.pattern ?? "") as string
   }
 
   function contextFactory(input: Input) {
@@ -112,6 +130,61 @@ export namespace ToolResolver {
               const toolCtx = { ...ctx, abort: combinedAbort }
 
               try {
+                const workspace = Instance.directory
+                const workspaceInfo = Instance.workspace
+                const interaction = runtimeInput.session?.interaction
+                const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                const gate = EnforcementGate.create({
+                  activeWorkspace: workspace,
+                  workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                  interactionMode,
+                  originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                })
+
+                const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                if (envelope.decision === "deny") {
+                  throw new Error(`Enforcement gate denied ${item.id}`)
+                }
+
+                // NonBypassable ask: only for file_external capability.
+                // Other nonBypassable caps (shell_destructive, network_request, etc.)
+                // are handled by the tool's own permission checks or by PermissionNext.
+                if (envelope.decision === "ask" && gate.hasPendingCapability("file_external")) {
+                  const extPath = externalPathFromArgs(item.id, args as Record<string, any>)
+                  await ctx.ask({
+                    permission: "external_directory",
+                    patterns: extPath ? [extPath] : ["*"],
+                    metadata: {
+                      workspaceBoundary: true,
+                      outsideWorkspace: true,
+                      nonBypassable: true,
+                    },
+                  })
+                  gate.resolveCapability("file_external")
+                }
+
+                // ── Sandbox wrapping for bash ──────────────────────────
+                let sandboxWrapper: SandboxExecutionWrapper | undefined
+                if (item.id === "bash") {
+                  const sandbox = gate.getSandbox()
+                  if (sandbox.mode !== "none") {
+                    const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
+                    sandboxWrapper = SandboxBackend.prepareWrapper({
+                      command: "/bin/sh",
+                      args: ["-c", bashCommand],
+                      workspace,
+                      sandboxMode: sandbox.mode,
+                    })
+                    if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
+                      throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                    }
+                    // Store wrapper in context for bash tool to use
+                    ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper
+                    ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
+                  }
+                }
+
+                // ── Plugin: tool.execute.before ────────────────────────
                 await Plugin.trigger(
                   "tool.execute.before",
                   {
@@ -206,6 +279,22 @@ export namespace ToolResolver {
                   : toolDeadline
 
                 try {
+                  const workspace = Instance.directory
+                  const workspaceInfo = Instance.workspace
+                  const interaction = runtimeInput.session?.interaction
+                  const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                  const gate = EnforcementGate.create({
+                    activeWorkspace: workspace,
+                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                    interactionMode,
+                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                    registeredMcpTools: new Set(Object.keys(await MCP.tools())),
+                  })
+                  const envelope = gate.evaluate(key, args as Record<string, any>)
+                  if (envelope.decision === "deny") {
+                    throw new Error(`Enforcement gate denied ${key}`)
+                  }
+
                   await Plugin.trigger(
                     "tool.execute.before",
                     {

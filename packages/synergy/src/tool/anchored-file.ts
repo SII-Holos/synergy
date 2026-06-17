@@ -22,25 +22,6 @@ export function displayPath(filePath: string): string {
   return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
 }
 
-export async function assertInsideOrAsk(
-  filePath: string,
-  ctx: { ask: (input: any) => Promise<void>; extra?: Record<string, unknown> },
-) {
-  if (ctx.extra?.["bypassCwdCheck"] || Instance.contains(filePath)) return
-  const parentDir = path.dirname(filePath)
-  await ctx.ask({
-    permission: "external_directory",
-    patterns: [parentDir],
-    metadata: {
-      filepath: filePath,
-      parentDir,
-      workspaceBoundary: true,
-      outsideWorkspace: true,
-      nonBypassable: true,
-    },
-  })
-}
-
 function isKnownBinaryPath(filePath: string): boolean {
   switch (path.extname(filePath).toLowerCase()) {
     case ".zip":

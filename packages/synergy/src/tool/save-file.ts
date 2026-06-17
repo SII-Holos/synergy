@@ -8,14 +8,7 @@ import { File } from "../file"
 import { FileTime } from "../file/time"
 import { detectConflicts } from "../conflict/detect"
 import { RuntimeReload } from "../runtime/reload"
-import {
-  assertInsideOrAsk,
-  diffStats,
-  displayPath,
-  ensureParentDir,
-  hashlineHeaderFor,
-  resolveFilePath,
-} from "./anchored-file"
+import { diffStats, displayPath, ensureParentDir, hashlineHeaderFor, resolveFilePath } from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
 import { collectWriteDiagnostics } from "./write-quality"
 
@@ -30,7 +23,6 @@ export const SaveFileTool = Tool.define("save_file", {
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)
     const title = displayPath(filePath)
-    await assertInsideOrAsk(filePath, ctx)
 
     return FileTime.withLock(
       filePath,

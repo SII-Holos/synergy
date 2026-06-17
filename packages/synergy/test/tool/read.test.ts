@@ -52,7 +52,7 @@ describe("tool.read external_directory permission", () => {
     })
   })
 
-  test("asks for external_directory permission when reading absolute path outside project", async () => {
+  test("does not emit external_directory directly when reading absolute path outside project", async () => {
     await using outerTmp = await tmpdir({
       init: async (dir) => {
         await Bun.write(path.join(dir, "secret.txt"), "secret data")
@@ -71,14 +71,13 @@ describe("tool.read external_directory permission", () => {
           },
         }
         await read.execute({ filePath: path.join(outerTmp.path, "secret.txt") }, testCtx)
-        const extDirReq = requests.find((r) => r.permission === "external_directory")
-        expect(extDirReq).toBeDefined()
-        expect(extDirReq!.patterns.some((p) => p.includes(outerTmp.path))).toBe(true)
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+        expect(requests.find((r) => r.permission === "read")).toBeDefined()
       },
     })
   })
 
-  test("asks for external_directory permission when reading relative path outside project", async () => {
+  test("does not emit external_directory directly when reading relative path outside project", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       scope: await tmp.scope(),
@@ -91,10 +90,8 @@ describe("tool.read external_directory permission", () => {
             requests.push(req)
           },
         }
-        // This will fail because file doesn't exist, but we can check if permission was asked
         await read.execute({ filePath: "../outside.txt" }, testCtx).catch(() => {})
-        const extDirReq = requests.find((r) => r.permission === "external_directory")
-        expect(extDirReq).toBeDefined()
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
       },
     })
   })
