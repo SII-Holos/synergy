@@ -57,11 +57,12 @@ export function WorkspacePanel() {
           <IconButton icon="x" variant="ghost" onClick={() => workspace.closePanel()} />
         </div>
         <div class="flex-1 min-h-0 overflow-hidden">
-          <Show when={tool()} fallback={
-            <div class="flex items-center justify-center h-full text-text-weak text-14">
-              No tool selected
-            </div>
-          }>
+          <Show
+            when={tool()}
+            fallback={
+              <div class="flex items-center justify-center h-full text-text-weak text-14">No tool selected</div>
+            }
+          >
             <Dynamic component={tool()!.component} />
           </Show>
         </div>

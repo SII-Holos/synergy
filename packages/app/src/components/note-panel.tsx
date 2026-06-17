@@ -455,14 +455,14 @@ export function NotePanel() {
         let notes = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
-      if (n.title.toLowerCase().includes(q)) return true
-      try {
-        const text = NoteMarkdown.toMarkdown(n.content).toLowerCase()
-        return text.includes(q)
-      } catch {
-        return false
-      }
-    })
+            if (n.title.toLowerCase().includes(q)) return true
+            try {
+              const text = NoteMarkdown.toMarkdown(n.content).toLowerCase()
+              return text.includes(q)
+            } catch {
+              return false
+            }
+          })
         }
         if (activeTags.size > 0) {
           notes = notes.filter((n) => (n.tags ?? []).some((t) => activeTags.has(t)))

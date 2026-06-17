@@ -69,31 +69,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         session: {
           width: 600,
         },
-  ,
-      workspace(sessionKey: string) {
-        touch(sessionKey)
-        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null, width: 400 })
-        return {
-          opened: createMemo(() => ws().opened),
-          active: createMemo(() => ws().active),
-          width: createMemo(() => ws().width),
-          open() {
-            setStore("workspaceSessions", sessionKey, { opened: true, active: ws().active ?? null, width: ws().width ?? 400 })
-          },
-          close() {
-            setStore("workspaceSessions", sessionKey, "opened", false)
-          },
-          toggle() {
-            setStore("workspaceSessions", sessionKey, "opened", (x) => !(x ?? false))
-          },
-          setActive(tool: string | null) {
-            setStore("workspaceSessions", sessionKey, "active", tool)
-          },
-          setWidth(width: number) {
-            setStore("workspaceSessions", sessionKey, "width", width)
-          },
-        }
-      },      mobileSidebar: {
+        mobileSidebar: {
           opened: false,
         },
         sessionTabs: {} as Record<string, SessionTabs>,
@@ -597,6 +573,34 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           }
           setStore("session", "width", width)
         },
+      },
+      workspace(sessionKey: string) {
+        touch(sessionKey)
+        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null, width: 400 })
+        return {
+          opened: createMemo(() => ws().opened),
+          active: createMemo(() => ws().active),
+          width: createMemo(() => ws().width),
+          open() {
+            setStore("workspaceSessions", sessionKey, {
+              opened: true,
+              active: ws().active ?? null,
+              width: ws().width ?? 400,
+            })
+          },
+          close() {
+            setStore("workspaceSessions", sessionKey, "opened", false)
+          },
+          toggle() {
+            setStore("workspaceSessions", sessionKey, "opened", (x) => !(x ?? false))
+          },
+          setActive(tool: string | null) {
+            setStore("workspaceSessions", sessionKey, "active", tool)
+          },
+          setWidth(width: number) {
+            setStore("workspaceSessions", sessionKey, "width", width)
+          },
+        }
       },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),

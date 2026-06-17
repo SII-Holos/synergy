@@ -441,6 +441,7 @@ export default function Layout(props: ParentProps) {
 }
 
 function GlobalPanelSwitch() {
+  const params = useParams()
   const panel = usePanel()
   return (
     <Switch>

@@ -20,16 +20,12 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
     const layout = useLayout()
     const panel = usePanel()
     const params = useParams()
-    const sessionKey = createMemo(() =>
-      `${params.dir}${params.id ? "/" + params.id : ""}`,
-    )
+    const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
     const ws = () => layout.workspace(sessionKey())
 
     const [tools, setTools] = createSignal<WorkspaceTool[]>([])
 
-    const activeTool = createMemo(() =>
-      tools().find((t) => t.id === ws().active()),
-    )
+    const activeTool = createMemo(() => tools().find((t) => t.id === ws().active()))
 
     // Intercept global panel "note" toggle → open workspace instead
     onMount(() => {
@@ -55,8 +51,8 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
       tools,
       activeTool,
       active: () => ws().active(),
-      opened: () => (ws().opened() ?? false),
-      width: () => (ws().width() ?? 400),
+      opened: () => ws().opened() ?? false,
+      width: () => ws().width() ?? 400,
       openPanel: () => ws().open(),
       closePanel: () => ws().close(),
       togglePanel: () => ws().toggle(),

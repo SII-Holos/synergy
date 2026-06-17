@@ -94,7 +94,11 @@ export function SessionTopBar() {
         </Show>
         <Show when={!!params.id}>
           <Tooltip value="Toggle workspace" placement="bottom">
-            <button type="button" class="stb-icon-btn" onClick={() => layout.workspace(`${params.dir}/${params.id!}`).toggle()}>
+            <button
+              type="button"
+              class="stb-icon-btn"
+              onClick={() => layout.workspace(`${params.dir}/${params.id!}`).toggle()}
+            >
               <Icon name="panel-right" size="normal" />
             </button>
           </Tooltip>
