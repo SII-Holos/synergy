@@ -279,6 +279,21 @@ What they do:
 
 After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
 
+Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools ask for explicit permission before operating outside that active workspace, including the original checkout. These boundary prompts are not skipped by allow-all or unattended execution.
+
+Optional sandbox configuration can be added to `synergy.jsonc`:
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": true,
+    "fallbackPolicy": "warn",
+  },
+}
+```
+
+`fallbackPolicy` controls what happens when the configured sandbox runtime is unavailable: `warn` continues with a warning, `allow` continues quietly, and `deny` blocks execution.
+
 #### Where Synergy stores worktrees
 
 Synergy-created worktrees live inside the project:

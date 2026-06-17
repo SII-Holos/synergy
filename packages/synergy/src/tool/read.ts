@@ -35,6 +35,9 @@ export const ReadTool = Tool.define("read", {
         metadata: {
           filepath,
           parentDir,
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+          nonBypassable: true,
         },
       })
     }

@@ -197,6 +197,18 @@ export const Holos = z
   .meta({ ref: "HolosConfig" })
 export type Holos = z.infer<typeof Holos>
 
+export const SandboxConfig = z
+  .object({
+    enabled: z.boolean().optional().describe("Enable the sandbox runtime when available"),
+    fallbackPolicy: z
+      .enum(["warn", "allow", "deny"])
+      .optional()
+      .describe("How to proceed when the requested sandbox runtime is unavailable"),
+  })
+  .strict()
+  .meta({ ref: "SandboxConfig" })
+export type SandboxConfig = z.infer<typeof SandboxConfig>
+
 export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
 export type Channel = z.infer<typeof Channel>
 
@@ -1067,6 +1079,7 @@ export const Info = z
       .record(z.string(), Channel)
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
+    sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
     formatter: z

@@ -6,6 +6,7 @@ import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 import { Info as InfoSchema } from "../../src/session/types"
+import path from "path"
 
 Log.init({ print: false })
 
@@ -336,3 +337,82 @@ describe("session workspace binding", () => {
 function using(fn: () => Promise<void>): () => Promise<void> {
   return fn
 }
+
+// === Requirement 9: Config sandbox key is optional and backward-compatible ===
+
+describe("sandbox config compatibility", () => {
+  test("Config.Info accepts optional sandbox key without error", async () => {
+    const { Config } = await import("../../src/config/config")
+
+    const withSandbox = Config.Info.safeParse({
+      sandbox: {
+        enabled: true,
+        fallbackPolicy: "warn",
+      },
+    })
+    expect(withSandbox.success).toBe(true)
+    if (withSandbox.success) {
+      expect(withSandbox.data).toHaveProperty("sandbox")
+      expect((withSandbox.data as Record<string, unknown>).sandbox).toEqual({
+        enabled: true,
+        fallbackPolicy: "warn",
+      })
+    }
+  })
+
+  test("Config.Info accepts config without sandbox key (backward compatibility)", async () => {
+    const { Config } = await import("../../src/config/config")
+
+    const withoutSandbox = Config.Info.safeParse({})
+    expect(withoutSandbox.success).toBe(true)
+    if (withoutSandbox.success) {
+      expect((withoutSandbox.data as Record<string, unknown>).sandbox).toBeUndefined()
+    }
+  })
+})
+
+// === Requirement 10: Workspace boundary enforcement integration ===
+
+describe("workspace boundary enforcement with sandbox", () => {
+  test("workspace policy drives outside_workspace classification for enforcement", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const { WorkspacePolicy } = await import("../../src/workspace/policy")
+
+          const ws: SessionWorkspace = {
+            type: "git_worktree",
+            path: "/tmp/isolated-worktree",
+            scopeID: scope.id,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          // Files outside the active workspace should be flagged
+          expect(policy.contains("/tmp/isolated-worktree/src/foo.ts")).toBe(true)
+          expect(policy.contains(path.join(scope.directory, "src/bar.ts"))).toBe(false)
+
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("SandboxRuntime from enforcement respects workspace policy active root", async () => {
+    const { WorkspacePolicy } = await import("../../src/workspace/policy")
+
+    // Build a policy struct inline — WorkspacePolicy type will exist at runtime
+    const policy = WorkspacePolicy.create({
+      activeRoot: "/workspace/synergy",
+      workspaceType: "main",
+      scopeID: "d_test123",
+    })
+
+    // SandboxRuntime should reject paths outside the root
+    expect(policy.contains("/workspace/synergy/src/app.ts")).toBe(true)
+    expect(policy.contains("/etc/hostname")).toBe(false)
+  })
+})

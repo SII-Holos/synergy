@@ -122,7 +122,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         await ctx.ask({
           permission: "external_directory",
           patterns: [dir],
-          metadata: { dir },
+          metadata: { dir, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
         })
       }
 

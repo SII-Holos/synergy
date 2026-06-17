@@ -2,6 +2,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
+import { isNonBypassableMetadata } from "@/enforcement/capability"
 import { Instance } from "@/scope/instance"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
@@ -113,6 +114,10 @@ export namespace PermissionNext {
     ),
   }
 
+  function isNonBypassable(request: { metadata?: Record<string, any> }): boolean {
+    return isNonBypassableMetadata(request.metadata)
+  }
+
   const state = Instance.state(async () => {
     const pending: Record<
       string,
@@ -143,31 +148,34 @@ export namespace PermissionNext {
         if (rule.action === "deny")
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask") {
-          if (s.allowAll.size > 0 && (await hasAllowAll(s, request.sessionID))) {
+          const id = input.id ?? Identifier.ascending("permission")
+          const info: Request = { id, ...request }
+          let resolvePending: (() => void) | undefined
+          let rejectPending: ((e: any) => void) | undefined
+          const pendingPromise = new Promise<void>((resolve, reject) => {
+            resolvePending = resolve
+            rejectPending = reject
+          })
+          s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending! }
+
+          if (s.allowAll.size > 0 && (await hasAllowAll(s, request.sessionID)) && !isNonBypassable(request)) {
             log.info("allow-all bypass", { sessionID: request.sessionID, permission: request.permission, pattern })
+            delete s.pending[id]
+            resolvePending!()
             continue
           }
-          if (request.metadata?.sessionInteractionMode === "unattended") {
+          if (request.metadata?.sessionInteractionMode === "unattended" && !isNonBypassable(request)) {
             log.info("unattended auto-approve", {
               sessionID: request.sessionID,
               permission: request.permission,
               pattern,
             })
+            delete s.pending[id]
+            resolvePending!()
             continue
           }
-          const id = input.id ?? Identifier.ascending("permission")
-          return new Promise<void>((resolve, reject) => {
-            const info: Request = {
-              id,
-              ...request,
-            }
-            s.pending[id] = {
-              info,
-              resolve,
-              reject,
-            }
-            Bus.publish(Event.Asked, info)
-          })
+          Bus.publish(Event.Asked, info)
+          return pendingPromise
         }
         if (rule.action === "allow") continue
       }

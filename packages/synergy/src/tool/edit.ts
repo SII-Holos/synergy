@@ -51,6 +51,9 @@ export const EditTool = Tool.define("edit", {
         metadata: {
           filepath: filePath,
           parentDir,
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+          nonBypassable: true,
         },
       })
     }

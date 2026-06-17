@@ -67,6 +67,8 @@ export namespace Config {
   export type ChannelFeishu = Schema.ChannelFeishu
   export const Holos = Schema.Holos
   export type Holos = Schema.Holos
+  export const SandboxConfig = Schema.SandboxConfig
+  export type SandboxConfig = Schema.SandboxConfig
   export const Channel = Schema.Channel
   export type Channel = Schema.Channel
   export const EmailSmtp = Schema.EmailSmtp

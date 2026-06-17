@@ -93,7 +93,7 @@ export const AgoraAcceptTool = Tool.define<typeof parameters, AgoraAcceptMetadat
       await ctx.ask({
         permission: "external_directory",
         patterns: [directory],
-        metadata: {},
+        metadata: { directory, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
       })
     }
 
