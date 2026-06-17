@@ -8,6 +8,7 @@ import { Storage } from "../storage/storage"
 
 export const NoteRoute = new Hono()
 
+  // Keep static metadata route before parameterized `/:id` routes for clear route intent.
   .get(
     "/meta",
     describeRoute({
