@@ -261,6 +261,11 @@ export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
 })
 export type PermissionAction = z.infer<typeof PermissionAction>
 
+export const ControlProfileId = z
+  .enum(["review", "workspace", "auto_review", "full_access"])
+  .meta({ ref: "ControlProfileId" })
+export type ControlProfileId = z.infer<typeof ControlProfileId>
+
 export const PermissionObject = z.record(z.string(), PermissionAction).meta({
   ref: "PermissionObjectConfig",
 })
@@ -361,6 +366,7 @@ export const Agent = z
       .describe("Maximum number of agentic iterations before forcing text-only response"),
     maxSteps: z.number().int().positive().optional().describe("@deprecated Use 'steps' field instead."),
     permission: Permission.optional(),
+    controlProfile: ControlProfileId.optional().describe("Control profile for this agent's enforcement gate"),
   })
   .catchall(z.any())
   .transform((agent, ctx) => {
@@ -380,6 +386,7 @@ export const Agent = z
       "permission",
       "disable",
       "tools",
+      "controlProfile",
     ])
 
     // Extract unknown properties into options
@@ -1080,6 +1087,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
+    controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
     formatter: z

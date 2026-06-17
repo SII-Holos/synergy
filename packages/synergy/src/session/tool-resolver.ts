@@ -19,6 +19,8 @@ import { Instance } from "@/scope/instance"
 import { EnforcementGate } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
+import type { ProfileId } from "@/control-profile/types"
+import { Config } from "@/config/config"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -38,6 +40,32 @@ export namespace ToolResolver {
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
+  }
+
+  /**
+   * Resolve the effective control profile id using precedence:
+   *   1. agent config controlProfile
+   *   2. top-level config controlProfile
+   *   3. default 'workspace'
+   */
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string): ProfileId {
+    const VALID: readonly string[] = ["review", "workspace", "auto_review", "full_access"]
+    const candidate = agent.controlProfile ?? topLevelProfile ?? "workspace"
+    if (VALID.includes(candidate)) return candidate as ProfileId
+    return "workspace"
+  }
+
+  /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
+  let _cachedConfig: { controlProfile?: string } | null = null
+  async function cachedTopLevelProfile(): Promise<string | undefined> {
+    if (_cachedConfig === null) {
+      try {
+        _cachedConfig = { controlProfile: (await Config.get()).controlProfile }
+      } catch {
+        _cachedConfig = {}
+      }
+    }
+    return _cachedConfig.controlProfile
   }
 
   /**
@@ -134,11 +162,14 @@ export namespace ToolResolver {
                 const workspaceInfo = Instance.workspace
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                const topLevelProfile = await cachedTopLevelProfile()
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
                 const gate = EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                  profileId,
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
@@ -283,12 +314,15 @@ export namespace ToolResolver {
                   const workspaceInfo = Instance.workspace
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                  const topLevelProfile = await cachedTopLevelProfile()
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
                   const gate = EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: new Set(Object.keys(await MCP.tools())),
+                    profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
                   if (envelope.decision === "deny") {
