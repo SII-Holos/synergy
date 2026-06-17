@@ -51,6 +51,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   compaction: "auto",
   question: "background",
   permission: "background",
+  controlProfile: "explicit",
   model: "background",
   nano_model: "background",
   mini_model: "background",

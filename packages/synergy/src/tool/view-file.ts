@@ -4,7 +4,6 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import {
-  assertInsideOrAsk,
   DEFAULT_VIEW_BYTES,
   DEFAULT_VIEW_LINES,
   displayPath,
@@ -77,7 +76,6 @@ export const ViewFileTool = Tool.define("view_file", {
   }),
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)
-    await assertInsideOrAsk(filePath, ctx)
     await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
 
     let content = await readTextFileUnderSnapshotCap(filePath)

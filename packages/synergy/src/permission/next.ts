@@ -147,7 +147,7 @@ export namespace PermissionNext {
         log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny")
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
-        if (rule.action === "ask") {
+        if (rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request))) {
           const id = input.id ?? Identifier.ascending("permission")
           const info: Request = { id, ...request }
           let resolvePending: (() => void) | undefined
@@ -177,6 +177,7 @@ export namespace PermissionNext {
           Bus.publish(Event.Asked, info)
           return pendingPromise
         }
+        // allow and not nonBypassable → auto-resolve; continue to next pattern
         if (rule.action === "allow") continue
       }
     },

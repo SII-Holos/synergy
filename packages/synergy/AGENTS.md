@@ -19,6 +19,8 @@
 
 ## Architecture
 
+- **Control profiles**: `src/control-profile/` owns user-facing access profiles; `src/enforcement/` owns capability classification and gate decisions; `src/sandbox/` owns OS sandbox backends. Keep these layers separate and avoid reintroducing tool-local boundary checks.
+
 - **Tools**: Implement `Tool.Info` interface with `execute()` method
 - **Context**: Pass `sessionID` in tool context, use `App.provide()` for DI
 - **Validation**: All inputs validated with Zod schemas

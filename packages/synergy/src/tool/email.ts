@@ -19,9 +19,11 @@ export const EmailSendTool = Tool.define("email_send", {
     const recipients = Array.isArray(params.to) ? params.to.join(", ") : params.to
 
     await ctx.ask({
-      permission: "email",
-      patterns: [recipients],
+      permission: "communication_email",
+      patterns: [`to: ${recipients}`],
       metadata: {
+        nonBypassable: true,
+        action: "email_send",
         to: recipients,
         subject: params.subject,
       },

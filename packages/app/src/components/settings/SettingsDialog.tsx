@@ -8,7 +8,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
+import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
 import "./settings-dialog.css"
@@ -107,6 +107,16 @@ export function SettingsDialog(props: DialogSettingsProps) {
     },
   )
 
+  const [controlProfiles] = createResource(async () => {
+    const res = await globalSDK.client.controlProfile.list()
+    return (res.data ?? []) as ControlProfileSummary[]
+  })
+
+  const [sandboxStatus] = createResource(async () => {
+    const res = await globalSDK.client.sandbox.status()
+    return res.data as SandboxStatus | undefined
+  })
+
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
@@ -147,6 +157,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   })
 
   const [advanced, setAdvanced] = createStore({
+    controlProfile: "workspace" as string,
     compaction_auto: "" as string,
     compaction_overflow_threshold: "" as string,
     permission: "" as string,
@@ -465,7 +476,12 @@ export function SettingsDialog(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "advanced"}>
-              <AdvancedPanel advanced={advanced} onAdvancedChange={(key, value) => setAdvanced(key, value)} />
+              <AdvancedPanel
+                advanced={advanced}
+                controlProfiles={controlProfiles() ?? []}
+                sandboxStatus={sandboxStatus()}
+                onAdvancedChange={(key, value) => setAdvanced(key, value)}
+              />
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "config-sets"}>

@@ -43,6 +43,7 @@ export const WebSearchTool = Tool.define("websearch", {
       permission: "websearch",
       patterns: [params.query],
       metadata: {
+        nonBypassable: true,
         query: params.query,
         numResults: params.numResults,
         language: params.language,

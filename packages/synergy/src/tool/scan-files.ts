@@ -5,7 +5,6 @@ import { Ripgrep } from "../file/ripgrep"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import { Instance } from "../scope/instance"
 import {
-  assertInsideOrAsk,
   displayPath,
   formatRecordedBlock,
   formatSelectedLines,
@@ -107,7 +106,6 @@ export const ScanFilesTool = Tool.define("scan_files", {
     })
 
     const searchPath = params.path ? resolveFilePath(params.path) : Instance.directory
-    await assertInsideOrAsk(searchPath, ctx)
     const rgPath = await Ripgrep.filepath()
     const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
     const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)

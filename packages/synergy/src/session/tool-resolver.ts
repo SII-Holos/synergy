@@ -15,6 +15,12 @@ import { Session } from "."
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
+import { Instance } from "@/scope/instance"
+import { EnforcementGate } from "@/enforcement/gate"
+import { SandboxBackend } from "@/sandbox/backend"
+import type { SandboxExecutionWrapper } from "@/sandbox/backend"
+import type { ProfileId } from "@/control-profile/types"
+import { Config } from "@/config/config"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -34,6 +40,95 @@ export namespace ToolResolver {
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
+  }
+
+  /**
+   * Resolve the effective control profile id using precedence:
+   *   1. agent config controlProfile
+   *   2. top-level config controlProfile
+   *   3. default 'workspace'
+   */
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string): ProfileId {
+    const VALID: readonly string[] = ["review", "workspace", "auto_review", "full_access"]
+    const candidate = agent.controlProfile ?? topLevelProfile ?? "workspace"
+    if (VALID.includes(candidate)) return candidate as ProfileId
+    return "workspace"
+  }
+
+  /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
+  let _cachedConfig: { controlProfile?: string } | null = null
+  async function cachedTopLevelProfile(): Promise<string | undefined> {
+    if (_cachedConfig === null) {
+      try {
+        _cachedConfig = { controlProfile: (await Config.get()).controlProfile }
+      } catch {
+        _cachedConfig = {}
+      }
+    }
+    return _cachedConfig.controlProfile
+  }
+
+  /**
+   * Derive an external path string from tool args for use in nonBypassable
+   * permission asks triggered by the enforcement gate.
+   */
+  function externalPathFromArgs(toolName: string, args: Record<string, any>): string {
+    if (toolName === "bash") return (args.workdir ?? args.command) as string
+    if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
+    if (toolName === "look_at" || toolName === "attach") {
+      const raw = args.file_path ?? args.filePath ?? ""
+      return Array.isArray(raw) ? (raw[0] ?? "") : String(raw)
+    }
+    return (args.filePath ?? args.path ?? args.pattern ?? "") as string
+  }
+
+  function permissionForGateCapability(toolName: string, className: string): string {
+    if (className === "file_external") return "external_directory"
+    if (className === "shell_destructive") return "bash"
+    if (className === "network_request")
+      return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
+    return className
+  }
+
+  function patternsForGateCapability(toolName: string, className: string, args: Record<string, any>): string[] {
+    if (className === "file_external") return [externalPathFromArgs(toolName, args) || "*"]
+    if (className === "shell_destructive") return [String(args.command ?? "*")]
+    if (className === "network_request") return [String(args.url ?? args.query ?? "*")]
+    if (className === "communication_email") return [String(args.to ?? args.from ?? args.subject ?? "*")]
+    if (className === "identity_act") return [`${toolName} role=${args.role ?? "*"} to ${args.target ?? "*"}`]
+    return ["*"]
+  }
+
+  async function askGateNonBypassableCapabilities(
+    ctx: Tool.Context,
+    gate: ReturnType<typeof EnforcementGate.create>,
+    envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
+    toolName: string,
+    args: Record<string, any>,
+  ) {
+    if (envelope.decision !== "ask") return
+    for (const cap of envelope.capabilities) {
+      if (!cap.nonBypassable && !cap.opaque) continue
+      if (!gate.hasPendingCapability(cap.class)) continue
+      // These tools already perform the exact same non-bypassable ask with
+      // richer, tool-specific metadata before crossing the boundary.
+      if (toolName === "email_send" && cap.class === "communication_email") continue
+      if (toolName === "session_send" && cap.class === "identity_act") continue
+      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") continue
+      if (toolName === "email_read" && cap.class === "communication_email") continue
+
+      await ctx.ask({
+        permission: permissionForGateCapability(toolName, cap.class),
+        patterns: patternsForGateCapability(toolName, cap.class, args),
+        metadata: {
+          nonBypassable: true,
+          capability: cap.class,
+          opaque: cap.opaque === true,
+          ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
+        },
+      })
+      gate.resolveCapability(cap.class)
+    }
   }
 
   function contextFactory(input: Input) {
@@ -112,6 +207,49 @@ export namespace ToolResolver {
               const toolCtx = { ...ctx, abort: combinedAbort }
 
               try {
+                const workspace = Instance.directory
+                const workspaceInfo = Instance.workspace
+                const interaction = runtimeInput.session?.interaction
+                const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                const topLevelProfile = await cachedTopLevelProfile()
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
+                const gate = EnforcementGate.create({
+                  activeWorkspace: workspace,
+                  workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                  interactionMode,
+                  originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                  profileId,
+                })
+
+                const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                if (envelope.decision === "deny") {
+                  throw new Error(`Enforcement gate denied ${item.id}`)
+                }
+
+                await askGateNonBypassableCapabilities(ctx, gate, envelope, item.id, args as Record<string, any>)
+
+                // ── Sandbox wrapping for bash ──────────────────────────
+                let sandboxWrapper: SandboxExecutionWrapper | undefined
+                if (item.id === "bash") {
+                  const sandbox = gate.getSandbox()
+                  if (sandbox.mode !== "none") {
+                    const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
+                    sandboxWrapper = SandboxBackend.prepareWrapper({
+                      command: "/bin/sh",
+                      args: ["-c", bashCommand],
+                      workspace,
+                      sandboxMode: sandbox.mode,
+                    })
+                    if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
+                      throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                    }
+                    // Store wrapper in context for bash tool to use
+                    ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper
+                    ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
+                  }
+                }
+
+                // ── Plugin: tool.execute.before ────────────────────────
                 await Plugin.trigger(
                   "tool.execute.before",
                   {
@@ -171,7 +309,9 @@ export namespace ToolResolver {
     }
 
     if (input.includeMCP !== false) {
-      for (const [key, item] of Object.entries(await MCP.tools())) {
+      const mcpTools = await MCP.tools()
+      const mcpToolNames = new Set(Object.keys(mcpTools))
+      for (const [key, item] of Object.entries(mcpTools)) {
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
@@ -206,6 +346,25 @@ export namespace ToolResolver {
                   : toolDeadline
 
                 try {
+                  const workspace = Instance.directory
+                  const workspaceInfo = Instance.workspace
+                  const interaction = runtimeInput.session?.interaction
+                  const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+                  const topLevelProfile = await cachedTopLevelProfile()
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
+                  const gate = EnforcementGate.create({
+                    activeWorkspace: workspace,
+                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                    interactionMode,
+                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                    registeredMcpTools: mcpToolNames,
+                    profileId,
+                  })
+                  const envelope = gate.evaluate(key, args as Record<string, any>)
+                  if (envelope.decision === "deny") {
+                    throw new Error(`Enforcement gate denied ${key}`)
+                  }
+
                   await Plugin.trigger(
                     "tool.execute.before",
                     {
@@ -217,6 +376,8 @@ export namespace ToolResolver {
                       args,
                     },
                   )
+
+                  await askGateNonBypassableCapabilities(ctx, gate, envelope, key, args as Record<string, any>)
 
                   await ctx.ask({
                     permission: key,

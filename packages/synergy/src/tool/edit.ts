@@ -43,21 +43,6 @@ export const EditTool = Tool.define("edit", {
     const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
     const displayPath = path.relative(Instance.directory, filePath)
 
-    if (!Instance.contains(filePath)) {
-      const parentDir = path.dirname(filePath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir, path.join(parentDir, "*")],
-        metadata: {
-          filepath: filePath,
-          parentDir,
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
-    }
-
     let diff = ""
     let contentOld = ""
     let contentNew = ""

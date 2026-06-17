@@ -36,6 +36,7 @@ export namespace Agent {
       temperature: z.number().optional(),
       color: z.string().optional(),
       permission: PermissionNext.Ruleset,
+      controlProfile: z.enum(["review", "workspace", "auto_review", "full_access"]).optional(),
       model: z
         .object({
           modelID: z.string(),
@@ -123,6 +124,7 @@ export namespace Agent {
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
 
     // Merge plugin-contributed agents (lower priority than config agents)

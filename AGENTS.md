@@ -51,7 +51,9 @@ Current work commonly touches these domains:
 - `channel/` — external messaging/channel integrations
 - `cli/` — CLI commands, startup flows, and user-facing entrypoints
 - `config/` — config loading, merging, resolution, setup
+- `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
+- `enforcement/` — capability classification and centralized tool boundary gate
 - `engram/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
 - `note/` — notes system
@@ -59,6 +61,7 @@ Current work commonly touches these domains:
 - `process/` and `pty/` — process/runtime plumbing
 - `provider/` — LLM provider integration
 - `scope/` — scope resolution and context
+- `sandbox/` — OS sandbox backend wrappers for process execution
 - `server/` — HTTP server and API routes
 - `session/` — session lifecycle, prompting, recall, summaries, progress
 - `skill/` — skill loading and built-ins
@@ -258,6 +261,7 @@ If you change:
 - `.synergy/` conventions
 - MCP config shape
 - channel config shape
+- control profile or sandbox config behavior
 
 then review both `README.md` and any related setup/help text.
 

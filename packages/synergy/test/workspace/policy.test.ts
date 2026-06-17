@@ -246,3 +246,247 @@ describe("Instance.contains workspace awareness", () => {
 function using(fn: () => Promise<void>): () => Promise<void> {
   return fn
 }
+
+// ===========================================================================
+// C. worktree original checkout boundary
+// ===========================================================================
+
+describe("WorkspacePolicy — original checkout boundary", () => {
+  test("original checkout directory is classified as outside the active workspace", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const worktreePath = path.join(scope.directory, "..", "worktree-boundary")
+          const originalCheckout = scope.directory
+
+          const ws = {
+            type: "git_worktree",
+            path: Filesystem.sanitizePath(worktreePath),
+            scopeID: scope.id,
+            originalCheckout,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          expect(policy.contains(path.join(ws.path, "src", "lib.ts"))).toBe(true)
+
+          expect(policy.contains(path.join(originalCheckout, "src", "app.ts"))).toBe(false)
+          expect(policy.contains(path.join(originalCheckout, "synergy.jsonc"))).toBe(false)
+          expect(policy.contains(originalCheckout)).toBe(false)
+
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("sibling worktree is classified as outside the active workspace", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const activeWorktreePath = path.join(scope.directory, "..", "worktree-active")
+          const siblingWorktreePath = path.join(scope.directory, "..", "worktree-sibling")
+
+          const ws = {
+            type: "git_worktree",
+            path: Filesystem.sanitizePath(activeWorktreePath),
+            scopeID: scope.id,
+            originalCheckout: scope.directory,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          expect(policy.contains(path.join(siblingWorktreePath, "file.ts"))).toBe(false)
+          expect(policy.contains(siblingWorktreePath)).toBe(false)
+          expect(policy.contains(path.join(ws.path, "feature.ts"))).toBe(true)
+
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("abs_path_in_original_checkout_outside_in_worktree_mode", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const worktreePath = path.join(scope.directory, "..", "worktree-abs")
+          const ws = {
+            type: "git_worktree",
+            path: Filesystem.sanitizePath(worktreePath),
+            scopeID: scope.id,
+            originalCheckout: scope.directory,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          const target = path.join(scope.directory, "config", "secrets.json")
+          expect(policy.contains(target)).toBe(false)
+          expect(policy.contains(scope.directory)).toBe(false)
+
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+})
+
+// ===========================================================================
+// D. WorkspacePolicy with originalCheckout-aware classifyPath (RED)
+// ===========================================================================
+
+describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
+  test("classifyPath(originalCheckoutFile) returns outside with high confidence", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const worktreePath = path.join(scope.directory, "..", "worktree-classify")
+          const ws = {
+            type: "git_worktree",
+            path: Filesystem.sanitizePath(worktreePath),
+            scopeID: scope.id,
+            originalCheckout: scope.directory,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          const targetPath = path.join(scope.directory, "src", "index.ts")
+
+          if (typeof (policy as any).classifyPath !== "function") {
+            // RED: This will fail until classifyPath is implemented
+            expect(typeof (policy as any).classifyPath).toBe("function")
+            return
+          }
+
+          const result = (policy as any).classifyPath(targetPath)
+          expect(result.boundary).toBe("outside")
+          expect(result.confidence).toBe("high")
+          expect(typeof result.reason).toBe("string")
+
+          const insidePath = path.join(ws.path, "src", "lib.ts")
+          const insideResult = (policy as any).classifyPath(insidePath)
+          expect(insideResult.boundary).toBe("inside")
+        })(),
+    })
+  })
+
+  test("classifyPath for worktree symlink targeting original checkout returns outside", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const worktreePath = path.join(
+            scope.directory,
+            "..",
+            "worktree-symlink-" + Math.random().toString(36).slice(2),
+          )
+
+          await fs.mkdir(worktreePath, { recursive: true })
+          const symlinkPath = path.join(worktreePath, "link-to-original")
+          await fs.symlink(scope.directory, symlinkPath)
+
+          const ws = {
+            type: "git_worktree",
+            path: Filesystem.sanitizePath(worktreePath),
+            scopeID: scope.id,
+            originalCheckout: scope.directory,
+          }
+          const session = await Session.create({ workspace: ws })
+          const policy = await WorkspacePolicy.fromSession(session)
+
+          if (typeof (policy as any).classifyPath !== "function") {
+            expect(typeof (policy as any).classifyPath).toBe("function")
+            return
+          }
+
+          const result = (policy as any).classifyPath(symlinkPath)
+          expect(result.boundary).toBe("outside")
+          expect(result.reason).toMatch(/symlink|realpath|original checkout/i)
+
+          await fs.mkdir(path.join(worktreePath, "nested"), { recursive: true })
+          const nestedSymlink = path.join(worktreePath, "nested", "config-link")
+          await fs.symlink(path.join(scope.directory, "synergy.jsonc"), nestedSymlink)
+
+          const nestedResult = (policy as any).classifyPath(nestedSymlink)
+          expect(nestedResult.boundary).toBe("outside")
+
+          await Session.remove(session.id)
+
+          await fs.unlink(symlinkPath).catch(() => {})
+          await fs.unlink(nestedSymlink).catch(() => {})
+          await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {})
+        })(),
+    })
+  })
+})
+
+// ===========================================================================
+// E. PathClassifier integration with originalCheckout (RED)
+// ===========================================================================
+
+describe("PathClassifier originalCheckout boundary classification", () => {
+  test("classifyPath detects original checkout paths via PathClassifier", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    const { PathClassifier } = await import("../../src/enforcement/classify")
+
+    const workspace = path.join(scope.directory, "..", "worktree-pc")
+    const originalCheckout = scope.directory
+
+    if (typeof (PathClassifier as any).classifyPath === "function") {
+      const result = (PathClassifier as any).classifyPath(path.join(originalCheckout, "src/index.ts"), {
+        workspace,
+        originalCheckout,
+      })
+      expect(result.boundary).toBe("outside")
+      expect(result.confidence).toBe("high")
+      expect(result.reason).toMatch(/checkout|original/i)
+    } else {
+      expect(typeof (PathClassifier as any).classifyPath).toBe("function")
+    }
+  })
+
+  test("classifyPath detects sibling worktree via originalCheckout awareness", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    const { PathClassifier } = await import("../../src/enforcement/classify")
+
+    const workspace = path.join(scope.directory, "..", "worktree-active-pc")
+    const originalCheckout = scope.directory
+    const siblingWorktree = path.join(scope.directory, "..", "worktree-sibling-pc")
+
+    if (typeof (PathClassifier as any).classifyPath === "function") {
+      const result = (PathClassifier as any).classifyPath(path.join(siblingWorktree, "file.ts"), {
+        workspace,
+        originalCheckout,
+      })
+      expect(result.boundary).toBe("outside")
+
+      const origResult = (PathClassifier as any).classifyPath(path.join(originalCheckout, "config.json"), {
+        workspace,
+        originalCheckout,
+      })
+      expect(origResult.boundary).toBe("outside")
+    } else {
+      expect(typeof (PathClassifier as any).classifyPath).toBe("function")
+    }
+  })
+})

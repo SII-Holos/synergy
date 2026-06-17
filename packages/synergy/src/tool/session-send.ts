@@ -74,6 +74,16 @@ export const SessionSendTool = Tool.define("session_send", {
       }
       await SessionManager.deliver({ target: session.id, mail })
     } else {
+      await ctx.ask({
+        permission: "identity_act",
+        patterns: [`session_send role=user to ${params.target}`],
+        metadata: {
+          nonBypassable: true,
+          action: "session_send",
+          role: "user",
+          target: params.target,
+        },
+      })
       const mail: SessionManager.SessionMail.User = {
         type: "user",
         parts: [textPart],

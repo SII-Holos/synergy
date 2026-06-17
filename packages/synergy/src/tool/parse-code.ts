@@ -6,7 +6,6 @@ import { AST_GREP_LANGUAGES } from "./ast-grep/types"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import { Instance } from "../scope/instance"
 import {
-  assertInsideOrAsk,
   displayPath,
   formatRecordedBlock,
   formatSelectedLines,
@@ -94,10 +93,6 @@ export const ParseCodeTool = Tool.define("parse_code", {
       patterns: [params.pattern],
       metadata: { pattern: params.pattern, lang: params.lang, paths: params.paths, globs: params.globs },
     })
-
-    for (const searchPath of params.paths?.length ? params.paths.map(resolveFilePath) : [Instance.directory]) {
-      await assertInsideOrAsk(searchPath, ctx)
-    }
 
     const result = await runSg({
       pattern: params.pattern,

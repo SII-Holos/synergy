@@ -27,6 +27,7 @@ export const WebFetchTool = Tool.define("webfetch", {
       permission: "webfetch",
       patterns: [params.url],
       metadata: {
+        nonBypassable: true,
         url: params.url,
         format: params.format,
         timeout: params.timeout,

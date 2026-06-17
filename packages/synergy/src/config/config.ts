@@ -85,6 +85,9 @@ export namespace Config {
   export type PermissionObject = Schema.PermissionObject
   export const PermissionRule = Schema.PermissionRule
   export type PermissionRule = Schema.PermissionRule
+  export const ControlProfileId = Schema.ControlProfileId
+  export type ControlProfileId = Schema.ControlProfileId
+
   export const Permission = Schema.Permission
   export type Permission = Schema.Permission
   export const Command = Schema.Command

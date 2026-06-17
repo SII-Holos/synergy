@@ -112,20 +112,6 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         files.push({ filepath, mimeType: inferMimeType(filepath), filename: path.basename(filepath) })
       }
 
-      const externalDirs = new Set<string>()
-      for (const file of files) {
-        if (!Instance.contains(file.filepath)) {
-          externalDirs.add(path.dirname(file.filepath))
-        }
-      }
-      for (const dir of externalDirs) {
-        await ctx.ask({
-          permission: "external_directory",
-          patterns: [dir],
-          metadata: { dir, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
-        })
-      }
-
       const nonImages = files.filter((f) => !f.mimeType.startsWith("image/"))
       if (nonImages.length > 0) {
         return {

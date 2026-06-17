@@ -14,7 +14,7 @@ import { applyPatchOps } from "../hashline/revise"
 import { recoverPatchOps } from "../hashline/recovery"
 import { SessionHashlineStore } from "../hashline/store"
 import { computeTag, normalizeContent } from "../hashline/tag"
-import { assertInsideOrAsk, diffStats, displayPath, resolveFilePath } from "./anchored-file"
+import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
 import { collectWriteDiagnostics } from "./write-quality"
 
 function summarizeOperations(operations: ReturnType<typeof parseHashlinePatch>["ops"]): string[] {
@@ -41,7 +41,6 @@ export const ReviseFileTool = Tool.define("revise_file", {
     const patch = parseHashlinePatch(params.input)
     const filePath = resolveFilePath(patch.path)
     const title = displayPath(filePath)
-    await assertInsideOrAsk(filePath, ctx)
 
     return FileTime.withLock(
       filePath,

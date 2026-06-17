@@ -25,21 +25,6 @@ export const WriteTool = Tool.define("write", {
     const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
     const displayPath = path.relative(Instance.directory, filepath)
 
-    if (!ctx.extra?.["bypassCwdCheck"] && !Instance.contains(filepath)) {
-      const parentDir = path.dirname(filepath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir],
-        metadata: {
-          filepath,
-          parentDir,
-          workspaceBoundary: true,
-          outsideWorkspace: true,
-          nonBypassable: true,
-        },
-      })
-    }
-
     const file = Bun.file(filepath)
     const exists = await file.exists()
     const contentOld = exists ? await file.text() : ""

@@ -45,21 +45,6 @@ export const AttachTool = Tool.define("attach", {
         filePath = path.join(Instance.directory, filePath)
       }
 
-      if (!ctx.extra?.["bypassCwdCheck"] && !Instance.contains(filePath)) {
-        const parentDir = path.dirname(filePath)
-        await ctx.ask({
-          permission: "external_directory",
-          patterns: [parentDir],
-          metadata: {
-            filepath: filePath,
-            parentDir,
-            workspaceBoundary: true,
-            outsideWorkspace: true,
-            nonBypassable: true,
-          },
-        })
-      }
-
       const file = Bun.file(filePath)
       if (!(await file.exists())) {
         throw new Error(`File not found: ${filePath}`)
