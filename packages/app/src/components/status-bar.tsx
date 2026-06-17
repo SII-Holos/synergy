@@ -1,93 +1,13 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { useServer } from "@/context/server"
 import { useHolos } from "@/context/holos"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { Button } from "@ericsanchezok/synergy-ui/button"
-import { DialogSelectServer } from "@/components/dialog"
+import { useServer } from "@/context/server"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { useGlobalSync } from "@/context/global-sync"
-import { useGlobalSDK } from "@/context/global-sdk"
-import { SettingsDialog } from "@/components/settings"
-import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-
-function ConfigSetStatus() {
-  const globalSync = useGlobalSync()
-  const globalSDK = useGlobalSDK()
-  const dialog = useDialog()
-  const [open, setOpen] = createSignal(false)
-  const [activating, setActivating] = createSignal<string>()
-
-  const activeSet = createMemo(() => globalSync.configSets.find((set) => set.active))
-
-  async function handleActivate(name: string) {
-    if (name === activeSet()?.name || activating()) return
-    setActivating(name)
-    try {
-      await globalSDK.client.config.set.activate({ name })
-      await globalSync.refreshAllConfigs()
-      showToast({ title: "Config Set activated", description: `Using ${name}` })
-      setOpen(false)
-    } catch (error: any) {
-      showToast({ title: "Failed to switch Config Set", description: error.message })
-    } finally {
-      setActivating(undefined)
-    }
-  }
-
-  return (
-    <DropdownMenu onOpenChange={setOpen}>
-      <DropdownMenu.Trigger
-        data-component="button"
-        data-size="small"
-        data-variant="ghost"
-        class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
-      >
-        <div class="flex items-center gap-2 min-w-0">
-          <Icon name="server" size="small" class="text-icon-base" />
-          <span class="text-12-medium text-text-base truncate max-w-24">{activeSet()?.name ?? "default"}</span>
-        </div>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content class="min-w-52" onClick={(event: MouseEvent) => event.stopPropagation()}>
-          <DropdownMenu.Group>
-            <DropdownMenu.GroupLabel>Switch Config Set</DropdownMenu.GroupLabel>
-            <For each={globalSync.configSets}>
-              {(set) => (
-                <DropdownMenu.Item onSelect={() => void handleActivate(set.name)} disabled={!!activating()}>
-                  <Icon name={set.active ? "check" : "server"} size="small" class="mr-2" />
-                  <DropdownMenu.ItemLabel>
-                    <span class="flex items-center gap-2">
-                      <span>{set.name}</span>
-                      <Show when={activating() === set.name}>
-                        <span class="text-text-weak">Switching...</span>
-                      </Show>
-                    </span>
-                  </DropdownMenu.ItemLabel>
-                </DropdownMenu.Item>
-              )}
-            </For>
-          </DropdownMenu.Group>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            onSelect={() => {
-              setOpen(false)
-              dialog.show(() => <SettingsDialog initialTab="config-sets" />)
-            }}
-          >
-            <Icon name="settings" size="small" class="mr-2" />
-            <DropdownMenu.ItemLabel>Manage in Settings</DropdownMenu.ItemLabel>
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu>
-  )
-}
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -100,38 +20,39 @@ function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   }
 }
 
+function holosLabel(holos: ReturnType<typeof useHolos>) {
+  if (!holos.loaded) return "Holos loading"
+  if (!holos.state.identity.loggedIn) return "Holos signed out"
+  if (holos.state.connection.status === "connected") return "Holos connected"
+  if (holos.state.connection.status === "connecting") return "Holos connecting"
+  if (holos.state.connection.status === "failed") return "Holos failed"
+  if (holos.state.connection.status === "disconnected") return "Holos disconnected"
+  if (holos.state.connection.status === "disabled") return "Holos disabled"
+  return "Holos unknown"
+}
+
+function holosTone(holos: ReturnType<typeof useHolos>) {
+  if (!holos.loaded || !holos.state.identity.loggedIn) return "muted" as const
+  if (holos.state.connection.status === "connected") return "success" as const
+  if (holos.state.connection.status === "connecting") return "active" as const
+  if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
+    return "danger" as const
+  return "muted" as const
+}
+
 function HolosStatusIndicator() {
   const holos = useHolos()
-  const label = createMemo(() => {
-    if (!holos.loaded) return "Holos loading"
-    if (!holos.state.identity.loggedIn) return "Holos signed out"
-    if (holos.state.connection.status === "connected") return "Holos connected"
-    if (holos.state.connection.status === "connecting") return "Holos connecting"
-    if (holos.state.connection.status === "failed") return "Holos failed"
-    if (holos.state.connection.status === "disconnected") return "Holos disconnected"
-    if (holos.state.connection.status === "disabled") return "Holos disabled"
-    return "Holos unknown"
-  })
-  const dot = createMemo(() => {
-    if (!holos.loaded || !holos.state.identity.loggedIn) return "muted" as const
-    if (holos.state.connection.status === "connected") return "success" as const
-    if (holos.state.connection.status === "connecting") return "active" as const
-    if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
-      return "danger" as const
-    return "muted" as const
-  })
+  const label = createMemo(() => holosLabel(holos))
+  const dot = createMemo(() => holosTone(holos))
 
   return (
-    <Button
-      size="small"
-      variant="ghost"
-      class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
+    <div
+      class="flex items-center gap-2 h-7 px-2.5 rounded-full transition-colors hover:bg-surface-raised-base-hover"
+      title={label()}
     >
-      <div class="flex items-center gap-2">
-        <div classList={statusDotClass(dot())} />
-        <span class="text-12-medium text-text-base truncate max-w-28">{label()}</span>
-      </div>
-    </Button>
+      <div classList={statusDotClass(dot())} />
+      <span class="text-12-medium text-text-base">Holos</span>
+    </div>
   )
 }
 
@@ -181,6 +102,15 @@ function DetailRow(props: { label: string; value: string | undefined }) {
   )
 }
 
+function DetailGroup(props: { title: string; children: any }) {
+  return (
+    <div class="space-y-1.5">
+      <div class="text-12-medium text-text-weak">{props.title}</div>
+      {props.children}
+    </div>
+  )
+}
+
 function StatusPill(props: {
   icon?: IconName
   label: string
@@ -203,10 +133,17 @@ function StatusPill(props: {
   )
 }
 
+function serverStatusLabel(healthy: boolean | undefined) {
+  if (healthy === true) return "active"
+  if (healthy === false) return "unavailable"
+  return "unknown"
+}
+
 function SessionContextStatus() {
   const params = useParams()
   const globalSync = useGlobalSync()
   const holos = useHolos()
+  const server = useServer()
   const [expanded, setExpanded] = createSignal(false)
 
   const directory = createMemo(() => decodeDirectory(params.dir))
@@ -240,14 +177,10 @@ function SessionContextStatus() {
   const workspacePath = createMemo(() => session()?.workspace?.path || session()?.scope.directory || directory())
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
-  const holosSummary = createMemo(() => {
-    if (!holos.loaded) return "Holos loading"
-    if (!holos.state.identity.loggedIn) return "Holos signed out"
-    return `Holos ${holos.state.connection.status}`
-  })
+  const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
   return (
-    <div class="relative inline-flex min-w-0">
+    <div class="relative inline-flex min-w-0 shrink-0">
       <div
         class="absolute bottom-full left-1/2 z-30 grid w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
         classList={{ "translate-y-1": !expanded(), "translate-y-0": expanded() }}
@@ -256,26 +189,23 @@ function SessionContextStatus() {
         <div class="overflow-hidden min-h-0">
           <div class="mb-1 rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha/95 shadow-lg p-3 backdrop-blur-md">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="space-y-1.5">
-                <div class="text-11-medium uppercase tracking-[0.16em] text-text-weaker">Workspace</div>
+              <DetailGroup title="Workspace">
                 <DetailRow label="Scope" value={scopeLabel()} />
                 <DetailRow label="Type" value={isWorktree() ? "git worktree" : "main"} />
                 <DetailRow label="Name" value={workspaceName()} />
                 <DetailRow label="Branch" value={branch()} />
-              </div>
-              <div class="space-y-1.5">
-                <div class="text-11-medium uppercase tracking-[0.16em] text-text-weaker">Session</div>
+              </DetailGroup>
+              <DetailGroup title="Session">
                 <DetailRow label="Runtime" value={runtime()} />
                 <DetailRow label="Path" value={shortPath(workspacePath(), scope()?.worktree || directory())} />
                 <DetailRow label="Parent" value={session()?.parentID ? "child session" : "root session"} />
                 <DetailRow label="Endpoint" value={session()?.endpoint?.kind || "web"} />
-              </div>
-              <div class="space-y-1.5">
-                <div class="text-11-medium uppercase tracking-[0.16em] text-text-weaker">Connection</div>
-                <DetailRow label="Holos" value={holosSummary()} />
-                <DetailRow label="Server" value="active" />
-                <DetailRow label="Config" value={globalSync.configSets.find((set) => set.active)?.name ?? "default"} />
-              </div>
+              </DetailGroup>
+              <DetailGroup title="Connection">
+                <DetailRow label="Holos" value={holosLabel(holos)} />
+                <DetailRow label="Server" value={`${server.name} · ${serverStatusLabel(server.healthy())}`} />
+                <DetailRow label="Config" value={activeConfig()} />
+              </DetailGroup>
             </div>
           </div>
         </div>
@@ -301,35 +231,19 @@ function SessionContextStatus() {
 
 export function StatusBar() {
   const params = useParams()
-  const server = useServer()
-  const dialog = useDialog()
 
   return (
-    <div class="flex items-center justify-center gap-2 py-1 flex-wrap min-w-0">
-      <Button
-        size="small"
-        variant="ghost"
-        class="rounded-full px-2.5 h-7 transition-colors hover:bg-surface-raised-base-hover"
-        onClick={() => dialog.show(() => <DialogSelectServer />)}
-      >
-        <div class="flex items-center gap-2">
-          <div
-            classList={statusDotClass(
-              server.healthy() === true ? "success" : server.healthy() === false ? "danger" : "muted",
-            )}
-          />
-          <span class="text-12-medium text-text-base truncate max-w-24">{server.name}</span>
-        </div>
-      </Button>
-
-      <ConfigSetStatus />
+    <div
+      class="flex items-center justify-center gap-2 py-1 flex-nowrap min-w-0 overflow-hidden"
+      style={{ "max-width": "min(100%, 720px)" }}
+    >
       <HolosStatusIndicator />
       <Show when={params.dir}>
         <SessionContextStatus />
       </Show>
 
       <Show when={params.dir}>
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center gap-0.5 shrink-0">
           <SessionLspIndicator />
           <SessionMcpIndicator />
           <Show when={params.id}>
