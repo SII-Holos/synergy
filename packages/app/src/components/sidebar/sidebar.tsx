@@ -17,8 +17,7 @@ import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
-import type { LocalScope } from "@/context/layout"
-import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { LocalScope, NavEntry } from "@/context/layout"
 import "./sidebar.css"
 
 interface SidebarProps {
@@ -121,13 +120,13 @@ export function Sidebar(props: SidebarProps) {
     ))
   }
 
-  const handleSessionClick = (scope: LocalScope, session: Session) => {
-    navigate(`/${base64Encode(scope.worktree)}/session/${session.id}`)
+  const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
+    navigate(`/${base64Encode(scope.worktree)}/session/${entry.id}`)
   }
 
-  const handleFlyoutSessionClick = (session: Session) => {
+  const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
     setProjectsFlyoutOpen(false)
-    navigate(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
+    navigate(`/${base64Encode(worktree === "global" ? "global" : worktree)}/session/${entry.id}`)
   }
 
   type SessionVisualState = {
@@ -137,29 +136,29 @@ export function Sidebar(props: SidebarProps) {
     pulse?: boolean
   }
 
-  const sessionVisualState = (scope: LocalScope, session: Session): SessionVisualState => {
+  const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState => {
     const store = globalSync.child(scope.worktree)[0]
-    const status = store.session_status[session.id]
-    const waiting = !!store.permission[session.id]?.length || !!store.question[session.id]?.length
+    const status = store.session_status[entry.id]
+    const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
     const running = status?.type === "busy" || status?.type === "retry"
     const childTasksRunning = store.cortex.some(
-      (task) => task.parentSessionID === session.id && task.status === "running",
+      (task) => task.parentSessionID === entry.id && task.status === "running",
     )
+    const fullSession = store.session.find((session) => session.id === entry.id)
 
     if (running || childTasksRunning)
       return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
     if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
-    if (session.workspace?.type === "git_worktree")
+    if (fullSession?.workspace?.type === "git_worktree")
       return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
-    if (session.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
-    if (session.agenda) return { icon: "calendar-days", label: "Agenda session", tone: "muted" }
-    if (session.endpoint?.kind === "holos") return { icon: "bot", label: "Holos session", tone: "muted" }
-    if (session.endpoint?.kind === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+    if (entry.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
+    if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
+    if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
     return { icon: "file-text", label: "Session", tone: "default" }
   }
 
-  const SessionIcon = (props: { scope: LocalScope; session: Session; flyout?: boolean }) => {
-    const visual = createMemo(() => sessionVisualState(props.scope, props.session))
+  const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
+    const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
     return (
       <span
         classList={{
@@ -415,7 +414,7 @@ export function Sidebar(props: SidebarProps) {
                     {/* Sessions under expanded project */}
                     <Show when={scope.expanded}>
                       <div class="sb-sessions">
-                        <For each={layout.nav.projectSessions(scope).slice(0, 20)}>
+                        <For each={layout.nav.projectNavEntries(scope)}>
                           {(session) => (
                             <button
                               type="button"
@@ -428,7 +427,7 @@ export function Sidebar(props: SidebarProps) {
                                 handleSessionClick(scope, session)
                               }}
                             >
-                              <SessionIcon scope={scope} session={session} />
+                              <SessionIcon scope={scope} entry={session} />
                               <span class="sb-session-title">{session.title || "Untitled"}</span>
                             </button>
                           )}
@@ -472,7 +471,7 @@ export function Sidebar(props: SidebarProps) {
           <div class="sb-flyout-header">Projects</div>
           <For each={scopes()}>
             {(scope) => {
-              const sessions = createMemo(() => layout.nav.projectSessions(scope).slice(0, 20))
+              const sessions = createMemo(() => layout.nav.projectNavEntries(scope))
               return (
                 <div class="sb-flyout-project-group">
                   <button
@@ -494,9 +493,9 @@ export function Sidebar(props: SidebarProps) {
                           "sb-flyout-session-row": true,
                           "sb-session-active": session.id === params.id,
                         }}
-                        onClick={() => handleFlyoutSessionClick(session)}
+                        onClick={() => handleFlyoutSessionClick(session, scope.worktree)}
                       >
-                        <SessionIcon scope={scope} session={session} flyout />
+                        <SessionIcon scope={scope} entry={session} flyout />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
                       </button>
                     )}

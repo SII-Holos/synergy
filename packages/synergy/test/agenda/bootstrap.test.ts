@@ -24,9 +24,8 @@ afterEach(async () => {
 function withAnima(autonomy: boolean, fn: () => Promise<void>) {
   return async () => {
     await using tmp = await tmpdir()
-    process.env.SYNERGY_TEST_HOME = path.join(tmp.path, "home")
     await fs.mkdir(Global.Path.config, { recursive: true })
-    await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ identity: { autonomy } }))
+    await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ engram: { autonomy } }))
 
     await Instance.provide({
       scope: Scope.global(),
@@ -54,8 +53,7 @@ function withAnima(autonomy: boolean, fn: () => Promise<void>) {
 test("seed creates anima item on startup when missing", async () => {
   await using tmp = await tmpdir()
   process.env.SYNERGY_TEST_HOME = path.join(tmp.path, "home")
-  await fs.mkdir(Global.Path.config, { recursive: true })
-  await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ identity: { autonomy: true } }))
+  await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ engram: { autonomy: true } }))
 
   await AgendaBootstrap.seed()
 

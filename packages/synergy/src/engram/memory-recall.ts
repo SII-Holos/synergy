@@ -3,10 +3,36 @@ import { Plugin } from "../plugin"
 import { Embedding } from "./embedding"
 import { Rerank } from "./rerank"
 import { EngramDB } from "./database"
+import { Config } from "../config/config"
 
 const log = Log.create({ service: "engram.memory-recall" })
 
 const RERANK_CANDIDATE_MULTIPLIER = 3
+
+// Simple BM25-like text match fallback when embeddings are unavailable
+function textSearch(query: string, candidates: Array<{ id: string; text: string }>, topK: number) {
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 1)
+  if (terms.length === 0) return candidates.slice(0, topK)
+  return candidates
+    .map((c) => {
+      const text = c.text.toLowerCase()
+      let score = 0
+      for (const term of terms) {
+        let pos = 0
+        while ((pos = text.indexOf(term, pos)) !== -1) {
+          score += 1
+          pos++
+        }
+      }
+      return { ...c, score }
+    })
+    .filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+}
 
 export namespace MemoryRecall {
   export interface Result {
@@ -44,8 +70,28 @@ export namespace MemoryRecall {
     )
 
     const topK = search.topK ?? 5
-    const vector = search.vector ?? (await Embedding.generate({ id: "search-query", text: search.query })).vector
-    const shouldRerank = search.rerank !== false
+    const shouldRerank = search.rerank === true
+
+    let vector: number[]
+    try {
+      vector = search.vector ?? (await Embedding.generate({ id: "search-query", text: search.query })).vector
+    } catch {
+      // Embedding unavailable — fall back to text search
+      const memoryCandidates = EngramDB.Memory.listAll().map((r) => ({
+        id: r.id,
+        text: `${r.title}\n${r.content}`,
+      }))
+      return (textSearch(search.query, memoryCandidates, topK) as any[]).map((c) => ({
+        id: c.id,
+        title: "",
+        content: c.text,
+        category: "general" as EngramDB.Memory.Category,
+        recallMode: "contextual" as EngramDB.Memory.RecallMode,
+        similarity: c.score / (search.query.split(/\s+/).filter((t: string) => t.length > 1).length || 1),
+        createdAt: 0,
+        updatedAt: 0,
+      }))
+    }
 
     const candidateCount = shouldRerank ? topK * RERANK_CANDIDATE_MULTIPLIER : topK
     const candidates = vectorSearch(vector, candidateCount, search.categories, search.recallModes)

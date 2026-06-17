@@ -26,6 +26,7 @@ import type {
   StatusInfo as StatusInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
 } from "./types"
+import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 
@@ -102,6 +103,31 @@ export namespace Session {
     }
   }
 
+  function toNavEntry(session: Info): SessionNavEntry {
+    const scope = session.scope as Scope
+    const scopeType = scope.id === "global" ? "global" : "project"
+    const category =
+      session.category ??
+      SessionNav.deriveCategory({
+        scopeType,
+        endpointKind: session.endpoint?.kind,
+        parentID: session.parentID,
+        cortex: session.cortex,
+        agenda: session.agenda,
+      })
+    return {
+      id: session.id,
+      scopeID: scope.id,
+      scopeType,
+      title: session.title,
+      category,
+      lastActivityAt: session.time.updated,
+      pinned: session.pinned ?? 0,
+      archived: !!session.time.archived,
+      parentID: session.parentID,
+    }
+  }
+
   async function writeEndpointIndex(session: Info) {
     if (!session.endpoint) return
 
@@ -155,12 +181,22 @@ export namespace Session {
     const inheritedInteraction = input?.interaction ?? parent?.interaction
 
     const endpoint = input?.endpoint
+    const createdAt = Date.now()
+    const scopeType = scope.id === "global" ? "global" : "project"
+    const category = SessionNav.deriveCategory({
+      scopeType,
+      endpointKind: endpoint?.kind,
+      parentID: input?.parentID,
+      cortex: input?.cortex,
+      agenda: input?.agenda,
+    })
 
     const result: Info = {
       id: Identifier.descending("session", input?.id),
       version: Installation.VERSION,
       scope,
       parentID: input?.parentID,
+      category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       endpoint,
@@ -169,8 +205,8 @@ export namespace Session {
       cortex: input?.cortex,
       workspace,
       time: {
-        created: Date.now(),
-        updated: Date.now(),
+        created: createdAt,
+        updated: createdAt,
       },
     }
     log.info("created", result)
@@ -182,6 +218,7 @@ export namespace Session {
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await writeEndpointIndex(result)
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result))
 
     if (result.agenda) {
       await Storage.write(StoragePath.agendaSession(result.agenda.itemID, result.id), {
@@ -262,6 +299,7 @@ export namespace Session {
     await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result))
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined
@@ -393,6 +431,7 @@ export namespace Session {
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
       await removePageIndexEntry(scope.id, sessionID)
+      await SessionNav.removeNavEntry(scope.id, sessionID)
       Bus.publish(SessionEvent.Deleted, {
         info: session,
       })

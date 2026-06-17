@@ -13125,6 +13125,121 @@
         },
         "additionalProperties": false
       },
+      "EmbeddingConfig": {
+        "description": "Embedding model configuration. When absent, a local model is used automatically.",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the embedding API",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the embedding service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Embedding model name",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RerankConfig": {
+        "description": "Rerank model for memory retrieval refinement. Disabled when not configured.",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the rerank API",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the rerank service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Rerank model name",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable agent-initiated memory curation via chronicler (default: true)",
+            "type": "boolean"
+          },
+          "retrieval": {
+            "description": "Semantic memory retrieval settings",
+            "type": "object",
+            "properties": {
+              "simThreshold": {
+                "description": "Minimum similarity for auto-injection (default: 0.7)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "topK": {
+                "description": "Max entries per category to retrieve (default: 3)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "categories": {
+                "description": "Per-category retrieval overrides",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "self",
+                    "relationship",
+                    "interaction",
+                    "workflow",
+                    "coding",
+                    "writing",
+                    "asset",
+                    "insight",
+                    "knowledge",
+                    "personal",
+                    "general"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "simThreshold": {
+                      "description": "Minimum similarity for contextual retrieval",
+                      "type": "number"
+                    },
+                    "topK": {
+                      "description": "Maximum contextual entries to retrieve",
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "dedup": {
+            "description": "Memory deduplication settings",
+            "type": "object",
+            "properties": {
+              "threshold": {
+                "description": "Cosine similarity threshold for duplicate detection (default: 0.75)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "PassiveRetrievalConfig": {
         "type": "object",
         "properties": {
@@ -13167,7 +13282,7 @@
         "additionalProperties": false
       },
       "LearningConfig": {
-        "description": "Hyperparameters for the experience learning pipeline",
+        "description": "Q-learning hyperparameters for experience evaluation",
         "type": "object",
         "properties": {
           "alpha": {
@@ -13270,15 +13385,15 @@
         },
         "additionalProperties": false
       },
-      "EvolutionPassive": {
+      "ExperienceConfig": {
         "type": "object",
         "properties": {
           "encode": {
-            "description": "Learn from conversations — extract intent, reward, and scripts (default: true)",
+            "description": "Auto-encode conversation patterns into experiences (default: true)",
             "type": "boolean"
           },
           "retrieve": {
-            "description": "Inject relevant past experiences into new conversations (default: true)",
+            "description": "Inject relevant past experiences into prompts (default: true)",
             "anyOf": [
               {
                 "type": "boolean"
@@ -13294,153 +13409,14 @@
         },
         "additionalProperties": false
       },
-      "EvolutionActive": {
+      "EngramConfig": {
         "type": "object",
         "properties": {
-          "retrieve": {
-            "description": "Auto-inject relevant memories into new conversations (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "simThreshold": {
-                    "description": "Default minimum similarity for auto-injection (default: 0.7)",
-                    "type": "number"
-                  },
-                  "topK": {
-                    "description": "Default maximum entries per category to contextually retrieve (default: 3)",
-                    "type": "number"
-                  },
-                  "categories": {
-                    "description": "Per-category contextual retrieval overrides",
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string",
-                      "enum": [
-                        "user",
-                        "self",
-                        "relationship",
-                        "interaction",
-                        "workflow",
-                        "coding",
-                        "writing",
-                        "asset",
-                        "insight",
-                        "knowledge",
-                        "personal",
-                        "general"
-                      ]
-                    },
-                    "additionalProperties": {
-                      "type": "object",
-                      "properties": {
-                        "simThreshold": {
-                          "description": "Minimum similarity for contextual retrieval",
-                          "type": "number"
-                        },
-                        "topK": {
-                          "description": "Maximum contextual entries to retrieve",
-                          "type": "number"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
+          "memory": {
+            "$ref": "#/components/schemas/MemoryConfig"
           },
-          "memoryDedupThreshold": {
-            "description": "Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)",
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1
-          }
-        },
-        "additionalProperties": false
-      },
-      "EvolutionConfig": {
-        "type": "object",
-        "properties": {
-          "passive": {
-            "description": "RL-enhanced passive experience learning (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionPassive"
-              }
-            ]
-          },
-          "active": {
-            "description": "Agent-initiated active memory curation via memory tools (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionActive"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "IdentityConfig": {
-        "description": "Identity configuration for embedding and evolution",
-        "type": "object",
-        "properties": {
-          "embedding": {
-            "description": "Embedding model configuration for memory and retrieval",
-            "type": "object",
-            "properties": {
-              "baseURL": {
-                "description": "Base URL for the embedding API",
-                "type": "string"
-              },
-              "apiKey": {
-                "description": "API key for the embedding service",
-                "type": "string"
-              },
-              "model": {
-                "description": "Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')",
-                "type": "string"
-              }
-            }
-          },
-          "rerank": {
-            "description": "Rerank model configuration for memory retrieval refinement",
-            "type": "object",
-            "properties": {
-              "baseURL": {
-                "description": "Base URL for the rerank API",
-                "type": "string"
-              },
-              "apiKey": {
-                "description": "API key for the rerank service (falls back to embedding.apiKey)",
-                "type": "string"
-              },
-              "model": {
-                "description": "Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')",
-                "type": "string"
-              }
-            }
-          },
-          "evolution": {
-            "description": "Dual-mode evolution system: passive experience learning + active memory curation (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionConfig"
-              }
-            ]
+          "experience": {
+            "$ref": "#/components/schemas/ExperienceConfig"
           },
           "autonomy": {
             "description": "Enable autonomous background routines like anima daily wake (default: true)",
@@ -13505,7 +13481,7 @@
         "type": "object",
         "properties": {
           "approval": {
-            "description": "Tool approval mode: auto, always, or per_session",
+            "description": "Tool approval mode",
             "type": "string",
             "enum": ["auto", "always", "per_session"]
           },
@@ -13566,18 +13542,18 @@
             "type": "boolean"
           },
           "timeout": {
-            "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "startup": {
-            "description": "Startup mode: eager (start immediately), lazy (start on first use), or manual",
+            "description": "MCP startup mode",
             "type": "string",
             "enum": ["eager", "lazy", "manual"]
           },
           "required": {
-            "description": "If true, the supervisor will keep trying to connect this server",
+            "description": "If true, this MCP server is required for the configured workflow",
             "type": "boolean"
           },
           "connectTimeout": {
@@ -13677,18 +13653,18 @@
             ]
           },
           "timeout": {
-            "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "startup": {
-            "description": "Startup mode: eager (start immediately), lazy (start on first use), or manual",
+            "description": "MCP startup mode",
             "type": "string",
             "enum": ["eager", "lazy", "manual"]
           },
           "required": {
-            "description": "If true, the supervisor will keep trying to connect this server",
+            "description": "If true, this MCP server is required for the configured workflow",
             "type": "boolean"
           },
           "connectTimeout": {
@@ -13736,28 +13712,28 @@
         "type": "object",
         "properties": {
           "startup": {
-            "description": "Default startup mode for MCP servers",
+            "description": "MCP startup mode",
             "type": "string",
             "enum": ["eager", "lazy", "manual"]
           },
           "required": {
-            "description": "Default required flag for MCP servers",
+            "description": "If true, this MCP server is required for the configured workflow",
             "type": "boolean"
           },
           "connectTimeout": {
-            "description": "Default connect timeout in ms",
+            "description": "Timeout in ms for initial connection handshake",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "listTimeout": {
-            "description": "Default list timeout in ms",
+            "description": "Timeout in ms for listing tools",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "callTimeout": {
-            "description": "Default call timeout in ms",
+            "description": "Timeout in ms for tool call execution",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -13766,7 +13742,7 @@
             "$ref": "#/components/schemas/McpRetryConfig"
           },
           "idleShutdownMs": {
-            "description": "Default idle shutdown in ms",
+            "description": "Idle time in ms after which the server is shut down",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -14278,8 +14254,14 @@
               "$ref": "#/components/schemas/ProviderConfig"
             }
           },
-          "identity": {
-            "$ref": "#/components/schemas/IdentityConfig"
+          "embedding": {
+            "$ref": "#/components/schemas/EmbeddingConfig"
+          },
+          "rerank": {
+            "$ref": "#/components/schemas/RerankConfig"
+          },
+          "engram": {
+            "$ref": "#/components/schemas/EngramConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -15475,6 +15457,10 @@
           "parentID": {
             "type": "string",
             "pattern": "^ses.*"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["project", "home", "channel", "background"]
           },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
@@ -18249,9 +18235,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "pinned": {
             "type": "boolean"
           },
@@ -18283,7 +18266,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "title", "content", "contentText", "pinned", "global", "tags", "version", "time"]
+        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
       },
       "NoteScopeGroup": {
         "type": "object",
@@ -18311,9 +18294,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "tags": {
             "type": "array",
             "items": {
@@ -18355,9 +18335,6 @@
             "type": "string"
           },
           "content": {},
-          "contentText": {
-            "type": "string"
-          },
           "pinned": {
             "type": "boolean"
           },
@@ -19807,6 +19784,38 @@
           }
         ]
       },
+      "Event.scope.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -19841,38 +19850,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/Scope"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -21393,16 +21370,16 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
             "$ref": "#/components/schemas/Event.scope.updated"
           },
           {
             "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"

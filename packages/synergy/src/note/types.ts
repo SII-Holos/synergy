@@ -6,7 +6,6 @@ export namespace NoteTypes {
       id: z.string(),
       title: z.string(),
       content: z.any(),
-      contentText: z.string(),
       pinned: z.boolean(),
       global: z.boolean(),
       originScope: z.string().optional(),
@@ -24,7 +23,6 @@ export namespace NoteTypes {
     .object({
       title: z.string(),
       content: z.any().optional(),
-      contentText: z.string().optional(),
       tags: z.array(z.string()).optional(),
     })
     .meta({ ref: "NoteCreateInput" })
@@ -34,7 +32,6 @@ export namespace NoteTypes {
     .object({
       title: z.string().optional(),
       content: z.any().optional(),
-      contentText: z.string().optional(),
       pinned: z.boolean().optional(),
       global: z.boolean().optional(),
       tags: z.array(z.string()).optional(),

@@ -37,7 +37,20 @@ export async function buildMemoryContext(
   sessionID: string,
   scopeID: string,
   messages: MessageV2.WithParts[],
-  evo: Config.ResolvedEvolution,
+  engram?: {
+    memory?: {
+      enabled?: boolean
+      retrieval?: {
+        simThreshold?: number
+        topK?: number
+        categories?: Record<string, { simThreshold?: number; topK?: number }>
+      }
+    }
+    experience?: {
+      retrieve?: unknown
+      learning?: Config.Learning
+    }
+  },
 ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
   const userText = extractLastUserText(messages)
   const parts: string[] = []
@@ -47,11 +60,16 @@ export async function buildMemoryContext(
     ? await Embedding.generate({ id: "search-query", text: userText }).catch(() => undefined)
     : undefined
 
+  const memory = engram?.memory
+  const experience = engram?.experience
+  const active = memory?.enabled ?? true
+  const retrieve = experience?.retrieve !== false
+  const activeRetrieval = resolveActiveRetrieval(memory?.retrieval)
+  const learning = resolveLearning(experience?.learning)
+
   const [memoryResult, experienceResult] = await Promise.all([
-    evo.active ? buildActiveMemoryContext(userText, evo.activeRetrieval, queryEmbedding?.vector) : undefined,
-    evo.retrieve
-      ? buildExperienceContext(sessionID, scopeID, userText, evo.learning, queryEmbedding?.vector)
-      : undefined,
+    active ? buildActiveMemoryContext(userText, activeRetrieval, queryEmbedding?.vector) : undefined,
+    retrieve ? buildExperienceContext(sessionID, scopeID, userText, learning, queryEmbedding?.vector) : undefined,
   ])
 
   if (memoryResult) {
@@ -154,7 +172,7 @@ export function buildAlwaysOnlyMemoryContext(): string | undefined {
 
 async function buildActiveMemoryContext(
   userText: string | undefined,
-  activeRetrieval: Config.ActiveRetrieval,
+  activeRetrieval: ActiveRetrieval,
   queryVector?: number[],
 ): Promise<{ context: string; memoryBlock?: string }> {
   const parts: string[] = []
@@ -255,5 +273,41 @@ async function buildExperienceContext(
   } catch (err: any) {
     log.error("memory retrieval failed", { error: err })
     return { context: undefined }
+  }
+}
+function resolveActiveRetrieval(retrieval?: {
+  simThreshold?: number
+  topK?: number
+  categories?: Record<string, { simThreshold?: number; topK?: number }>
+}): ActiveRetrieval {
+  const simThreshold = retrieval?.simThreshold ?? 0.7
+  const topK = retrieval?.topK ?? 3
+  const overrides = retrieval?.categories
+  const categories = {} as Record<EngramDB.Memory.Category, CategoryRetrieval>
+  for (const category of EngramDB.Memory.CATEGORIES) {
+    const override = overrides?.[category]
+    categories[category] = {
+      simThreshold: override?.simThreshold ?? simThreshold,
+      topK: override?.topK ?? topK,
+    }
+  }
+  return { enabled: true, categories }
+}
+
+interface ActiveRetrieval {
+  enabled: boolean
+  categories: Record<EngramDB.Memory.Category, CategoryRetrieval>
+}
+
+interface CategoryRetrieval {
+  simThreshold: number
+  topK: number
+}
+
+function resolveLearning(learning?: Config.Learning): Required<Config.Learning> {
+  return {
+    ...Config.LEARNING_DEFAULTS,
+    ...learning,
+    rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...learning?.rewardWeights },
   }
 }

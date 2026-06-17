@@ -8,11 +8,12 @@ import { NoteTypes } from "./types"
 import { NoteError } from "./error"
 import { Log } from "../util/log"
 import { Plugin } from "../plugin"
+import { NoteMarkdown } from "./markdown"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
 
-  export type Metadata = Omit<NoteTypes.Info, "content">
+  export type Metadata = Omit<NoteTypes.Info, "content"> & { searchText: string }
 
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
@@ -21,8 +22,8 @@ export namespace NoteStore {
   }
 
   function toMetadata(note: NoteTypes.Info): Metadata {
-    const { content: _, ...meta } = note
-    return meta
+    const { content, ...meta } = note
+    return { ...meta, searchText: NoteMarkdown.toMarkdown(content) }
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -135,7 +136,6 @@ export namespace NoteStore {
       id,
       title: create.note.title,
       content: create.note.content ?? { type: "doc", content: [] },
-      contentText: create.note.contentText ?? "",
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
@@ -225,7 +225,6 @@ export namespace NoteStore {
       }
       if (update.patch.title !== undefined) draft.title = update.patch.title
       if (update.patch.content !== undefined) draft.content = update.patch.content
-      if (update.patch.contentText !== undefined) draft.contentText = update.patch.contentText
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
       if (update.patch.global !== undefined) draft.global = update.patch.global
