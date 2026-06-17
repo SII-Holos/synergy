@@ -61,7 +61,7 @@ export const SessionSendTool = Tool.define("session_send", {
 
     const mailMetadata = {
       mailbox: true,
-      source: "agent",
+      source: "mailbox",
       sourceSessionID: ctx.sessionID,
       ...(params.sourceName ? { sourceName: params.sourceName } : {}),
     }

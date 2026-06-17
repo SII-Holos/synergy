@@ -334,6 +334,7 @@ export namespace Cortex {
         ],
         metadata: {
           channelPush: true,
+          source: "cortex",
           sourceSessionID: task.sessionID,
         },
       },

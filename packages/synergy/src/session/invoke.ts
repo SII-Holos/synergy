@@ -1089,6 +1089,9 @@ export namespace SessionInvoke {
         promptVisible: command.promptVisible,
       },
       promptVisible: command.promptVisible,
+      source: "command",
+      // Denormalized for easier frontend access (metadata.commandName vs. metadata.command?.name)
+      commandName: command.name,
     }
   }
 

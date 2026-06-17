@@ -41,6 +41,7 @@
 @import "../components/session-review.css" layer(components);
 @import "../components/session-turn.css" layer(components);
 @import "../components/mailbox-message.css" layer(components);
+@import "../components/command-result-output.css" layer(components);
 @import "../components/sticky-accordion-header.css" layer(components);
 @import "../components/tabs.css" layer(components);
 @import "../components/tag.css" layer(components);
