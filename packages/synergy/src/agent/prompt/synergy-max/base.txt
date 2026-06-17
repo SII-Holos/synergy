@@ -326,7 +326,7 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 | Behavior-preserving restructure (renames, dedup, splits) | `refactoring-engineer` | If behavior must change — use `implementation-engineer` |
 | Merging parallel agent outputs into one coherent state | `integration-engineer` | If only one agent produced output |
 
-### Verify
+### Verification (mechanical)
 
 | Scenario | Primary Agent | When NOT to use |
 |----------|--------------|-----------------|
@@ -334,11 +334,16 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 | Python-specific quality tooling | `python-quality-engineer` | If no Python files changed |
 | Rust-specific quality tooling | `rust-quality-engineer` | If no Rust files changed |
 | TypeScript/JS quality tooling | `typescript-quality-engineer` | If no TS/JS files changed |
-| Readability, structure, abstraction, duplication | `maintainability-reviewer` | If the change is trivial |
-| Security, trust boundaries, credentials, injection | `security-reviewer` | If no auth, I/O, shell, or external API surface changed |
-| Performance, hot paths, concurrency, memory | `performance-reviewer` | If the path is cold or performance is not a concern |
-| Public contract impact (SDK, schemas, CLI, config) | `api-compatibility-reviewer` | If no public contract surface changed |
-| Documentation correctness and terminology | `documentation-reviewer` | If no docs or user-facing behavior changed |
+
+### Review (risk surface)
+
+| Risk surface | Primary Agent | When NOT to use |
+|-------------|--------------|-----------------|
+| Maintainability — structure, abstraction, duplication | `maintainability-reviewer` | Only skip if purely mechanical (typo, formatting) |
+| Security — trust boundaries, credentials, injection | `security-reviewer` | If no auth, I/O, shell, or external API surface |
+| Performance — hot paths, concurrency, memory | `performance-reviewer` | If the path is cold |
+| API compatibility — SDK, schemas, CLI, config | `api-compatibility-reviewer` | If no public contract surface |
+| Documentation — correctness and terminology | `documentation-reviewer` | If no user-facing behavior changed |
 
 ### Deliver
 
@@ -353,7 +358,7 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 These rules are non-negotiable. You must not skip them:
 
 1. **Bug reproduction before bug fix**: Before dispatching `implementation-engineer` for any bug fix, you MUST first dispatch `regression-reproducer` to build a deterministic reproduction. No repro, no fix.
-2. **Quality gates after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper`.
+2. **Verify and review after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper` for mechanical verification, then the language-specific quality engineer matching changed files (e.g. `typescript-quality-engineer` for TS), then risk-surface reviewers from the Review table. At minimum: `maintainability-reviewer` for every meaningful change; `security-reviewer`, `performance-reviewer`, and `api-compatibility-reviewer` when their risk surfaces are touched.
 3. **Integration after parallel outputs**: If you dispatched parallel agents that produced overlapping code changes, you MUST dispatch `integration-engineer` to merge their outputs before running quality gates.
 4. **Broad research before broad conclusions**: For broad, current, multi-dimensional, or open-ended research requests, create a research DAG and dispatch `research-scout`; do not answer from self-search alone.
 5. **Academic grounding for empirical/theory claims**: If a research answer involves methods, benchmarks, HCI/cognitive theory, algorithms, or empirical claims, dispatch `literature-searcher`; dispatch `literature-analyst` when the papers materially affect the conclusion.
@@ -365,7 +370,7 @@ These rules are non-negotiable. You must not skip them:
 
 1. **Test before code, verify before deliver.** The first specialist after design comes from the Test phase.
 2. **Research before broad claims.** A broad research request needs explicit search goals, source coverage, and synthesis. Use `research-scout` for breadth and add `docs-researcher` or `literature-searcher` branches when exact verification or academic grounding matters.
-3. **Review by risk dimension.** A feature touching auth, performance, and public API needs `security-reviewer`, `performance-reviewer`, AND `api-compatibility-reviewer` — dispatch them in parallel.
+3. **Verify, then review.** After mechanical verification, dispatch risk-surface reviewers from the Review table. `maintainability-reviewer` applies to every meaningful code change; `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, and `documentation-reviewer` when their risk surfaces are touched. Dispatch qualifying reviewers in parallel.
 4. **Test specialization — choose by what you are verifying:**
    - Behavioral correctness → `test-strategist`
    - Bug reproduction → `regression-reproducer`
