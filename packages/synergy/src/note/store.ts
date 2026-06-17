@@ -23,7 +23,8 @@ export namespace NoteStore {
 
   function toMetadata(note: NoteTypes.Info): Metadata {
     const { content, ...meta } = note
-    return { ...meta, searchText: NoteMarkdown.toMarkdown(content) }
+    const searchParts = [note.title, ...(note.tags ?? []), NoteMarkdown.toMarkdown(content)].filter(Boolean)
+    return { ...meta, searchText: searchParts.join("\n") }
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -291,6 +292,27 @@ export namespace NoteStore {
       result = mergeSorted(result, list, comparePinTime)
     }
     return result
+  }
+
+  export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
+    const scopeIDs = await Storage.scan(["notes"])
+    const currentScopeID = Instance.scope.id
+    scopeIDs.sort((a, b) => {
+      if (a === currentScopeID) return -1
+      if (b === currentScopeID) return 1
+      return a.localeCompare(b)
+    })
+    const groups: NoteTypes.MetaScopeGroup[] = []
+    for (const sid of scopeIDs) {
+      const metaList = await listMeta(sid)
+      if (metaList.length === 0) continue
+      groups.push({
+        scopeID: sid,
+        scopeType: sid === "global" ? "global" : "project",
+        notes: metaList,
+      })
+    }
+    return groups
   }
 
   // --- Public API: scope-agnostic access ---

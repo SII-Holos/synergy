@@ -9,6 +9,30 @@ import { Storage } from "../storage/storage"
 export const NoteRoute = new Hono()
 
   .get(
+    "/meta",
+    describeRoute({
+      summary: "List note metadata grouped by scope",
+      description:
+        "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+      operationId: "note.listMeta",
+      responses: {
+        200: {
+          description: "Note metadata grouped by scope",
+          content: { "application/json": { schema: resolver(NoteTypes.MetaScopeGroup.array()) } },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      try {
+        const groups = await NoteStore.listMetaGrouped()
+        return c.json(groups)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+  .get(
     "/all",
     describeRoute({
       summary: "List all notes grouped by scope",

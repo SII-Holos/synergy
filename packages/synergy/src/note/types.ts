@@ -48,4 +48,31 @@ export namespace NoteTypes {
     })
     .meta({ ref: "NoteScopeGroup" })
   export type ScopeGroup = z.infer<typeof ScopeGroup>
+
+  export const MetaInfo = z
+    .object({
+      id: z.string(),
+      title: z.string(),
+      pinned: z.boolean(),
+      global: z.boolean(),
+      originScope: z.string().optional(),
+      tags: z.array(z.string()),
+      version: z.number(),
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+      }),
+      searchText: z.string(),
+    })
+    .meta({ ref: "NoteMetaInfo" })
+  export type MetaInfo = z.infer<typeof MetaInfo>
+
+  export const MetaScopeGroup = z
+    .object({
+      scopeID: z.string(),
+      scopeType: z.enum(["global", "project"]),
+      notes: z.array(MetaInfo),
+    })
+    .meta({ ref: "NoteMetaScopeGroup" })
+  export type MetaScopeGroup = z.infer<typeof MetaScopeGroup>
 }
