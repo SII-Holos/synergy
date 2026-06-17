@@ -374,8 +374,10 @@ export namespace AgendaTypes {
       wake: z.boolean().optional(),
       silent: z.boolean().optional(),
       agent: z.string().optional(),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
       sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
       sessionRefs: z.array(SessionRef).optional(),
+      timeout: z.number().optional(),
     })
     .meta({ ref: "AgendaPatchInput" })
   export type PatchInput = z.infer<typeof PatchInput>

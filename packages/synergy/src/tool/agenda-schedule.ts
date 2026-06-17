@@ -20,6 +20,9 @@ const parameters = z.object({
   global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
   wake: z.boolean().optional().describe("If true, wake this session's agent when execution completes. Default: true"),
   silent: z.boolean().optional().describe("If true, suppress result delivery entirely. Default: false"),
+  agent: z.string().optional().describe("Agent to use, defaults to configured default"),
+  model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+  timeout: z.number().optional().describe("Execution timeout in milliseconds"),
   sessionMode: z
     .enum(["ephemeral", "persistent"])
     .optional()
@@ -61,8 +64,11 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       global: params.global,
       wake: params.wake,
       silent: params.silent,
+      agent: params.agent,
+      model: params.model,
       sessionMode: params.sessionMode,
       sessionRefs: params.sessionRefs,
+      timeout: params.timeout,
       createdBy: "agent",
       sessionID: ctx.sessionID,
       endpoint: session?.endpoint,
@@ -80,6 +86,9 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     if (item.global) lines.push(`Scope: global`)
     if (item.wake === false) lines.push(`Wake: disabled`)
     if (item.silent) lines.push(`Silent: true`)
+    if (item.agent) lines.push(`Agent: ${item.agent}`)
+    if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)
+    if (item.timeout) lines.push(`Timeout: ${item.timeout}ms`)
     if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
 
     lines.push(

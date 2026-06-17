@@ -182,8 +182,10 @@ export namespace AgendaStore {
       if (patch.wake !== undefined) draft.wake = patch.wake
       if (patch.silent !== undefined) draft.silent = patch.silent
       if (patch.agent !== undefined) draft.agent = patch.agent
+      if (patch.model !== undefined) draft.model = patch.model
       if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
       if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
+      if (patch.timeout !== undefined) draft.timeout = patch.timeout
       if (options?.recomputeNextRunAt) {
         draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
       }
