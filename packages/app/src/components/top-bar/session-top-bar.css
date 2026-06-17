@@ -112,3 +112,8 @@
   color: var(--icon-base);
   background: var(--surface-raised-base-hover);
 }
+
+.stb-icon-btn--active {
+  color: var(--icon-strong);
+  background: var(--surface-raised-base-hover);
+}

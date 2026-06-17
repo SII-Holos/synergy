@@ -50,8 +50,8 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   autoupdate: "auto",
   compaction: "auto",
   question: "background",
-  controlProfile: "explicit",
   permission: "background",
+  controlProfile: "explicit",
   model: "background",
   nano_model: "background",
   mini_model: "background",
@@ -243,10 +243,14 @@ export function useSettingsSave(ctx: SaveContext) {
     ctx.setSaving(true)
     try {
       const shouldActivate = options?.activate === true && !ctx.selectedSetIsActive()
-      await globalSDK.client.config.set.raw.save({
+      const response = await globalSDK.client.config.set.raw.save({
         name: setName,
         configSetRawSaveInput: { raw: ctx.rawText(), reload: true },
       })
+      const data = response.data
+      if (!data) {
+        throw new Error("Save returned no data")
+      }
 
       if (shouldActivate) {
         await globalSDK.client.config.set.activate({ name: setName })

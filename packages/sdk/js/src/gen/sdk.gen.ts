@@ -219,6 +219,8 @@ import type {
   NoteListAllErrors,
   NoteListAllResponses,
   NoteListErrors,
+  NoteListMetaErrors,
+  NoteListMetaResponses,
   NoteListResponses,
   NotePatchInput,
   NoteRemoveErrors,
@@ -270,6 +272,7 @@ import type {
   RuntimeReloadTarget,
   SandboxStatusResponses,
   ScopeCurrentResponses,
+  ScopeIndexResponses,
   ScopeListResponses,
   ScopeRemoveResponses,
   ScopeUpdateErrors,
@@ -296,6 +299,7 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
   SessionListResponses,
@@ -908,6 +912,46 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<GlobalSessionSearchResponses, GlobalSessionSearchErrors, ThrowOnError>({
       url: "/global/session",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List session navigation entries
+   *
+   * Get paginated session navigation entries for the current scope with filtering and cursor support.
+   */
+  public index<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      category?: "project" | "home" | "channel" | "background"
+      parentOnly?: "true" | "false"
+      includeArchived?: "true" | "false"
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "category" },
+            { in: "query", key: "parentOnly" },
+            { in: "query", key: "includeArchived" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionIndexResponses, unknown, ThrowOnError>({
+      url: "/session/index",
       ...options,
       ...params,
     })
@@ -2660,6 +2704,25 @@ export class Scope extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ScopeCurrentResponses, unknown, ThrowOnError>({
       url: "/scope/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List scope navigation entries
+   *
+   * Get navigation entries for all known scopes, sorted by latest session activity.
+   */
+  public index<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ScopeIndexResponses, unknown, ThrowOnError>({
+      url: "/scope/index",
       ...options,
       ...params,
     })
@@ -5066,6 +5129,25 @@ export class Engram extends HeyApiClient {
 }
 
 export class Note extends HeyApiClient {
+  /**
+   * List note metadata grouped by scope
+   *
+   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.
+   */
+  public listMeta<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
+      url: "/note/meta",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List all notes grouped by scope
    *

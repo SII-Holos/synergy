@@ -278,6 +278,19 @@ export type Scope = {
   sandboxes: Array<string>
 }
 
+export type ScopeNavEntry = {
+  scopeID: string
+  scopeType: "global" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: {
+    url?: string
+    color?: string
+  }
+}
+
 export type NotFoundError = {
   name: "NotFoundError"
   data: {
@@ -2067,6 +2080,29 @@ export type VcsInfo = {
   branch: string
 }
 
+export type SessionNavEntry = {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+}
+
+export type NavCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
+}
+
 export type SessionScope = {
   id: string
   type?: string
@@ -3118,6 +3154,27 @@ export type AgendaPatchInput = {
   silent?: boolean
   agent?: string
   sessionRefs?: Array<AgendaSessionRef>
+}
+
+export type NoteMetaInfo = {
+  id: string
+  title: string
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+  searchText: string
+}
+
+export type NoteMetaScopeGroup = {
+  scopeID: string
+  scopeType: "global" | "project"
+  notes: Array<NoteMetaInfo>
 }
 
 export type NoteInfo = {
@@ -4630,6 +4687,24 @@ export type ScopeCurrentResponses = {
 
 export type ScopeCurrentResponse = ScopeCurrentResponses[keyof ScopeCurrentResponses]
 
+export type ScopeIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/scope/index"
+}
+
+export type ScopeIndexResponses = {
+  /**
+   * Array of scope navigation entries
+   */
+  200: Array<ScopeNavEntry>
+}
+
+export type ScopeIndexResponse = ScopeIndexResponses[keyof ScopeIndexResponses]
+
 export type ScopeRemoveData = {
   body?: never
   path: {
@@ -5493,6 +5568,30 @@ export type VcsGetResponses = {
 }
 
 export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
+
+export type SessionIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    category?: "project" | "home" | "channel" | "background"
+    parentOnly?: "true" | "false"
+    includeArchived?: "true" | "false"
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/session/index"
+}
+
+export type SessionIndexResponses = {
+  /**
+   * Paginated session navigation entries
+   */
+  200: SessionNavResponse
+}
+
+export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
 
 export type SessionListData = {
   body?: never
@@ -8226,6 +8325,33 @@ export type AgendaCreateResponses = {
 }
 
 export type AgendaCreateResponse = AgendaCreateResponses[keyof AgendaCreateResponses]
+
+export type NoteListMetaData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/note/meta"
+}
+
+export type NoteListMetaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
+
+export type NoteListMetaResponses = {
+  /**
+   * Note metadata grouped by scope
+   */
+  200: Array<NoteMetaScopeGroup>
+}
+
+export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
 
 export type NoteListAllData = {
   body?: never

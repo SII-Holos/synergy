@@ -248,9 +248,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (pending) return pending
 
           const promise = retry(() =>
-            fetch(`${sdk.url}/session/${sessionID}/dag?directory=${encodeURIComponent(sdk.directory)}`).then((r) =>
-              r.json(),
-            ),
+            sdk.client.session.dag({ sessionID, directory: sdk.directory }).then((r) => r.data as any),
           )
             .then((nodes) => {
               setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))

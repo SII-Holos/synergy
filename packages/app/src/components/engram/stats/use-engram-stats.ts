@@ -105,11 +105,10 @@ export function useEngramStats() {
   const [data, { refetch }] = createResource(async (): Promise<EngramStatsSnapshot | null> => {
     try {
       setError(null)
-      const res = await fetch(`${sdk.url}/engram/stats?recompute=true`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
+      const res = await sdk.client.engram.stats({ recompute: "true" })
+      const json = res.data
       if (!isValidSnapshot(json)) return null
-      return json
+      return json as EngramStatsSnapshot
     } catch (err) {
       setError(getErrorMessage(err))
       return null
@@ -121,11 +120,10 @@ export function useEngramStats() {
   async function recompute() {
     try {
       setError(null)
-      const res = await fetch(`${sdk.url}/engram/stats?recompute=true`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
+      const res = await sdk.client.engram.stats({ recompute: "true" })
+      const json = res.data
       if (isValidSnapshot(json)) refresh()
-      return isValidSnapshot(json) ? json : null
+      return (isValidSnapshot(json) ? json : null) as EngramStatsSnapshot | null
     } catch (err) {
       setError(getErrorMessage(err))
       return null

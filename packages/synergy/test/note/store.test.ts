@@ -107,4 +107,108 @@ describe("NoteStore", () => {
       },
     })
   })
+
+  test("listMetaGrouped returns grouped note metadata without content and with searchText", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const globalNote = await NoteStore.create(
+          {
+            title: "Global note",
+            content: {
+              type: "doc",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Global content here" }] }],
+            },
+          },
+          { scopeID: "global" },
+        )
+        const projectNote = await NoteStore.create({
+          title: "Project note",
+          content: {
+            type: "doc",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Project content here" }] }],
+          },
+        })
+
+        const groups = await NoteStore.listMetaGrouped()
+
+        // Should have groups for both scopes
+        expect(groups.length).toBeGreaterThanOrEqual(2)
+
+        for (const group of groups) {
+          expect(group).toHaveProperty("scopeID")
+          expect(group).toHaveProperty("scopeType")
+          expect(group).toHaveProperty("notes")
+          expect(Array.isArray(group.notes)).toBe(true)
+
+          for (const meta of group.notes) {
+            expect(meta).toHaveProperty("id")
+            expect(meta).toHaveProperty("title")
+            expect(meta).toHaveProperty("pinned")
+            expect(meta).toHaveProperty("global")
+            expect(meta).toHaveProperty("tags")
+            expect(meta).toHaveProperty("version")
+            expect(meta).toHaveProperty("time")
+            expect(meta.time).toHaveProperty("created")
+            expect(meta.time).toHaveProperty("updated")
+            expect(meta).toHaveProperty("searchText")
+            expect(meta).not.toHaveProperty("content")
+            expect(typeof meta.searchText).toBe("string")
+          }
+        }
+
+        // Verify searchText contains actual note text (pre-computed markdown from index)
+        const globalGroup = groups.find((g) => g.scopeID === "global")
+        expect(globalGroup).toBeDefined()
+        const globalMeta = globalGroup!.notes.find((n) => n.id === globalNote.id)
+        expect(globalMeta).toBeDefined()
+        expect(globalMeta!.searchText).toContain("Global content")
+
+        // Verify project note is present in its project scope group
+        const projectGroup = groups.find((g) => g.scopeID !== "global" && g.notes.some((n) => n.id === projectNote.id))
+        expect(projectGroup).toBeDefined()
+      },
+    })
+  })
+
+  test("listMetaGrouped does not load full note content (metadata-only invariant)", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        await NoteStore.create({
+          title: "Rich note",
+          content: {
+            type: "doc",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Lots of content here" }] },
+              { type: "paragraph", content: [{ type: "text", text: "More text" }] },
+            ],
+          },
+        })
+
+        const groups = await NoteStore.listMetaGrouped()
+
+        // Every note in every group must have searchText but NOT content
+        for (const group of groups) {
+          for (const meta of group.notes) {
+            expect(meta).not.toHaveProperty("content")
+            expect(meta).toHaveProperty("searchText")
+          }
+        }
+
+        // searchText must contain the actual note text (proving it comes from the index, not nil)
+        const allNotes = groups.flatMap((g) => g.notes)
+        expect(allNotes.length).toBeGreaterThan(0)
+        for (const meta of allNotes) {
+          expect(meta.searchText.length).toBeGreaterThan(0)
+        }
+      },
+    })
+  })
 })

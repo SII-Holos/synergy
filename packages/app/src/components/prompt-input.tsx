@@ -513,7 +513,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     try {
       const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
       if (isTextAttachmentFile(file)) {
-        const uploaded = await uploadPromptAttachment(sdk.url, file)
+        const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
         const attachment: UploadedAttachmentPart = {
           type: "attachment",
           id: createPromptPartID(),

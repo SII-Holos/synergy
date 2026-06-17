@@ -1,9 +1,7 @@
-import { createSignal, createMemo, createEffect, onMount, type Component } from "solid-js"
+import { createSignal, createMemo, type Component } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useLayout } from "./layout"
-import { usePanel } from "./panel"
 import { useParams } from "@solidjs/router"
-import { batch } from "solid-js"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 
 export interface WorkspaceTool {
@@ -18,7 +16,6 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
   gate: false,
   init: () => {
     const layout = useLayout()
-    const panel = usePanel()
     const params = useParams()
     const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
     const ws = () => layout.workspace(sessionKey())
@@ -27,26 +24,19 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
 
     const activeTool = createMemo(() => tools().find((t) => t.id === ws().active()))
 
-    // Intercept global panel "note" toggle → open workspace instead
-    onMount(() => {
-      createEffect(() => {
-        const id = panel.active()
-        if (id === "note" && params.id) {
-          batch(() => {
-            panel.close()
-            ws().open()
-            ws().setActive("notes")
-          })
-        }
-      })
-    })
-
     return {
       register(tool: WorkspaceTool) {
         setTools((prev) => [...prev.filter((t) => t.id !== tool.id), tool])
       },
       unregister(id: string) {
-        setTools((prev) => prev.filter((t) => t.id !== id))
+        setTools((prev) => {
+          const next = prev.filter((t) => t.id !== id)
+          if (prev.find((t) => t.id === id)?.id === ws().active()) {
+            ws().close()
+            ws().setActive(null)
+          }
+          return next
+        })
       },
       tools,
       activeTool,
@@ -55,7 +45,6 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
       width: () => ws().width() ?? 400,
       openPanel: () => ws().open(),
       closePanel: () => ws().close(),
-      togglePanel: () => ws().toggle(),
       setActive: (id: string | null) => ws().setActive(id),
       setWidth: (w: number) => ws().setWidth(w),
     }

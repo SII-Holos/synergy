@@ -1,3 +1,5 @@
+import { assetHttpUrl } from "@/utils/asset-url"
+
 const TARGET_IMAGE_BYTES = 4.5 * 1024 * 1024
 const IMAGE_SCALE_STEPS = [1, 0.85, 0.7, 0.6, 0.5, 0.4]
 const IMAGE_QUALITY_STEPS = [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]
@@ -84,13 +86,16 @@ export function isTextAttachmentFile(file: File): boolean {
   return TEXT_FILE_EXTENSIONS.has(extension)
 }
 
-export async function uploadPromptAttachment(serverUrl: string, file: File): Promise<{ url: string; mime: string }> {
-  const form = new FormData()
-  form.append("file", file)
-  const res = await fetch(`${serverUrl}/asset`, { method: "POST", body: form })
-  if (!res.ok) throw new Error(`Upload failed (${res.status}): ${res.statusText}`)
-  const data = (await res.json()) as { url?: string; mime?: string }
-  return { url: data.url || "", mime: data.mime || file.type || "text/plain" }
+export async function uploadPromptAttachment(
+  client: {
+    asset: { upload: (params?: { file?: unknown }) => Promise<{ data?: { id?: string; url?: string; mime?: string } }> }
+  },
+  baseUrl: string,
+  file: File,
+): Promise<{ url: string; mime: string }> {
+  const res = await client.asset.upload({ file })
+  const data = res.data as { id?: string; url?: string; mime?: string } | undefined
+  return { url: assetHttpUrl(baseUrl, data), mime: data?.mime ?? file.type ?? "text/plain" }
 }
 
 function readAsDataUrl(file: Blob) {

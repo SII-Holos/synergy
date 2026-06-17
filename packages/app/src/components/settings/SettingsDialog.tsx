@@ -102,8 +102,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
     () => selectedSet()?.name,
     async (name) => {
       if (!name) throw new Error("No Config Set selected")
-      const res = await globalSDK.client.config.set.raw.get({ name })
-      return res.data!
+      const response = await globalSDK.client.config.set.raw.get({ name })
+      return response.data!
     },
   )
 
@@ -116,6 +116,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     const res = await globalSDK.client.sandbox.status()
     return res.data as SandboxStatus | undefined
   })
+
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
@@ -286,11 +287,15 @@ export function SettingsDialog(props: DialogSettingsProps) {
     if (!setName) return false
     setValidatingRaw(true)
     try {
-      const res = await globalSDK.client.config.set.raw.validate({
+      const response = await globalSDK.client.config.set.raw.validate({
         name: setName,
         configSetRawValidateInput: { raw: rawText() },
       })
-      const data = res.data!
+      const data = response.data
+      if (!data) {
+        setRawValidation({ valid: false, errors: ["Validation returned no data"], warnings: [] })
+        return false
+      }
       setRawValidation({
         valid: data.valid,
         errors: data.errors ?? [],

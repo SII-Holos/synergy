@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { CellSelection, tableEditingKey } from "@tiptap/pm/tables"
 import { FileHandler } from "@tiptap/extension-file-handler"
 import mermaid from "mermaid"
+import { assetHttpUrl } from "@/utils/asset-url"
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -222,14 +223,16 @@ export const Mermaid = Node.create({
   },
 })
 
-export function createFileUpload(serverUrl: string) {
+export function createFileUpload(
+  client: {
+    asset: { upload: (params?: { file?: unknown }) => Promise<{ data?: { id?: string; url?: string; mime?: string } }> }
+  },
+  baseUrl: string,
+) {
   async function uploadFile(file: File): Promise<{ url: string; mime: string }> {
-    const form = new FormData()
-    form.append("file", file)
-    const res = await fetch(`${serverUrl}/asset`, { method: "POST", body: form })
-    if (!res.ok) throw new Error(`Upload failed (${res.status}): ${res.statusText}`)
-    const data = (await res.json()) as { id: string }
-    return { url: `${serverUrl}/asset/${data.id}`, mime: file.type }
+    const res = await client.asset.upload({ file })
+    const data = res.data as { id?: string; url?: string; mime?: string } | undefined
+    return { url: assetHttpUrl(baseUrl, data), mime: data?.mime ?? file.type }
   }
 
   function insertMedia(editor: Editor, url: string, mime: string, pos?: number) {
