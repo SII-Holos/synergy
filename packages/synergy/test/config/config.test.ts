@@ -972,6 +972,131 @@ test("removes legacy channel holos config when top-level holos already exists", 
   }
 })
 
+test("migrates legacy identity config to valid engram config", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "$schema": "file:///test/config.schema.json",
+  "identity": {
+    "embedding": {
+      "baseURL": "https://embedding.example/v1",
+      "apiKey": "embedding-token",
+      "model": "embed-model"
+    },
+    "rerank": {
+      "baseURL": "https://rerank.example/v1",
+      "apiKey": "rerank-token",
+      "model": "rerank-model"
+    },
+    "evolution": {
+      "active": {
+        "retrieve": {
+          "simThreshold": 0.6,
+          "topK": 5,
+          "categories": {
+            "coding": {
+              "topK": 2
+            }
+          }
+        },
+        "memoryDedupThreshold": 0.8
+      },
+      "passive": {
+        "encode": false,
+        "retrieve": {
+          "topK": 9
+        },
+        "learning": {
+          "alpha": 0.4
+        }
+      }
+    },
+    "autonomy": false
+  }
+}`,
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.identity).toBeUndefined()
+    expect(migrated.embedding).toEqual({
+      baseURL: "https://embedding.example/v1",
+      apiKey: "embedding-token",
+      model: "embed-model",
+    })
+    expect(migrated.rerank).toEqual({
+      baseURL: "https://rerank.example/v1",
+      apiKey: "rerank-token",
+      model: "rerank-model",
+    })
+    expect(migrated.engram.memory.retrieval.simThreshold).toBe(0.6)
+    expect(migrated.engram.memory.retrieval.topK).toBe(5)
+    expect(migrated.engram.memory.retrieval.categories.coding).toEqual({ topK: 2 })
+    expect(migrated.engram.memory.retrieval.categories.user).toEqual({})
+    expect(migrated.engram.memory.dedup).toEqual({ threshold: 0.8 })
+    expect(migrated.engram.experience).toEqual({
+      encode: false,
+      retrieve: {
+        topK: 9,
+      },
+      learning: {
+        alpha: 0.4,
+      },
+    })
+    expect(migrated.engram.autonomy).toBe(false)
+    expect(Config.Info.safeParse(migrated).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("repairs invalid engram shapes written by legacy identity migration", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-engram-repair-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      JSON.stringify({
+        $schema: "file:///test/config.schema.json",
+        engram: {
+          memory: {
+            retrieval: false,
+          },
+          experience: {
+            learning: true,
+          },
+        },
+      }),
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.engram.memory.enabled).toBe(false)
+    expect(migrated.engram.memory.retrieval).toBeUndefined()
+    expect(migrated.engram.experience.learning).toBeUndefined()
+    expect(Config.Info.safeParse(migrated).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 // MCP config merging tests
 
 test("project config can override MCP server enabled status", async () => {

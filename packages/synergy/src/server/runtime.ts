@@ -357,6 +357,8 @@ export function getDevRestartFlagFile(cwd?: string) {
   return path.join(Global.Path.state, `dev-restart-${hash}.flag`)
 }
 export async function run(options: RuntimeOptions) {
+  await ensureMigrations()
+
   // If user asked for a restart policy, spawn a child and act as a watchdog
   if (options.restartPolicy === "always" || options.restartPolicy === "dev") {
     return runWithRestartPolicyAlways(options)
@@ -364,7 +366,6 @@ export async function run(options: RuntimeOptions) {
 
   // Normal path (unchanged)
   await SingleInstance.acquire()
-  await ensureMigrations()
 
   // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
   // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.

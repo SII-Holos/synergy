@@ -6,6 +6,7 @@ import { Config } from "../../src/config/config"
 import { DaemonSpec } from "../../src/daemon/spec"
 import { resetMigrations } from "../../src/migration"
 import { parse as parseJsonc } from "jsonc-parser"
+import { resolveNetworkOptions } from "../../src/cli/network"
 
 const originalEnv = { ...process.env }
 const originalArgv = [...process.argv]
@@ -176,6 +177,53 @@ describe("daemon.spec", () => {
       portalUrl: "https://www.holosai.io",
     })
     expect(migrated.channel).toBeUndefined()
+  })
+
+  test("CLI network options migrate legacy identity config before reading config", async () => {
+    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+    await Bun.write(
+      target,
+      JSON.stringify({
+        identity: {
+          evolution: {
+            active: {
+              retrieve: false,
+            },
+            passive: false,
+          },
+          autonomy: false,
+        },
+        server: {
+          hostname: "0.0.0.0",
+          port: 4321,
+        },
+      }),
+    )
+    Config.global.reset()
+
+    await expect(Config.global()).rejects.toThrow()
+
+    const network = await resolveNetworkOptions({
+      hostname: "0.0.0.0",
+      port: 0,
+      mdns: false,
+      cors: [],
+    })
+    expect(network.hostname).toBe("0.0.0.0")
+    expect(network.port).toBe(4321)
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.identity).toBeUndefined()
+    expect(migrated.engram).toEqual({
+      memory: {
+        enabled: false,
+      },
+      experience: {
+        encode: false,
+        retrieve: false,
+      },
+      autonomy: false,
+    })
   })
 
   test("inherits provider credentials without requiring config env declarations", async () => {
