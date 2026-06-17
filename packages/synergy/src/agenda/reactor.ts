@@ -45,18 +45,37 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined }
     }
 
-    const before = await Plugin.trigger(
-      "agenda.run.before",
-      {
-        signal,
-        item: storedItem,
-        scopeID,
-      },
-      {
-        skip: false,
-        item: storedItem,
-      },
-    )
+    const scope = storedItem.origin.scope ?? Scope.global()
+    return Instance.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
+  }
+
+  async function runInScope(
+    storedItem: AgendaTypes.Item,
+    signal: AgendaTypes.FiredSignal,
+    scopeID: string,
+    scope: Scope,
+  ): Promise<Result> {
+    let before: { skip: boolean; item: AgendaTypes.Item }
+    try {
+      before = await Plugin.trigger(
+        "agenda.run.before",
+        {
+          signal,
+          item: storedItem,
+          scopeID,
+        },
+        {
+          skip: false,
+          item: storedItem,
+        },
+      )
+    } catch (err) {
+      log.error("agenda.run.before plugin failed", {
+        itemID: storedItem.id,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+      before = { skip: false, item: storedItem }
+    }
     if (before.skip) {
       log.info("skipped by plugin", { itemID: storedItem.id, signalType: signal.type })
       return { nextRunAt: AgendaStore.computeNextRunAt(storedItem.triggers), sessionID: undefined }
@@ -89,7 +108,6 @@ export namespace AgendaReactor {
       lastMessage = item.prompt
     } else {
       // Normal path — create session, run prompt via SessionInvoke
-      const scope = item.origin.scope ?? Scope.global()
       const sessionMode = AgendaTypes.inferSessionMode(item.triggers, item.sessionMode)
       const contextMode = AgendaTypes.inferContextMode(sessionMode)
       const persistent = sessionMode === "persistent"
@@ -176,10 +194,17 @@ export namespace AgendaReactor {
     // Plugin hooks — always fire
     // -----------------------------------------------------------------------
 
-    if (error) {
-      await Plugin.trigger("agenda.run.error", { signal, item, scopeID, error: error.message, sessionID }, {})
-    } else {
-      await Plugin.trigger("agenda.run.after", { signal, item, run: runLog, scopeID }, {})
+    try {
+      if (error) {
+        await Plugin.trigger("agenda.run.error", { signal, item, scopeID, error: error.message, sessionID }, {})
+      } else {
+        await Plugin.trigger("agenda.run.after", { signal, item, run: runLog, scopeID }, {})
+      }
+    } catch (err) {
+      log.error("agenda.run plugin hook failed", {
+        itemID: item.id,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
     }
 
     // -----------------------------------------------------------------------

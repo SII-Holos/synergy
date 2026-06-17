@@ -56,12 +56,10 @@ export namespace AgendaStore {
           break
         }
         case "delay": {
-          // When fromTime is provided (e.g. at create time), anchor the delay
-          // to it. When called without fromTime (e.g. after an update), anchor
-          // to now so the item is rescheduled rather than silently dropped.
-          const base = fromTime ?? now
-          const target = base + parseDuration(trigger.delay)
-          if (target > now) candidates.push(target)
+          if (fromTime !== undefined) {
+            const target = fromTime + parseDuration(trigger.delay)
+            if (target > now) candidates.push(target)
+          }
           break
         }
         case "every": {
@@ -164,6 +162,7 @@ export namespace AgendaStore {
     options?: { recomputeNextRunAt?: boolean },
   ): Promise<AgendaTypes.Item> {
     const sid = Identifier.asScopeID(scopeID)
+    const now = Date.now()
     const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
       if (patch.title !== undefined) draft.title = patch.title
       if (patch.description !== undefined) draft.description = patch.description
@@ -176,7 +175,7 @@ export namespace AgendaStore {
           }
         }
         draft.triggers = patch.triggers
-        draft.state.nextRunAt = computeNextRunAt(patch.triggers)
+        draft.state.nextRunAt = computeNextRunAt(patch.triggers, now)
       }
       if (patch.prompt !== undefined) draft.prompt = patch.prompt
       if (patch.global !== undefined) draft.global = patch.global
@@ -186,9 +185,9 @@ export namespace AgendaStore {
       if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
       if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
       if (options?.recomputeNextRunAt) {
-        draft.state.nextRunAt = computeNextRunAt(draft.triggers)
+        draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
       }
-      draft.time.updated = Date.now()
+      draft.time.updated = now
     })
     log.info("updated", { id: itemID })
     await Bus.publish(AgendaEvent.ItemUpdated, { item })
