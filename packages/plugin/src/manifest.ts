@@ -64,28 +64,134 @@ export const PluginManifest = z
           .optional(),
 
         mcp: z
-          .record(
-            z.string(),
-            z.discriminatedUnion("type", [
-              z
-                .object({
-                  type: z.literal("local"),
-                  command: z.array(z.string()),
-                  environment: z.record(z.string(), z.string()).optional(),
-                  description: z.string().optional(),
-                  timeout: z.number().optional(),
-                })
-                .strict(),
-              z
-                .object({
-                  type: z.literal("remote"),
-                  url: z.string(),
-                  headers: z.record(z.string(), z.string()).optional(),
-                  description: z.string().optional(),
-                  timeout: z.number().optional(),
-                })
-                .strict(),
-            ]),
+          .object({
+            defaults: z
+              .object({
+                startup: z.enum(["eager", "lazy", "manual"]).optional(),
+                required: z.boolean().optional(),
+                connectTimeout: z.number().optional(),
+                listTimeout: z.number().optional(),
+                callTimeout: z.number().optional(),
+                retry: z
+                  .object({
+                    maxAttempts: z.number().int().positive().optional(),
+                    backoffMs: z.number().int().positive().optional(),
+                    backoffMultiplier: z.number().positive().optional(),
+                    cooldownMs: z.number().int().nonnegative().optional(),
+                  })
+                  .optional(),
+                idleShutdownMs: z.number().int().positive().optional(),
+                toolFilter: z
+                  .object({
+                    include: z.array(z.string()).optional(),
+                    exclude: z.array(z.string()).optional(),
+                  })
+                  .optional(),
+                tools: z
+                  .object({
+                    approval: z.enum(["auto", "always", "per_session"]).optional(),
+                    maxOutputBytes: z.number().int().positive().optional(),
+                  })
+                  .optional(),
+                toolCache: z
+                  .object({
+                    mode: z.enum(["disabled", "session", "persistent"]).optional(),
+                    ttlMs: z.number().int().positive().optional(),
+                  })
+                  .optional(),
+              })
+              .optional()
+              .describe("Default lifecycle settings applied to all MCP servers contributed by this plugin"),
+            locked: z
+              .boolean()
+              .optional()
+              .describe("If true, the user cannot override this plugin's MCP server declarations"),
+          })
+          .catchall(
+            z
+              .object({
+                type: z.literal("local"),
+                command: z.array(z.string()),
+                environment: z.record(z.string(), z.string()).optional(),
+                description: z.string().optional(),
+                timeout: z.number().optional(),
+                startup: z.enum(["eager", "lazy", "manual"]).optional(),
+                required: z.boolean().optional(),
+                connectTimeout: z.number().optional(),
+                listTimeout: z.number().optional(),
+                callTimeout: z.number().optional(),
+                retry: z
+                  .object({
+                    maxAttempts: z.number().int().positive().optional(),
+                    backoffMs: z.number().int().positive().optional(),
+                    backoffMultiplier: z.number().positive().optional(),
+                    cooldownMs: z.number().int().nonnegative().optional(),
+                  })
+                  .optional(),
+                idleShutdownMs: z.number().int().positive().optional(),
+                toolFilter: z
+                  .object({
+                    include: z.array(z.string()).optional(),
+                    exclude: z.array(z.string()).optional(),
+                  })
+                  .optional(),
+                tools: z
+                  .object({
+                    approval: z.enum(["auto", "always", "per_session"]).optional(),
+                    maxOutputBytes: z.number().int().positive().optional(),
+                  })
+                  .optional(),
+                toolCache: z
+                  .object({
+                    mode: z.enum(["disabled", "session", "persistent"]).optional(),
+                    ttlMs: z.number().int().positive().optional(),
+                  })
+                  .optional(),
+              })
+              .strict()
+              .or(
+                z
+                  .object({
+                    type: z.literal("remote"),
+                    url: z.string(),
+                    headers: z.record(z.string(), z.string()).optional(),
+                    description: z.string().optional(),
+                    timeout: z.number().optional(),
+                    startup: z.enum(["eager", "lazy", "manual"]).optional(),
+                    required: z.boolean().optional(),
+                    connectTimeout: z.number().optional(),
+                    listTimeout: z.number().optional(),
+                    callTimeout: z.number().optional(),
+                    retry: z
+                      .object({
+                        maxAttempts: z.number().int().positive().optional(),
+                        backoffMs: z.number().int().positive().optional(),
+                        backoffMultiplier: z.number().positive().optional(),
+                        cooldownMs: z.number().int().nonnegative().optional(),
+                      })
+                      .optional(),
+                    idleShutdownMs: z.number().int().positive().optional(),
+                    toolFilter: z
+                      .object({
+                        include: z.array(z.string()).optional(),
+                        exclude: z.array(z.string()).optional(),
+                      })
+                      .optional(),
+                    tools: z
+                      .object({
+                        approval: z.enum(["auto", "always", "per_session"]).optional(),
+                        maxOutputBytes: z.number().int().positive().optional(),
+                      })
+                      .optional(),
+                    toolCache: z
+                      .object({
+                        mode: z.enum(["disabled", "session", "persistent"]).optional(),
+                        ttlMs: z.number().int().positive().optional(),
+                      })
+                      .optional(),
+                  })
+                  .strict(),
+              ),
           )
           .optional(),
 

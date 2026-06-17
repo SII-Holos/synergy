@@ -54,7 +54,8 @@ export namespace Agent {
 
   const state = Instance.state(async () => {
     const cfg = await Config.get()
-    const evo = Config.resolveEvolution(cfg.identity?.evolution)
+    const evolutionActive =
+      ((cfg as any).engram?.memory?.enabled ?? true) && (cfg as any).engram?.experience?.encode !== false
     const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
@@ -88,7 +89,7 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
-    const builtinContext = { defaults, user, role, evolutionActive: evo.active }
+    const builtinContext = { defaults, user, role, evolutionActive }
     const result: Record<string, Info> = {
       ...createBuiltinPrimaryAgents(builtinContext),
       ...createBuiltinLegacySubagents(builtinContext),

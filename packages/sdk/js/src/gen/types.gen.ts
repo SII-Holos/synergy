@@ -865,6 +865,86 @@ export type ProviderConfig = {
   }
 }
 
+/**
+ * Embedding model configuration. When absent, a local model is used automatically.
+ */
+export type EmbeddingConfig = {
+  /**
+   * Base URL for the embedding API
+   */
+  baseURL?: string
+  /**
+   * API key for the embedding service
+   */
+  apiKey?: string
+  /**
+   * Embedding model name
+   */
+  model?: string
+}
+
+/**
+ * Rerank model for memory retrieval refinement. Disabled when not configured.
+ */
+export type RerankConfig = {
+  /**
+   * Base URL for the rerank API
+   */
+  baseURL?: string
+  /**
+   * API key for the rerank service
+   */
+  apiKey?: string
+  /**
+   * Rerank model name
+   */
+  model?: string
+}
+
+export type MemoryConfig = {
+  /**
+   * Enable agent-initiated memory curation via chronicler (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Semantic memory retrieval settings
+   */
+  retrieval?: {
+    /**
+     * Minimum similarity for auto-injection (default: 0.7)
+     */
+    simThreshold?: number
+    /**
+     * Max entries per category to retrieve (default: 3)
+     */
+    topK?: number
+    /**
+     * Per-category retrieval overrides
+     */
+    categories?: {
+      [key: string]: {
+        /**
+         * Minimum similarity for contextual retrieval
+         */
+        simThreshold?: number
+        /**
+         * Maximum contextual entries to retrieve
+         */
+        topK?: number
+      }
+    }
+  }
+  /**
+   * Memory deduplication settings
+   */
+  dedup?: {
+    /**
+     * Cosine similarity threshold for duplicate detection (default: 0.75)
+     */
+    threshold?: number
+  }
+}
+
 export type PassiveRetrievalConfig = {
   /**
    * Minimum cosine similarity for retrieval candidates (default: 0.7)
@@ -893,7 +973,7 @@ export type PassiveRetrievalConfig = {
 }
 
 /**
- * Hyperparameters for the experience learning pipeline
+ * Q-learning hyperparameters for experience evaluation
  */
 export type LearningConfig = {
   /**
@@ -971,112 +1051,89 @@ export type LearningConfig = {
   rewardDelay?: number
 }
 
-export type EvolutionPassive = {
+export type ExperienceConfig = {
   /**
-   * Learn from conversations — extract intent, reward, and scripts (default: true)
+   * Auto-encode conversation patterns into experiences (default: true)
    */
   encode?: boolean
   /**
-   * Inject relevant past experiences into new conversations (default: true)
+   * Inject relevant past experiences into prompts (default: true)
    */
   retrieve?: boolean | PassiveRetrievalConfig
   learning?: LearningConfig
 }
 
-export type EvolutionActive = {
-  /**
-   * Auto-inject relevant memories into new conversations (default: true)
-   */
-  retrieve?:
-    | boolean
-    | {
-        /**
-         * Default minimum similarity for auto-injection (default: 0.7)
-         */
-        simThreshold?: number
-        /**
-         * Default maximum entries per category to contextually retrieve (default: 3)
-         */
-        topK?: number
-        /**
-         * Per-category contextual retrieval overrides
-         */
-        categories?: {
-          [key: string]: {
-            /**
-             * Minimum similarity for contextual retrieval
-             */
-            simThreshold?: number
-            /**
-             * Maximum contextual entries to retrieve
-             */
-            topK?: number
-          }
-        }
-      }
-  /**
-   * Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)
-   */
-  memoryDedupThreshold?: number
-}
-
-export type EvolutionConfig = {
-  /**
-   * RL-enhanced passive experience learning (default: true)
-   */
-  passive?: boolean | EvolutionPassive
-  /**
-   * Agent-initiated active memory curation via memory tools (default: true)
-   */
-  active?: boolean | EvolutionActive
-}
-
-/**
- * Identity configuration for embedding and evolution
- */
-export type IdentityConfig = {
-  /**
-   * Embedding model configuration for memory and retrieval
-   */
-  embedding?: {
-    /**
-     * Base URL for the embedding API
-     */
-    baseURL?: string
-    /**
-     * API key for the embedding service
-     */
-    apiKey?: string
-    /**
-     * Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')
-     */
-    model?: string
-  }
-  /**
-   * Rerank model configuration for memory retrieval refinement
-   */
-  rerank?: {
-    /**
-     * Base URL for the rerank API
-     */
-    baseURL?: string
-    /**
-     * API key for the rerank service (falls back to embedding.apiKey)
-     */
-    apiKey?: string
-    /**
-     * Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')
-     */
-    model?: string
-  }
-  /**
-   * Dual-mode evolution system: passive experience learning + active memory curation (default: true)
-   */
-  evolution?: boolean | EvolutionConfig
+export type EngramConfig = {
+  memory?: MemoryConfig
+  experience?: ExperienceConfig
   /**
    * Enable autonomous background routines like anima daily wake (default: true)
    */
   autonomy?: boolean
+}
+
+/**
+ * Retry policy for connecting to this server
+ */
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
+}
+
+/**
+ * Filter which tools are exposed from this server
+ */
+export type McpToolFilterConfig = {
+  /**
+   * Tool names to include (allowlist)
+   */
+  include?: Array<string>
+  /**
+   * Tool names to exclude (blocklist)
+   */
+  exclude?: Array<string>
+}
+
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
 }
 
 export type McpLocalConfig = {
@@ -1099,9 +1156,37 @@ export type McpLocalConfig = {
    */
   enabled?: boolean
   /**
-   * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type McpOAuthConfig = {
@@ -1143,9 +1228,71 @@ export type McpRemoteConfig = {
    */
   oauth?: McpOAuthConfig | false
   /**
-   * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type ChannelFeishuAccountConfig = {
@@ -1489,7 +1636,9 @@ export type Config = {
   provider?: {
     [key: string]: ProviderConfig
   }
-  identity?: IdentityConfig
+  embedding?: EmbeddingConfig
+  rerank?: RerankConfig
+  engram?: EngramConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -1501,6 +1650,7 @@ export type Config = {
           enabled: boolean
         }
   }
+  mcpDefaults?: McpDefaultsConfig
   /**
    * Channel configurations for messaging platform integrations
    */
@@ -1947,6 +2097,7 @@ export type Session = {
   id: string
   scope: SessionScope
   parentID?: string
+  category?: "project" | "home" | "channel" | "background"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -3346,17 +3497,39 @@ export type Agent = {
   external?: ExternalAgentInfo
 }
 
+export type McpStatusUninitialized = {
+  status: "uninitialized"
+}
+
+export type McpStatusStarting = {
+  status: "starting"
+}
+
+export type McpStatusConnecting = {
+  status: "connecting"
+}
+
+export type McpStatusListingTools = {
+  status: "listing_tools"
+}
+
 export type McpStatusConnected = {
   status: "connected"
 }
 
-export type McpStatusDisabled = {
-  status: "disabled"
+export type McpStatusReconnecting = {
+  status: "reconnecting"
+  attempt: number
+  maxAttempts: number
 }
 
 export type McpStatusFailed = {
   status: "failed"
   error: string
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
 }
 
 export type McpStatusNeedsAuth = {
@@ -3368,12 +3541,22 @@ export type McpStatusNeedsClientRegistration = {
   error: string
 }
 
+export type McpStatusStopping = {
+  status: "stopping"
+}
+
 export type McpStatus =
+  | McpStatusUninitialized
+  | McpStatusStarting
+  | McpStatusConnecting
+  | McpStatusListingTools
   | McpStatusConnected
-  | McpStatusDisabled
+  | McpStatusReconnecting
   | McpStatusFailed
+  | McpStatusDisabled
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
+  | McpStatusStopping
 
 export type ChannelStatus =
   | {
@@ -3441,6 +3624,18 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -3452,18 +3647,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
   }
 }
 
@@ -3515,6 +3698,14 @@ export type EventMcpReady = {
   type: "mcp.ready"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
   }
 }
 
@@ -4000,10 +4191,10 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventConfigUpdated
   | EventConfigSetActivated
   | EventServerInstanceDisposed
@@ -4011,6 +4202,7 @@ export type Event =
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
+  | EventMcpFailed
   | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
@@ -9334,6 +9526,127 @@ export type McpDisconnectResponses = {
 }
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type McpRestartData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/restart"
+}
+
+export type McpRestartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRestartError = McpRestartErrors[keyof McpRestartErrors]
+
+export type McpRestartResponses = {
+  /**
+   * MCP server restart initiated
+   */
+  200: McpStatus
+}
+
+export type McpRestartResponse = McpRestartResponses[keyof McpRestartResponses]
+
+export type McpRefreshData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/refresh"
+}
+
+export type McpRefreshErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRefreshError = McpRefreshErrors[keyof McpRefreshErrors]
+
+export type McpRefreshResponses = {
+  /**
+   * MCP server discovery refreshed
+   */
+  200: McpStatus
+}
+
+export type McpRefreshResponse = McpRefreshResponses[keyof McpRefreshResponses]
+
+export type McpInspectData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/inspect"
+}
+
+export type McpInspectErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpInspectError = McpInspectErrors[keyof McpInspectErrors]
+
+export type McpInspectResponses = {
+  /**
+   * MCP server inspection result
+   */
+  200: {
+    status: McpStatus
+    toolNames: Array<string>
+    resourceNames: Array<string>
+    promptNames: Array<string>
+  }
+}
+
+export type McpInspectResponse = McpInspectResponses[keyof McpInspectResponses]
+
+export type McpTestData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/test"
+}
+
+export type McpTestErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpTestError = McpTestErrors[keyof McpTestErrors]
+
+export type McpTestResponses = {
+  /**
+   * MCP server test result
+   */
+  200: McpStatus
+}
+
+export type McpTestResponse = McpTestResponses[keyof McpTestResponses]
 
 export type ChannelStatusData = {
   body?: never

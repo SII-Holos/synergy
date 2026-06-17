@@ -62,7 +62,7 @@ export const ScanDocumentTool = Tool.define("scan_document", {
       await ctx.ask({
         permission: "external_directory",
         patterns: [parentDir],
-        metadata: { filepath, parentDir },
+        metadata: { filepath, parentDir, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
       })
     }
 

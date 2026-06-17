@@ -20,6 +20,7 @@ export namespace Cortex {
 
   const tasks: Map<string, CortexTypes.Task> = new Map()
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
+  const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
 
   const CLEANUP_DELAY_MS = 20 * 60 * 1000
@@ -113,10 +114,15 @@ export namespace Cortex {
 
     setTaskStatus(taskID, "running")
 
-    runTask(current, input.model).catch((error) => {
-      log.error("task error", { taskID, error })
-      updateTaskStatus(taskID, "error", String(error))
-    })
+    const run = runTask(current, input.model)
+      .catch((error) => {
+        log.error("task error", { taskID, error })
+        updateTaskStatus(taskID, "error", String(error))
+      })
+      .finally(() => {
+        taskRuns.delete(taskID)
+      })
+    taskRuns.set(taskID, run)
 
     return current
   })
@@ -133,6 +139,8 @@ export namespace Cortex {
       if (draft.cortex) {
         draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
       }
+    }).catch((error) => {
+      log.error("failed to persist task status", { taskID, status, error })
     })
 
     Bus.publish(Event.TasksUpdated, { tasks: list() })
@@ -155,6 +163,8 @@ export namespace Cortex {
       if (draft.cortex) {
         draft.cortex.model = { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
       }
+    }).catch((error) => {
+      log.error("failed to persist task model", { taskID: task.id, error })
     })
     let unsub: (() => void) | undefined
     try {
@@ -246,6 +256,8 @@ export namespace Cortex {
         if (error) draft.cortex.error = error
         if (result) draft.cortex.result = result
       }
+    }).catch((error) => {
+      log.error("failed to persist terminal task fields", { taskID, error })
     })
 
     if (acquiredTasks.delete(taskID)) {
@@ -342,6 +354,8 @@ export namespace Cortex {
           sourceSessionID: task.sessionID,
         },
       },
+    }).catch((error) => {
+      log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })
     })
   }
 
@@ -450,6 +464,9 @@ export namespace Cortex {
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     SessionInvoke.cancel(task.sessionID)
     updateTaskStatus(taskID, "cancelled")
+
+    const run = taskRuns.get(taskID)
+    if (run) await run.catch(() => undefined)
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {
@@ -570,6 +587,7 @@ export namespace Cortex {
 
   export function reset(): void {
     tasks.clear()
+    taskRuns.clear()
     acquiredTasks.clear()
     for (const waiters of taskWaiters.values()) {
       for (const waiter of waiters) {
