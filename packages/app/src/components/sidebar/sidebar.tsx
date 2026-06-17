@@ -17,8 +17,7 @@ import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
-import type { LocalScope } from "@/context/layout"
-import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { LocalScope, NavEntry } from "@/context/layout"
 import "./sidebar.css"
 
 interface SidebarProps {
@@ -121,15 +120,14 @@ export function Sidebar(props: SidebarProps) {
     ))
   }
 
-  const handleSessionClick = (scope: LocalScope, session: Session) => {
-    navigate(`/${base64Encode(scope.worktree)}/session/${session.id}`)
+  const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
+    navigate(`/${base64Encode(scope.worktree)}/session/${entry.id}`)
   }
 
-  const handleFlyoutSessionClick = (session: Session) => {
+  const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
     setProjectsFlyoutOpen(false)
-    navigate(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
+    navigate(`/${base64Encode(worktree === "global" ? "global" : worktree)}/session/${entry.id}`)
   }
-
   return (
     <div
       classList={{
@@ -368,7 +366,7 @@ export function Sidebar(props: SidebarProps) {
                     {/* Sessions under expanded project */}
                     <Show when={scope.expanded}>
                       <div class="sb-sessions">
-                        <For each={layout.nav.projectSessions(scope).slice(0, 20)}>
+                        <For each={layout.nav.projectNavEntries(scope)}>
                           {(session) => (
                             <button
                               type="button"
@@ -425,7 +423,7 @@ export function Sidebar(props: SidebarProps) {
           <div class="sb-flyout-header">Projects</div>
           <For each={scopes()}>
             {(scope) => {
-              const sessions = createMemo(() => layout.nav.projectSessions(scope).slice(0, 20))
+              const sessions = createMemo(() => layout.nav.projectNavEntries(scope))
               return (
                 <div class="sb-flyout-project-group">
                   <button
@@ -447,7 +445,7 @@ export function Sidebar(props: SidebarProps) {
                           "sb-flyout-session-row": true,
                           "sb-session-active": session.id === params.id,
                         }}
-                        onClick={() => handleFlyoutSessionClick(session)}
+                        onClick={() => handleFlyoutSessionClick(session, scope.worktree)}
                       >
                         <Icon name="file-text" size="small" class="sb-flyout-session-icon" />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
