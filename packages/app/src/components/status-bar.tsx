@@ -129,7 +129,7 @@ function StatusPill(props: { icon?: IconName; label: string; tone?: "base" | "da
       title={props.label}
     >
       <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" class="text-current" />}</Show>
-      <span class="truncate">{props.label}</span>
+      <span>{props.label}</span>
     </div>
   )
 }
@@ -215,26 +215,23 @@ export function StatusBar() {
       </Show>
 
       <div
-        class="flex items-center justify-center gap-2 flex-nowrap min-w-0 max-w-full overflow-hidden"
+        class="flex flex-wrap items-center justify-center gap-2 min-w-0 max-w-full overflow-visible"
         style={{ "max-width": "min(100%, 900px)" }}
       >
         <HolosStatusIndicator />
         <Show when={params.dir}>
           <button
             type="button"
-            class="min-w-0 flex items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover shrink"
+            class="flex flex-wrap items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
             onClick={() => setExpanded((value) => !value)}
           >
             <StatusPill
-              class="max-w-[42%]"
               icon={isWorktree() ? "git-branch" : "home"}
               label={isWorktree() ? `worktree · ${workspaceName()}` : "main"}
               tone={isWorktree() ? "active" : "base"}
             />
-            <Show when={branch()}>
-              {(value) => <StatusPill class="max-w-[32%]" icon="git-branch" label={value()} />}
-            </Show>
-            <StatusPill class="max-w-28" label={runtime()} tone={runtimeTone(status(), waiting())} />
+            <Show when={branch()}>{(value) => <StatusPill icon="git-branch" label={value()} />}</Show>
+            <StatusPill label={runtime()} tone={runtimeTone(status(), waiting())} />
             <Icon name={expanded() ? "chevron-down" : "chevron-up"} size="small" class="text-icon-weak mx-1 shrink-0" />
           </button>
         </Show>
