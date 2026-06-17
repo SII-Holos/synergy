@@ -822,20 +822,80 @@ export namespace SessionInvoke {
     return [{ type: "text" as const, text: "" }]
   }
 
-  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
-    const role = Cortex.list().find((task) => task.sessionID === sessionID)?.executionRole
-    if (role !== "delegated_subagent") return undefined
+  async function buildDagUpstreamContext(
+    sessionID: string,
+    parentSessionID: string,
+    dagNodeId?: string,
+  ): Promise<string | undefined> {
+    if (!dagNodeId) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(parentSessionID)
+    const current = nodes.find((n) => n.id === dagNodeId)
+    if (!current || current.deps.length === 0) return undefined
+
+    const upstreamResults: string[] = []
+    let totalChars = 0
+    const MAX_PER_NODE = 4096
+    const MAX_TOTAL = 16384
+
+    for (const depId of current.deps) {
+      const depNode = nodes.find((n) => n.id === depId)
+      if (!depNode || depNode.status !== "completed" || !depNode.result) continue
+
+      let result = depNode.result
+      if (result.length > MAX_PER_NODE) {
+        result = result.slice(0, MAX_PER_NODE - 3) + "..."
+      }
+
+      const block = [
+        `## Node: ${depNode.id} — ${depNode.content}`,
+        depNode.assign ? `**Agent**: @${depNode.assign}` : "",
+        "**Result**:",
+        result,
+      ]
+        .filter(Boolean)
+        .join("\n")
+
+      const blockSize = block.length + 2 // +2 for the blank line separator
+      if (totalChars + blockSize > MAX_TOTAL) break
+
+      upstreamResults.push(block)
+      totalChars += blockSize
+    }
+
+    if (upstreamResults.length === 0) return undefined
 
     return [
-      "<cortex-execution>",
-      "Execution role: delegated_subagent",
-      "You are executing a delegated task.",
-      "Default to direct execution and return your result to the parent agent.",
-      "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
-      "Never call task_output speculatively.",
-      "</cortex-execution>",
+      "<upstream-results>",
+      "The following upstream DAG nodes have completed. Their results are provided as context for your task. Use these findings — do not redo work already done.",
+      "",
+      ...upstreamResults,
+      "</upstream-results>",
     ].join("\n")
+  }
+
+  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
+    const { Cortex } = await import("../cortex/manager")
+    const task = Cortex.list().find((task) => task.sessionID === sessionID)
+    if (!task || task.executionRole !== "delegated_subagent") return undefined
+
+    const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
+
+    const parts: string[] = []
+    if (upstreamContext) parts.push(upstreamContext)
+    parts.push(
+      [
+        "<cortex-execution>",
+        "Execution role: delegated_subagent",
+        "You are executing a delegated task.",
+        "Default to direct execution and return your result to the parent agent.",
+        "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
+        "Never call task_output speculatively.",
+        "</cortex-execution>",
+      ].join("\n"),
+    )
+    return parts.join("\n")
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
