@@ -287,6 +287,9 @@ export const LocalBashBackend: BashBackend = {
       child.once("error", (error) => {
         exited = true
         cleanup()
+        if (sandboxWrapper?.tempPath) {
+          SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+        }
         reject(error)
       })
     })

@@ -23,6 +23,7 @@ export interface Envelope {
   profileId: string
   opaque: boolean
   canAutoApprove(): boolean
+  capabilities: Capability[]
 }
 
 export interface GateOptions {
@@ -38,6 +39,29 @@ export interface GateOptions {
 const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo ", "dd "]
 
 const NETWORK_PATTERNS = ["curl ", "wget ", "nc ", "netcat", "http://", "https://"]
+
+const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
+
+const INSPIRE_STATEFUL_TOOLS = new Set([
+  "inspire_login",
+  "inspire_submit",
+  "inspire_submit_hpc",
+  "inspire_stop",
+  "inspire_image_push",
+  "inspire_notebook",
+  "inspire_inference",
+])
+
+const PLATFORM_CONTROL_TOOLS = new Set([
+  "runtime_reload",
+  "session_control",
+  "profile_update",
+  "agenda_schedule",
+  "agenda_watch",
+  "agenda_update",
+  "agenda_cancel",
+  "agenda_trigger",
+])
 
 function isDestructive(command: string): boolean {
   const lower = command.toLowerCase()
@@ -221,23 +245,41 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Network operations
-      if (toolName === "web_fetch" || toolName === "fetch" || toolName === "websearch") {
+      // Network and external lookup operations
+      if (EXTERNAL_NETWORK_TOOLS.has(toolName)) {
         caps.push({ class: "network_request", nonBypassable: true })
         return { capabilities: caps }
       }
 
-      // email_send — nonBypassable communication
-      if (toolName === "email_send") {
+      // Email read/write both cross the user's communication boundary.
+      if (toolName === "email_read" || toolName === "email_send") {
         caps.push({ class: "communication_email", nonBypassable: true })
         return { capabilities: caps }
       }
 
-      // session_send with role=user — identity act
+      // SII Inspire tools call external compute infrastructure. Stateful tools
+      // additionally control platform resources and must stay non-bypassable.
+      if (toolName.startsWith("inspire_")) {
+        caps.push({ class: "network_request", nonBypassable: true })
+        if (INSPIRE_STATEFUL_TOOLS.has(toolName)) {
+          caps.push({ class: "platform_control", nonBypassable: true })
+        }
+        return { capabilities: caps }
+      }
+
+      if (PLATFORM_CONTROL_TOOLS.has(toolName)) {
+        caps.push({ class: "platform_control", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // session_send: user role can trigger another agent as the user; assistant
+      // role is still an outbound channel operation and remains profile-gated.
       if (toolName === "session_send") {
         const role = args.role ?? ""
         if (role === "user") {
           caps.push({ class: "identity_act", nonBypassable: true })
+        } else {
+          caps.push({ class: "channel_outbound", nonBypassable: true })
         }
         return { capabilities: caps }
       }
@@ -271,7 +313,7 @@ export namespace EnforcementGate {
       }
 
       // allowAll can auto-approve only non-nonBypassable, non-opaque capabilities
-      if (allowAll && decision === "ask") {
+      if (allowAll && decision === "ask" && !resolved.allowAllBlocked) {
         const allSafe = capabilities.every((c) => !c.nonBypassable && !c.opaque)
         if (allSafe) decision = "allow"
       }
@@ -294,7 +336,9 @@ export namespace EnforcementGate {
         decision,
         profileId,
         opaque,
+        capabilities,
         canAutoApprove() {
+          if (resolved.allowAllBlocked) return false
           return !capabilities.some((c) => c.nonBypassable || c.opaque)
         },
       }
@@ -317,6 +361,9 @@ export namespace EnforcementGate {
       },
       setAllowAll(flag: boolean) {
         allowAll = flag
+      },
+      isAllowAllBlocked() {
+        return resolved.allowAllBlocked === true
       },
       hasPendingCapability(className: string) {
         return pendingCapabilities.has(className)

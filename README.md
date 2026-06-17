@@ -291,21 +291,23 @@ Control profiles are configured in `synergy.jsonc`:
       "controlProfile": "auto_review",
     },
   },
-  "sandbox": {
-    "enabled": true,
-    "fallbackPolicy": "warn",
-  },
 }
 ```
 
+**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `workspace`.
+
 Built-in profiles:
 
-- `review` — read and analyze the active workspace; no writes, shell, network, MCP/plugin, or outbound actions.
-- `workspace` — default mode; read/write and normal command work inside the active workspace, with non-bypassable prompts for boundary crossings and high-risk actions.
-- `auto_review` — same workspace boundary as `workspace`, but low-risk requests can be reviewed automatically; it does not expand filesystem or network access.
-- `full_access` — removes the workspace boundary for local filesystem, shell, and network work; identity and outbound communication actions still require explicit approval.
+| Config value  | UI label     | File scope                  | Shell/network                                                                   | Sandbox                            |
+| ------------- | ------------ | --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------- |
+| `review`      | 审阅         | Read-only active workspace  | Denied                                                                          | `read_only`, fallback `deny`       |
+| `workspace`   | 工作区       | Read/write active workspace | Ask/restricted                                                                  | `workspace_write`, fallback `deny` |
+| `auto_review` | 自动审查     | Same as `workspace`         | Same boundary as `workspace`; low-risk requests can be reviewed automatically   | `workspace_write`, fallback `deny` |
+| `full_access` | 完全访问权限 | Full local filesystem       | Allowed, while identity/outbound communication still requires explicit approval | none, fallback `allow`             |
 
-`fallbackPolicy` controls what happens when the configured sandbox runtime is unavailable: `warn` continues with a warning, `allow` continues quietly, and `deny` blocks execution.
+`full_access` is blocked in unattended execution mode. It is only available in attended sessions.
+
+Sandbox behavior is driven by the active control profile. The older `sandbox.enabled` and `sandbox.fallbackPolicy` config fields are currently reserved for compatibility and do not override profile behavior.
 
 #### Where Synergy stores worktrees
 

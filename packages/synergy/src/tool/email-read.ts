@@ -37,9 +37,10 @@ export const EmailReadTool = Tool.define("email_read", {
     const limit = params.limit ?? 20
 
     await ctx.ask({
-      permission: "email",
+      permission: "communication_email",
       patterns: [folder],
       metadata: {
+        nonBypassable: true,
         folder,
         action: params.action,
       },

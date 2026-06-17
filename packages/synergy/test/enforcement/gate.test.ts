@@ -175,19 +175,53 @@ describe("EnforcementGate shell classification", () => {
 // 3. Network classification
 // ------------------------------------------------------------------
 describe("EnforcementGate network classification", () => {
-  test("fetch/web_fetch tool classifies as network_request", () => {
+  test("webfetch tool classifies as network_request", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
 
-    const result = gate.classify("web_fetch", {
+    const result = gate.classify("webfetch", {
       url: "https://example.com/api/data",
     })
 
     const net = result.capabilities.find((c: any) => c.class === "network_request")
     expect(net).toBeDefined()
+  })
+
+  test("external communication and platform tools classify as nonBypassable", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("email_read", {}).capabilities).toContainEqual({
+      class: "communication_email",
+      nonBypassable: true,
+    })
+    expect(gate.classify("arxiv_search", {}).capabilities).toContainEqual({
+      class: "network_request",
+      nonBypassable: true,
+    })
+
+    const inspire = gate.classify("inspire_submit", {}).capabilities
+    expect(inspire).toContainEqual({ class: "network_request", nonBypassable: true })
+    expect(inspire).toContainEqual({ class: "platform_control", nonBypassable: true })
+  })
+
+  test("review profile denies external network and communication tools", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "review",
+    })
+
+    expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("deny")
+    expect(gate.evaluate("email_read", {}).decision).toBe("deny")
+    expect(gate.evaluate("inspire_submit", {}).decision).toBe("deny")
   })
 })
 
@@ -318,6 +352,23 @@ describe("EnforcementGate profile integration", () => {
     })
 
     expect(envelope.decision).toBe("deny")
+  })
+
+  test("review profile blocks allowAll auto-approval", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "review",
+    })
+
+    gate.setAllowAll(true)
+    const envelope = gate.evaluate("read", {
+      filePath: "/Users/test/synergy-control-profile/src/index.ts",
+    })
+
+    expect(gate.isAllowAllBlocked()).toBe(true)
+    expect(envelope.canAutoApprove()).toBe(false)
   })
 
   test("gate with workspace profile allows inside-workspace write", () => {

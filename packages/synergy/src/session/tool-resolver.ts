@@ -82,6 +82,55 @@ export namespace ToolResolver {
     return (args.filePath ?? args.path ?? args.pattern ?? "") as string
   }
 
+  function permissionForGateCapability(toolName: string, className: string): string {
+    if (className === "file_external") return "external_directory"
+    if (className === "shell_destructive") return "bash"
+    if (className === "network_request")
+      return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
+    return className
+  }
+
+  function patternsForGateCapability(toolName: string, className: string, args: Record<string, any>): string[] {
+    if (className === "file_external") return [externalPathFromArgs(toolName, args) || "*"]
+    if (className === "shell_destructive") return [String(args.command ?? "*")]
+    if (className === "network_request") return [String(args.url ?? args.query ?? "*")]
+    if (className === "communication_email") return [String(args.to ?? args.from ?? args.subject ?? "*")]
+    if (className === "identity_act") return [`${toolName} role=${args.role ?? "*"} to ${args.target ?? "*"}`]
+    return ["*"]
+  }
+
+  async function askGateNonBypassableCapabilities(
+    ctx: Tool.Context,
+    gate: ReturnType<typeof EnforcementGate.create>,
+    envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
+    toolName: string,
+    args: Record<string, any>,
+  ) {
+    if (envelope.decision !== "ask") return
+    for (const cap of envelope.capabilities) {
+      if (!cap.nonBypassable && !cap.opaque) continue
+      if (!gate.hasPendingCapability(cap.class)) continue
+      // These tools already perform the exact same non-bypassable ask with
+      // richer, tool-specific metadata before crossing the boundary.
+      if (toolName === "email_send" && cap.class === "communication_email") continue
+      if (toolName === "session_send" && cap.class === "identity_act") continue
+      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") continue
+      if (toolName === "email_read" && cap.class === "communication_email") continue
+
+      await ctx.ask({
+        permission: permissionForGateCapability(toolName, cap.class),
+        patterns: patternsForGateCapability(toolName, cap.class, args),
+        metadata: {
+          nonBypassable: true,
+          capability: cap.class,
+          opaque: cap.opaque === true,
+          ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
+        },
+      })
+      gate.resolveCapability(cap.class)
+    }
+  }
+
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => ({
       sessionID: input.sessionID,
@@ -177,22 +226,7 @@ export namespace ToolResolver {
                   throw new Error(`Enforcement gate denied ${item.id}`)
                 }
 
-                // NonBypassable ask: only for file_external capability.
-                // Other nonBypassable caps (shell_destructive, network_request, etc.)
-                // are handled by the tool's own permission checks or by PermissionNext.
-                if (envelope.decision === "ask" && gate.hasPendingCapability("file_external")) {
-                  const extPath = externalPathFromArgs(item.id, args as Record<string, any>)
-                  await ctx.ask({
-                    permission: "external_directory",
-                    patterns: extPath ? [extPath] : ["*"],
-                    metadata: {
-                      workspaceBoundary: true,
-                      outsideWorkspace: true,
-                      nonBypassable: true,
-                    },
-                  })
-                  gate.resolveCapability("file_external")
-                }
+                await askGateNonBypassableCapabilities(ctx, gate, envelope, item.id, args as Record<string, any>)
 
                 // ── Sandbox wrapping for bash ──────────────────────────
                 let sandboxWrapper: SandboxExecutionWrapper | undefined
@@ -275,7 +309,9 @@ export namespace ToolResolver {
     }
 
     if (input.includeMCP !== false) {
-      for (const [key, item] of Object.entries(await MCP.tools())) {
+      const mcpTools = await MCP.tools()
+      const mcpToolNames = new Set(Object.keys(mcpTools))
+      for (const [key, item] of Object.entries(mcpTools)) {
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
@@ -321,7 +357,7 @@ export namespace ToolResolver {
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
-                    registeredMcpTools: new Set(Object.keys(await MCP.tools())),
+                    registeredMcpTools: mcpToolNames,
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
@@ -340,6 +376,8 @@ export namespace ToolResolver {
                       args,
                     },
                   )
+
+                  await askGateNonBypassableCapabilities(ctx, gate, envelope, key, args as Record<string, any>)
 
                   await ctx.ask({
                     permission: key,
