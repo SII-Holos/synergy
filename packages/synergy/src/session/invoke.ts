@@ -304,13 +304,16 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
-          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
+          const nativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
+          const override = nativeAuth ? undefined : await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
 
           const env: Record<string, string> | undefined =
-            override?.apiKey && adapter.name === "codex" ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined
+            !nativeAuth && override?.apiKey && adapter.name === "codex"
+              ? { SYNERGY_CODEX_API_KEY: override.apiKey }
+              : undefined
 
           if (!adapter.started) {
             await adapter.start({
@@ -320,9 +323,7 @@ export namespace SessionInvoke {
             })
           } else {
             const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
-            if (cfg) {
-              Object.assign(cfg, runConfig)
-            }
+            if (cfg) Object.assign(cfg, runConfig)
             if (env) {
               const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
               if (adapterEnv) Object.assign(adapterEnv, env)

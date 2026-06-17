@@ -47,7 +47,9 @@ class CodexAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
-    this.env = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
+    // Merge: process.env < opts.env (apiKey etc.) < adapterConfig.env (proxy etc.)
+    const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
+    this.env = { ...process.env, ...(opts.env ?? {}), ...configEnv }
     this.started = true
     log.info("codex adapter started", { cwd: opts.cwd })
   }
@@ -60,12 +62,23 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.stderrBuffer = ""
     this.gotStdoutEvents = false
 
-    const args = this.buildArgs(context)
-    log.info("spawning codex turn", { sessionID: context.sessionID, args: args.join(" ") })
+    // Re-apply configEnv every turn — adapterConfig may be updated by invoke.ts
+    // between turns (line 324: Object.assign(cfg, runConfig)) but env is not
+    // re-merged there, so we do it here to ensure proxy env is always present.
+    const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
+    const currentEnv = { ...process.env, ...configEnv }
 
-    const proc = Bun.spawn(["codex", ...args], {
+    // --ask-for-approval must be a top-level flag (before the subcommand)
+    const approvalPolicy = this.adapterConfig.approvalPolicy as string | undefined
+    const topLevelArgs = approvalPolicy ? ["--ask-for-approval", approvalPolicy] : []
+    const args = this.buildArgs(context)
+    const fullArgs = [...topLevelArgs, ...args]
+
+    log.info("spawning codex turn", { sessionID: context.sessionID, args: fullArgs.join(" ") })
+
+    const proc = Bun.spawn(["codex", ...fullArgs], {
       cwd: this.cwd,
-      env: this.env,
+      env: currentEnv,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -153,8 +166,12 @@ class CodexAdapter implements ExternalAgent.Adapter {
     }
 
     const allowAll = this.adapterConfig.allowAll === true
+    const sandbox = this.adapterConfig.sandbox as string | undefined
+
     if (allowAll) {
       args.push("--dangerously-bypass-approvals-and-sandbox")
+    } else if (sandbox) {
+      args.push("--sandbox", sandbox)
     } else if (!isResume) {
       args.push("--sandbox", "read-only")
     }
