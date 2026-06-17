@@ -1367,6 +1367,20 @@ export type ChannelFeishuConfig = {
 }
 
 /**
+ * Sandbox configuration for workspace boundary enforcement
+ */
+export type SandboxConfig = {
+  /**
+   * Enable the sandbox runtime when available
+   */
+  enabled?: boolean
+  /**
+   * How to proceed when the requested sandbox runtime is unavailable
+   */
+  fallbackPolicy?: "warn" | "allow" | "deny"
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -1657,6 +1671,7 @@ export type Config = {
   channel?: {
     [key: string]: ChannelFeishuConfig
   }
+  sandbox?: SandboxConfig
   holos?: HolosConfig
   email?: EmailConfig
   formatter?:
@@ -2202,6 +2217,10 @@ export type DagNode = {
    * Short node-local memo for important result, blocker, or handoff context
    */
   memo?: string
+  /**
+   * Execution result (trajectory summary or error) populated automatically on completion — do not set manually
+   */
+  result?: string
 }
 
 export type UserMessage = {
@@ -3069,6 +3088,27 @@ export type AgendaPatchInput = {
   silent?: boolean
   agent?: string
   sessionRefs?: Array<AgendaSessionRef>
+}
+
+export type NoteMetaInfo = {
+  id: string
+  title: string
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+  searchText: string
+}
+
+export type NoteMetaScopeGroup = {
+  scopeID: string
+  scopeType: "global" | "project"
+  notes: Array<NoteMetaInfo>
 }
 
 export type NoteInfo = {
@@ -8109,6 +8149,33 @@ export type AgendaCreateResponses = {
 }
 
 export type AgendaCreateResponse = AgendaCreateResponses[keyof AgendaCreateResponses]
+
+export type NoteListMetaData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/note/meta"
+}
+
+export type NoteListMetaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
+
+export type NoteListMetaResponses = {
+  /**
+   * Note metadata grouped by scope
+   */
+  200: Array<NoteMetaScopeGroup>
+}
+
+export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
 
 export type NoteListAllData = {
   body?: never

@@ -216,6 +216,8 @@ import type {
   NoteListAllErrors,
   NoteListAllResponses,
   NoteListErrors,
+  NoteListMetaErrors,
+  NoteListMetaResponses,
   NoteListResponses,
   NotePatchInput,
   NoteRemoveErrors,
@@ -4986,6 +4988,25 @@ export class Engram extends HeyApiClient {
 }
 
 export class Note extends HeyApiClient {
+  /**
+   * List note metadata grouped by scope
+   *
+   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.
+   */
+  public listMeta<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
+      url: "/note/meta",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List all notes grouped by scope
    *
