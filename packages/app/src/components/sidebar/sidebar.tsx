@@ -146,7 +146,8 @@ export function Sidebar(props: SidebarProps) {
       (task) => task.parentSessionID === session.id && task.status === "running",
     )
 
-    if (running || childTasksRunning) return { icon: "activity", label: "Running session", tone: "active", pulse: true }
+    if (running || childTasksRunning)
+      return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
     if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
     if (session.workspace?.type === "git_worktree")
       return { icon: "git-branch", label: "Worktree session", tone: "worktree" }

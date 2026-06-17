@@ -480,8 +480,8 @@
   color: var(--text-weaker);
 }
 
-.sb-session-icon-pulse {
-  animation: statusPulse 1.8s ease-in-out infinite;
+.sb-session-icon-pulse [data-slot="icon-svg"] {
+  animation: spin 1.1s linear infinite;
 }
 
 .sb-session-title {
