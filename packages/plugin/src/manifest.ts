@@ -193,7 +193,6 @@ export const PluginManifest = z
                   .strict(),
               ),
           )
-          .strict()
           .optional(),
 
         commands: z

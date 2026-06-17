@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
 import { McpSupervisor } from "../../src/mcp/supervisor"
@@ -10,6 +10,10 @@ import { tmpdir } from "../fixture/fixture"
 Log.init({ print: false })
 
 describe.serial("McpSupervisor", () => {
+  beforeEach(async () => {
+    await McpSupervisor.reset()
+  })
+
   afterEach(async () => {
     await McpSupervisor.reset()
   })

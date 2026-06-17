@@ -70,25 +70,6 @@ export const Resource = z
   })
   .meta({ ref: "McpResource" })
 
-export const RetryConfig = z
-  .object({
-    maxRetries: z.number().int().min(0).max(10).default(3),
-    baseDelayMs: z.number().int().min(100).max(60_000).default(1000),
-    maxDelayMs: z.number().int().min(1000).max(300_000).default(30_000),
-    backoffMultiplier: z.number().min(1).max(10).default(2),
-  })
-  .meta({ ref: "McpRetryConfig" })
-export type RetryConfig = z.infer<typeof RetryConfig>
-
-export const CircuitBreakerConfig = z
-  .object({
-    failureThreshold: z.number().int().min(1).max(20).default(5),
-    recoveryTimeoutMs: z.number().int().min(1000).max(300_000).default(30_000),
-    halfOpenMaxRequests: z.number().int().min(1).max(10).default(1),
-  })
-  .meta({ ref: "McpCircuitBreakerConfig" })
-export type CircuitBreakerConfig = z.infer<typeof CircuitBreakerConfig>
-
 // ---------------------------------------------------------------------------
 // Transport re-export for auth flows
 // ---------------------------------------------------------------------------
@@ -845,7 +826,7 @@ class McpSupervisorImpl {
 export const McpSupervisor = new McpSupervisorImpl()
 
 // ---------------------------------------------------------------------------
-// Notification handlers — operate on handle, not Instance.state
+// Notification handlers — self-contained per-handle callbacks
 // ---------------------------------------------------------------------------
 
 function registerNotificationHandlers(handle: McpHandle, client: Client): void {

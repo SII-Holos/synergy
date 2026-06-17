@@ -26,8 +26,6 @@ import {
   Failed as _Failed,
   Resource as _Resource,
   Status as _Status,
-  RetryConfig as _RetryConfig,
-  CircuitBreakerConfig as _CircuitBreakerConfig,
 } from "./supervisor"
 
 export namespace MCP {
@@ -56,12 +54,6 @@ export namespace MCP {
 
   export const Status = _Status
   export type Status = z.infer<typeof _Status>
-
-  export const RetryConfig = _RetryConfig
-  export type RetryConfig = z.infer<typeof _RetryConfig>
-
-  export const CircuitBreakerConfig = _CircuitBreakerConfig
-  export type CircuitBreakerConfig = z.infer<typeof _CircuitBreakerConfig>
 
   const DEFAULT_TIMEOUT = 30_000
 
