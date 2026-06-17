@@ -1,23 +1,51 @@
-# Identity and Permissions
+# Engram and Permissions
 
-## Identity — Embedding and Reranking
+## Engram — Memory, Experience, and Autonomy
 
-The `identity` section configures models used by the memory/engram system.
+The `engram` section configures the memory/knowledge system.
 
 ### Embedding and rerank config
 
+These live at the top level of config:
+
 ```jsonc
 {
-  "identity": {
-    "embedding": {
-      "baseURL": "https://api.siliconflow.cn/v1",
-      "apiKey": "{env:SILICONFLOW_API_KEY}",
-      "model": "Qwen/Qwen3-Embedding-8B"
+  "embedding": {
+    "baseURL": "https://api.siliconflow.cn/v1",
+    "apiKey": "{env:SILICONFLOW_API_KEY}",
+    "model": "Qwen/Qwen3-Embedding-8B"
+  },
+  "rerank": {
+    "baseURL": "https://api.siliconflow.cn/v1",
+    "apiKey": "{env:SILICONFLOW_API_KEY}",
+    "model": "Qwen/Qwen3-Reranker-8B"
+  }
+}
+```
+
+| Field | Description |
+|---|---:|
+| `embedding.baseURL` | Base URL for embedding API |
+| `embedding.apiKey` | API key (supports `{env:VAR}`) |
+| `embedding.model` | Embedding model name |
+| `rerank.baseURL` | Base URL for rerank API |
+| `rerank.apiKey` | Rerank API key (falls back to `embedding.apiKey`) |
+| `rerank.model` | Rerank model name |
+
+### Engram config
+
+```jsonc
+{
+  "engram": {
+    "memory": {
+      "enabled": true,
+      "simThreshold": 0.7,
+      "topK": 8,
+      "dedupThreshold": 0.75
     },
-    "rerank": {
-      "baseURL": "https://api.siliconflow.cn/v1",
-      "apiKey": "{env:SILICONFLOW_API_KEY}",
-      "model": "Qwen/Qwen3-Reranker-8B"
+    "experience": {
+      "encode": true,
+      "retrieve": true
     },
     "autonomy": true
   }
@@ -25,59 +53,37 @@ The `identity` section configures models used by the memory/engram system.
 ```
 
 | Field | Description |
-|---|---|
-| `embedding.baseURL` | Base URL for embedding API |
-| `embedding.apiKey` | API key (supports `{env:VAR}`) |
-| `embedding.model` | Embedding model name |
-| `rerank.baseURL` | Base URL for rerank API |
-| `rerank.apiKey` | Rerank API key (falls back to `embedding.apiKey`) |
-| `rerank.model` | Rerank model name |
-| `autonomy` | Enable autonomous background routines like anima (default: true) |
+|---|---:|
+| `engram.memory.enabled` | Enable/disable memory subsystem |
+| `engram.memory.simThreshold` | Minimum cosine similarity for retrieval candidates (default: 0.7) |
+| `engram.memory.topK` | Number of memories to retrieve (default: 8) |
+| `engram.memory.dedupThreshold` | Similarity threshold for deduplication (default: 0.75) |
+| `engram.experience.encode` | Learn from conversations — extract intent, reward, and scripts |
+| `engram.experience.retrieve` | Inject relevant past experiences into new conversations |
+| `engram.autonomy` | Enable autonomous background routines like anima (default: true) |
 
-### Evolution config
-
-Controls the dual-mode learning system:
+### Experience learning config (advanced)
 
 ```jsonc
 {
-  "identity": {
-    "evolution": {
-      "passive": true,
-      "active": true
-    }
-  }
-}
-```
-
-- `"evolution": false` — disable all learning
-- `"evolution": true` or omit — enable all (default)
-- `passive` — RL-enhanced experience learning from conversations
-- `active` — agent-initiated memory curation via memory tools
-
-### Passive evolution (advanced)
-
-```jsonc
-{
-  "identity": {
-    "evolution": {
-      "passive": {
-        "encode": true,
-        "retrieve": true,
-        "learning": {
-          "alpha": 0.3,
-          "qInit": 0.5,
-          "dedupIntentThreshold": 0.85,
-          "dedupScriptThreshold": 0.8,
-          "qHistorySize": 50,
-          "snapThreshold": 0.5,
-          "rewardDelay": 5,
-          "rewardWeights": {
-            "outcome": 0.35,
-            "intent": 0.25,
-            "execution": 0.2,
-            "orchestration": 0.1,
-            "expression": 0.1
-          }
+  "engram": {
+    "experience": {
+      "encode": true,
+      "retrieve": true,
+      "learning": {
+        "alpha": 0.3,
+        "qInit": 0.5,
+        "dedupIntentThreshold": 0.85,
+        "dedupScriptThreshold": 0.8,
+        "qHistorySize": 50,
+        "snapThreshold": 0.5,
+        "rewardDelay": 5,
+        "rewardWeights": {
+          "outcome": 0.35,
+          "intent": 0.25,
+          "execution": 0.2,
+          "orchestration": 0.1,
+          "expression": 0.1
         }
       }
     }
@@ -85,23 +91,20 @@ Controls the dual-mode learning system:
 }
 ```
 
-### Active evolution (advanced)
+### Memory retrieval config (advanced)
 
 ```jsonc
 {
-  "identity": {
-    "evolution": {
-      "active": {
-        "retrieve": {
-          "simThreshold": 0.5,
-          "topK": 5,
-          "categories": {
-            "interaction": { "simThreshold": 0.4, "topK": 6 },
-            "coding": { "simThreshold": 0.55, "topK": 8 },
-            "knowledge": { "simThreshold": 0.6, "topK": 10 }
-          }
-        },
-        "memoryDedupThreshold": 0.75
+  "engram": {
+    "memory": {
+      "enabled": true,
+      "simThreshold": 0.5,
+      "topK": 5,
+      "dedupThreshold": 0.75,
+      "categories": {
+        "interaction": { "simThreshold": 0.4, "topK": 6 },
+        "coding": { "simThreshold": 0.55, "topK": 8 },
+        "knowledge": { "simThreshold": 0.6, "topK": 10 }
       }
     }
   }
@@ -112,6 +115,16 @@ Memory categories: `user`, `self`, `relationship`, `interaction`, `workflow`, `c
 
 Memory retrieval is driven per row by `recallMode`: `always`, `contextual`, or `search_only`. Use `always` sparingly for durable identity and interaction rules rather than assuming a whole category is always loaded.
 
+### CLI commands
+
+```
+synergy config embedding  — Interactive configure embedding provider
+synergy config rerank     — Interactive configure rerank provider
+synergy engram show       — Display engram config
+synergy engram learning   — Configure experience learning parameters
+synergy engram memory     — Configure memory parameters
+```
+
 ---
 
 ## Permissions
@@ -121,7 +134,7 @@ Permissions control tool access: allow, deny, or require approval.
 ### Permission actions
 
 | Action | Meaning |
-|---|---|
+|---|---:|
 | `"allow"` | Execute without user approval |
 | `"ask"` | User must approve each invocation |
 | `"deny"` | Blocked entirely |
@@ -243,8 +256,8 @@ Equivalent to setting all tools to `"allow"`.
 - **Agent getting "permission denied"** — check both top-level and agent-level permissions; agent-level overrides top-level; check path-scoped rules (more specific patterns override `*`)
 - **Permission change not taking effect** — reload with `runtime_reload(target: "config")`; permission changes cascade to agent reload automatically
 - **"ask" prompts too frequent** — consider path-scoped rules to auto-allow safe patterns; use `*` as default with specific overrides
-- **Evolution/memory not working** — check `identity.autonomy` is not `false`; check `identity.evolution` is not `false`; for active evolution, ensure memory tools are not denied in permission
-- **Embedding/rerank errors** — verify API key and baseURL in `identity` section; check the model name matches what the provider expects; embedding failures are logged at startup
+- **Memory/engram not working** — check `engram.autonomy` is not `false`; check `engram.memory.enabled` is not `false`; check `engram.experience.encode` / `engram.experience.retrieve` are not `false`
+- **Embedding/rerank errors** — verify API key and baseURL in top-level `embedding` / `rerank` sections; check the model name matches what the provider expects; embedding failures are logged at startup
 
 ## Reload
 
@@ -252,4 +265,4 @@ Equivalent to setting all tools to `"allow"`.
 runtime_reload(target: "config")
 ```
 
-Identity and permission changes cascade to agent reload automatically.
+Engram and permission changes cascade to agent reload automatically.

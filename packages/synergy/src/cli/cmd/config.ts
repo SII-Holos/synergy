@@ -2,6 +2,7 @@ import path from "path"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
+import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { ConfigSet } from "../../config/set"
 import { SetupService } from "../../setup/service"
@@ -10,7 +11,13 @@ import { ConfigSetup } from "../../config/setup"
 export const ConfigCommand = cmd({
   command: "config",
   describe: "manage synergy configuration",
-  builder: (yargs) => yargs.command(ConfigEditCommand).command(ConfigPathCommand).command(ConfigImportCommand),
+  builder: (yargs) =>
+    yargs
+      .command(ConfigEditCommand)
+      .command(ConfigPathCommand)
+      .command(ConfigImportCommand)
+      .command(ConfigEmbeddingCommand)
+      .command(ConfigRerankCommand),
   async handler() {},
 })
 
@@ -202,5 +209,138 @@ export const ConfigImportCommand = cmd({
       probe: args.noProbe ? false : args.probe,
       force: args.force as boolean,
     })
+  },
+})
+export const ConfigEmbeddingCommand = cmd({
+  command: "embedding",
+  describe: "configure embedding provider (writes to global config)",
+  builder: (yargs) =>
+    yargs.option("print", {
+      type: "boolean",
+      describe: "print config instead of writing to file",
+    }),
+  async handler(args) {
+    UI.empty()
+    prompts.intro("Configure Embedding Provider")
+
+    const baseURL = await prompts.text({
+      message: "Embedding API base URL",
+      placeholder: "https://api.siliconflow.cn/v1",
+      initialValue: "https://api.siliconflow.cn/v1",
+    })
+    if (prompts.isCancel(baseURL)) throw new UI.CancelledError()
+
+    const model = await prompts.text({
+      message: "Embedding model name",
+      placeholder: "Qwen/Qwen3-Embedding-8B",
+      initialValue: "Qwen/Qwen3-Embedding-8B",
+    })
+    if (prompts.isCancel(model)) throw new UI.CancelledError()
+
+    const useEnv = await prompts.confirm({
+      message: "Store API key in environment variable?",
+      initialValue: true,
+    })
+    if (prompts.isCancel(useEnv)) throw new UI.CancelledError()
+
+    const apiKey = useEnv
+      ? "{env:SYNERGY_EMBEDDING_KEY}"
+      : await (async () => {
+          const key = await prompts.password({
+            message: "Embedding API key",
+            validate: (x) => (x && x.length > 0 ? undefined : "Required"),
+          })
+          if (prompts.isCancel(key)) throw new UI.CancelledError()
+          return key
+        })()
+
+    const config = {
+      embedding: { baseURL, model, apiKey },
+    } as any as Config.Info
+
+    if (args.print) {
+      prompts.log.success("Embedding configured!")
+      prompts.log.info("Add this to your config file:")
+      prompts.log.message(JSON.stringify(config, null, 2))
+    } else {
+      await Config.updateGlobal(config)
+      prompts.log.success("Embedding configuration saved to the active global Config Set")
+      prompts.log.info(`Config file: ${await Config.globalPath()}`)
+    }
+
+    if (useEnv) {
+      UI.empty()
+      prompts.log.info("Set the environment variable:")
+      prompts.log.message(`export SYNERGY_EMBEDDING_KEY="your-api-key"`)
+    }
+
+    prompts.outro("Done")
+  },
+})
+
+export const ConfigRerankCommand = cmd({
+  command: "rerank",
+  describe: "configure rerank provider (writes to global config)",
+  builder: (yargs) =>
+    yargs.option("print", {
+      type: "boolean",
+      describe: "print config instead of writing to file",
+    }),
+  async handler(args) {
+    UI.empty()
+    prompts.intro("Configure Rerank Provider")
+
+    const baseURL = await prompts.text({
+      message: "Rerank API base URL",
+      placeholder: "https://api.siliconflow.cn/v1",
+      initialValue: "https://api.siliconflow.cn/v1",
+    })
+    if (prompts.isCancel(baseURL)) throw new UI.CancelledError()
+
+    const model = await prompts.text({
+      message: "Rerank model name",
+      placeholder: "Qwen/Qwen3-Reranker-8B",
+      initialValue: "Qwen/Qwen3-Reranker-8B",
+    })
+    if (prompts.isCancel(model)) throw new UI.CancelledError()
+
+    const useEnv = await prompts.confirm({
+      message: "Store API key in environment variable?",
+      initialValue: true,
+    })
+    if (prompts.isCancel(useEnv)) throw new UI.CancelledError()
+
+    const apiKey = useEnv
+      ? "{env:SYNERGY_RERANK_KEY}"
+      : await (async () => {
+          const key = await prompts.password({
+            message: "Rerank API key",
+            validate: (x) => (x && x.length > 0 ? undefined : "Required"),
+          })
+          if (prompts.isCancel(key)) throw new UI.CancelledError()
+          return key
+        })()
+
+    const config = {
+      rerank: { baseURL, model, apiKey },
+    } as any as Config.Info
+
+    if (args.print) {
+      prompts.log.success("Rerank configured!")
+      prompts.log.info("Add this to your config file:")
+      prompts.log.message(JSON.stringify(config, null, 2))
+    } else {
+      await Config.updateGlobal(config)
+      prompts.log.success("Rerank configuration saved to the active global Config Set")
+      prompts.log.info(`Config file: ${await Config.globalPath()}`)
+    }
+
+    if (useEnv) {
+      UI.empty()
+      prompts.log.info("Set the environment variable:")
+      prompts.log.message(`export SYNERGY_RERANK_KEY="your-api-key"`)
+    }
+
+    prompts.outro("Done")
   },
 })
