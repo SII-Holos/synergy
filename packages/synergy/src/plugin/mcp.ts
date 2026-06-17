@@ -7,6 +7,10 @@ import type { Config } from "../config/config"
  */
 type McpDeclaration = Omit<Config.Mcp, "enabled">
 
+function isMcpDeclaration(value: unknown): value is McpDeclaration {
+  return typeof value === "object" && value !== null && "type" in value
+}
+
 /**
  * Namespace a server key with the plugin ID.
  * Plugin MCP keys use the format: "{pluginId}::{serverKey}"
@@ -36,10 +40,11 @@ export function extractPluginId(key: string): string {
  * User config always wins — if a server with the same key already exists in user config,
  * the plugin's declaration is skipped.
  */
-export async function startForPlugin(pluginId: string, mcpDeclarations: Record<string, McpDeclaration>): Promise<void> {
+export async function startForPlugin(pluginId: string, mcpDeclarations: Record<string, unknown>): Promise<void> {
   const statuses = await MCP.status()
 
   for (const [serverKey, declaration] of Object.entries(mcpDeclarations)) {
+    if (!isMcpDeclaration(declaration)) continue
     // User config wins — skip if user already has a server with the same bare key
     if (statuses[serverKey] !== undefined) continue
 
