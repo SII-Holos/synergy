@@ -100,7 +100,7 @@ function DetailRow(props: { label: string; value: string | undefined }) {
   return (
     <div class="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-12-regular">
       <div class="text-text-weaker">{props.label}</div>
-      <div class="text-text-base truncate" title={props.value || undefined}>
+      <div class="text-text-base break-all" title={props.value || undefined}>
         {props.value || "—"}
       </div>
     </div>
@@ -116,18 +116,20 @@ function DetailGroup(props: { title: string; children: any }) {
   )
 }
 
-function StatusPill(props: { icon?: IconName; label: string; tone?: "base" | "danger" | "active" }) {
+function StatusPill(props: { icon?: IconName; label: string; tone?: "base" | "danger" | "active"; class?: string }) {
   return (
     <div
       classList={{
         "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-12-medium whitespace-nowrap transition-colors shrink-0": true,
+        [props.class || ""]: !!props.class,
         "bg-surface-raised-base text-text-base hover:bg-surface-raised-base-hover":
           !props.tone || props.tone === "base" || props.tone === "active",
         "bg-surface-critical-subtle text-text-critical-base hover:bg-surface-critical-base": props.tone === "danger",
       }}
+      title={props.label}
     >
       <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" class="text-current" />}</Show>
-      <span class="truncate max-w-40">{props.label}</span>
+      <span>{props.label}</span>
     </div>
   )
 }
@@ -182,7 +184,7 @@ export function StatusBar() {
     <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
       <Show when={params.dir}>
         <div
-          class="grid w-[min(760px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
+          class="grid w-[min(900px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
           classList={{ "-translate-y-1": !expanded(), "translate-y-0": expanded() }}
           style={{ "grid-template-rows": expanded() ? "1fr" : "0fr", opacity: expanded() ? 1 : 0 }}
         >
@@ -213,14 +215,14 @@ export function StatusBar() {
       </Show>
 
       <div
-        class="flex items-center justify-center gap-2 flex-nowrap min-w-0 max-w-full overflow-hidden"
-        style={{ "max-width": "min(100%, 720px)" }}
+        class="flex flex-wrap items-center justify-center gap-2 min-w-0 max-w-full overflow-visible"
+        style={{ "max-width": "min(100%, 900px)" }}
       >
         <HolosStatusIndicator />
         <Show when={params.dir}>
           <button
             type="button"
-            class="max-w-full min-w-0 flex items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover shrink min-w-0"
+            class="flex flex-wrap items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
             onClick={() => setExpanded((value) => !value)}
           >
             <StatusPill
@@ -233,7 +235,6 @@ export function StatusBar() {
             <Icon name={expanded() ? "chevron-down" : "chevron-up"} size="small" class="text-icon-weak mx-1 shrink-0" />
           </button>
         </Show>
-
         <Show when={params.dir}>
           <div class="flex items-center gap-0.5 shrink-0">
             <SessionLspIndicator />
