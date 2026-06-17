@@ -140,6 +140,18 @@ export namespace AgendaReactor {
       if (sessionID && !error) {
         lastMessage = await extractLastAssistantMessage(sessionID)
       }
+      // Archive ephemeral sessions so they don't accumulate in the session list.
+      // Do this after extracting the last message but before state management.
+      if (sessionID && !persistent) {
+        await Session.update(sessionID, (draft) => {
+          draft.time.archived = Date.now()
+        }).catch((err) => {
+          log.warn("failed to archive ephemeral session", {
+            sessionID,
+            error: err instanceof Error ? err : new Error(String(err)),
+          })
+        })
+      }
     }
 
     const duration = Date.now() - startTime
