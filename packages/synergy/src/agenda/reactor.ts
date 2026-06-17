@@ -222,9 +222,22 @@ export namespace AgendaReactor {
   }
 
   async function createEphemeralSession(item: AgendaTypes.Item, scope: Scope): Promise<string> {
+    // Append a short date to the title so ephemeral sessions are easy to
+    // identify in the session list. Use the cron/every trigger's timezone if
+    // available, otherwise fall back to UTC.
+    const cronTrigger = item.triggers.find(
+      (t): t is AgendaTypes.Trigger & { type: "cron"; tz?: string } => t.type === "cron",
+    )
+    const tz = cronTrigger?.tz
+    const date = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: tz ?? "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date())
     const session = await Session.create({
       scope,
-      title: "Agenda: " + item.title,
+      title: `Agenda: ${item.title} ${date}`,
       agenda: { itemID: item.id },
       interaction: SessionInteraction.unattended("agenda"),
     })
