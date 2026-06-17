@@ -50,7 +50,7 @@ export function WorkspacePanel() {
         <div class="shrink-0 flex items-center justify-between px-4 h-11 border-b border-border-weak-base">
           <div class="flex items-center gap-2">
             <Show when={tool()}>
-              <Icon name="notebook-pen" size="normal" class="text-icon-weak" />
+              <Icon name={tool()!.icon} size="normal" class="text-icon-weak" />
               <span class="text-14-medium text-text-strong">{tool()?.label}</span>
             </Show>
           </div>

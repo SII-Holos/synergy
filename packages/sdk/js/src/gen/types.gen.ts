@@ -3126,6 +3126,27 @@ export type AgendaPatchInput = {
   sessionRefs?: Array<AgendaSessionRef>
 }
 
+export type NoteMetaInfo = {
+  id: string
+  title: string
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+  searchText: string
+}
+
+export type NoteMetaScopeGroup = {
+  scopeID: string
+  scopeType: "global" | "project"
+  notes: Array<NoteMetaInfo>
+}
+
 export type NoteInfo = {
   id: string
   title: string
@@ -8206,6 +8227,33 @@ export type AgendaCreateResponses = {
 }
 
 export type AgendaCreateResponse = AgendaCreateResponses[keyof AgendaCreateResponses]
+
+export type NoteListMetaData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/note/meta"
+}
+
+export type NoteListMetaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
+
+export type NoteListMetaResponses = {
+  /**
+   * Note metadata grouped by scope
+   */
+  200: Array<NoteMetaScopeGroup>
+}
+
+export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
 
 export type NoteListAllData = {
   body?: never

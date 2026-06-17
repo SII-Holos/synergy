@@ -40,7 +40,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.global.health({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.health({\n  ...\n})"
           }
         ]
       }
@@ -65,7 +65,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.global.dispose({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.dispose({\n  ...\n})"
           }
         ]
       }
@@ -105,7 +105,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.login({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.login({\n  ...\n})"
           }
         ]
       }
@@ -130,7 +130,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.callback({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.callback({\n  ...\n})"
           }
         ]
       }
@@ -185,7 +185,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.credentials({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.credentials({\n  ...\n})"
           }
         ]
       },
@@ -208,7 +208,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.logout({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.logout({\n  ...\n})"
           }
         ]
       }
@@ -243,7 +243,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.reconnect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.reconnect({\n  ...\n})"
           }
         ]
       }
@@ -281,7 +281,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.global.agenda.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.agenda.list({\n  ...\n})"
           }
         ]
       }
@@ -460,7 +460,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.global.session.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.session.search({\n  ...\n})"
           }
         ]
       }
@@ -512,7 +512,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.webhook({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.webhook({\n  ...\n})"
           }
         ]
       }
@@ -549,7 +549,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.scope.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.list({\n  ...\n})"
           }
         ]
       }
@@ -583,7 +583,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.scope.current({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.current({\n  ...\n})"
           }
         ]
       }
@@ -717,7 +717,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.scope.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.update({\n  ...\n})"
           }
         ]
       },
@@ -763,7 +763,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.scope.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.remove({\n  ...\n})"
           }
         ]
       }
@@ -830,7 +830,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.git.init({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.git.init({\n  ...\n})"
           }
         ]
       }
@@ -867,7 +867,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.list({\n  ...\n})"
           }
         ]
       },
@@ -944,7 +944,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.create({\n  ...\n})"
           }
         ]
       }
@@ -996,7 +996,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.get({\n  ...\n})"
           }
         ]
       },
@@ -1072,7 +1072,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.update({\n  ...\n})"
           }
         ]
       },
@@ -1122,7 +1122,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.remove({\n  ...\n})"
           }
         ]
       }
@@ -1174,7 +1174,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.pty.connect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.pty.connect({\n  ...\n})"
           }
         ]
       }
@@ -1208,7 +1208,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.get({\n  ...\n})"
           }
         ]
       },
@@ -1265,7 +1265,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.update({\n  ...\n})"
           }
         ]
       }
@@ -1299,7 +1299,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.global({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.global({\n  ...\n})"
           }
         ]
       }
@@ -1336,7 +1336,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.list({\n  ...\n})"
           }
         ]
       },
@@ -1387,7 +1387,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.create({\n  ...\n})"
           }
         ]
       }
@@ -1439,7 +1439,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.get({\n  ...\n})"
           }
         ]
       },
@@ -1498,7 +1498,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.update({\n  ...\n})"
           }
         ]
       },
@@ -1548,7 +1548,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.delete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.delete({\n  ...\n})"
           }
         ]
       }
@@ -1600,7 +1600,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.raw.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.get({\n  ...\n})"
           }
         ]
       },
@@ -1659,7 +1659,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.raw.save({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.save({\n  ...\n})"
           }
         ]
       }
@@ -1720,7 +1720,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.raw.validate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.validate({\n  ...\n})"
           }
         ]
       }
@@ -1772,7 +1772,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.set.activate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.activate({\n  ...\n})"
           }
         ]
       }
@@ -1824,7 +1824,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.config.providers({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.providers({\n  ...\n})"
           }
         ]
       }
@@ -1896,7 +1896,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.runtime.reload({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.runtime.reload({\n  ...\n})"
           }
         ]
       }
@@ -1940,7 +1940,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.tool.ids({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.tool.ids({\n  ...\n})"
           }
         ]
       }
@@ -2000,7 +2000,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.tool.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.tool.list({\n  ...\n})"
           }
         ]
       }
@@ -2034,7 +2034,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.instance.dispose({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.instance.dispose({\n  ...\n})"
           }
         ]
       }
@@ -2068,7 +2068,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.path.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.path.get({\n  ...\n})"
           }
         ]
       }
@@ -2121,7 +2121,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.worktree.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.create({\n  ...\n})"
           }
         ]
       },
@@ -2156,7 +2156,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.worktree.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.list({\n  ...\n})"
           }
         ]
       }
@@ -2190,7 +2190,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.vcs.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.vcs.get({\n  ...\n})"
           }
         ]
       }
@@ -2383,7 +2383,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.list({\n  ...\n})"
           }
         ]
       },
@@ -2445,7 +2445,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.create({\n  ...\n})"
           }
         ]
       }
@@ -2495,7 +2495,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.status({\n  ...\n})"
           }
         ]
       }
@@ -2559,7 +2559,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.get({\n  ...\n})"
           }
         ]
       },
@@ -2620,7 +2620,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.delete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.delete({\n  ...\n})"
           }
         ]
       },
@@ -2705,7 +2705,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.update({\n  ...\n})"
           }
         ]
       }
@@ -2772,7 +2772,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.children({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.children({\n  ...\n})"
           }
         ]
       }
@@ -2838,7 +2838,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.todo({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.todo({\n  ...\n})"
           }
         ]
       }
@@ -2904,7 +2904,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.dag({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.dag({\n  ...\n})"
           }
         ]
       }
@@ -2989,7 +2989,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.init({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.init({\n  ...\n})"
           }
         ]
       }
@@ -3047,7 +3047,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.fork({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.fork({\n  ...\n})"
           }
         ]
       }
@@ -3109,7 +3109,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.abort({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.abort({\n  ...\n})"
           }
         ]
       }
@@ -3194,7 +3194,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.summarize({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.summarize({\n  ...\n})"
           }
         ]
       }
@@ -3279,7 +3279,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.messages({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.messages({\n  ...\n})"
           }
         ]
       },
@@ -3430,7 +3430,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.prompt({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.prompt({\n  ...\n})"
           }
         ]
       }
@@ -3496,7 +3496,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.diff({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.diff({\n  ...\n})"
           }
         ]
       }
@@ -3580,7 +3580,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.message({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.message({\n  ...\n})"
           }
         ]
       }
@@ -3660,7 +3660,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.part.delete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.part.delete({\n  ...\n})"
           }
         ]
       },
@@ -3747,7 +3747,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.part.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.part.update({\n  ...\n})"
           }
         ]
       }
@@ -3881,7 +3881,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.prompt_async({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.prompt_async({\n  ...\n})"
           }
         ]
       }
@@ -4010,7 +4010,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.command({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.command({\n  ...\n})"
           }
         ]
       }
@@ -4103,7 +4103,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.shell({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.shell({\n  ...\n})"
           }
         ]
       }
@@ -4185,7 +4185,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.revert({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.revert({\n  ...\n})"
           }
         ]
       }
@@ -4247,7 +4247,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.unrevert({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.unrevert({\n  ...\n})"
           }
         ]
       }
@@ -4334,7 +4334,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.permission.respond({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.respond({\n  ...\n})"
           }
         ]
       }
@@ -4415,7 +4415,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.permission.reply({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.reply({\n  ...\n})"
           }
         ]
       }
@@ -4478,7 +4478,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.permission.setAllowAll({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.setAllowAll({\n  ...\n})"
           }
         ]
       },
@@ -4529,7 +4529,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.permission.isAllowingAll({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.isAllowingAll({\n  ...\n})"
           }
         ]
       }
@@ -4566,7 +4566,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.permission.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.list({\n  ...\n})"
           }
         ]
       }
@@ -4603,7 +4603,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.question.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.question.list({\n  ...\n})"
           }
         ]
       }
@@ -4684,7 +4684,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.question.reply({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.question.reply({\n  ...\n})"
           }
         ]
       }
@@ -4746,7 +4746,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.question.reject({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.question.reject({\n  ...\n})"
           }
         ]
       }
@@ -4809,7 +4809,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.export.estimate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.export.estimate({\n  ...\n})"
           }
         ]
       }
@@ -4872,7 +4872,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.session.export.download({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.export.download({\n  ...\n})"
           }
         ]
       }
@@ -4926,7 +4926,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.cortex.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.list({\n  ...\n})"
           }
         ]
       }
@@ -4988,7 +4988,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.cortex.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.get({\n  ...\n})"
           }
         ]
       }
@@ -5056,7 +5056,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.cortex.output({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.output({\n  ...\n})"
           }
         ]
       }
@@ -5118,7 +5118,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.cortex.cancel({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.cancel({\n  ...\n})"
           }
         ]
       }
@@ -5155,7 +5155,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.command.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.command.list({\n  ...\n})"
           }
         ]
       }
@@ -5418,7 +5418,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
           }
         ]
       }
@@ -5461,7 +5461,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.provider.auth({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth({\n  ...\n})"
           }
         ]
       }
@@ -5530,7 +5530,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
           }
         ]
       }
@@ -5603,7 +5603,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.provider.oauth.callback({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.oauth.callback({\n  ...\n})"
           }
         ]
       }
@@ -5637,7 +5637,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.skill.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.list({\n  ...\n})"
           }
         ]
       }
@@ -5671,7 +5671,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.skill.reload({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.reload({\n  ...\n})"
           }
         ]
       }
@@ -5730,7 +5730,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.skill.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.remove({\n  ...\n})"
           }
         ]
       }
@@ -5805,7 +5805,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.skill.import({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.import({\n  ...\n})"
           }
         ]
       }
@@ -5883,7 +5883,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.skill.importUrl({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.importUrl({\n  ...\n})"
           }
         ]
       }
@@ -5953,7 +5953,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.find.browse({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.browse({\n  ...\n})"
           }
         ]
       }
@@ -6049,7 +6049,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.find.text({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.text({\n  ...\n})"
           }
         ]
       }
@@ -6119,7 +6119,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.find.files({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.files({\n  ...\n})"
           }
         ]
       }
@@ -6164,7 +6164,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.find.symbols({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.symbols({\n  ...\n})"
           }
         ]
       }
@@ -6209,7 +6209,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.file.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.list({\n  ...\n})"
           }
         ]
       }
@@ -6251,7 +6251,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.file.read({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.read({\n  ...\n})"
           }
         ]
       }
@@ -6288,7 +6288,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.file.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.status({\n  ...\n})"
           }
         ]
       }
@@ -6359,7 +6359,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.search({\n  ...\n})"
           }
         ]
       }
@@ -6455,7 +6455,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.page({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.page({\n  ...\n})"
           }
         ]
       }
@@ -6518,7 +6518,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.get({\n  ...\n})"
           }
         ]
       },
@@ -6569,7 +6569,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.remove({\n  ...\n})"
           }
         ]
       }
@@ -6652,7 +6652,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.applyReward({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.applyReward({\n  ...\n})"
           }
         ]
       }
@@ -6697,7 +6697,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.experience.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.list({\n  ...\n})"
           }
         ]
       }
@@ -6751,7 +6751,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.stats({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.stats({\n  ...\n})"
           }
         ]
       }
@@ -6832,7 +6832,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.search({\n  ...\n})"
           }
         ]
       }
@@ -6902,7 +6902,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.reset({\n  ...\n})"
           }
         ]
       }
@@ -6965,7 +6965,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.get({\n  ...\n})"
           }
         ]
       },
@@ -7016,7 +7016,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.remove({\n  ...\n})"
           }
         ]
       }
@@ -7067,7 +7067,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
           }
         ]
       }
@@ -7165,7 +7165,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.activity({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.activity({\n  ...\n})"
           }
         ]
       }
@@ -7218,7 +7218,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.sessions({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.sessions({\n  ...\n})"
           }
         ]
       }
@@ -7274,7 +7274,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.runs({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.runs({\n  ...\n})"
           }
         ]
       }
@@ -7327,7 +7327,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.trigger({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.trigger({\n  ...\n})"
           }
         ]
       }
@@ -7380,7 +7380,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.activate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.activate({\n  ...\n})"
           }
         ]
       }
@@ -7433,7 +7433,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.pause({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.pause({\n  ...\n})"
           }
         ]
       }
@@ -7486,7 +7486,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.complete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.complete({\n  ...\n})"
           }
         ]
       }
@@ -7539,7 +7539,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.cancel({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.cancel({\n  ...\n})"
           }
         ]
       }
@@ -7602,7 +7602,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.get({\n  ...\n})"
           }
         ]
       },
@@ -7653,7 +7653,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.remove({\n  ...\n})"
           }
         ]
       },
@@ -7723,7 +7723,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.update({\n  ...\n})"
           }
         ]
       }
@@ -7776,7 +7776,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.create({\n  ...\n})"
           }
         ]
       },
@@ -7828,7 +7828,54 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.agenda.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.agenda.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/note/meta": {
+      "get": {
+        "operationId": "note.listMeta",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List note metadata grouped by scope",
+        "description": "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+        "responses": {
+          "200": {
+            "description": "Note metadata grouped by scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteMetaScopeGroup"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.listMeta({\n  ...\n})"
           }
         ]
       }
@@ -7875,7 +7922,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.listAll({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.listAll({\n  ...\n})"
           }
         ]
       }
@@ -7941,7 +7988,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.export({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.export({\n  ...\n})"
           }
         ]
       }
@@ -7994,7 +8041,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.create({\n  ...\n})"
           }
         ]
       },
@@ -8039,7 +8086,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.list({\n  ...\n})"
           }
         ]
       }
@@ -8102,7 +8149,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.get({\n  ...\n})"
           }
         ]
       },
@@ -8182,7 +8229,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.update({\n  ...\n})"
           }
         ]
       },
@@ -8233,7 +8280,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.note.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.note.remove({\n  ...\n})"
           }
         ]
       }
@@ -8290,7 +8337,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.asset.upload({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.asset.upload({\n  ...\n})"
           }
         ]
       }
@@ -8335,7 +8382,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.asset.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.asset.get({\n  ...\n})"
           }
         ]
       }
@@ -8389,7 +8436,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.stats.get({\n  ...\n})"
           }
         ]
       }
@@ -8949,7 +8996,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.stats.progress({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.stats.progress({\n  ...\n})"
           }
         ]
       }
@@ -8983,7 +9030,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.credentials.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.credentials.status({\n  ...\n})"
           }
         ]
       }
@@ -9017,7 +9064,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.state({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.state({\n  ...\n})"
           }
         ]
       }
@@ -9051,7 +9098,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.verify({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.verify({\n  ...\n})"
           }
         ]
       }
@@ -9085,7 +9132,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.profile.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.get({\n  ...\n})"
           }
         ]
       },
@@ -9145,7 +9192,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.profile.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.update({\n  ...\n})"
           }
         ]
       }
@@ -9179,7 +9226,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.profile.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.reset({\n  ...\n})"
           }
         ]
       }
@@ -9213,7 +9260,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.profile.skipGenesis({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.skipGenesis({\n  ...\n})"
           }
         ]
       }
@@ -9250,7 +9297,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.list({\n  ...\n})"
           }
         ]
       },
@@ -9316,7 +9363,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.add({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.add({\n  ...\n})"
           }
         ]
       }
@@ -9368,7 +9415,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.get({\n  ...\n})"
           }
         ]
       },
@@ -9408,7 +9455,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.remove({\n  ...\n})"
           }
         ]
       }
@@ -9445,7 +9492,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.list({\n  ...\n})"
           }
         ]
       },
@@ -9508,7 +9555,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.create({\n  ...\n})"
           }
         ]
       }
@@ -9550,7 +9597,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.remove({\n  ...\n})"
           }
         ]
       }
@@ -9615,7 +9662,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.send({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.send({\n  ...\n})"
           }
         ]
       }
@@ -9693,7 +9740,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.respond({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.respond({\n  ...\n})"
           }
         ]
       }
@@ -9778,7 +9825,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.updateConfig({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.updateConfig({\n  ...\n})"
           }
         ]
       }
@@ -9830,7 +9877,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.session({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.session({\n  ...\n})"
           }
         ]
       }
@@ -9911,7 +9958,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.contact.sendMessage({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.sendMessage({\n  ...\n})"
           }
         ]
       }
@@ -9945,7 +9992,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.presence({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.presence({\n  ...\n})"
           }
         ]
       }
@@ -9979,7 +10026,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.refreshPresence({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.refreshPresence({\n  ...\n})"
           }
         ]
       }
@@ -10086,7 +10133,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.agents.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.agents.list({\n  ...\n})"
           }
         ]
       }
@@ -10175,7 +10222,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.agents.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.agents.get({\n  ...\n})"
           }
         ]
       }
@@ -10246,7 +10293,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.queue.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.queue.list({\n  ...\n})"
           }
         ]
       }
@@ -10288,7 +10335,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.holos.friendReply.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendReply.list({\n  ...\n})"
           }
         ]
       }
@@ -10367,7 +10414,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.app.log({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.app.log({\n  ...\n})"
           }
         ]
       }
@@ -10404,7 +10451,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.app.agents({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.app.agents({\n  ...\n})"
           }
         ]
       }
@@ -10444,7 +10491,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.status({\n  ...\n})"
           }
         ]
       },
@@ -10517,7 +10564,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.add({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.add({\n  ...\n})"
           }
         ]
       }
@@ -10586,7 +10633,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.auth.start({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.auth.start({\n  ...\n})"
           }
         ]
       },
@@ -10643,7 +10690,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.auth.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.auth.remove({\n  ...\n})"
           }
         ]
       }
@@ -10721,7 +10768,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.auth.callback({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.auth.callback({\n  ...\n})"
           }
         ]
       }
@@ -10783,7 +10830,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
           }
         ]
       }
@@ -10824,7 +10871,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.connect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.connect({\n  ...\n})"
           }
         ]
       }
@@ -10865,7 +10912,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.disconnect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.disconnect({\n  ...\n})"
           }
         ]
       }
@@ -10917,7 +10964,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.restart({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.restart({\n  ...\n})"
           }
         ]
       }
@@ -10969,7 +11016,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.refresh({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.refresh({\n  ...\n})"
           }
         ]
       }
@@ -11045,7 +11092,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.inspect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.inspect({\n  ...\n})"
           }
         ]
       }
@@ -11097,7 +11144,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.test({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.test({\n  ...\n})"
           }
         ]
       }
@@ -11137,7 +11184,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.status({\n  ...\n})"
           }
         ]
       }
@@ -11177,7 +11224,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.start({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.start({\n  ...\n})"
           }
         ]
       }
@@ -11217,7 +11264,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.stop({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.stop({\n  ...\n})"
           }
         ]
       }
@@ -11273,7 +11320,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.startOne({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.startOne({\n  ...\n})"
           }
         ]
       }
@@ -11329,7 +11376,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.stopOne({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.stopOne({\n  ...\n})"
           }
         ]
       }
@@ -11386,7 +11433,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.disconnect({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.disconnect({\n  ...\n})"
           }
         ]
       }
@@ -11420,7 +11467,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.app.session({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.app.session({\n  ...\n})"
           }
         ]
       }
@@ -11461,7 +11508,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.app.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.app.reset({\n  ...\n})"
           }
         ]
       }
@@ -11495,7 +11542,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.genesis.session({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.session({\n  ...\n})"
           }
         ]
       }
@@ -11536,7 +11583,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.channel.genesis.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.reset({\n  ...\n})"
           }
         ]
       }
@@ -11576,7 +11623,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.experimental.resource.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.experimental.resource.list({\n  ...\n})"
           }
         ]
       }
@@ -11613,7 +11660,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.lsp.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lsp.status({\n  ...\n})"
           }
         ]
       }
@@ -11650,7 +11697,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.formatter.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.formatter.status({\n  ...\n})"
           }
         ]
       }
@@ -11711,7 +11758,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.auth.set({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.auth.set({\n  ...\n})"
           }
         ]
       }
@@ -11745,7 +11792,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.event.subscribe({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.event.subscribe({\n  ...\n})"
           }
         ]
       }
@@ -18474,6 +18521,70 @@
             }
           }
         }
+      },
+      "NoteMetaInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "originScope": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "number"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          },
+          "searchText": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title", "pinned", "global", "tags", "version", "time", "searchText"]
+      },
+      "NoteMetaScopeGroup": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteMetaInfo"
+            }
+          }
+        },
+        "required": ["scopeID", "scopeType", "notes"]
       },
       "NoteInfo": {
         "type": "object",

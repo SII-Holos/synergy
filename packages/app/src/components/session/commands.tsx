@@ -7,6 +7,7 @@ import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
+import { useWorkspace } from "@/context/workspace"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { isGlobalScope } from "@/utils/scope"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -60,6 +61,8 @@ export function useSessionCommands(params: {
     navigateMessageByOffset,
   } = params
 
+  const workspace = useWorkspace()
+
   command.register(() => [
     {
       id: "session.new",
@@ -96,17 +99,16 @@ export function useSessionCommands(params: {
       onSelect: () => layout.terminal.toggle(),
     },
     {
-      id: "workspace.toggle",
-      title: "Toggle workspace panel",
-      description: "Open or close the workspace panel",
+      id: "workspace.close",
+      title: "Close workspace panel",
+      description: "Close the workspace panel",
       category: "View",
       keybind: "mod+shift+w",
-      disabled: !routeParams.id,
+      disabled: !routeParams.id || !workspace.opened(),
       slash: "workspace",
       onSelect: () => {
-        if (routeParams.id) {
-          layout.workspace(`${routeParams.dir}/${routeParams.id}`).toggle()
-        }
+        workspace.closePanel()
+        workspace.setActive(null)
       },
     },
     {

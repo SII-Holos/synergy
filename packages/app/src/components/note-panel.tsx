@@ -17,116 +17,23 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Panel } from "@/components/panel"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { NoteMarkdown } from "@ericsanchezok/synergy-util/note-markdown"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
-import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
-import katex from "katex"
 import "katex/dist/katex.min.css"
 
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-}
-
-function tiptapToHtml(node: any): string {
-  if (!node) return ""
-  if (node.type === "text") {
-    let html = escapeHtml(node.text || "")
-    for (const mark of node.marks ?? []) {
-      switch (mark.type) {
-        case "bold":
-          html = `<strong>${html}</strong>`
-          break
-        case "italic":
-          html = `<em>${html}</em>`
-          break
-        case "code":
-          html = `<code>${html}</code>`
-          break
-        case "strike":
-          html = `<s>${html}</s>`
-          break
-        case "link":
-          html = `<a href="${escapeHtml(mark.attrs?.href ?? "")}">${html}</a>`
-          break
-      }
-    }
-    return html
-  }
-  const children = (node.content ?? []).map(tiptapToHtml).join("")
-  switch (node.type) {
-    case "doc":
-      return children
-    case "paragraph": {
-      const content = node.content ?? []
-      if (content.length === 1 && content[0]?.type === "inlineMath" && content[0]?.attrs?.display === "yes") {
-        return tiptapToHtml(content[0])
-      }
-      return `<p>${children || "<br>"}</p>`
-    }
-    case "heading":
-      return `<h${node.attrs?.level ?? 1}>${children}</h${node.attrs?.level ?? 1}>`
-    case "bulletList":
-      return `<ul>${children}</ul>`
-    case "orderedList":
-      return `<ol>${children}</ol>`
-    case "listItem":
-      return `<li>${children}</li>`
-    case "blockquote":
-      return `<blockquote>${children}</blockquote>`
-    case "codeBlock":
-      return `<pre><code>${children}</code></pre>`
-    case "image":
-      return `<img src="${escapeHtml(node.attrs?.src ?? "")}" alt="${escapeHtml(node.attrs?.alt ?? "")}" style="max-width:100%;border-radius:0.375rem" />`
-    case "horizontalRule":
-      return `<hr />`
-    case "inlineMath": {
-      const formula = node.attrs?.latex ?? ""
-      if (!formula) return ""
-      const displayMode = node.attrs?.display === "yes"
-      try {
-        const html = katex.renderToString(formula, { displayMode, throwOnError: false })
-        return displayMode ? `<div style="text-align:center;margin:0.5em 0">${html}</div>` : html
-      } catch {
-        return escapeHtml(formula)
-      }
-    }
-    case "hardBreak":
-      return `<br />`
-    case "taskList":
-      return `<ul data-type="taskList">${children}</ul>`
-    case "taskItem": {
-      const checked = node.attrs?.checked ? " checked" : ""
-      return `<li><input type="checkbox"${checked} disabled />${children}</li>`
-    }
-    case "table":
-      return `<table>${children}</table>`
-    case "tableRow":
-      return `<tr>${children}</tr>`
-    case "tableHeader":
-      return `<th>${children}</th>`
-    case "tableCell":
-      return `<td>${children}</td>`
-    case "video":
-      return `<div style="background:var(--surface-inset-base);border-radius:0.375rem;padding:1em;text-align:center;color:var(--text-weak);font-size:0.75rem">▶ Video</div>`
-    default:
-      return children
-  }
-}
-
-function attachNoteDragData(e: DragEvent, note: NoteInfo) {
+function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
   const title = note.title || "Untitled"
   const payload = JSON.stringify({
     id: note.id,
     title: note.title,
-    content: NoteMarkdown.toMarkdown(note.content),
+    content: note.searchText,
   })
 
   e.dataTransfer!.effectAllowed = "copy"
@@ -144,12 +51,9 @@ function attachNoteDragData(e: DragEvent, note: NoteInfo) {
   setTimeout(() => document.body.removeChild(dragImage), 0)
 }
 
-function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
-  const previewHtml = createMemo(() => tiptapToHtml(props.note.content))
-  const hasContent = createMemo(() => {
-    const html = previewHtml()
-    return html.length > 0 && html !== "<p><br></p>"
-  })
+function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () => void }) {
+  const previewText = createMemo(() => props.note.searchText ?? "")
+  const hasContent = createMemo(() => previewText().length > 0)
 
   return (
     <button
@@ -173,20 +77,7 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
           </div>
         }
       >
-        <div class="relative overflow-hidden w-full" style={{ "max-height": "220px", "min-height": "60px" }}>
-          <div
-            class="tiptap pointer-events-none select-none"
-            style={{ zoom: "0.34", padding: "0.75rem 0.875rem", "min-height": `${60 / 0.34}px` }}
-            innerHTML={previewHtml()}
-          />
-          <div
-            class="absolute bottom-0 inset-x-0 h-8 pointer-events-none"
-            style={{
-              background:
-                "linear-gradient(to top, color-mix(in srgb, var(--surface-raised-base) 92%, transparent), transparent)",
-            }}
-          />
-        </div>
+        <div class="px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-3">{previewText()}</div>
       </Show>
 
       <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
@@ -220,7 +111,7 @@ function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => v
   )
 }
 
-function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
+function MiniNoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () => void }) {
   const tags = createMemo(() => props.note.tags ?? [])
 
   return (
@@ -257,7 +148,7 @@ function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () 
   )
 }
 
-type DisplayGroup = NoteScopeGroup & {
+type DisplayGroup = NoteMetaScopeGroup & {
   name: string
   directory: string
   isCurrent: boolean
@@ -281,7 +172,7 @@ function ScopeSection(props: {
     if (props.group.isCurrent) return "bg-surface-inset-base/42"
   })
 
-  function getOriginName(note: NoteInfo): string | undefined {
+  function getOriginName(note: NoteMetaInfo): string | undefined {
     if (props.group.scopeType !== "global") return undefined
     const origin = (note as any).originScope as string | undefined
     if (!origin) return undefined
@@ -416,8 +307,8 @@ export function NotePanel() {
     () => ({ dir: directory(), ver: globalSync.noteVersion() }),
     async ({ dir }) => {
       if (!dir) return []
-      const result = await sdk.client.note.listAll({ directory: dir })
-      return (result.data ?? []) as NoteScopeGroup[]
+      const result = await sdk.client.note.listMeta({ directory: dir })
+      return (result.data ?? []) as NoteMetaScopeGroup[]
     },
   )
 
@@ -457,12 +348,8 @@ export function NotePanel() {
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
-            try {
-              const text = NoteMarkdown.toMarkdown(n.content).toLowerCase()
-              return text.includes(q)
-            } catch {
-              return false
-            }
+            const searchText = n.searchText ?? ""
+            return searchText.toLowerCase().includes(q)
           })
         }
         if (activeTags.size > 0) {
