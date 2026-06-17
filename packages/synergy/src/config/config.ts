@@ -495,11 +495,13 @@ export namespace Config {
     .meta({ ref: "HolosConfig" })
   export type Holos = z.infer<typeof Holos>
 
-
   export const SandboxConfig = z
     .object({
-      defaultMode: z.enum(["workspace", "none"]).optional().describe("Default sandbox mode"),
-      allowOutsideWorkspace: z.boolean().optional().describe("Allow operations outside the workspace root"),
+      enabled: z.boolean().optional().describe("Enable the sandbox runtime when available"),
+      fallbackPolicy: z
+        .enum(["warn", "allow", "deny"])
+        .optional()
+        .describe("How to proceed when the requested sandbox runtime is unavailable"),
     })
     .strict()
     .meta({ ref: "SandboxConfig" })

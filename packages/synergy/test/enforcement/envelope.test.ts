@@ -1,9 +1,7 @@
 import { test, expect, describe } from "bun:test"
 import { CapabilityRequest } from "../../src/enforcement/capability"
 import { ExecutionEnvelope } from "../../src/enforcement/envelope"
-import { SandboxRuntime } from "../../src/enforcement/runtime"
 import { WorkspacePolicy } from "../../src/workspace/policy"
-import path from "path"
 
 describe("CapabilityRequest", () => {
   // === Requirement 1: CapabilityRequest carries permission + workspace boundary info ===
@@ -131,51 +129,5 @@ describe("ExecutionEnvelope", () => {
     const envelope = new ExecutionEnvelope({ request: req, policy })
 
     expect(envelope.canAutoApprove()).toBe(true)
-  })
-})
-
-describe("SandboxRuntime", () => {
-  // === Requirement 3: SandboxRuntime provides isolated execution context ===
-
-  test("creates sandbox rooted at active workspace path", () => {
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/project",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/project"),
-    }
-
-    const runtime = new SandboxRuntime({ policy })
-
-    expect(runtime.root).toBe("/workspace/project")
-    expect(runtime.policy).toBe(policy)
-  })
-
-  test("resolves paths relative to sandbox root", () => {
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/project",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/project"),
-    }
-
-    const runtime = new SandboxRuntime({ policy })
-
-    expect(runtime.resolvePath("src/app.ts")).toBe(path.join("/workspace/project", "src/app.ts"))
-    expect(runtime.resolvePath("lib/util.ts")).toBe(path.join("/workspace/project", "lib/util.ts"))
-  })
-
-  test("contains check uses the active root boundary", () => {
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/project",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/project"),
-    }
-
-    const runtime = new SandboxRuntime({ policy })
-
-    expect(runtime.contains("/workspace/project/src/app.ts")).toBe(true)
-    expect(runtime.contains("/outside/file.txt")).toBe(false)
   })
 })

@@ -239,7 +239,6 @@ describe("Instance.contains workspace awareness", () => {
         })(),
     })
   })
-
 })
 /**
  * Minimal async-dispose helper for sequential async cleanup in tests.

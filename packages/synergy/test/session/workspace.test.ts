@@ -346,16 +346,16 @@ describe("sandbox config compatibility", () => {
 
     const withSandbox = Config.Info.safeParse({
       sandbox: {
-        defaultMode: "workspace",
-        allowOutsideWorkspace: false,
+        enabled: true,
+        fallbackPolicy: "warn",
       },
     })
     expect(withSandbox.success).toBe(true)
     if (withSandbox.success) {
       expect(withSandbox.data).toHaveProperty("sandbox")
       expect((withSandbox.data as Record<string, unknown>).sandbox).toEqual({
-        defaultMode: "workspace",
-        allowOutsideWorkspace: false,
+        enabled: true,
+        fallbackPolicy: "warn",
       })
     }
   })

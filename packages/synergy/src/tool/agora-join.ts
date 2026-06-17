@@ -197,7 +197,7 @@ export const AgoraJoinTool = Tool.define<typeof parameters, AgoraJoinMetadata>("
       await ctx.ask({
         permission: "external_directory",
         patterns: [directory],
-        metadata: {},
+        metadata: { directory, workspaceBoundary: true, outsideWorkspace: true, nonBypassable: true },
       })
     }
 

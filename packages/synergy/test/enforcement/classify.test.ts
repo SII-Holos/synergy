@@ -35,13 +35,7 @@ describe("PathClassifier workspace boundary — inside workspace", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
 
-    const cases = [
-      "src/**/*.ts",
-      "lib/**/*.js",
-      "test/fixture/**",
-      "packages/synergy/src/**/*.ts",
-      "a/b/c/d/e.txt",
-    ]
+    const cases = ["src/**/*.ts", "lib/**/*.js", "test/fixture/**", "packages/synergy/src/**/*.ts", "a/b/c/d/e.txt"]
 
     for (const pattern of cases) {
       const result = PathClassifier.classify(pattern, { workspace })
@@ -53,10 +47,7 @@ describe("PathClassifier workspace boundary — inside workspace", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
 
-    const result = PathClassifier.classify(
-      path.join(workspace, "src/index.ts"),
-      { workspace },
-    )
+    const result = PathClassifier.classify(path.join(workspace, "src/index.ts"), { workspace })
 
     expect(result.boundary).toBe("inside")
     expect(result.confidence).toBe("high")
@@ -118,12 +109,7 @@ describe("PathClassifier workspace boundary — potentially outside", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
 
-    const cases = [
-      "/etc/passwd",
-      "/usr/local/bin/node",
-      "/tmp/data.log",
-      "/var/log/system.log",
-    ]
+    const cases = ["/etc/passwd", "/usr/local/bin/node", "/tmp/data.log", "/var/log/system.log"]
 
     for (const absPath of cases) {
       const result = PathClassifier.classify(absPath, { workspace })
@@ -206,9 +192,7 @@ describe("PathClassifier — no filesystem I/O", () => {
     ]
 
     for (const pattern of patterns) {
-      expect(() =>
-        PathClassifier.classify(pattern, { workspace }),
-      ).not.toThrow()
+      expect(() => PathClassifier.classify(pattern, { workspace })).not.toThrow()
     }
   })
 
@@ -337,10 +321,7 @@ describe("PathClassifier — confidence levels", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
 
-    const result = PathClassifier.classify(
-      path.join(workspace, "src/index.ts"),
-      { workspace },
-    )
+    const result = PathClassifier.classify(path.join(workspace, "src/index.ts"), { workspace })
 
     expect(result.confidence).toBe("high")
   })
@@ -378,12 +359,7 @@ describe("PathClassifier — boundary check integration points", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
 
-    const patterns = [
-      "src/**/*.ts",
-      "../outside/**/*",
-      "/etc/hosts",
-      "lib/helper.js",
-    ]
+    const patterns = ["src/**/*.ts", "../outside/**/*", "/etc/hosts", "lib/helper.js"]
 
     const results = PathClassifier.classifyBatch(patterns, { workspace })
 

@@ -1,12 +1,6 @@
 import os from "os"
 import path from "path"
-import type {
-  FallbackPolicy,
-  FallbackResult,
-  GenerateWrapperInput,
-  SandboxConfig,
-  SandboxWrapper,
-} from "./types"
+import type { FallbackPolicy, FallbackResult, GenerateWrapperInput, SandboxConfig, SandboxWrapper } from "./types"
 import { FallbackPolicySchema } from "./types"
 
 export namespace SandboxRuntime {
@@ -44,19 +38,12 @@ export namespace SandboxRuntime {
       throw new Error(`SandboxRuntime.generateWrapper: unsupported platform "${platform}"`)
     }
 
-    const roots = writableRoots && writableRoots.length > 0
-      ? writableRoots
-      : [path.join(workspace, ".synergy")]
+    const roots = writableRoots && writableRoots.length > 0 ? writableRoots : [path.join(workspace, ".synergy")]
 
-    const denyPaths = protectedPaths && protectedPaths.length > 0
-      ? protectedPaths
-      : ["/etc", "/usr", os.homedir()]
+    const denyPaths = protectedPaths && protectedPaths.length > 0 ? protectedPaths : ["/etc", "/usr", os.homedir()]
 
     // Build macOS sandbox-exec profile rules
-    const profileRules: string[] = [
-      "(version 1)",
-      "(allow default)",
-    ]
+    const profileRules: string[] = ["(version 1)", "(allow default)"]
 
     // Deny writes to protected system paths
     for (const p of denyPaths) {

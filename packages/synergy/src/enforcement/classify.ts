@@ -60,7 +60,8 @@ export namespace PathClassifier {
         if (base.length === 0 && pattern.startsWith(path.sep)) base.push("")
         continue
       }
-      if (part.includes("*") || part.includes("?") || part.includes("[") || part.includes("{") || part.includes("}")) break
+      if (part.includes("*") || part.includes("?") || part.includes("[") || part.includes("{") || part.includes("}"))
+        break
       base.push(part)
     }
     if (pattern.startsWith(path.sep)) return path.sep + base.filter(Boolean).join(path.sep)

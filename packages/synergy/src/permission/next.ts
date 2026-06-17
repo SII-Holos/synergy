@@ -2,6 +2,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
+import { isNonBypassableMetadata } from "@/enforcement/capability"
 import { Instance } from "@/scope/instance"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
@@ -114,11 +115,7 @@ export namespace PermissionNext {
   }
 
   function isNonBypassable(request: { metadata?: Record<string, any> }): boolean {
-    return !!(
-      request.metadata?.nonBypassable ||
-      request.metadata?.workspaceBoundary ||
-      request.metadata?.outsideWorkspace
-    )
+    return isNonBypassableMetadata(request.metadata)
   }
 
   const state = Instance.state(async () => {

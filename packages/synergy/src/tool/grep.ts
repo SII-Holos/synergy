@@ -30,7 +30,11 @@ export const GrepTool = Tool.define("grep", {
       },
     })
 
-    const searchPath = params.path ? (path.isAbsolute(params.path) ? params.path : path.resolve(Instance.directory, params.path)) : Instance.directory
+    const searchPath = params.path
+      ? path.isAbsolute(params.path)
+        ? params.path
+        : path.resolve(Instance.directory, params.path)
+      : Instance.directory
     if (!Instance.contains(searchPath)) {
       await ctx.ask({
         permission: "external_directory",

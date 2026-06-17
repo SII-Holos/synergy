@@ -59,9 +59,7 @@ describe("workspace boundary — attach/read tools", () => {
 
         // Reading a file in the original checkout should be rejected
         // by the workspace boundary gate — not just scope.contains()
-        await expect(
-          read.execute({ filePath: originalFile }, ctx),
-        ).rejects.toThrow()
+        await expect(read.execute({ filePath: originalFile }, ctx)).rejects.toThrow()
       },
     })
   })
@@ -88,9 +86,12 @@ describe("workspace boundary — attach/read tools", () => {
         const read = await ReadTool.init()
 
         // Reading a file inside the active workspace should succeed
-        const result = await read.execute({
-          filePath: path.join(tmp.path, "in-scope.txt"),
-        }, ctx)
+        const result = await read.execute(
+          {
+            filePath: path.join(tmp.path, "in-scope.txt"),
+          },
+          ctx,
+        )
 
         expect(result.output).toContain("workspace content")
       },
@@ -121,9 +122,12 @@ describe("workspace boundary — attach/read tools", () => {
         // ../ traversal from the workspace should be classified as
         // crossing the boundary into original-checkout territory
         await expect(
-          read.execute({
-            filePath: "../original-checkout/secret.txt",
-          }, ctx),
+          read.execute(
+            {
+              filePath: "../original-checkout/secret.txt",
+            },
+            ctx,
+          ),
         ).rejects.toThrow()
       },
     })
@@ -149,9 +153,12 @@ describe("workspace boundary — attach/read tools", () => {
 
         // Absolute path to the original checkout should be blocked
         await expect(
-          read.execute({
-            filePath: path.join(originalCheckout, "config.json"),
-          }, ctx),
+          read.execute(
+            {
+              filePath: path.join(originalCheckout, "config.json"),
+            },
+            ctx,
+          ),
         ).rejects.toThrow()
       },
     })
@@ -173,9 +180,12 @@ describe("workspace boundary — attach/read tools", () => {
       fn: async () => {
         const read = await ReadTool.init()
 
-        const result = await read.execute({
-          filePath: path.join(tmp.path, "in-scope.txt"),
-        }, ctx)
+        const result = await read.execute(
+          {
+            filePath: path.join(tmp.path, "in-scope.txt"),
+          },
+          ctx,
+        )
 
         expect(result.output).toContain("ok")
       },
@@ -213,9 +223,12 @@ describe("workspace boundary — anchored tools (view_file, scan_files, parse_co
         const read = await ReadTool.init()
 
         await expect(
-          read.execute({
-            filePath: path.join(originalCheckout, "src/index.ts"),
-          }, ctx),
+          read.execute(
+            {
+              filePath: path.join(originalCheckout, "src/index.ts"),
+            },
+            ctx,
+          ),
         ).rejects.toThrow()
       },
     })
@@ -239,9 +252,12 @@ describe("workspace boundary — workspace type extensibility", () => {
 
         // A file inside the workspace path should still be accessible
         await Bun.write(path.join(tmp.path, "data.txt"), "container data")
-        const result = await read.execute({
-          filePath: path.join(tmp.path, "data.txt"),
-        }, ctx)
+        const result = await read.execute(
+          {
+            filePath: path.join(tmp.path, "data.txt"),
+          },
+          ctx,
+        )
 
         expect(result.output).toContain("container data")
       },
@@ -266,9 +282,12 @@ describe("workspace boundary — workspace type extensibility", () => {
         // This is the abstracted form of the worktree boundary — any workspace
         // type with a rootPath (original location) must protect it.
         await expect(
-          read.execute({
-            filePath: "/mnt/container-root/secrets.env",
-          }, ctx),
+          read.execute(
+            {
+              filePath: "/mnt/container-root/secrets.env",
+            },
+            ctx,
+          ),
         ).rejects.toThrow()
       },
     })

@@ -22,18 +22,12 @@ export class WorkspacePolicy {
     return new WorkspacePolicy(data)
   }
 
-  static async fromSession(
-    session: {
-      workspace?: import("../session/types").Workspace
-      scope?: { directory?: string; id?: string } | Scope
-    },
-  ): Promise<WorkspacePolicy> {
-    const ws: import("../session/types").Workspace | undefined =
-      (session as Record<string, unknown>).workspace as typeof ws
-    const scope = (session as Record<string, unknown>).scope as
-      | { directory?: string; id?: string }
-      | undefined
-
+  static fromSession(session: {
+    workspace?: import("../session/types").Workspace
+    scope?: { directory?: string; id?: string } | Scope
+  }): WorkspacePolicy {
+    const ws = session.workspace
+    const scope = session.scope
     if (ws) {
       return new WorkspacePolicy({
         activeRoot: ws.path,

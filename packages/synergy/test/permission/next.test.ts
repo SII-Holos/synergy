@@ -849,9 +849,7 @@ test("evaluate - wildcard permission ordering preserved with new permission type
 })
 
 test("evaluate - merge preserves rule ordering needed for workspace boundary rules", () => {
-  const base: PermissionNext.Ruleset = [
-    { permission: "bash", pattern: "*", action: "allow" },
-  ]
+  const base: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
   const overlay: PermissionNext.Ruleset = [
     { permission: "bash", pattern: "/outside/*", action: "deny" },
     { permission: "bash", pattern: "/outside/safe/*", action: "allow" },
