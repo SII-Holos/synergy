@@ -1,4 +1,4 @@
-import { Show, createMemo } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,7 +8,7 @@ import { ModelSelectorPopover } from "@/components/dialog"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
-import { useLayout } from "@/context/layout"
+import { useWorkspace } from "@/context/workspace"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isGlobalScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -20,7 +20,7 @@ export function SessionTopBar() {
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
-  const layout = useLayout()
+  const workspace = useWorkspace()
 
   const isGlobal = () => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false)
 
@@ -93,15 +93,33 @@ export function SessionTopBar() {
           </Tooltip>
         </Show>
         <Show when={!!params.id}>
-          <Tooltip value="Toggle workspace" placement="bottom">
-            <button
-              type="button"
-              class="stb-icon-btn"
-              onClick={() => layout.workspace(`${params.dir}/${params.id!}`).toggle()}
-            >
-              <Icon name="panel-right" size="normal" />
-            </button>
-          </Tooltip>
+          <For each={workspace.tools()}>
+            {(tool) => {
+              const isActive = () => workspace.opened() && workspace.active() === tool.id
+              return (
+                <Tooltip value={tool.label} placement="bottom">
+                  <button
+                    type="button"
+                    class="stb-icon-btn"
+                    classList={{ "stb-icon-btn--active": isActive() }}
+                    onClick={() => {
+                      if (!workspace.opened()) {
+                        workspace.setActive(tool.id)
+                        workspace.openPanel()
+                      } else if (workspace.active() === tool.id) {
+                        workspace.setActive(null)
+                        workspace.closePanel()
+                      } else {
+                        workspace.setActive(tool.id)
+                      }
+                    }}
+                  >
+                    <Icon name={tool.icon} size="normal" />
+                  </button>
+                </Tooltip>
+              )
+            }}
+          </For>
         </Show>
       </div>
     </div>
