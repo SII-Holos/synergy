@@ -130,6 +130,16 @@ bun test --watch
 
 Regenerate the SDK after modifying server routes or route schemas.
 
+### Frontend API calls
+
+Frontend code should use the generated SDK for Synergy server APIs instead of hand-written `fetch()` calls.
+
+- Use `createSynergyClient()` / existing SDK contexts for internal Synergy routes.
+- If a server route is needed by the frontend but is missing from the SDK, add OpenAPI metadata to the route, run `./script/generate.ts`, and call the generated SDK method.
+- Do not duplicate route URLs, query parsing, response shapes, or error handling in app code when an SDK method can represent the same contract.
+- Keep raw browser APIs only for cases the SDK should not abstract: WebSocket/EventSource streams, external URLs, browser downloads/uploads where no SDK route exists, local file/blob handling, and platform-provided `fetch` injection into the SDK client.
+- When replacing raw `fetch()` with SDK calls, preserve auth behavior, directory/scope parameters, error semantics, and response URL formats such as asset URLs.
+
 ## Code Style
 
 ### General principles
