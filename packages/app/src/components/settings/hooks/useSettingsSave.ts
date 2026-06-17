@@ -242,14 +242,13 @@ export function useSettingsSave(ctx: SaveContext) {
     ctx.setSaving(true)
     try {
       const shouldActivate = options?.activate === true && !ctx.selectedSetIsActive()
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(setName)}/raw`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: ctx.rawText(), reload: true }),
+      const response = await globalSDK.client.config.set.raw.save({
+        name: setName,
+        configSetRawSaveInput: { raw: ctx.rawText(), reload: true },
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.message ?? data?.data?.message ?? "Failed to save")
+      const data = response.data
+      if (!data) {
+        throw new Error("Save returned no data")
       }
 
       if (shouldActivate) {

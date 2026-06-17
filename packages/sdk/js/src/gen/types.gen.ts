@@ -278,6 +278,19 @@ export type Scope = {
   sandboxes: Array<string>
 }
 
+export type ScopeNavEntry = {
+  scopeID: string
+  scopeType: "global" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: {
+    url?: string
+    color?: string
+  }
+}
+
 export type NotFoundError = {
   name: "NotFoundError"
   data: {
@@ -1367,6 +1380,20 @@ export type ChannelFeishuConfig = {
 }
 
 /**
+ * Sandbox configuration for workspace boundary enforcement
+ */
+export type SandboxConfig = {
+  /**
+   * Enable the sandbox runtime when available
+   */
+  enabled?: boolean
+  /**
+   * How to proceed when the requested sandbox runtime is unavailable
+   */
+  fallbackPolicy?: "warn" | "allow" | "deny"
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -1657,6 +1684,7 @@ export type Config = {
   channel?: {
     [key: string]: ChannelFeishuConfig
   }
+  sandbox?: SandboxConfig
   holos?: HolosConfig
   email?: EmailConfig
   formatter?:
@@ -2022,6 +2050,29 @@ export type VcsInfo = {
   branch: string
 }
 
+export type SessionNavEntry = {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+}
+
+export type NavCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
+}
+
 export type SessionScope = {
   id: string
   type?: string
@@ -2202,6 +2253,10 @@ export type DagNode = {
    * Short node-local memo for important result, blocker, or handoff context
    */
   memo?: string
+  /**
+   * Execution result (trajectory summary or error) populated automatically on completion — do not set manually
+   */
+  result?: string
 }
 
 export type UserMessage = {
@@ -4580,6 +4635,24 @@ export type ScopeCurrentResponses = {
 
 export type ScopeCurrentResponse = ScopeCurrentResponses[keyof ScopeCurrentResponses]
 
+export type ScopeIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/scope/index"
+}
+
+export type ScopeIndexResponses = {
+  /**
+   * Array of scope navigation entries
+   */
+  200: Array<ScopeNavEntry>
+}
+
+export type ScopeIndexResponse = ScopeIndexResponses[keyof ScopeIndexResponses]
+
 export type ScopeRemoveData = {
   body?: never
   path: {
@@ -5376,6 +5449,30 @@ export type VcsGetResponses = {
 }
 
 export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
+
+export type SessionIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    category?: "project" | "home" | "channel" | "background"
+    parentOnly?: "true" | "false"
+    includeArchived?: "true" | "false"
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/session/index"
+}
+
+export type SessionIndexResponses = {
+  /**
+   * Paginated session navigation entries
+   */
+  200: SessionNavResponse
+}
+
+export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
 
 export type SessionListData = {
   body?: never

@@ -238,12 +238,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     async function loadScopeIndex() {
       await globalSdk.client.scope.list()
       try {
-        const navRes = await fetch(`${globalSdk.url}/scope/index`)
-        if (navRes.ok) {
-          const data = await navRes.json()
-          setScopeIndex((data ?? []) as ScopeNavEntry[])
+        const res = await globalSdk.client.scope.index()
+        if (res.data) {
+          setScopeIndex(res.data as ScopeNavEntry[])
         }
-      } catch {
+      } catch (err) {
+        console.warn("Failed to load scope index", err)
         // fall through; scope ordering remains localStorage-based
       }
     }
@@ -252,14 +252,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(directory)) return
       navPending.add(directory)
       try {
-        const params = new URLSearchParams({ directory, parentOnly: "true", limit: String(NAV_FIRST_PAGE_LIMIT) })
-        if (cursor) {
-          params.set("cursorLastActivityAt", String(cursor.lastActivityAt))
-          params.set("cursorId", cursor.id)
-        }
-        const res = await fetch(`${globalSdk.url}/session/index?${params}`)
-        if (!res.ok) return
-        const data: { items: NavEntry[]; nextCursor: NavCursor | null; total: number } = await res.json()
+        const res = await globalSdk.client.session.index({
+          directory,
+          parentOnly: "false",
+          limit: NAV_FIRST_PAGE_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
         if (cursor) {
           const existing = navEntries[directory]
           const merged = [
@@ -268,74 +268,36 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           ]
           setNavEntries(directory, { items: merged, nextCursor: data.nextCursor, total: data.total })
         } else {
-          setNavEntries(directory, { items: data.items, nextCursor: data.nextCursor, total: data.total })
+          setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
         }
       } finally {
         navPending.delete(directory)
       }
     }
 
-    function categoryFromSession(session: Session): NavEntry["category"] {
-      const value = session as Session & { category?: NavEntry["category"]; cortex?: unknown }
-      if (value.category) return value.category
-      if (session.endpoint?.kind === "channel" || session.endpoint?.kind === "holos") return "channel"
-      if (session.parentID || value.cortex || session.agenda) return "background"
-      return session.scope.id === "global" ? "home" : "project"
-    }
+    // --- Nav event refresh ---
 
-    function navEntryFromSession(session: Session): NavEntry {
-      return {
-        id: session.id,
-        scopeID: session.scope.id,
-        scopeType: session.scope.id === "global" ? "global" : "project",
-        title: session.title,
-        category: categoryFromSession(session),
-        lastActivityAt: session.time.updated ?? session.time.created,
-        pinned: session.pinned ?? 0,
-        archived: !!session.time.archived,
-        parentID: session.parentID,
-      }
-    }
+    const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    const NAV_REFRESH_DEBOUNCE_MS = 300
 
-    function syncScopeNavFromSessions(scope: LocalScope, sessions: Session[]) {
-      const existing = navEntries[scope.worktree]
-      if (!existing && sessions.length === 0) return
-      const byID = new Map((existing?.items ?? []).map((entry) => [entry.id, entry]))
-      for (const session of sessions) {
-        if (session.time.archived) {
-          byID.delete(session.id)
-          continue
-        }
-        byID.set(session.id, navEntryFromSession(session))
-      }
-      const items = [...byID.values()].toSorted((a, b) => {
-        if (a.pinned && !b.pinned) return -1
-        if (!a.pinned && b.pinned) return 1
-        if (a.pinned && b.pinned) return b.pinned - a.pinned
-        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+    onMount(() => {
+      const unsub = globalSdk.event.listen((e) => {
+        if ((e.details as { type?: string })?.type !== "session.updated") return
+        const info = (e.details as { properties?: { info?: { scope?: { directory?: string } } } })?.properties?.info
+        const dir = info?.scope?.directory
+        if (!dir || !navEntries[dir]) return
+        const pending = navRefreshTimers.get(dir)
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          dir,
+          setTimeout(() => {
+            navRefreshTimers.delete(dir)
+            loadScopeNav(dir)
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
       })
-      const current = existing?.items ?? []
-      const unchanged =
-        current.length === items.length &&
-        current.every((entry, index) => {
-          const next = items[index]
-          return (
-            next &&
-            entry.id === next.id &&
-            entry.title === next.title &&
-            entry.lastActivityAt === next.lastActivityAt &&
-            entry.pinned === next.pinned &&
-            entry.archived === next.archived &&
-            entry.parentID === next.parentID
-          )
-        })
-      if (unchanged) return
-      setNavEntries(scope.worktree, {
-        items,
-        nextCursor: existing?.nextCursor ?? null,
-        total: Math.max(existing?.total ?? 0, items.length),
-      })
-    }
+      onCleanup(unsub)
+    })
 
     // --- Scope enrichment / color ---
 
@@ -487,59 +449,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     }
 
-    createEffect(() => {
-      for (const scope of list()) {
-        const sessions = projectSessions(scope)
-        if (sessions.length > 0 || navEntries[scope.worktree]) {
-          syncScopeNavFromSessions(scope, sessions)
-        }
-      }
-    })
-
-    function projectSessionTotal(scope: LocalScope | undefined) {
-      if (!scope) return 0
-      const existing = navEntries[scope.worktree]
-      if (existing) return existing.total
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      return dirs.reduce((sum, dir) => {
-        const [store] = globalSync.child(dir)
-        return sum + (store.sessionTotal ?? 0)
-      }, 0)
-    }
+    // Nav entries are now exclusively populated by loadScopeNav via /session/index.
+    // Session events (created/updated/archived/deleted) trigger debounced per-directory
+    // nav refreshes via the onMount event listener defined above.
 
     function childStoreForScope(scope: LocalScope | undefined) {
       if (!scope) return undefined
       return globalSync.child(scope.worktree)[0]
-    }
-
-    type ChildInfo = {
-      count: number
-      sessions: Session[]
-      running: number
-    }
-
-    function childInfoForScope(scope: LocalScope | undefined): Record<string, ChildInfo> {
-      if (!scope) return {}
-      const store = childStoreForScope(scope)
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs.map((dir) => globalSync.child(dir)[0])
-      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-      const result: Record<string, ChildInfo> = {}
-      for (const session of all) {
-        if (!session.parentID) continue
-        if (!result[session.parentID]) result[session.parentID] = { count: 0, sessions: [], running: 0 }
-        const info = result[session.parentID]
-        info.count++
-        info.sessions.push(session)
-        if (store) {
-          const status = store.session_status[session.id]
-          if (status?.type === "busy" || status?.type === "retry") info.running++
-        }
-      }
-      for (const info of Object.values(result)) {
-        info.sessions.sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
-      }
-      return result
     }
 
     type PrefetchQueue = {
@@ -702,12 +618,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       ready,
       isDesktop,
       nav: {
-        sortSessions,
         projectSessions,
         projectNavEntries,
-        projectSessionTotal,
         childStoreForScope,
-        childInfoForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,

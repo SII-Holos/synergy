@@ -26,6 +26,7 @@ import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
+import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
 import katex from "katex"
 import "katex/dist/katex.min.css"
@@ -886,11 +887,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   async function uploadFile(file: File): Promise<string> {
-    const form = new FormData()
-    form.append("file", file)
-    const res = await fetch(`${sdk.url}/asset`, { method: "POST", body: form })
-    const data = (await res.json()) as { id: string }
-    return `${sdk.url}/asset/${data.id}`
+    const res = await sdk.client.asset.upload({ file })
+    return assetHttpUrl(sdk.url, res.data as { id?: string; url?: string } | undefined)
   }
 
   createEffect(() => {
@@ -930,7 +928,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           MathExtension,
           Video,
           Mermaid,
-          createFileUpload(sdk.url),
+          createFileUpload(sdk.client, sdk.url),
           createSlashCommands({ onUploadFile: uploadFile }),
           createBubbleMenu(bubbleRef),
         ],

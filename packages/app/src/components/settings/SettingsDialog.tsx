@@ -102,19 +102,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
     () => selectedSet()?.name,
     async (name) => {
       if (!name) throw new Error("No Config Set selected")
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(name)}/raw`)
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.message ?? data?.error ?? `Failed to load raw config for ${name}`)
-      }
-      return data as {
-        name: string
-        path: string
-        raw: string
-        active: boolean
-        isDefault: boolean
-        config?: Config
-      }
+      const response = await globalSDK.client.config.set.raw.get({ name })
+      return response.data!
     },
   )
 
@@ -287,12 +276,15 @@ export function SettingsDialog(props: DialogSettingsProps) {
     if (!setName) return false
     setValidatingRaw(true)
     try {
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(setName)}/raw/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: rawText() }),
+      const response = await globalSDK.client.config.set.raw.validate({
+        name: setName,
+        configSetRawValidateInput: { raw: rawText() },
       })
-      const data = await response.json()
+      const data = response.data
+      if (!data) {
+        setRawValidation({ valid: false, errors: ["Validation returned no data"], warnings: [] })
+        return false
+      }
       setRawValidation({
         valid: data.valid,
         errors: data.errors ?? [],
