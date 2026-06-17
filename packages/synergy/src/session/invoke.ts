@@ -146,13 +146,12 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession && !isGenesis) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.get()
-      return withTimeout(
-        buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
-        RECALL_TIMEOUT_MS,
-      ).catch((err: any) => {
-        log.warn("recall failed or timed out", { sessionID, error: err })
-        return undefined
-      })
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
+        (err: any) => {
+          log.warn("recall failed or timed out", { sessionID, error: err })
+          return undefined
+        },
+      )
     }
     // Keep the recalled memory/experience in the system prompt for every step
     // so the prefix stays stable (maximizing cache hits) and the agent retains
@@ -163,8 +162,7 @@ export namespace SessionInvoke {
     }
     if (step === 1 && !isTopSession) {
       const cfg = await Config.get()
-      const evo = Config.resolveEvolution(cfg.identity?.evolution)
-      if (evo.active) {
+      if (cfg.engram?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }

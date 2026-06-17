@@ -44,7 +44,9 @@ export namespace RuntimeReload {
     "autoupdate",
     "enterprise",
     "tools",
-    "identity",
+    "embedding",
+    "rerank",
+    "engram",
     "external_agent",
     "email",
   ])
@@ -250,17 +252,17 @@ export namespace RuntimeReload {
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
           await executeTarget(cascadedTarget, ctx)
         }
-        // P11: Handle identity → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("identity") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.identity?.autonomy !== false
-          const newAutonomy = result.config.identity?.autonomy !== false
+        // P11: Handle engram → autonomy/anima sync (migrated from Config.reload)
+        if (result.changedFields.includes("engram") && result.oldConfig) {
+          const oldAutonomy = result.oldConfig.engram?.autonomy !== false
+          const newAutonomy = result.config.engram?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
               const { AgendaBootstrap } = await import("../agenda/bootstrap")
               await AgendaBootstrap.syncAnima(newAutonomy)
             } catch (err) {
               ctx.warnings.push(
-                `Failed to sync anima after identity change: ${err instanceof Error ? err.message : String(err)}`,
+                `Failed to sync anima after engram change: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
           }
@@ -385,7 +387,7 @@ export namespace RuntimeReload {
       // Category configs can specify model overrides that reference different providers
       cascaded.push("provider", "agent")
     }
-    if (changed.has("agent") || changed.has("permission") || changed.has("identity") || changed.has("external_agent")) {
+    if (changed.has("agent") || changed.has("permission") || changed.has("engram") || changed.has("external_agent")) {
       cascaded.push("agent")
     }
     if (changed.has("default_agent") || changed.has("instructions")) {

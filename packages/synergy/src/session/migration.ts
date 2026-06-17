@@ -6,6 +6,7 @@ import { SessionEndpoint } from "./endpoint"
 import { Info } from "./types"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionNav } from "./nav"
 
 import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
@@ -314,6 +315,25 @@ export const migrations: Migration[] = [
         done++
         progress(done, scopeIDs.length)
       }
+    },
+  },
+  {
+    id: "20260617-session-nav-v2-category",
+    description: "Build session navigation v2 indexes and backfill session categories",
+    async up(progress) {
+      const scopeIDs: string[] = await Storage.scan(["sessions"]).catch(() => [])
+      const allScopeIDs = scopeIDs.includes("global") ? scopeIDs : ["global", ...scopeIDs]
+      if (allScopeIDs.length === 0) return
+
+      let done = 0
+      for (const scopeID of allScopeIDs) {
+        await SessionNav.buildNavIndex(scopeID).catch((error) => {
+          log.warn("failed to build session nav v2 index during migration", { scopeID, error: String(error) })
+        })
+        done++
+        progress(done, allScopeIDs.length)
+      }
+      log.info("session nav v2 index and category backfill complete", { scopes: allScopeIDs.length })
     },
   },
 ]

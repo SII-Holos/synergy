@@ -208,71 +208,36 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     patch.channel = newChannel
   }
 
-  const origIdent = cfg.identity
+  const origEngram = cfg.engram
+  const origMemory = origEngram?.memory
+  const origExperience = origEngram?.experience
   const origEvoStr = (() => {
-    const evolution = origIdent?.evolution
-    if (evolution === undefined) return "true"
-    if (typeof evolution === "boolean") return evolution ? "true" : "false"
-    const passive = evolution.passive
-    const active = evolution.active
-    if (passive === false && active === false) return "false"
+    if (origMemory?.enabled === false && origExperience?.encode === false && origExperience?.retrieve === false) {
+      return "false"
+    }
     return "true"
   })()
-  const origAutonomyStr = origIdent?.autonomy !== undefined ? (origIdent.autonomy ? "true" : "false") : "true"
+  const origAutonomyStr = origEngram?.autonomy !== undefined ? (origEngram.autonomy ? "true" : "false") : "true"
 
   const origMemorySimThreshold = (() => {
-    const retrieve =
-      typeof origIdent?.evolution === "object" &&
-      origIdent.evolution?.active &&
-      typeof origIdent.evolution.active === "object"
-        ? origIdent.evolution.active.retrieve
-        : undefined
-    return typeof retrieve === "object" && retrieve?.simThreshold !== undefined
-      ? String(retrieve.simThreshold)
-      : String(0.7)
+    const retrieve = typeof origMemory?.retrieval === "object" ? origMemory.retrieval : undefined
+    return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : String(0.7)
   })()
   const origMemoryTopK = (() => {
-    const retrieve =
-      typeof origIdent?.evolution === "object" &&
-      origIdent.evolution?.active &&
-      typeof origIdent.evolution.active === "object"
-        ? origIdent.evolution.active.retrieve
-        : undefined
-    return typeof retrieve === "object" && retrieve?.topK !== undefined ? String(retrieve.topK) : String(3)
+    const retrieve = typeof origMemory?.retrieval === "object" ? origMemory.retrieval : undefined
+    return retrieve?.topK !== undefined ? String(retrieve.topK) : String(3)
   })()
   const origExperienceSimThreshold = (() => {
-    const passive =
-      typeof origIdent?.evolution === "object" &&
-      origIdent.evolution?.passive &&
-      typeof origIdent.evolution.passive === "object"
-        ? origIdent.evolution.passive
-        : undefined
-    const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
-    return retrieve && typeof retrieve === "object" && retrieve.simThreshold !== undefined
-      ? String(retrieve.simThreshold)
-      : String(0.7)
+    const retrieve = typeof origExperience?.retrieve === "object" ? origExperience.retrieve : undefined
+    return retrieve?.simThreshold !== undefined ? String(retrieve.simThreshold) : String(0.7)
   })()
   const origExperienceTopK = (() => {
-    const passive =
-      typeof origIdent?.evolution === "object" &&
-      origIdent.evolution?.passive &&
-      typeof origIdent.evolution.passive === "object"
-        ? origIdent.evolution.passive
-        : undefined
-    const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
-    return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined ? String(retrieve.topK) : String(8)
+    const retrieve = typeof origExperience?.retrieve === "object" ? origExperience.retrieve : undefined
+    return retrieve?.topK !== undefined ? String(retrieve.topK) : String(8)
   })()
   const origExperienceEpsilon = (() => {
-    const passive =
-      typeof origIdent?.evolution === "object" &&
-      origIdent.evolution?.passive &&
-      typeof origIdent.evolution.passive === "object"
-        ? origIdent.evolution.passive
-        : undefined
-    const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
-    return retrieve && typeof retrieve === "object" && retrieve.epsilon !== undefined
-      ? String(retrieve.epsilon)
-      : String(0.1)
+    const retrieve = typeof origExperience?.retrieve === "object" ? origExperience.retrieve : undefined
+    return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : String(0.1)
   })()
 
   const identityChanged =
@@ -285,9 +250,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     identity.experienceEpsilon !== origExperienceEpsilon
 
   if (identityChanged) {
-    const newIdent: Record<string, unknown> = {}
-    if (origIdent?.embedding) newIdent.embedding = origIdent.embedding
-    if (origIdent?.rerank) newIdent.rerank = origIdent.rerank
+    const newEngram = structuredClone(origEngram ?? {}) as Record<string, unknown>
 
     const evoVal = identity.evolution !== origEvoStr ? identity.evolution : origEvoStr
     if (evoVal === "true" || evoVal === "false") {
@@ -327,23 +290,32 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
         if (!isNaN(n)) experienceRetrieve.epsilon = n
       }
 
-      if (Object.keys(memoryRetrieve).length > 0 || Object.keys(experienceRetrieve).length > 0) {
-        const evoObj: Record<string, unknown> = {}
-        if (Object.keys(memoryRetrieve).length > 0) evoObj.active = { retrieve: memoryRetrieve }
-        if (Object.keys(experienceRetrieve).length > 0) evoObj.passive = { retrieve: experienceRetrieve }
-        newIdent.evolution = evoObj
+      if (Object.keys(memoryRetrieve).length > 0) {
+        newEngram.memory = {
+          ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}),
+          retrieval: memoryRetrieve,
+        }
       } else {
-        newIdent.evolution = evoBool
+        newEngram.memory = { ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}), enabled: evoBool }
+      }
+      if (Object.keys(experienceRetrieve).length > 0) {
+        newEngram.experience = {
+          ...((newEngram.experience as Record<string, unknown> | undefined) ?? {}),
+          retrieve: experienceRetrieve,
+        }
+      } else {
+        newEngram.experience = { encode: evoBool, retrieve: evoBool }
       }
     } else {
-      newIdent.evolution = undefined
+      newEngram.memory = { ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}), enabled: false }
+      newEngram.experience = { encode: false, retrieve: false }
     }
 
     const autoVal = identity.autonomy !== origAutonomyStr ? identity.autonomy : origAutonomyStr
-    if (autoVal === "true") newIdent.autonomy = true
-    else if (autoVal === "false") newIdent.autonomy = false
+    if (autoVal === "true") newEngram.autonomy = true
+    else if (autoVal === "false") newEngram.autonomy = false
 
-    patch.identity = Object.keys(newIdent).length > 0 ? newIdent : undefined
+    patch.engram = Object.keys(newEngram).length > 0 ? newEngram : undefined
   }
 
   return patch

@@ -10751,6 +10751,238 @@
         ]
       }
     },
+    "/mcp/{name}/restart": {
+      "post": {
+        "operationId": "mcp.restart",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Restart MCP server",
+        "description": "Disconnect and reconnect an MCP server, resetting retry count.",
+        "responses": {
+          "200": {
+            "description": "MCP server restart initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.restart({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/refresh": {
+      "post": {
+        "operationId": "mcp.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Refresh MCP server discovery",
+        "description": "Re-list tools, prompts, and resources for a connected MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server discovery refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/inspect": {
+      "get": {
+        "operationId": "mcp.inspect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Inspect MCP server",
+        "description": "Get status and lightweight diagnostics (tool names, resources, prompts) for an MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server inspection result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "$ref": "#/components/schemas/MCPStatus"
+                    },
+                    "toolNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "resourceNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "promptNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["status", "toolNames", "resourceNames", "promptNames"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.inspect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/mcp/{name}/test": {
+      "get": {
+        "operationId": "mcp.test",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "summary": "Test MCP server",
+        "description": "Validate presence and return status snapshot for an MCP server.",
+        "responses": {
+          "200": {
+            "description": "MCP server test result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.mcp.test({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/channel": {
       "get": {
         "operationId": "channel.status",
@@ -12893,6 +13125,121 @@
         },
         "additionalProperties": false
       },
+      "EmbeddingConfig": {
+        "description": "Embedding model configuration. When absent, a local model is used automatically.",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the embedding API",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the embedding service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Embedding model name",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RerankConfig": {
+        "description": "Rerank model for memory retrieval refinement. Disabled when not configured.",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the rerank API",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the rerank service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Rerank model name",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MemoryConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable agent-initiated memory curation via chronicler (default: true)",
+            "type": "boolean"
+          },
+          "retrieval": {
+            "description": "Semantic memory retrieval settings",
+            "type": "object",
+            "properties": {
+              "simThreshold": {
+                "description": "Minimum similarity for auto-injection (default: 0.7)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "topK": {
+                "description": "Max entries per category to retrieve (default: 3)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "categories": {
+                "description": "Per-category retrieval overrides",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "self",
+                    "relationship",
+                    "interaction",
+                    "workflow",
+                    "coding",
+                    "writing",
+                    "asset",
+                    "insight",
+                    "knowledge",
+                    "personal",
+                    "general"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "simThreshold": {
+                      "description": "Minimum similarity for contextual retrieval",
+                      "type": "number"
+                    },
+                    "topK": {
+                      "description": "Maximum contextual entries to retrieve",
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "dedup": {
+            "description": "Memory deduplication settings",
+            "type": "object",
+            "properties": {
+              "threshold": {
+                "description": "Cosine similarity threshold for duplicate detection (default: 0.75)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "PassiveRetrievalConfig": {
         "type": "object",
         "properties": {
@@ -12935,7 +13282,7 @@
         "additionalProperties": false
       },
       "LearningConfig": {
-        "description": "Hyperparameters for the experience learning pipeline",
+        "description": "Q-learning hyperparameters for experience evaluation",
         "type": "object",
         "properties": {
           "alpha": {
@@ -13038,15 +13385,15 @@
         },
         "additionalProperties": false
       },
-      "EvolutionPassive": {
+      "ExperienceConfig": {
         "type": "object",
         "properties": {
           "encode": {
-            "description": "Learn from conversations — extract intent, reward, and scripts (default: true)",
+            "description": "Auto-encode conversation patterns into experiences (default: true)",
             "type": "boolean"
           },
           "retrieve": {
-            "description": "Inject relevant past experiences into new conversations (default: true)",
+            "description": "Inject relevant past experiences into prompts (default: true)",
             "anyOf": [
               {
                 "type": "boolean"
@@ -13062,157 +13409,105 @@
         },
         "additionalProperties": false
       },
-      "EvolutionActive": {
+      "EngramConfig": {
         "type": "object",
         "properties": {
-          "retrieve": {
-            "description": "Auto-inject relevant memories into new conversations (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "simThreshold": {
-                    "description": "Default minimum similarity for auto-injection (default: 0.7)",
-                    "type": "number"
-                  },
-                  "topK": {
-                    "description": "Default maximum entries per category to contextually retrieve (default: 3)",
-                    "type": "number"
-                  },
-                  "categories": {
-                    "description": "Per-category contextual retrieval overrides",
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string",
-                      "enum": [
-                        "user",
-                        "self",
-                        "relationship",
-                        "interaction",
-                        "workflow",
-                        "coding",
-                        "writing",
-                        "asset",
-                        "insight",
-                        "knowledge",
-                        "personal",
-                        "general"
-                      ]
-                    },
-                    "additionalProperties": {
-                      "type": "object",
-                      "properties": {
-                        "simThreshold": {
-                          "description": "Minimum similarity for contextual retrieval",
-                          "type": "number"
-                        },
-                        "topK": {
-                          "description": "Maximum contextual entries to retrieve",
-                          "type": "number"
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
+          "memory": {
+            "$ref": "#/components/schemas/MemoryConfig"
           },
-          "memoryDedupThreshold": {
-            "description": "Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)",
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1
-          }
-        },
-        "additionalProperties": false
-      },
-      "EvolutionConfig": {
-        "type": "object",
-        "properties": {
-          "passive": {
-            "description": "RL-enhanced passive experience learning (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionPassive"
-              }
-            ]
-          },
-          "active": {
-            "description": "Agent-initiated active memory curation via memory tools (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionActive"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "IdentityConfig": {
-        "description": "Identity configuration for embedding and evolution",
-        "type": "object",
-        "properties": {
-          "embedding": {
-            "description": "Embedding model configuration for memory and retrieval",
-            "type": "object",
-            "properties": {
-              "baseURL": {
-                "description": "Base URL for the embedding API",
-                "type": "string"
-              },
-              "apiKey": {
-                "description": "API key for the embedding service",
-                "type": "string"
-              },
-              "model": {
-                "description": "Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')",
-                "type": "string"
-              }
-            }
-          },
-          "rerank": {
-            "description": "Rerank model configuration for memory retrieval refinement",
-            "type": "object",
-            "properties": {
-              "baseURL": {
-                "description": "Base URL for the rerank API",
-                "type": "string"
-              },
-              "apiKey": {
-                "description": "API key for the rerank service (falls back to embedding.apiKey)",
-                "type": "string"
-              },
-              "model": {
-                "description": "Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')",
-                "type": "string"
-              }
-            }
-          },
-          "evolution": {
-            "description": "Dual-mode evolution system: passive experience learning + active memory curation (default: true)",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "$ref": "#/components/schemas/EvolutionConfig"
-              }
-            ]
+          "experience": {
+            "$ref": "#/components/schemas/ExperienceConfig"
           },
           "autonomy": {
             "description": "Enable autonomous background routines like anima daily wake (default: true)",
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpRetryConfig": {
+        "description": "Retry policy for connecting to this server",
+        "type": "object",
+        "properties": {
+          "maxAttempts": {
+            "description": "Maximum connection attempts before giving up",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backoffMs": {
+            "description": "Initial backoff delay in ms between retries",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "backoffMultiplier": {
+            "description": "Multiplier applied to backoff on each retry",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "cooldownMs": {
+            "description": "Cooldown period in ms before a retry cycle resets",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolFilterConfig": {
+        "description": "Filter which tools are exposed from this server",
+        "type": "object",
+        "properties": {
+          "include": {
+            "description": "Tool names to include (allowlist)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "description": "Tool names to exclude (blocklist)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolsConfig": {
+        "description": "Tool execution behavior config",
+        "type": "object",
+        "properties": {
+          "approval": {
+            "description": "Tool approval mode",
+            "type": "string",
+            "enum": ["auto", "always", "per_session"]
+          },
+          "maxOutputBytes": {
+            "description": "Maximum tool output size in bytes",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolCacheConfig": {
+        "description": "Tool list caching behavior",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "Tool list caching mode",
+            "type": "string",
+            "enum": ["disabled", "session", "persistent"]
+          },
+          "ttlMs": {
+            "description": "Time-to-live for cached tool list in ms",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "additionalProperties": false
@@ -13247,10 +13542,55 @@
             "type": "boolean"
           },
           "timeout": {
-            "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
           }
         },
         "required": ["type", "command"],
@@ -13313,13 +13653,110 @@
             ]
           },
           "timeout": {
-            "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+            "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
           }
         },
         "required": ["type", "url"],
+        "additionalProperties": false
+      },
+      "McpDefaultsConfig": {
+        "description": "Default settings applied to all MCP servers that don't override them",
+        "type": "object",
+        "properties": {
+          "startup": {
+            "description": "MCP startup mode",
+            "type": "string",
+            "enum": ["eager", "lazy", "manual"]
+          },
+          "required": {
+            "description": "If true, this MCP server is required for the configured workflow",
+            "type": "boolean"
+          },
+          "connectTimeout": {
+            "description": "Timeout in ms for initial connection handshake",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "listTimeout": {
+            "description": "Timeout in ms for listing tools",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "callTimeout": {
+            "description": "Timeout in ms for tool call execution",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "retry": {
+            "$ref": "#/components/schemas/McpRetryConfig"
+          },
+          "idleShutdownMs": {
+            "description": "Idle time in ms after which the server is shut down",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolFilter": {
+            "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/McpToolsConfig"
+          },
+          "toolCache": {
+            "$ref": "#/components/schemas/McpToolCacheConfig"
+          }
+        },
         "additionalProperties": false
       },
       "ChannelFeishuAccountConfig": {
@@ -13817,8 +14254,14 @@
               "$ref": "#/components/schemas/ProviderConfig"
             }
           },
-          "identity": {
-            "$ref": "#/components/schemas/IdentityConfig"
+          "embedding": {
+            "$ref": "#/components/schemas/EmbeddingConfig"
+          },
+          "rerank": {
+            "$ref": "#/components/schemas/RerankConfig"
+          },
+          "engram": {
+            "$ref": "#/components/schemas/EngramConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -13850,6 +14293,9 @@
                 }
               ]
             }
+          },
+          "mcpDefaults": {
+            "$ref": "#/components/schemas/McpDefaultsConfig"
           },
           "channel": {
             "description": "Channel configurations for messaging platform integrations",
@@ -15011,6 +15457,10 @@
           "parentID": {
             "type": "string",
             "pattern": "^ses.*"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["project", "home", "channel", "background"]
           },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
@@ -18969,6 +19419,46 @@
         },
         "required": ["name", "mode", "permission", "options"]
       },
+      "MCPStatusUninitialized": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "uninitialized"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusStarting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "starting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusConnecting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "connecting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusListingTools": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "listing_tools"
+          }
+        },
+        "required": ["status"]
+      },
       "MCPStatusConnected": {
         "type": "object",
         "properties": {
@@ -18979,15 +19469,21 @@
         },
         "required": ["status"]
       },
-      "MCPStatusDisabled": {
+      "MCPStatusReconnecting": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "const": "disabled"
+            "const": "reconnecting"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "maxAttempts": {
+            "type": "number"
           }
         },
-        "required": ["status"]
+        "required": ["status", "attempt", "maxAttempts"]
       },
       "MCPStatusFailed": {
         "type": "object",
@@ -19001,6 +19497,16 @@
           }
         },
         "required": ["status", "error"]
+      },
+      "MCPStatusDisabled": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "disabled"
+          }
+        },
+        "required": ["status"]
       },
       "MCPStatusNeedsAuth": {
         "type": "object",
@@ -19025,22 +19531,50 @@
         },
         "required": ["status", "error"]
       },
+      "MCPStatusStopping": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "stopping"
+          }
+        },
+        "required": ["status"]
+      },
       "MCPStatus": {
         "anyOf": [
+          {
+            "$ref": "#/components/schemas/MCPStatusUninitialized"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStarting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusConnecting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusListingTools"
+          },
           {
             "$ref": "#/components/schemas/MCPStatusConnected"
           },
           {
-            "$ref": "#/components/schemas/MCPStatusDisabled"
+            "$ref": "#/components/schemas/MCPStatusReconnecting"
           },
           {
             "$ref": "#/components/schemas/MCPStatusFailed"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusDisabled"
           },
           {
             "$ref": "#/components/schemas/MCPStatusNeedsAuth"
           },
           {
             "$ref": "#/components/schemas/MCPStatusNeedsClientRegistration"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStopping"
           }
         ]
       },
@@ -19250,6 +19784,38 @@
           }
         ]
       },
+      "Event.scope.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -19284,38 +19850,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/Scope"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.scope.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -19454,6 +19988,28 @@
           "properties": {
             "type": "object",
             "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["server", "error"]
           }
         },
         "required": ["type", "properties"]
@@ -20814,16 +21370,16 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
             "$ref": "#/components/schemas/Event.scope.updated"
           },
           {
             "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"
@@ -20845,6 +21401,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
