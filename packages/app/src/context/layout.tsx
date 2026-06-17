@@ -717,11 +717,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
-        open(directory: string) {
+        async open(directory: string) {
           const root = roots().get(directory) ?? directory
           if (server.scopes.list().find((x) => x.worktree === root)) return
           server.scopes.open(root)
-          loadScopeNav(root)
+          await loadScopeNav(root)
+          loadScopeIndex()
         },
         close(directory: string) {
           server.scopes.close(directory)
