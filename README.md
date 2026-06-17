@@ -279,18 +279,31 @@ What they do:
 
 After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
 
-Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools ask for explicit permission before operating outside that active workspace, including the original checkout. These boundary prompts are not skipped by allow-all or unattended execution.
+Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
 
-Optional sandbox configuration can be added to `synergy.jsonc`:
+Control profiles are configured in `synergy.jsonc`:
 
 ```jsonc
 {
+  "controlProfile": "workspace",
+  "agents": {
+    "synergy-max": {
+      "controlProfile": "auto_review",
+    },
+  },
   "sandbox": {
     "enabled": true,
     "fallbackPolicy": "warn",
   },
 }
 ```
+
+Built-in profiles:
+
+- `review` — read and analyze the active workspace; no writes, shell, network, MCP/plugin, or outbound actions.
+- `workspace` — default mode; read/write and normal command work inside the active workspace, with non-bypassable prompts for boundary crossings and high-risk actions.
+- `auto_review` — same workspace boundary as `workspace`, but low-risk requests can be reviewed automatically; it does not expand filesystem or network access.
+- `full_access` — removes the workspace boundary for local filesystem, shell, and network work; identity and outbound communication actions still require explicit approval.
 
 `fallbackPolicy` controls what happens when the configured sandbox runtime is unavailable: `warn` continues with a warning, `allow` continues quietly, and `deny` blocks execution.
 

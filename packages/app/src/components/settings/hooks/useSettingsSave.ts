@@ -50,6 +50,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   autoupdate: "auto",
   compaction: "auto",
   question: "background",
+  controlProfile: "explicit",
   permission: "background",
   model: "background",
   nano_model: "background",
@@ -242,15 +243,10 @@ export function useSettingsSave(ctx: SaveContext) {
     ctx.setSaving(true)
     try {
       const shouldActivate = options?.activate === true && !ctx.selectedSetIsActive()
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(setName)}/raw`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: ctx.rawText(), reload: true }),
+      await globalSDK.client.config.set.raw.save({
+        name: setName,
+        configSetRawSaveInput: { raw: ctx.rawText(), reload: true },
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.message ?? data?.data?.message ?? "Failed to save")
-      }
 
       if (shouldActivate) {
         await globalSDK.client.config.set.activate({ name: setName })

@@ -85,6 +85,9 @@ import type {
   ConfigSetUpdateResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  ControlProfileEffectiveErrors,
+  ControlProfileEffectiveResponses,
+  ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
   CortexGetErrors,
@@ -265,6 +268,7 @@ import type {
   RuntimeReloadResponses,
   RuntimeReloadScope,
   RuntimeReloadTarget,
+  SandboxStatusResponses,
   ScopeCurrentResponses,
   ScopeListResponses,
   ScopeRemoveResponses,
@@ -3413,6 +3417,82 @@ export class Runtime extends HeyApiClient {
   }
 }
 
+export class ControlProfile extends HeyApiClient {
+  /**
+   * List control profiles
+   *
+   * List all available control profiles with their ids, labels, and descriptions.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ControlProfileListResponses, unknown, ThrowOnError>({
+      url: "/control-profiles",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get effective control profile
+   *
+   * Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > default workspace.
+   */
+  public effective<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      agent?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "agent" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ControlProfileEffectiveResponses,
+      ControlProfileEffectiveErrors,
+      ThrowOnError
+    >({
+      url: "/control-profiles/effective",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Sandbox extends HeyApiClient {
+  /**
+   * Get sandbox status
+   *
+   * Get the current sandbox platform availability and backend information.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SandboxStatusResponses, unknown, ThrowOnError>({
+      url: "/sandbox/status",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Tool extends HeyApiClient {
   /**
    * List tool IDs
@@ -6124,6 +6204,10 @@ export class SynergyClient extends HeyApiClient {
   config = new Config({ client: this.client })
 
   runtime = new Runtime({ client: this.client })
+
+  controlProfile = new ControlProfile({ client: this.client })
+
+  sandbox = new Sandbox({ client: this.client })
 
   tool = new Tool({ client: this.client })
 

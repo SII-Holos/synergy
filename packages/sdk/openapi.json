@@ -1864,6 +1864,129 @@
         ]
       }
     },
+    "/control-profiles": {
+      "get": {
+        "operationId": "controlProfile.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List control profiles",
+        "description": "List all available control profiles with their ids, labels, and descriptions.",
+        "responses": {
+          "200": {
+            "description": "List of control profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ControlProfileSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.controlProfile.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/control-profiles/effective": {
+      "get": {
+        "operationId": "controlProfile.effective",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Agent name to resolve profile for"
+          }
+        ],
+        "summary": "Get effective control profile",
+        "description": "Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > default workspace.",
+        "responses": {
+          "200": {
+            "description": "Effective profile resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveProfileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.controlProfile.effective({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/sandbox/status": {
+      "get": {
+        "operationId": "sandbox.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get sandbox status",
+        "description": "Get the current sandbox platform availability and backend information.",
+        "responses": {
+          "200": {
+            "description": "Sandbox status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\n\nconst client = createSynergyClient()\nawait client.sandbox.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/tool/ids": {
       "get": {
         "operationId": "tool.ids",
@@ -12790,6 +12913,11 @@
           }
         ]
       },
+      "ControlProfileId": {
+        "description": "Default control profile applied to all agents",
+        "type": "string",
+        "enum": ["review", "workspace", "auto_review", "full_access"]
+      },
       "AgentConfig": {
         "type": "object",
         "properties": {
@@ -12856,6 +12984,9 @@
           },
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
+          },
+          "controlProfile": {
+            "$ref": "#/components/schemas/ControlProfileId"
           }
         },
         "additionalProperties": {}
@@ -13867,6 +13998,22 @@
         "required": ["type", "accounts"],
         "additionalProperties": false
       },
+      "SandboxConfig": {
+        "description": "Sandbox configuration for workspace boundary enforcement",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable the sandbox runtime when available",
+            "type": "boolean"
+          },
+          "fallbackPolicy": {
+            "description": "How to proceed when the requested sandbox runtime is unavailable",
+            "type": "string",
+            "enum": ["warn", "allow", "deny"]
+          }
+        },
+        "additionalProperties": false
+      },
       "HolosConfig": {
         "description": "Holos platform configuration",
         "type": "object",
@@ -14310,6 +14457,12 @@
                 }
               ]
             }
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/SandboxConfig"
+          },
+          "controlProfile": {
+            "$ref": "#/components/schemas/ControlProfileId"
           },
           "holos": {
             "$ref": "#/components/schemas/HolosConfig"
@@ -15073,6 +15226,72 @@
         "type": "string",
         "enum": ["auto", "global", "project"]
       },
+      "ControlProfileSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["review", "workspace", "auto_review", "full_access"]
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label", "description"]
+      },
+      "EffectiveProfileResult": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["agent", "config", "default"]
+          },
+          "configProfile": {
+            "type": "string"
+          },
+          "agentProfile": {
+            "type": "string"
+          },
+          "agentName": {
+            "type": "string"
+          }
+        },
+        "required": ["profileId", "label", "source"]
+      },
+      "SandboxStatus": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        },
+        "required": ["platform", "available", "backend", "supported"]
+      },
       "ToolIDs": {
         "type": "array",
         "items": {
@@ -15676,6 +15895,10 @@
           },
           "memo": {
             "description": "Short node-local memo for important result, blocker, or handoff context",
+            "type": "string"
+          },
+          "result": {
+            "description": "Execution result (trajectory summary or error) populated automatically on completion — do not set manually",
             "type": "string"
           }
         },
@@ -19385,6 +19608,10 @@
           },
           "permission": {
             "$ref": "#/components/schemas/PermissionRuleset"
+          },
+          "controlProfile": {
+            "type": "string",
+            "enum": ["review", "workspace", "auto_review", "full_access"]
           },
           "model": {
             "type": "object",

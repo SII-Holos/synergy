@@ -62,6 +62,20 @@ describe("CapabilityRequest", () => {
 })
 
 describe("ExecutionEnvelope", () => {
+  function stubPolicy(): WorkspacePolicy {
+    return {
+      activeRoot: "/workspace/synergy",
+      workspaceType: "main",
+      scopeID: "d_test123",
+      contains: (p: string) => p.startsWith("/workspace/synergy"),
+      classifyPath: (p: string) => ({
+        boundary: p.startsWith("/workspace/synergy") ? "inside" : "outside",
+        confidence: "high",
+        reason: "test policy",
+      }),
+    }
+  }
+
   // === Requirement 2: ExecutionEnvelope wraps a request with policy context ===
 
   test("envelope carries workspace policy and capability request", () => {
@@ -75,12 +89,7 @@ describe("ExecutionEnvelope", () => {
       },
     })
 
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/synergy",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/synergy"),
-    }
+    const policy = stubPolicy()
 
     const envelope = new ExecutionEnvelope({ request: req, policy })
 
@@ -100,12 +109,7 @@ describe("ExecutionEnvelope", () => {
       },
     })
 
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/synergy",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/synergy"),
-    }
+    const policy = stubPolicy()
 
     const envelope = new ExecutionEnvelope({ request: req, policy })
 
@@ -119,12 +123,7 @@ describe("ExecutionEnvelope", () => {
       metadata: {},
     })
 
-    const policy: WorkspacePolicy = {
-      activeRoot: "/workspace/synergy",
-      workspaceType: "main",
-      scopeID: "d_test123",
-      contains: (p: string) => p.startsWith("/workspace/synergy"),
-    }
+    const policy = stubPolicy()
 
     const envelope = new ExecutionEnvelope({ request: req, policy })
 

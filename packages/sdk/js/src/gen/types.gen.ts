@@ -701,6 +701,11 @@ export type PermissionConfig =
     }
   | PermissionActionConfig
 
+/**
+ * Default control profile applied to all agents
+ */
+export type ControlProfileId = "review" | "workspace" | "auto_review" | "full_access"
+
 export type AgentConfig = {
   model?: string
   temperature?: number
@@ -738,6 +743,7 @@ export type AgentConfig = {
    */
   maxSteps?: number
   permission?: PermissionConfig
+  controlProfile?: ControlProfileId
   [key: string]:
     | unknown
     | string
@@ -755,6 +761,7 @@ export type AgentConfig = {
     | string
     | number
     | PermissionConfig
+    | ControlProfileId
     | undefined
 }
 
@@ -1367,6 +1374,20 @@ export type ChannelFeishuConfig = {
 }
 
 /**
+ * Sandbox configuration for workspace boundary enforcement
+ */
+export type SandboxConfig = {
+  /**
+   * Enable the sandbox runtime when available
+   */
+  enabled?: boolean
+  /**
+   * How to proceed when the requested sandbox runtime is unavailable
+   */
+  fallbackPolicy?: "warn" | "allow" | "deny"
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -1657,6 +1678,8 @@ export type Config = {
   channel?: {
     [key: string]: ChannelFeishuConfig
   }
+  sandbox?: SandboxConfig
+  controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
   formatter?:
@@ -1959,6 +1982,28 @@ export type Provider = {
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
+export type ControlProfileSummary = {
+  id: "review" | "workspace" | "auto_review" | "full_access"
+  label: string
+  description: string
+}
+
+export type EffectiveProfileResult = {
+  profileId: string
+  label: string
+  source: "agent" | "config" | "default"
+  configProfile?: string
+  agentProfile?: string
+  agentName?: string
+}
+
+export type SandboxStatus = {
+  platform: string
+  available: boolean
+  backend: string | null
+  supported: boolean
+}
+
 export type ToolIds = Array<string>
 
 export type ToolListItem = {
@@ -2202,6 +2247,10 @@ export type DagNode = {
    * Short node-local memo for important result, blocker, or handoff context
    */
   memo?: string
+  /**
+   * Execution result (trajectory summary or error) populated automatically on completion — do not set manually
+   */
+  result?: string
 }
 
 export type UserMessage = {
@@ -3485,6 +3534,7 @@ export type Agent = {
   temperature?: number
   color?: string
   permission: PermissionRuleset
+  controlProfile?: "review" | "workspace" | "auto_review" | "full_access"
   model?: {
     modelID: string
     providerID: string
@@ -5221,6 +5271,73 @@ export type RuntimeReloadResponses = {
 }
 
 export type RuntimeReloadResponse = RuntimeReloadResponses[keyof RuntimeReloadResponses]
+
+export type ControlProfileListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/control-profiles"
+}
+
+export type ControlProfileListResponses = {
+  /**
+   * List of control profiles
+   */
+  200: Array<ControlProfileSummary>
+}
+
+export type ControlProfileListResponse = ControlProfileListResponses[keyof ControlProfileListResponses]
+
+export type ControlProfileEffectiveData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Agent name to resolve profile for
+     */
+    agent?: string
+  }
+  url: "/control-profiles/effective"
+}
+
+export type ControlProfileEffectiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ControlProfileEffectiveError = ControlProfileEffectiveErrors[keyof ControlProfileEffectiveErrors]
+
+export type ControlProfileEffectiveResponses = {
+  /**
+   * Effective profile resolution
+   */
+  200: EffectiveProfileResult
+}
+
+export type ControlProfileEffectiveResponse = ControlProfileEffectiveResponses[keyof ControlProfileEffectiveResponses]
+
+export type SandboxStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/status"
+}
+
+export type SandboxStatusResponses = {
+  /**
+   * Sandbox status information
+   */
+  200: SandboxStatus
+}
+
+export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
 
 export type ToolIdsData = {
   body?: never

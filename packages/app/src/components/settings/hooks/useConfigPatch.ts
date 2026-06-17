@@ -33,6 +33,9 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
   if (general.snapshot !== (cfg.snapshot ?? true)) patch.snapshot = general.snapshot
 
+  const origControlProfile = cfg.controlProfile ?? UI_DEFAULTS.controlProfile
+  if (advanced.controlProfile !== origControlProfile) patch.controlProfile = advanced.controlProfile
+
   const autoupdateOrig = cfg.autoupdate === undefined ? UI_DEFAULTS.autoupdate : String(cfg.autoupdate)
   if (general.autoupdate !== autoupdateOrig) {
     if (general.autoupdate === "true") patch.autoupdate = true

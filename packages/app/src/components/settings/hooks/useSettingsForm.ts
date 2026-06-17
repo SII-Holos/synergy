@@ -100,6 +100,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setAdvanced({
+    controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
     compaction_auto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
     compaction_overflow_threshold: String(
       cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
