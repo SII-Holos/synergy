@@ -122,7 +122,7 @@ export namespace MCP {
   // ── Status / clients ───────────────────────────────────────────────
 
   export async function status(): Promise<Record<string, Status>> {
-    ensureStarted()
+    await McpSupervisor.ready()
     const cfg = await Config.get()
     const config = cfg.mcp ?? {}
     const result: Record<string, Status> = {}
@@ -142,7 +142,7 @@ export namespace MCP {
   }
 
   export async function clients(): Promise<Record<string, Client>> {
-    ensureStarted()
+    await McpSupervisor.ready()
     const result: Record<string, Client> = {}
     for (const handle of McpSupervisor.getAll()) {
       if (handle.client) result[handle.name] = handle.client
@@ -204,14 +204,14 @@ export namespace MCP {
     resourceNames: string[]
     promptNames: string[]
   } | null> {
-    ensureStarted()
+    await McpSupervisor.ready()
     const result = McpSupervisor.inspect(name)
     if (!result) return null
     return result
   }
 
   export async function test(name: string): Promise<Status | null> {
-    ensureStarted()
+    await McpSupervisor.ready()
     const result = McpSupervisor.test(name)
     if (!result) return null
     return result
@@ -220,7 +220,7 @@ export namespace MCP {
   // ── Non-blocking snapshots ─────────────────────────────────────────
 
   export async function tools(): Promise<Record<string, Tool>> {
-    ensureStarted()
+    await McpSupervisor.ready()
     const result: Record<string, Tool> = {}
     const cfg = await Config.get()
     const callTimeout = cfg.experimental?.mcp_timeout

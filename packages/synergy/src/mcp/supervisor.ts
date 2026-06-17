@@ -303,6 +303,7 @@ class McpSupervisorImpl {
   private pendingStarts: McpHandle[] = []
   private activeStarts = 0
   private _started = false
+  private initPromise?: Promise<void>
 
   // ── Public ──────────────────────────────────────────────────────────
 
@@ -310,13 +311,19 @@ class McpSupervisorImpl {
     return this._started
   }
 
-  /** Initialize from config. Idempotent. */
+  /** Initialize from config. Idempotent and non-blocking for MCP connections. */
   ensureStarted(): void {
     if (this._started) return
     this._started = true
+    this.initPromise = this.initFromConfig().catch((error) => {
+      log.error("failed to initialize MCP supervisor", { error })
+    })
+  }
 
-    // Defer config read + handle creation to avoid sync blocking
-    void this.initFromConfig()
+  /** Wait until config has been loaded into the registry. Does not wait for MCP connections. */
+  async ready(): Promise<void> {
+    this.ensureStarted()
+    await this.initPromise
   }
 
   /** Create or retrieve a handle. Does not auto-start. */
@@ -404,6 +411,7 @@ class McpSupervisorImpl {
     this._started = false
     this.activeStarts = 0
     this.pendingStarts = []
+    this.initPromise = undefined
     pendingOAuthTransports.clear()
 
     await Promise.all(
