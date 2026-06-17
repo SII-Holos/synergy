@@ -449,12 +449,39 @@
 
 .sb-session-active .sb-session-icon,
 .sb-session-active .sb-flyout-session-icon {
-  color: var(--text-base);
+  color: currentColor;
+}
+
+.sb-session-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--icon-weak);
 }
 
 .sb-session-icon {
-  color: var(--icon-weak);
-  flex-shrink: 0;
+  color: currentColor;
+}
+
+.sb-session-icon-active-tone {
+  color: var(--icon-base);
+}
+
+.sb-session-icon-waiting-tone {
+  color: var(--icon-critical-base);
+}
+
+.sb-session-icon-worktree-tone {
+  color: var(--icon-success-base);
+}
+
+.sb-session-icon-muted-tone {
+  color: var(--text-weaker);
+}
+
+.sb-session-icon-pulse {
+  animation: statusPulse 1.8s ease-in-out infinite;
 }
 
 .sb-session-title {

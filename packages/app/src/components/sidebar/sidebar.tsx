@@ -6,7 +6,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
@@ -128,6 +128,52 @@ export function Sidebar(props: SidebarProps) {
   const handleFlyoutSessionClick = (session: Session) => {
     setProjectsFlyoutOpen(false)
     navigate(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
+  }
+
+  type SessionVisualState = {
+    icon: IconName
+    label: string
+    tone: "default" | "active" | "waiting" | "worktree" | "muted"
+    pulse?: boolean
+  }
+
+  const sessionVisualState = (scope: LocalScope, session: Session): SessionVisualState => {
+    const store = globalSync.child(scope.worktree)[0]
+    const status = store.session_status[session.id]
+    const waiting = !!store.permission[session.id]?.length || !!store.question[session.id]?.length
+    const running = status?.type === "busy" || status?.type === "retry"
+    const childTasksRunning = store.cortex.some(
+      (task) => task.parentSessionID === session.id && task.status === "running",
+    )
+
+    if (running || childTasksRunning) return { icon: "activity", label: "Running session", tone: "active", pulse: true }
+    if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
+    if (session.workspace?.type === "git_worktree")
+      return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
+    if (session.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
+    if (session.agenda) return { icon: "calendar-days", label: "Agenda session", tone: "muted" }
+    if (session.endpoint?.kind === "holos") return { icon: "bot", label: "Holos session", tone: "muted" }
+    if (session.endpoint?.kind === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+    return { icon: "file-text", label: "Session", tone: "default" }
+  }
+
+  const SessionIcon = (props: { scope: LocalScope; session: Session; flyout?: boolean }) => {
+    const visual = createMemo(() => sessionVisualState(props.scope, props.session))
+    return (
+      <span
+        classList={{
+          "sb-session-icon-wrap": true,
+          "sb-session-icon-active-tone": visual().tone === "active",
+          "sb-session-icon-waiting-tone": visual().tone === "waiting",
+          "sb-session-icon-worktree-tone": visual().tone === "worktree",
+          "sb-session-icon-muted-tone": visual().tone === "muted",
+          "sb-session-icon-pulse": !!visual().pulse,
+        }}
+        title={visual().label}
+      >
+        <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
+      </span>
+    )
   }
 
   return (
@@ -381,7 +427,7 @@ export function Sidebar(props: SidebarProps) {
                                 handleSessionClick(scope, session)
                               }}
                             >
-                              <Icon name="file-text" size="small" class="sb-session-icon" />
+                              <SessionIcon scope={scope} session={session} />
                               <span class="sb-session-title">{session.title || "Untitled"}</span>
                             </button>
                           )}
@@ -449,7 +495,7 @@ export function Sidebar(props: SidebarProps) {
                         }}
                         onClick={() => handleFlyoutSessionClick(session)}
                       >
-                        <Icon name="file-text" size="small" class="sb-flyout-session-icon" />
+                        <SessionIcon scope={scope} session={session} flyout />
                         <span class="sb-flyout-session-title">{session.title || "Untitled"}</span>
                       </button>
                     )}

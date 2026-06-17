@@ -59,6 +59,7 @@ results/
 
 # Project-level Synergy config (user-specific)
 .synergy/bun.lock
+.synergy/worktrees/
 
 tmp_*
 
