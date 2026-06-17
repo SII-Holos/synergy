@@ -503,3 +503,183 @@ describe("tool.bash tree-sitter cleanup", () => {
     })
   }, 60_000) // generous timeout for 200 shell invocations
 })
+
+describe("tool.bash workspace boundary enforcement", () => {
+  test("workdir in original checkout triggers workspace-boundary rejection under git_worktree policy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    // Simulate a worktree scenario: the scope is the worktree directory,
+    // but the workspace points to the original checkout (different path).
+    // Bash workdir pointing to the original checkout should be rejected.
+    const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        // Bash with workdir set to the original checkout path
+        // should be rejected — not silently spawn into the checkout
+        await expect(
+          bash.execute(
+            {
+              command: "echo 'should fail'",
+              workdir: originalCheckout,
+              description: "Test workspace boundary",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow()
+      },
+    })
+  })
+
+  test("workdir inside active workspace does not trigger boundary rejection", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        // Bash with workdir inside the active workspace should succeed
+        const result = await bash.execute(
+          {
+            command: "echo 'should work'",
+            workdir: tmp.path,
+            description: "Test in-workspace command",
+          },
+          ctx,
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect(result.metadata.output).toContain("should work")
+      },
+    })
+  })
+
+  test("workdir resolving to original checkout via ../ traversal triggers boundary rejection", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        // Using cd ../ to reach the original checkout parent
+        // should be classified as crossing the workspace boundary
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash.execute(
+          {
+            command: "cd ../original-checkout && echo 'escaped'",
+            description: "Navigate to original checkout",
+          },
+          testCtx,
+        )
+        // The boundary gate should have triggered a workspace-boundary permission check
+        // rather than silently allowing execution into the original checkout
+        const boundaryReq = requests.find(
+          (r) => r.permission === "workspace_boundary" || r.permission === "external_directory",
+        )
+        expect(boundaryReq).toBeDefined()
+        // The pattern should reference the original checkout path
+        if (boundaryReq && boundaryReq.permission === "external_directory") {
+          expect(boundaryReq.patterns.some((p) => p.includes("original-checkout"))).toBe(true)
+        }
+      },
+    })
+  })
+
+  test("workdir outside any known workspace requires sandbox or explicit permission", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        const outsideDir = "/tmp/outside-" + Math.random().toString(36).slice(2)
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash
+          .execute(
+            {
+              command: "ls",
+              workdir: outsideDir,
+              description: "List outside directory",
+            },
+            testCtx,
+          )
+          .catch(() => undefined)
+        // Workdir outside workspace should trigger external_directory permission
+        const extDirReq = requests.find((r) => r.permission === "external_directory")
+        expect(extDirReq).toBeDefined()
+        expect(extDirReq!.patterns).toContain(outsideDir)
+      },
+    })
+  })
+
+  test("local bash execution validates workdir against active workspace before spawning", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout: "/tmp/original-checkout-" + Math.random().toString(36).slice(2),
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        // The test will verify that bash.execute does NOT blindly call
+        // spawn before workspace validation. Since the sandbox/enforcement
+        // modules aren't implemented yet, the current code WILL spawn.
+        // This test encodes the desired invariant: workspace validation
+        // must happen before child_process.spawn().
+        //
+        // When the implementation is complete, this test's assertion
+        // changes from "spawn happened" to "spawn was blocked/redirected".
+        // For now, we assert the EXPECTED behavior.
+        await expect(
+          bash.execute(
+            {
+              command: "echo 'test'",
+              workdir: "/tmp/original-checkout-should-be-blocked",
+              description: "Should go through boundary check",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow() // RED: currently will succeed, but should be rejected
+      },
+    })
+  })
+})

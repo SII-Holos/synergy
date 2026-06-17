@@ -31,7 +31,13 @@ export async function assertInsideOrAsk(
   await ctx.ask({
     permission: "external_directory",
     patterns: [parentDir],
-    metadata: { filepath: filePath, parentDir },
+    metadata: {
+      filepath: filePath,
+      parentDir,
+      workspaceBoundary: true,
+      outsideWorkspace: true,
+      nonBypassable: true,
+    },
   })
 }
 

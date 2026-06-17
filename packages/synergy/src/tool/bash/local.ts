@@ -97,20 +97,21 @@ export const LocalBashBackend: BashBackend = {
         if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
           for (const arg of command.slice(1)) {
             if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-            let resolved: string | undefined
+            const absolute = path.resolve(cwd, arg)
+            let resolved = absolute
             try {
-              resolved = realpathSync(path.resolve(cwd, arg))
+              resolved = realpathSync(absolute)
             } catch {
-              // path doesn't exist — skip
+              // The target may not exist yet (touch/mkdir/redirection style flows).
+              // Still classify the intended absolute path so workspace-boundary
+              // checks happen before the shell has a chance to create it.
             }
             log.info("resolved path", { arg, resolved })
-            if (resolved) {
-              const normalized =
-                process.platform === "win32" && resolved.match(/^\/[a-z]\//)
-                  ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
-                  : resolved
-              if (!Instance.contains(normalized)) directories.add(normalized)
-            }
+            const normalized =
+              process.platform === "win32" && resolved.match(/^\/[a-z]\//)
+                ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
+                : resolved
+            if (!Instance.contains(normalized)) directories.add(normalized)
           }
         }
 
@@ -121,12 +122,15 @@ export const LocalBashBackend: BashBackend = {
     } finally {
       tree.delete()
     }
-
     if (directories.size > 0) {
       await ctx.ask({
         permission: "external_directory",
         patterns: Array.from(directories),
-        metadata: {},
+        metadata: {
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+          nonBypassable: true,
+        },
       })
     }
 

@@ -71,8 +71,9 @@ export namespace SystemPrompt {
         if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)
         if (workspace.baseRef) envLines.push(`  Worktree base: ${workspace.baseRef}`)
         envLines.push(
-          `  Worktree note: this session is isolated from the main checkout; do not remove the worktree or switch branches unless explicitly asked.`,
+          `  Worktree isolation: this session's active workspace is the worktree path above. Stay inside it by default; access outside the active workspace, including the original checkout, requires explicit permission. Do not use cd or workdir to operate outside the worktree unless the user asks for that specific path.`,
         )
+        envLines.push(`  Sandbox policy: workspace-write`)
       }
     }
 
