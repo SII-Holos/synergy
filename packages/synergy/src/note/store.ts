@@ -13,7 +13,7 @@ import { NoteMarkdown } from "./markdown"
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
 
-  export type Metadata = Omit<NoteTypes.Info, "content"> & { searchText: string }
+  export type Metadata = NoteTypes.MetaInfo
 
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
@@ -302,17 +302,18 @@ export namespace NoteStore {
       if (b === currentScopeID) return 1
       return a.localeCompare(b)
     })
-    const groups: NoteTypes.MetaScopeGroup[] = []
-    for (const sid of scopeIDs) {
-      const metaList = await listMeta(sid)
-      if (metaList.length === 0) continue
-      groups.push({
-        scopeID: sid,
-        scopeType: sid === "global" ? "global" : "project",
-        notes: metaList,
-      })
-    }
-    return groups
+    const groups = await Promise.all(
+      scopeIDs.map(async (sid): Promise<NoteTypes.MetaScopeGroup | undefined> => {
+        const metaList = await listMeta(sid)
+        if (metaList.length === 0) return undefined
+        return {
+          scopeID: sid,
+          scopeType: sid === "global" ? "global" : "project",
+          notes: metaList,
+        }
+      }),
+    )
+    return groups.filter((group): group is NoteTypes.MetaScopeGroup => group !== undefined)
   }
 
   // --- Public API: scope-agnostic access ---

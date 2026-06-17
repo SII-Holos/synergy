@@ -347,7 +347,7 @@ export function NotePanel() {
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
-            const searchText = (n as NoteMetaInfo).searchText ?? ""
+            const searchText = n.searchText ?? ""
             return searchText.toLowerCase().includes(q)
           })
         }
