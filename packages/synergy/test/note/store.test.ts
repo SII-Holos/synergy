@@ -167,10 +167,9 @@ describe("NoteStore", () => {
         expect(globalMeta).toBeDefined()
         expect(globalMeta!.searchText).toContain("Global content")
 
-        // Verify project note is present
-        const projectGroup = groups.find((g) => g.scopeID !== "global")
+        // Verify project note is present in its project scope group
+        const projectGroup = groups.find((g) => g.scopeID !== "global" && g.notes.some((n) => n.id === projectNote.id))
         expect(projectGroup).toBeDefined()
-        expect(projectGroup!.notes.some((n) => n.id === projectNote.id)).toBe(true)
       },
     })
   })
