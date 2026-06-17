@@ -1025,6 +1025,7 @@ export default function Page() {
                 navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
                 handoffPrompt={handoff.prompt}
                 meta={sessionMeta}
+                parentTitle={parentSession()?.title}
                 backPath={backPath}
                 newSessionWorktree={newSessionWorktree}
                 onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}

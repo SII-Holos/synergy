@@ -28,6 +28,7 @@ export function PromptDock(props: {
   navigate: (path: string) => void
   handoffPrompt: string
   meta: Accessor<SessionMeta>
+  parentTitle?: string
   backPath?: Accessor<string | undefined>
   newSessionWorktree: Accessor<string>
   onNewSessionWorktreeReset: () => void
@@ -84,7 +85,7 @@ export function PromptDock(props: {
                 </Show>
                 <Show when={props.meta().showBackToParent}>
                   <div class="flex items-center justify-center pb-2">
-                    <Tooltip value="Parent session" placement="top">
+                    <Tooltip value={props.parentTitle || "Parent session"} placement="top">
                       <button
                         type="button"
                         class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
