@@ -47,7 +47,7 @@ function HolosStatusIndicator() {
 
   return (
     <div
-      class="flex items-center gap-2 h-7 px-2.5 rounded-full transition-colors hover:bg-surface-raised-base-hover"
+      class="flex items-center gap-2 h-7 px-2.5 rounded-full transition-colors hover:bg-surface-raised-base-hover shrink-0"
       title={label()}
     >
       <div classList={statusDotClass(dot())} />
@@ -84,11 +84,9 @@ function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
   return "idle"
 }
 
-function runtimeTone(status: SessionStatus | undefined, waiting: boolean): "success" | "danger" | "muted" | "active" {
+function runtimeTone(_status: SessionStatus | undefined, waiting: boolean): "base" | "danger" {
   if (waiting) return "danger"
-  if (!status || status.type === "idle") return "success"
-  if (status.type === "busy" || status.type === "retry") return "active"
-  return "muted"
+  return "base"
 }
 
 function DetailRow(props: { label: string; value: string | undefined }) {
@@ -119,12 +117,11 @@ function StatusPill(props: {
   return (
     <div
       classList={{
-        "flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-12-medium whitespace-nowrap": true,
-        "border-border-base bg-surface-raised-base text-text-base":
-          !props.tone || props.tone === "base" || props.tone === "muted",
-        "border-border-success bg-surface-success-subtle text-text-success-base": props.tone === "success",
-        "border-border-danger bg-surface-critical-subtle text-text-critical-base": props.tone === "danger",
-        "border-border-base bg-surface-raised-base-hover text-text-base": props.tone === "active",
+        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-12-medium whitespace-nowrap transition-colors": true,
+        "bg-surface-raised-base text-text-base hover:bg-surface-raised-base-hover":
+          !props.tone || props.tone === "base" || props.tone === "muted" || props.tone === "active",
+        "bg-surface-success-subtle text-text-success-base hover:bg-surface-success-base": props.tone === "success",
+        "bg-surface-critical-subtle text-text-critical-base hover:bg-surface-critical-base": props.tone === "danger",
       }}
     >
       <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" class="text-current" />}</Show>
@@ -180,10 +177,10 @@ function SessionContextStatus() {
   const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
   return (
-    <div class="relative inline-flex min-w-0 shrink-0">
+    <div class="inline-flex min-w-0 shrink-0 flex-col items-center">
       <div
-        class="absolute bottom-full left-1/2 z-30 grid w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
-        classList={{ "translate-y-1": !expanded(), "translate-y-0": expanded() }}
+        class="grid w-[min(760px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
+        classList={{ "-translate-y-1": !expanded(), "translate-y-0": expanded() }}
         style={{ "grid-template-rows": expanded() ? "1fr" : "0fr", opacity: expanded() ? 1 : 0 }}
       >
         <div class="overflow-hidden min-h-0">
