@@ -31,6 +31,7 @@ import { isGlobalScope } from "@/utils/scope"
 import { isHolosSession } from "@/utils/session"
 
 import { useSessionCommands } from "@/components/session/commands"
+import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { HolosConversation, HolosGreeting } from "@/components/session/holos-conversation"
 import { HolosPromptInput } from "@/components/session/holos-prompt-input"
@@ -395,8 +396,13 @@ export default function Page() {
 
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return (sync.data.message[params.id] ?? []).length > 0
+  })
+
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
-  const currentSessionCortex = createMemo(() => currentSession()?.cortex)
+  const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -1018,15 +1024,13 @@ export default function Page() {
                 sdk={sdk}
                 navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
                 handoffPrompt={handoff.prompt}
-                parentSession={parentSession}
+                meta={sessionMeta}
                 backPath={backPath}
                 newSessionWorktree={newSessionWorktree}
                 onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
                 scopeName={scopeName}
                 branch={branch}
                 lastModified={lastModified}
-                cortex={currentSessionCortex}
-                parentID={() => currentSession()?.parentID}
               />
             }
           >
