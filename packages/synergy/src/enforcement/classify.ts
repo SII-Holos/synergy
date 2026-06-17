@@ -7,6 +7,7 @@ export namespace PathClassifier {
 
   export interface Options {
     workspace: string
+    originalCheckout?: string
   }
 
   export interface Result {
@@ -74,5 +75,43 @@ export namespace PathClassifier {
 
   export function classifyBatch(inputs: string[], options: Options): Result[] {
     return inputs.map((input) => classify(input, options))
+  }
+
+  /**
+   * Classify a path with original-checkout awareness for worktree sessions.
+   *
+   * Pure string analysis — no filesystem I/O. Uses the same prefix-containment
+   * logic as classify() but enriches the reason when originalCheckout is provided
+   * and the path falls within the original checkout directory.
+   */
+  export function classifyPath(input: string, options: Options): Result {
+    const base = classify(input, options)
+
+    if (!options.originalCheckout) return base
+
+    const workspace = normalizeWorkspace(options.workspace)
+    const candidate = normalizeCandidate(input, workspace)
+    const oc = path.resolve(options.originalCheckout)
+
+    // Check if the candidate falls within the original checkout.
+    // This catches paths that are outside the active worktree but inside the
+    // original main checkout, and enriches the reason accordingly.
+    if (!path.relative(oc, candidate).startsWith("..")) {
+      return outside("path is in the original checkout, outside the active workspace")
+    }
+
+    // Detect sibling worktrees (same parent directory as workspace, different
+    // from original checkout).
+    const workspaceParent = path.dirname(workspace)
+    const candidateParent = path.dirname(candidate)
+    if (
+      workspaceParent === candidateParent &&
+      workspace !== candidate &&
+      !path.relative(oc, workspaceParent).startsWith("..")
+    ) {
+      return outside("path is in a sibling worktree, outside the active workspace")
+    }
+
+    return base
   }
 }

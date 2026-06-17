@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import os from "os"
-import path from "path"
+import * as os from "os"
+import * as path from "path"
 
 // ---------------------------------------------------------------------------
 // sandbox/backend.test.ts
@@ -289,7 +289,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
     expect(profile[0]).toBe("(version 1)")
   })
 
-  test("profile uses (deny default) as the base policy", () => {
+  test("profile uses (allow default) as the base policy", () => {
     const { SandboxBackend } = require("../../src/sandbox/backend")
 
     const profile = SandboxBackend.generateSeatbeltProfile({
@@ -300,11 +300,39 @@ describe("SandboxBackend Seatbelt profile generation", () => {
       protectedPaths: [],
     })
 
-    // The base policy must be deny default — only explicitly allowed
-    // operations pass through. This is the secure-by-default stance.
-    // The previous runtime.ts used (allow default) which is wrong.
+    // The base policy must be allow default — macOS sandbox-exec
+    // requires this base; security is provided by explicit
+    // (deny file-write*) rules on protected paths placed after
+    // write-allow rules (last-match-wins semantics).
     const profileStr = profile.join("\n")
-    expect(profileStr).toContain("(deny default)")
+    expect(profileStr).toContain("(allow default)")
+  })
+
+  test("profile denies broad user data roots before re-allowing active workspace", () => {
+    const { SandboxBackend } = require("../../src/sandbox/backend")
+
+    const workspace = "/Users/test/synergy-control-profile"
+    const profile = SandboxBackend.generateSeatbeltProfile({
+      workspace,
+      sandboxMode: "workspace_write",
+      runtimeReadRoots: ["/usr/lib"],
+      writableRoots: [workspace],
+      protectedPaths: [],
+      dataDenyRoots: ["/Users/test"],
+    })
+
+    const profileStr = profile.join("\n")
+    const denyHome = profile.findIndex(
+      (line: string) => line.includes("deny file-read* file-write*") && line.includes("/Users/test"),
+    )
+    const allowWorkspace = profile.findIndex(
+      (line: string) => line.includes("allow file-read*") && line.includes(workspace),
+    )
+
+    expect(profileStr).toContain('(deny file-read* file-write* (subpath "/Users/test"))')
+    expect(profileStr).toContain(`(allow file-read* (subpath "${workspace}"))`)
+    expect(denyHome).toBeGreaterThan(-1)
+    expect(allowWorkspace).toBeGreaterThan(denyHome)
   })
 })
 
@@ -424,6 +452,7 @@ describe("SandboxBackend cross-platform support", () => {
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
+      forcePlatform: "linux",
     })
 
     // bwrap command, not sandbox-exec
@@ -440,6 +469,7 @@ describe("SandboxBackend cross-platform support", () => {
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
+      forcePlatform: "linux",
     })
 
     const argsStr = wrapper.args.join(" ")
@@ -464,6 +494,7 @@ describe("SandboxBackend cross-platform support", () => {
       workspace,
       sandboxMode: "workspace_write",
       runtimeReadRoots,
+      forcePlatform: "linux",
     })
 
     // Each runtime read root must be individually bind-mounted
