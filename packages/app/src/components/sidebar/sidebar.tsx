@@ -24,6 +24,45 @@ interface SidebarProps {
   onSearchOpen: () => void
 }
 
+type SessionVisualState = {
+  icon: IconName
+  label: string
+  tone: "default" | "active" | "waiting" | "worktree" | "muted"
+  pulse?: boolean
+}
+
+interface SessionStoreSlice {
+  session_status: Record<string, { type?: string } | undefined>
+  permission: Record<string, unknown[] | undefined>
+  question: Record<string, unknown[] | undefined>
+  cortex: { parentSessionID?: string; status?: string }[]
+  session: { id: string; parentID?: string; category?: string; workspace?: { type?: string } }[]
+}
+
+function resolveSessionVisualState(store: SessionStoreSlice, entry: NavEntry): SessionVisualState {
+  const status = store.session_status[entry.id]
+  const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
+  const running = status?.type === "busy" || status?.type === "retry"
+  const childTasksRunning = store.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running")
+  const fullSession = store.session.find((session) => session.id === entry.id)
+
+  if (running || childTasksRunning) return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
+  if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
+  if (fullSession?.workspace?.type === "git_worktree")
+    return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
+  if (entry.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
+  if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
+  if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+  return { icon: "file-text", label: "Session", tone: "default" }
+}
+
+function resolveGlobalSessionIcon(entry: NavEntry): SessionVisualState {
+  if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
+  if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+  if (entry.category === "home") return { icon: "home", label: "Home session", tone: "default" }
+  return { icon: "file-text", label: "Session", tone: "default" }
+}
+
 export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
@@ -132,38 +171,17 @@ export function Sidebar(props: SidebarProps) {
     navigate(`/${base64Encode(scope.worktree)}/session/${entry.id}`)
   }
 
+  const handleGlobalSessionClick = (entry: NavEntry) => {
+    navigate(`/${base64Encode("global")}/session/${entry.id}`)
+  }
+
   const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
     setProjectsFlyoutOpen(false)
     navigate(`/${base64Encode(worktree === "global" ? "global" : worktree)}/session/${entry.id}`)
   }
 
-  type SessionVisualState = {
-    icon: IconName
-    label: string
-    tone: "default" | "active" | "waiting" | "worktree" | "muted"
-    pulse?: boolean
-  }
-
-  const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState => {
-    const store = globalSync.child(scope.worktree)[0]
-    const status = store.session_status[entry.id]
-    const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
-    const running = status?.type === "busy" || status?.type === "retry"
-    const childTasksRunning = store.cortex.some(
-      (task) => task.parentSessionID === entry.id && task.status === "running",
-    )
-    const fullSession = store.session.find((session) => session.id === entry.id)
-
-    if (running || childTasksRunning)
-      return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
-    if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
-    if (fullSession?.workspace?.type === "git_worktree")
-      return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
-    if (entry.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
-    if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
-    if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
-    return { icon: "file-text", label: "Session", tone: "default" }
-  }
+  const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState =>
+    resolveSessionVisualState(globalSync.child(scope.worktree)[0], entry)
 
   const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
     const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
@@ -308,6 +326,21 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
+      {/* Synergy section: global sessions grouped by category */}
+      <Show when={isExpanded()}>
+        <div class="sb-synergy">
+          <div class="sb-synergy-header">
+            <span class="sb-section-title">Synergy</span>
+          </div>
+          <GroupedSessionList
+            entries={layout.nav.homeNavEntries()}
+            isGlobal
+            activeID={params.id}
+            onSessionClick={handleGlobalSessionClick}
+          />
+        </div>
+      </Show>
+
       {/* Projects: collapsed mode = single icon with flyout, expanded = full section */}
       <Show
         when={isExpanded()}
@@ -435,24 +468,12 @@ export function Sidebar(props: SidebarProps) {
                     {/* Sessions under expanded project */}
                     <Show when={scope.expanded}>
                       <div class="sb-sessions">
-                        <For each={layout.nav.projectNavEntries(scope)}>
-                          {(session) => (
-                            <button
-                              type="button"
-                              classList={{
-                                "sb-session-row": true,
-                                "sb-session-active": session.id === params.id,
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleSessionClick(scope, session)
-                              }}
-                            >
-                              <SessionIcon scope={scope} entry={session} />
-                              <span class="sb-session-title">{session.title || "Untitled"}</span>
-                            </button>
-                          )}
-                        </For>
+                        <GroupedSessionList
+                          entries={layout.nav.projectNavEntries(scope)}
+                          scope={scope}
+                          activeID={params.id}
+                          onSessionClick={(entry) => handleSessionClick(scope, entry)}
+                        />
                       </div>
                     </Show>
                   </div>
@@ -528,5 +549,92 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
     </div>
+  )
+}
+
+// --- GroupedSessionList: renders nav entries grouped by category ---
+
+const CATEGORY_LABELS_GLOBAL: Record<string, string> = {
+  home: "Home",
+  channel: "Messages",
+  background: "Background",
+}
+
+const CATEGORY_LABELS_PROJECT: Record<string, string> = {
+  project: "Active",
+  background: "Background",
+  channel: "Messages",
+}
+
+function GroupedSessionList(props: {
+  entries: NavEntry[]
+  isGlobal?: boolean
+  scope?: LocalScope
+  activeID?: string
+  onSessionClick: (entry: NavEntry) => void
+}) {
+  const labels = props.isGlobal ? CATEGORY_LABELS_GLOBAL : CATEGORY_LABELS_PROJECT
+
+  const groups = createMemo(() => {
+    const map = new Map<string, NavEntry[]>()
+    for (const entry of props.entries) {
+      const key = entry.category
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(entry)
+    }
+    return [...map.entries()].filter(([key]) => labels[key] !== undefined)
+  })
+
+  return (
+    <For each={groups()}>
+      {([category, entries]) => (
+        <div class="sb-session-group">
+          <div class="sb-session-group-header">{labels[category]}</div>
+          <For each={entries}>
+            {(entry) => (
+              <button
+                type="button"
+                classList={{
+                  "sb-session-row": true,
+                  "sb-session-active": entry.id === props.activeID,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  props.onSessionClick(entry)
+                }}
+              >
+                <SessionRowIcon entry={entry} isGlobal={props.isGlobal} scope={props.scope} />
+                <span class="sb-session-title">{entry.title || "Untitled"}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      )}
+    </For>
+  )
+}
+
+function SessionRowIcon(props: { entry: NavEntry; isGlobal?: boolean; scope?: LocalScope }) {
+  const globalSync = useGlobalSync()
+
+  const visual = createMemo(() => {
+    if (props.isGlobal || !props.scope) return resolveGlobalSessionIcon(props.entry)
+    return resolveSessionVisualState(globalSync.child(props.scope.worktree)[0], props.entry)
+  })
+
+  return (
+    <span
+      classList={{
+        "sb-session-icon-wrap": true,
+        "sb-session-icon-active-tone": visual().tone === "active",
+        "sb-session-icon-waiting-tone": visual().tone === "waiting",
+        "sb-session-icon-worktree-tone": visual().tone === "worktree",
+        "sb-session-icon-muted-tone": visual().tone === "muted",
+        "sb-session-icon-pulse": !!visual().pulse,
+      }}
+      title={visual().label}
+    >
+      <Icon name={visual().icon} size="small" class="sb-session-icon" />
+    </span>
   )
 }

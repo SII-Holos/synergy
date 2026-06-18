@@ -8,6 +8,7 @@ const booleanQuery = z.enum(["true", "false"]).transform((v) => v === "true")
 
 const SessionNavQuery = z
   .object({
+    scopeID: z.string().optional(),
     category: NavCategory.optional(),
     parentOnly: booleanQuery.optional(),
     includeArchived: booleanQuery.optional().default(false),
@@ -44,7 +45,8 @@ export const SessionNavRoute = new Hono().get(
   validator("query", SessionNavQuery),
   async (c) => {
     const query = c.req.valid("query")
-    const result = await SessionNav.queryScope(Instance.scope.id, {
+    const targetScopeID = query.scopeID ?? Instance.scope.id
+    const result = await SessionNav.queryScope(targetScopeID, {
       parentOnly: query.parentOnly,
       category: query.category,
       includeArchived: query.includeArchived,

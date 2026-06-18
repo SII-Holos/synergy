@@ -236,9 +236,7 @@ type PermissionModeVisual = {
   shortLabel: string
   description: string
   icon: "shield-alert" | "shield-check" | "lock-keyhole" | "zap"
-  color: string
-  triggerClass: string
-  dotClass: string
+  iconClass: string
 }
 
 const PERMISSION_MODES: PermissionModeVisual[] = [
@@ -248,9 +246,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Manual",
     description: "Ask before every tool request. Best when you want to review each action.",
     icon: "shield-alert",
-    color: "Slate",
-    triggerClass: "border-slate-300/70 bg-slate-100/70 text-slate-700 hover:bg-slate-100",
-    dotClass: "bg-slate-500",
+    iconClass: "text-icon-base",
   },
   {
     id: "guarded",
@@ -258,9 +254,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Guarded",
     description: "Auto-approve safe read-only work. Ask before shell, write, network, or external actions.",
     icon: "shield-check",
-    color: "Blue",
-    triggerClass: "border-blue-300/70 bg-blue-50/80 text-blue-700 hover:bg-blue-100/80",
-    dotClass: "bg-blue-500",
+    iconClass: "text-icon-interactive-base",
   },
   {
     id: "autonomous",
@@ -268,9 +262,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Auto",
     description: "Keep working unattended. High-risk actions are denied instead of prompting.",
     icon: "lock-keyhole",
-    color: "Emerald",
-    triggerClass: "border-emerald-300/70 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100/80",
-    dotClass: "bg-emerald-500",
+    iconClass: "text-icon-success-base",
   },
   {
     id: "full_access",
@@ -278,12 +270,9 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Full",
     description: "Allow all tool requests without approval prompts or workspace sandboxing.",
     icon: "zap",
-    color: "Amber",
-    triggerClass: "border-amber-300/80 bg-amber-50/90 text-amber-800 hover:bg-amber-100/90",
-    dotClass: "bg-amber-500",
+    iconClass: "text-icon-warning-base",
   },
 ]
-
 function permissionModeVisual(id: string | undefined): PermissionModeVisual {
   return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[1]
 }
@@ -2306,11 +2295,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             description: "Stop the session before changing its permission mode.",
                           })
                         }}
-                        class={`flex items-center gap-1.5 h-7 px-2.5 rounded-full border transition-colors ${activePermissionMode().triggerClass}`}
+                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
                         classList={{ "opacity-60 cursor-not-allowed": working() }}
                       >
-                        <span class={`size-2 rounded-full ${activePermissionMode().dotClass}`} />
-                        <Icon name={activePermissionMode().icon} size="small" class="shrink-0" />
+                        <Icon
+                          name={activePermissionMode().icon}
+                          size="small"
+                          class={`shrink-0 ${activePermissionMode().iconClass}`}
+                        />
                         <span class="text-12-medium whitespace-nowrap">{activePermissionMode().shortLabel}</span>
                         <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
                       </button>
@@ -2329,7 +2321,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               classList={{ "bg-surface-base": selectedControlProfile() === mode.id }}
                               onClick={() => updateControlProfile(mode.id, close)}
                             >
-                              <span class={`mt-1 size-2.5 rounded-full shrink-0 ${mode.dotClass}`} />
                               <span class="min-w-0 flex-1">
                                 <span class="flex items-center gap-2">
                                   <Icon name={mode.icon} size="small" class="shrink-0 text-icon-base" />

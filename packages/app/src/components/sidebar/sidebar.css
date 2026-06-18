@@ -714,3 +714,39 @@
   min-width: 0;
   text-align: left;
 }
+
+/* ===== Synergy section (global sessions) ===== */
+
+.sb-synergy {
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.sb-synergy-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  user-select: none;
+}
+
+/* ===== Session group (category grouping) ===== */
+
+.sb-session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 0;
+  margin-bottom: 4px;
+}
+
+.sb-session-group-header {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weak);
+}

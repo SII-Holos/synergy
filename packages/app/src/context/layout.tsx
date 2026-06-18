@@ -254,7 +254,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       try {
         const res = await globalSdk.client.session.index({
           directory,
-          parentOnly: "false",
+          parentOnly: "true",
           limit: NAV_FIRST_PAGE_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
         })
@@ -275,6 +275,34 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
+    async function loadHomeNav(cursor?: NavCursor) {
+      const key = "global"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.session.index({
+          scopeID: "global",
+          parentOnly: "true",
+          limit: NAV_FIRST_PAGE_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = navEntries[key]
+          const merged = [
+            ...(existing?.items ?? []),
+            ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
+          ]
+          setNavEntries(key, { items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setNavEntries(key, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
     // --- Nav event refresh ---
 
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -283,8 +311,24 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     onMount(() => {
       const unsub = globalSdk.event.listen((e) => {
         if ((e.details as { type?: string })?.type !== "session.updated") return
-        const info = (e.details as { properties?: { info?: { scope?: { directory?: string } } } })?.properties?.info
-        const dir = info?.scope?.directory
+        const info = (e.details as { properties?: { info?: { scope?: { id?: string; directory?: string } } } })
+          ?.properties?.info
+        const scope = info?.scope
+        if (!scope) return
+        if (scope.id === "global") {
+          if (!navEntries["global"]) return
+          const pending = navRefreshTimers.get("global")
+          if (pending) clearTimeout(pending)
+          navRefreshTimers.set(
+            "global",
+            setTimeout(() => {
+              navRefreshTimers.delete("global")
+              loadHomeNav()
+            }, NAV_REFRESH_DEBOUNCE_MS),
+          )
+          return
+        }
+        const dir = scope.directory
         if (!dir || !navEntries[dir]) return
         const pending = navRefreshTimers.get(dir)
         if (pending) clearTimeout(pending)
@@ -389,6 +433,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     onMount(() => {
       loadScopeIndex().then(() => {
+        loadHomeNav()
         const projects = list()
         const loaded = new Set<string>()
         for (const project of projects) {
@@ -440,6 +485,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function projectNavEntries(scope: LocalScope | undefined): NavEntry[] {
       if (!scope) return []
       const entry = navEntries[scope.worktree]
+      if (!entry) return []
+      return entry.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+    }
+
+    function homeNavEntries(): NavEntry[] {
+      const entry = navEntries["global"]
       if (!entry) return []
       return entry.items.toSorted((a, b) => {
         if (a.pinned && !b.pinned) return -1
@@ -620,6 +676,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nav: {
         projectSessions,
         projectNavEntries,
+        homeNavEntries,
         childStoreForScope,
         prefetchSession,
         resetPrefetch,

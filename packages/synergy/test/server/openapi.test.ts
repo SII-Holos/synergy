@@ -21,6 +21,17 @@ describe("OpenAPI spec generation", () => {
     expect(path!.get!.operationId).toBe("session.index")
   })
 
+  test("/session/index parameters include scopeID", async () => {
+    const spec = await Server.openapi()
+    const path = spec.paths["/session/index"]
+    const getOp = path!.get! as Record<string, unknown>
+    const parameters = getOp.parameters as Array<Record<string, unknown>>
+    const scopeIDParam = parameters?.find((p) => p.name === "scopeID")
+    expect(scopeIDParam).toBeDefined()
+    expect(scopeIDParam!.in).toBe("query")
+    expect(scopeIDParam!.required).toBeFalsy()
+  })
+
   test("includes /scope/index route with operationId scope.index", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/scope/index"]

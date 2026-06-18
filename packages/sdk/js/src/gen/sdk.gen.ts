@@ -921,6 +921,7 @@ export class Session extends HeyApiClient {
   public index<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       category?: "project" | "home" | "channel" | "background"
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
@@ -936,6 +937,7 @@ export class Session extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "category" },
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },

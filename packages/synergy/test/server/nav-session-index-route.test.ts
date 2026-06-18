@@ -4,6 +4,7 @@ import { Session } from "../../src/session"
 import { SessionNav, type NavCategory } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
 import { Instance } from "../../src/scope/instance"
+import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 
 Log.init({ print: false })
@@ -250,6 +251,74 @@ describe("GET /session/index (v2 nav)", () => {
         expect(item.scopeID).toBeTypeOf("string")
 
         await Session.remove(sessionID!)
+      },
+    })
+  })
+
+  test("scopeID overrides default scope in nav queries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let globalSessionID: string | undefined
+    let projectSessionID: string | undefined
+
+    // Create a session in the global scope
+    await Instance.provide({
+      scope: Scope.global(),
+      fn: async () => {
+        const s = await Session.create({ title: "Global Scope Session" })
+        globalSessionID = s.id
+      },
+    })
+
+    // Create a session in the project scope
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const s = await Session.create({ title: "Project Scope Session" })
+        projectSessionID = s.id
+      },
+    })
+
+    // Query project scope (default behavior — no scopeID override)
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+        const body = await res.json()
+        const ids = body.items.map((s: any) => s.id)
+        expect(ids).toContain(projectSessionID!)
+        if (globalSessionID) {
+          expect(ids).not.toContain(globalSessionID!)
+        }
+      },
+    })
+
+    // Query global scope explicitly via scopeID override
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/session/index?scopeID=global&directory=${encodeURIComponent(scope.directory)}`)
+        const body = await res.json()
+        const ids = body.items.map((s: any) => s.id)
+        expect(ids).toContain(globalSessionID!)
+        expect(ids).not.toContain(projectSessionID!)
+      },
+    })
+
+    // Cleanup
+    await Instance.provide({
+      scope: Scope.global(),
+      fn: async () => {
+        await Session.remove(globalSessionID!)
+      },
+    })
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        await Session.remove(projectSessionID!)
       },
     })
   })

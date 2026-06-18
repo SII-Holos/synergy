@@ -5561,6 +5561,7 @@ export type SessionIndexData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     category?: "project" | "home" | "channel" | "background"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
