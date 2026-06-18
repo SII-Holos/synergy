@@ -19,7 +19,9 @@ INS.HEAD:
 +line to insert at top
 INS.TAIL:
 +line to insert at end
-SWAP.BLK <ref>:  (planned — not yet available for file application)
+SWAP.BLK <ref>:  (parsed — requires block resolver; not yet available)
+DEL.BLK <ref>   (parsed — throws without block resolver; use DEL with explicit line numbers)
+INS.BLK.POST <ref>:  (parsed — lowers to INS.POST with warning if no resolver wired)
 
 Legacy syntax (still fully supported):
 
@@ -35,16 +37,9 @@ insert after N:
 insert head:
 +new content
 insert tail:
-+new content
 
 Rules:
-- All line numbers refer to the original file state captured by the tag, before any operation in this patch is applied. Do not adjust later hunks for earlier hunks in the same patch.
-- Body rows under `:` headers are final content and must start with `+`. They are not an old/new diff. Do not include `-` rows or unchanged context rows.
-- Keep ranges tight. `SWAP N..M` (or `replace N..M`) should cover only original lines whose content changes. Do not widen a range to swallow unchanged keeper lines.
-- Pure additions use `INS.PRE`, `INS.POST`, `INS.HEAD`, `INS.TAIL` (or legacy `insert before`, `insert after`, `insert head`, `insert tail`), not a widened swap/replace.
-- `SWAP.BLK` is parsed but not yet applied — use `SWAP` with explicit line numbers instead.
-- `DEL` deletes the specified line range. It does not accept body rows. Use `SWAP` with an empty body (omit the `:` and body rows) if you need to replace content with nothing.
-- A tag proves file freshness, not permission to edit unseen code. If a line or range was not visible in `view_file`, `scan_files`, or `parse_code` output, inspect it first before editing.
+- A tag proves file freshness, not permission to edit unseen code. If a line or range was not visible in `view_file`, `scan_files`, or `parse_code` output, inspect it first.
 - `revise_file` refuses to edit files that contain unresolved merge conflict markers. Resolve conflicts first, or use `save_file` for an intentional full-file resolution.
 - If a tag is stale, `revise_file` attempts conservative recovery only when the original target content and enough surrounding context can be uniquely located. If recovery is ambiguous or the target content changed, STOP and re-run `view_file`.
 - If a tag is unknown, STOP. Do not stack additional edits. Re-run `view_file` and retry with the current header.

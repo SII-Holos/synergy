@@ -114,6 +114,39 @@ describe("EnforcementGate path classification", () => {
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
+
+  test("revise_file with lowercase hex tag still classifies path", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[/tmp/data.log#1a2b]\nSWAP 1..1:\n+updated\n",
+    })
+
+    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    expect(external).toBeDefined()
+    expect(external.nonBypassable).toBe(true)
+  })
+
+  test("revise_file multi-section with lowercase hex tags classifies all paths", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[src/a.ts#a1b2]\nSWAP 1..1:\n+x\n[src/b.ts#c3d4]\nDEL 2..2\n",
+    })
+
+    const caps = result.capabilities.filter((c: any) => c.class === "file_external" || c.class === "file_write")
+    const paths = caps.flatMap((c: any) => c.paths ?? [])
+    expect(paths).toContain("src/a.ts")
+    expect(paths).toContain("src/b.ts")
+  })
 })
 
 // ------------------------------------------------------------------
