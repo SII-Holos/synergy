@@ -9,12 +9,6 @@ import type {
 
 export const PROFILE_IDS: readonly ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
 
-const LEGACY_PROFILE_ALIASES: Record<string, ProfileId> = {
-  review: "manual",
-  workspace: "guarded",
-  auto_review: "autonomous",
-}
-
 const CAPABILITY_PERMISSIONS = [
   "file_read",
   "file_write",
@@ -118,7 +112,7 @@ function summary(
 export function normalizeProfileId(id: string | undefined): ProfileId {
   if (!id) return "guarded"
   if ((PROFILE_IDS as readonly string[]).includes(id)) return id as ProfileId
-  return LEGACY_PROFILE_ALIASES[id] ?? "guarded"
+  return "guarded"
 }
 
 export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): ResolvedProfile {
@@ -135,7 +129,6 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
         ruleset: rulesFor({ low: "ask", medium: "ask", high: "ask" }),
         ...policy,
         approval: approval("manual"),
-        allowAllBlocked: true,
       }
       return { ...profile, summary: summary(id, profile, [], workspace) }
     }
@@ -179,7 +172,6 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
           network: { mode: "disabled" },
           sandbox: { mode: "read_only", fallback: "deny" },
           approval: approval("full_access"),
-          allowAllBlocked: false,
         }
       }
       const policy = fullAccessPolicy()

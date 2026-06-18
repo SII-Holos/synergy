@@ -175,7 +175,6 @@ export namespace EnforcementGate {
       throw new Error(resolved.reason ?? "Invalid profile for this context")
     }
 
-    let allowAll = false
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
 
@@ -342,8 +341,8 @@ export namespace EnforcementGate {
           continue // Keep checking — a later deny overrides
         }
         // rule.action === "allow" — profile explicitly allows this capability.
-        // NonBypassable/opaque only affect canAutoApprove() and allowAll bypass,
-        // not the decision when the profile has an explicit allow rule.
+        // NonBypassable/opaque affect explicit asks and metadata, not an
+        // already-allowed profile decision.
         // Allow stands unless overridden
       }
 
@@ -355,12 +354,6 @@ export namespace EnforcementGate {
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
         }
-      }
-
-      // allowAll can auto-approve only non-nonBypassable, non-opaque capabilities
-      if (allowAll && decision === "ask" && !resolved.allowAllBlocked) {
-        const allSafe = capabilities.every((c) => !c.nonBypassable && !c.opaque)
-        if (allSafe) decision = "allow"
       }
 
       const opaque = capabilities.some((c) => c.opaque === true)
@@ -384,7 +377,6 @@ export namespace EnforcementGate {
         capabilities,
         refusal,
         canAutoApprove() {
-          if (resolved.allowAllBlocked) return false
           return !capabilities.some((c) => c.nonBypassable || c.opaque)
         },
       }
@@ -413,12 +405,6 @@ export namespace EnforcementGate {
       },
       getAuditRecords() {
         return auditRecords
-      },
-      setAllowAll(flag: boolean) {
-        allowAll = flag
-      },
-      isAllowAllBlocked() {
-        return resolved.allowAllBlocked === true
       },
       hasPendingCapability(className: string) {
         return pendingCapabilities.has(className)

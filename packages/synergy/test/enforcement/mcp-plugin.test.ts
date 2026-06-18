@@ -4,8 +4,8 @@ import { describe, expect, test } from "bun:test"
 // enforcement/mcp-plugin.test.ts
 //
 // Tests for the EnforcementGate MCP and plugin opaque strategy — unknown
-// external tools must trigger ask/deny and never be bypassed by allowAll
-// or unattended mode.
+// external tools must trigger ask/deny and never be auto-approved in
+// unattended mode.
 //
 // These tests encode the MCP/plugin external I/O boundary contract.
 // ---------------------------------------------------------------------------
@@ -58,26 +58,6 @@ describe("EnforcementGate MCP opaque strategy", () => {
     const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")
     expect(mcpCap).toBeDefined()
     expect(mcpCap.opaque).toBe(true)
-  })
-
-  test("allowAll does not bypass unknown MCP tool ask", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
-
-    // Simulating allowAll being active
-    gate.setAllowAll(true)
-
-    const envelope = gate.evaluate("mcp__external_service__action", {
-      serverName: "external_service",
-      toolName: "action",
-    })
-
-    // allowAll must NOT bypass MCP opaque externalIO — decision stays "ask"
-    expect(envelope.decision).toBe("ask")
   })
 
   test("unattended mode does not auto-approve unknown MCP tool", () => {
@@ -165,25 +145,6 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(pluginCap.opaque).toBe(true)
   })
 
-  test("allowAll does not bypass unknown plugin tool ask", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
-
-    gate.setAllowAll(true)
-
-    const envelope = gate.evaluate("plugin__external_plugin__send_data", {
-      pluginName: "external_plugin",
-      actionName: "send_data",
-    })
-
-    // allowAll must NOT bypass plugin opaque externalIO
-    expect(envelope.decision).toBe("ask")
-  })
-
   test("unattended mode does not auto-approve unknown plugin tool", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
@@ -244,7 +205,7 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
     expect(envelope.opaque).toBe(false)
   })
 
-  test("known MCP tool is still nonBypassable", () => {
+  test("known MCP tool still asks under guarded profile", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -252,14 +213,11 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
       registeredMcpTools: new Set(["mcp__github__list_repos"]),
     })
 
-    gate.setAllowAll(true)
-
     const envelope = gate.evaluate("mcp__github__list_repos", {
       serverName: "github",
       toolName: "list_repos",
     })
 
-    // Even known MCP tools are nonBypassable — allowAll cannot skip
     expect(envelope.decision).toBe("ask")
   })
 })

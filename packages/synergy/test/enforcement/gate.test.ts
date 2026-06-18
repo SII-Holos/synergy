@@ -378,7 +378,7 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("manual profile blocks allowAll auto-approval", () => {
+  test("manual profile asks for read tool", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -386,13 +386,11 @@ describe("EnforcementGate profile integration", () => {
       profileId: "manual",
     })
 
-    gate.setAllowAll(true)
     const envelope = gate.evaluate("read", {
       filePath: "/Users/test/synergy-control-profile/src/index.ts",
     })
 
-    expect(gate.isAllowAllBlocked()).toBe(true)
-    expect(envelope.canAutoApprove()).toBe(false)
+    expect(envelope.decision).toBe("ask")
   })
 
   test("gate with guarded profile allows inside-workspace write", () => {

@@ -21,7 +21,6 @@ import { Code } from "@ericsanchezok/synergy-ui/code"
 import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
 import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { GlobalSyncProvider } from "@/context/global-sync"
-import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
@@ -201,15 +200,13 @@ function ConnectedApp() {
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (
-                    <PermissionProvider>
-                      <LayoutProvider>
-                        <NotificationProvider>
-                          <CommandProvider>
-                            <Layout>{props.children}</Layout>
-                          </CommandProvider>
-                        </NotificationProvider>
-                      </LayoutProvider>
-                    </PermissionProvider>
+                    <LayoutProvider>
+                      <NotificationProvider>
+                        <CommandProvider>
+                          <Layout>{props.children}</Layout>
+                        </CommandProvider>
+                      </NotificationProvider>
+                    </LayoutProvider>
                   )}
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />

@@ -9,13 +9,6 @@ describe("ControlProfileId schema", () => {
     }
   })
 
-  test("legacy profile ids remain accepted for config compatibility", () => {
-    for (const id of ["review", "workspace", "auto_review"]) {
-      const result = ControlProfileId.safeParse(id)
-      expect(result.success).toBe(true)
-    }
-  })
-
   test("invalid profile id fails validation", () => {
     const result = ControlProfileId.safeParse("bogus")
     expect(result.success).toBe(false)

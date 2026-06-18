@@ -39,7 +39,6 @@ export interface ControlProfile {
   network: ProfileNetwork
   sandbox: ProfileSandbox
   approval: ProfileApproval
-  allowAllBlocked?: boolean
 }
 
 export interface ResolutionContext {
@@ -65,5 +64,4 @@ export interface ResolvedProfile extends ControlProfile {
 }
 
 export type ProfileId = "manual" | "guarded" | "autonomous" | "full_access"
-export type LegacyProfileId = "review" | "workspace" | "auto_review"
-export type ProfileIdInput = ProfileId | LegacyProfileId
+export type ProfileIdInput = ProfileId

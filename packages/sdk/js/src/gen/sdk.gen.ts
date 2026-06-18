@@ -233,15 +233,11 @@ import type {
   PartUpdateErrors,
   PartUpdateResponses,
   PathGetResponses,
-  PermissionIsAllowingAllErrors,
-  PermissionIsAllowingAllResponses,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
-  PermissionSetAllowAllErrors,
-  PermissionSetAllowAllResponses,
   ProviderAuthResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -1010,6 +1006,7 @@ export class Session extends HeyApiClient {
       parentID?: string
       title?: string
       id?: string
+      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1022,6 +1019,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
             { in: "body", key: "id" },
+            { in: "body", key: "controlProfile" },
           ],
         },
       ],
@@ -1128,6 +1126,7 @@ export class Session extends HeyApiClient {
       directory?: string
       title?: string
       pinned?: number
+      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
       time?: {
         archived?: number
       }
@@ -1143,6 +1142,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
             { in: "body", key: "pinned" },
+            { in: "body", key: "controlProfile" },
             { in: "body", key: "time" },
           ],
         },
@@ -3872,81 +3872,6 @@ export class Permission extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PermissionReplyResponses, PermissionReplyErrors, ThrowOnError>({
       url: "/permission/{requestID}/reply",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Check allow-all status
-   *
-   * Check if allow-all mode is enabled for a session.
-   */
-  public isAllowingAll<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      sessionID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "sessionID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      PermissionIsAllowingAllResponses,
-      PermissionIsAllowingAllErrors,
-      ThrowOnError
-    >({
-      url: "/permission/allow-all",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Set allow-all for a session
-   *
-   * Enable or disable allow-all mode for a session. When enabled, all permission requests are automatically approved and any currently pending permissions are resolved.
-   */
-  public setAllowAll<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      sessionID?: string
-      enabled?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "sessionID" },
-            { in: "body", key: "enabled" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      PermissionSetAllowAllResponses,
-      PermissionSetAllowAllErrors,
-      ThrowOnError
-    >({
-      url: "/permission/allow-all",
       ...options,
       ...params,
       headers: {

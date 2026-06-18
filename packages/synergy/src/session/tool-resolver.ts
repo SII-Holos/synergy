@@ -47,12 +47,13 @@ export namespace ToolResolver {
 
   /**
    * Resolve the effective control profile id using precedence:
-   *   1. agent config controlProfile
-   *   2. top-level config controlProfile
-   *   3. default 'guarded'
+   *   1. session controlProfile
+   *   2. agent config controlProfile
+   *   3. top-level config controlProfile
+   *   4. default 'guarded'
    */
-  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string): ProfileId {
-    return ControlProfileCompiler.normalize(agent.controlProfile ?? topLevelProfile)
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, session?: Info): ProfileId {
+    return ControlProfileCompiler.normalize(session?.controlProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
   /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
@@ -204,7 +205,7 @@ export namespace ToolResolver {
       const resolvedProfile = async () => {
         if (!profilePromise) {
           profilePromise = cachedTopLevelProfile().then((topLevelProfile) => {
-            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile)
+            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, input.session)
             const workspaceInfo = Instance.workspace
             const interaction = input.session?.interaction
             const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
@@ -265,15 +266,12 @@ export namespace ToolResolver {
 
           await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "pending_user"))
           const forcedAsk = [{ permission: req.permission, pattern: "*", action: "ask" as const }]
-          const permissionMetadata = profile.allowAllBlocked
-            ? { ...requestMetadata, nonBypassable: true }
-            : requestMetadata
           try {
             await PermissionNext.ask({
               ...req,
               sessionID: input.sessionID,
               tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-              metadata: permissionMetadata,
+              metadata: requestMetadata,
               ruleset: PermissionNext.merge(
                 input.agent.permission,
                 PermissionNext.sessionRuleset(input.session),
@@ -342,7 +340,7 @@ export namespace ToolResolver {
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
-                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
                 const gate = EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -490,7 +488,7 @@ export namespace ToolResolver {
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
-                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile)
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
                   const gate = EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",

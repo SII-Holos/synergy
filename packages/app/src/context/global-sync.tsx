@@ -764,28 +764,6 @@ function createGlobalSync() {
         )
         break
       }
-      case "permission.allowAll.changed": {
-        const updates = (
-          event.properties as {
-            sessions?: Array<{
-              sessionID: string
-              enabled: boolean
-            }>
-          }
-        ).sessions
-        if (!updates) break
-        setStore(
-          "session",
-          produce((draft) => {
-            for (const update of updates) {
-              const result = Binary.search(draft, update.sessionID, (session) => session.id)
-              if (!result.found) continue
-              ;(draft[result.index] as (typeof draft)[number] & { allowAll?: boolean }).allowAll = update.enabled
-            }
-          }),
-        )
-        break
-      }
       case "question.asked": {
         const request = event.properties
         const requests = store.question[request.sessionID]

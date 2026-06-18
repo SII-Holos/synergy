@@ -10,7 +10,6 @@ import { createStore } from "solid-js/store"
 import { showToast, Toast, toaster } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { usePermission } from "@/context/permission"
 import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -43,7 +42,6 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const server = useServer()
   const notification = useNotification()
-  const permission = usePermission()
   const navigate = useNavigate()
   const dialog = useDialog()
   const command = useCommand()
@@ -80,7 +78,6 @@ export default function Layout(props: ParentProps) {
       if (e.details?.type !== "permission.asked") return
       const directory = e.name
       const perm = e.details.properties
-      if (permission.isAllowingAll(perm.sessionID, directory)) return
 
       const [childStore] = globalSync.child(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)

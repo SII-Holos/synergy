@@ -2,8 +2,6 @@ import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { Instance } from "../../src/scope/instance"
 import { Storage } from "../../src/storage/storage"
-import { Session } from "../../src/session"
-import { Bus } from "../../src/bus"
 import { tmpdir } from "../fixture/fixture"
 
 // fromConfig tests
@@ -565,52 +563,6 @@ test("reply - reject cancels all pending for same session", async () => {
   })
 })
 
-test("setAllowAll publishes affected session states", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const root = await Session.create({ title: "root" })
-      const child = await Session.create({ title: "child", parentID: root.id })
-      const eventPromise = Promise.withResolvers<{
-        sessionID: string
-        enabled: boolean
-        sessions: { sessionID: string; enabled: boolean }[]
-      }>()
-      const unsub = Bus.subscribe(PermissionNext.Event.AllowAllChanged, (event) => {
-        eventPromise.resolve(event.properties)
-      })
-
-      await PermissionNext.setAllowAll(root.id, true)
-      const payload = await eventPromise.promise
-      unsub()
-
-      expect(payload.sessionID).toBe(root.id)
-      expect(payload.enabled).toBe(true)
-      expect(payload.sessions).toEqual(
-        expect.arrayContaining([
-          { sessionID: root.id, enabled: true },
-          { sessionID: child.id, enabled: true },
-        ]),
-      )
-    },
-  })
-})
-
-test("isAllowingAll resolves inherited parent state from stored sessions", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const root = await Session.create({ title: "root inherited" })
-      const child = await Session.create({ title: "child inherited", parentID: root.id })
-
-      await PermissionNext.setAllowAll(root.id, true)
-      expect(await PermissionNext.isAllowingAll(child.id)).toBe(true)
-    },
-  })
-})
-
 test("ask - checks all patterns and stops on first deny", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
@@ -677,15 +629,11 @@ test("sessionRuleset - unattended sessions deny question", () => {
 
 // === Workspace boundary / non-bypassable tests ===
 
-test("ask - nonBypassable metadata prevents allowAll bypass", async () => {
+test("ask - nonBypassable metadata stays pending for ask rules", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      // First enable allowAll
-      await PermissionNext.setAllowAll("session_test_nonbypass", true)
-
-      // Request with nonBypassable metadata should NOT be auto-approved
       const promise = PermissionNext.ask({
         id: "permission_nonbypass_1",
         sessionID: "session_test_nonbypass",
@@ -695,10 +643,8 @@ test("ask - nonBypassable metadata prevents allowAll bypass", async () => {
         ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
       })
 
-      // Must be a Promise (not undefined from allowAll bypass)
       expect(promise).toBeInstanceOf(Promise)
 
-      // RED assertion: the request should be in the pending list — NOT auto-resolved
       const pending = await PermissionNext.list()
       const nonBypassableRequest = pending.find((r) => r.sessionID === "session_test_nonbypass")
       expect(nonBypassableRequest).toBeDefined()
@@ -708,8 +654,6 @@ test("ask - nonBypassable metadata prevents allowAll bypass", async () => {
         await PermissionNext.reply({ requestID: nonBypassableRequest.id, reply: "once" })
       }
       await expect(promise).resolves.toBeUndefined()
-
-      await PermissionNext.setAllowAll("session_test_nonbypass", false)
     },
   })
 })
@@ -748,13 +692,11 @@ test("ask - workspaceBoundary metadata prevents unattended auto-approve", async 
   })
 })
 
-test("ask - nonBypassable metadata does NOT bypass allowAll for ask action", async () => {
+test("ask - nonBypassable metadata keeps edit ask pending", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await PermissionNext.setAllowAll("session_test_nonbypass2", true)
-
       const promise = PermissionNext.ask({
         sessionID: "session_test_nonbypass2",
         permission: "edit",
@@ -763,7 +705,6 @@ test("ask - nonBypassable metadata does NOT bypass allowAll for ask action", asy
         ruleset: [{ permission: "edit", pattern: "*", action: "ask" }],
       })
 
-      // With nonBypassable, allowAll should NOT auto-resolve
       expect(promise).toBeInstanceOf(Promise)
 
       // Clean up
@@ -773,20 +714,15 @@ test("ask - nonBypassable metadata does NOT bypass allowAll for ask action", asy
         await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
       }
       await expect(promise).resolves.toBeUndefined()
-
-      await PermissionNext.setAllowAll("session_test_nonbypass2", false)
     },
   })
 })
 
-test("ask - nonBypassable allow-all override with non-bypassable metadata", async () => {
+test("ask - nonBypassable workspace boundary metadata keeps bash ask pending", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await PermissionNext.setAllowAll("session_test_nonbypass_base", true)
-
-      // Child inherits allowAll from parent, but nonBypassable should still block
       const promise = PermissionNext.ask({
         sessionID: "session_test_nonbypass_base",
         permission: "bash",
@@ -803,8 +739,6 @@ test("ask - nonBypassable allow-all override with non-bypassable metadata", asyn
         await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
       }
       await expect(promise).resolves.toBeUndefined()
-
-      await PermissionNext.setAllowAll("session_test_nonbypass_base", false)
     },
   })
 })

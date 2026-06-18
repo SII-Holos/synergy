@@ -36,9 +36,7 @@ export namespace Agent {
       temperature: z.number().optional(),
       color: z.string().optional(),
       permission: PermissionNext.Ruleset,
-      controlProfile: z
-        .enum(["manual", "guarded", "autonomous", "full_access", "review", "workspace", "auto_review"])
-        .optional(),
+      controlProfile: z.enum(["manual", "guarded", "autonomous", "full_access"]).optional(),
       model: z
         .object({
           modelID: z.string(),

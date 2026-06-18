@@ -14,7 +14,7 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("project")
   })
 
-  test("project session: even with allowAll and pinned, still project", () => {
+  test("project session: pinned state does not affect category", () => {
     const cat = SessionNav.deriveCategory({
       scopeType: "project",
       endpointKind: undefined,

@@ -2559,6 +2559,10 @@
                   },
                   "id": {
                     "type": "string"
+                  },
+                  "controlProfile": {
+                    "type": "string",
+                    "enum": ["manual", "guarded", "autonomous", "full_access"]
                   }
                 }
               }
@@ -2811,6 +2815,10 @@
                   },
                   "pinned": {
                     "type": "number"
+                  },
+                  "controlProfile": {
+                    "type": "string",
+                    "enum": ["manual", "guarded", "autonomous", "full_access"]
                   },
                   "time": {
                     "type": "object",
@@ -4539,120 +4547,6 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.reply({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/permission/allow-all": {
-      "post": {
-        "operationId": "permission.setAllowAll",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Set allow-all for a session",
-        "description": "Enable or disable allow-all mode for a session. When enabled, all permission requests are automatically approved and any currently pending permissions are resolved.",
-        "responses": {
-          "200": {
-            "description": "Allow-all updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "sessionID": {
-                    "type": "string",
-                    "pattern": "^ses.*"
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["sessionID", "enabled"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.setAllowAll({\n  ...\n})"
-          }
-        ]
-      },
-      "get": {
-        "operationId": "permission.isAllowingAll",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sessionID",
-            "schema": {
-              "type": "string",
-              "pattern": "^ses.*"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Check allow-all status",
-        "description": "Check if allow-all mode is enabled for a session.",
-        "responses": {
-          "200": {
-            "description": "Allow-all status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.permission.isAllowingAll({\n  ...\n})"
           }
         ]
       }
@@ -13118,7 +13012,7 @@
       "ControlProfileId": {
         "description": "Default control profile applied to all agents",
         "type": "string",
-        "enum": ["manual", "guarded", "autonomous", "full_access", "review", "workspace", "auto_review"]
+        "enum": ["manual", "guarded", "autonomous", "full_access"]
       },
       "AgentConfig": {
         "type": "object",
@@ -16009,10 +15903,11 @@
           "permission": {
             "$ref": "#/components/schemas/PermissionRuleset"
           },
-          "pendingReply": {
-            "type": "boolean"
+          "controlProfile": {
+            "type": "string",
+            "enum": ["manual", "guarded", "autonomous", "full_access"]
           },
-          "allowAll": {
+          "pendingReply": {
             "type": "boolean"
           },
           "interaction": {
@@ -19949,7 +19844,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access", "review", "workspace", "auto_review"]
+            "enum": ["manual", "guarded", "autonomous", "full_access"]
           },
           "model": {
             "type": "object",
@@ -20752,43 +20647,6 @@
               }
             },
             "required": ["sessionID", "requestID", "reply"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.allowAll.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.allowAll.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "sessions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "sessionID": {
-                      "type": "string"
-                    },
-                    "enabled": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": ["sessionID", "enabled"]
-                }
-              }
-            },
-            "required": ["sessionID", "enabled", "sessions"]
           }
         },
         "required": ["type", "properties"]
@@ -21993,9 +21851,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.permission.replied"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.allowAll.changed"
           },
           {
             "$ref": "#/components/schemas/Event.note.created"

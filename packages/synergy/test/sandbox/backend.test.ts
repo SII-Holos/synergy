@@ -179,7 +179,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
 
     const profileStr = profile.join("\n")
 
-    // CRITICAL: must NOT contain a global allow-all-file-reads rule
+    // CRITICAL: must NOT contain a global unrestricted file-read rule
     // that applies to user data directories
     expect(profileStr).not.toMatch(/\(allow\s+file-read\*\)/)
     expect(profileStr).not.toMatch(/\(allow\s+file-read\*\s*\)/)

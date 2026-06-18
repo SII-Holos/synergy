@@ -152,8 +152,8 @@ class CodexAdapter implements ExternalAgent.Adapter {
       }
     }
 
-    const allowAll = this.adapterConfig.allowAll === true
-    if (allowAll) {
+    const controlProfile = this.adapterConfig.controlProfile as string | undefined
+    if (controlProfile === "full_access") {
       args.push("--dangerously-bypass-approvals-and-sandbox")
     } else if (!isResume) {
       args.push("--sandbox", "read-only")

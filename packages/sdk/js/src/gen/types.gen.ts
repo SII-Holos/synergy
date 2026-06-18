@@ -717,14 +717,7 @@ export type PermissionConfig =
 /**
  * Default control profile applied to all agents
  */
-export type ControlProfileId =
-  | "manual"
-  | "guarded"
-  | "autonomous"
-  | "full_access"
-  | "review"
-  | "workspace"
-  | "auto_review"
+export type ControlProfileId = "manual" | "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
@@ -2203,8 +2196,8 @@ export type Session = {
   }
   pinned?: number
   permission?: PermissionRuleset
+  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   pendingReply?: boolean
-  allowAll?: boolean
   interaction?: SessionInteraction
   agenda?: {
     itemID: string
@@ -3598,7 +3591,7 @@ export type Agent = {
   temperature?: number
   color?: string
   permission: PermissionRuleset
-  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access" | "review" | "workspace" | "auto_review"
+  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   model?: {
     modelID: string
     providerID: string
@@ -3881,18 +3874,6 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "reject"
-  }
-}
-
-export type EventPermissionAllowAllChanged = {
-  type: "permission.allowAll.changed"
-  properties: {
-    sessionID: string
-    enabled: boolean
-    sessions: Array<{
-      sessionID: string
-      enabled: boolean
-    }>
   }
 }
 
@@ -4325,7 +4306,6 @@ export type Event =
   | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventPermissionAllowAllChanged
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
@@ -5656,6 +5636,7 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     id?: string
+    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   }
   path?: never
   query?: {
@@ -5781,6 +5762,7 @@ export type SessionUpdateData = {
   body?: {
     title?: string
     pinned?: number
+    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
     time?: {
       archived?: number
     }
@@ -6622,64 +6604,6 @@ export type PermissionReplyResponses = {
 }
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
-
-export type PermissionIsAllowingAllData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    sessionID: string
-  }
-  url: "/permission/allow-all"
-}
-
-export type PermissionIsAllowingAllErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type PermissionIsAllowingAllError = PermissionIsAllowingAllErrors[keyof PermissionIsAllowingAllErrors]
-
-export type PermissionIsAllowingAllResponses = {
-  /**
-   * Allow-all status
-   */
-  200: boolean
-}
-
-export type PermissionIsAllowingAllResponse = PermissionIsAllowingAllResponses[keyof PermissionIsAllowingAllResponses]
-
-export type PermissionSetAllowAllData = {
-  body?: {
-    sessionID: string
-    enabled: boolean
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/permission/allow-all"
-}
-
-export type PermissionSetAllowAllErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type PermissionSetAllowAllError = PermissionSetAllowAllErrors[keyof PermissionSetAllowAllErrors]
-
-export type PermissionSetAllowAllResponses = {
-  /**
-   * Allow-all updated
-   */
-  200: boolean
-}
-
-export type PermissionSetAllowAllResponse = PermissionSetAllowAllResponses[keyof PermissionSetAllowAllResponses]
 
 export type PermissionListData = {
   body?: never

@@ -73,28 +73,6 @@ export function AdvancedPanel(props: {
       </div>
 
       <div class="ds-setting-section">
-        <SectionLabel title="Legacy permission fallback" />
-        <SettingRow
-          title="Default Mode"
-          description="Low-level fallback for tools that still use classic permission rules"
-          trailing={
-            <SegmentPill
-              value={props.advanced.permission}
-              options={[
-                { value: "allow", label: "Allow" },
-                { value: "ask", label: "Ask" },
-                { value: "deny", label: "Deny" },
-              ]}
-              onChange={(value) => props.onAdvancedChange("permission", value)}
-              showReset
-              defaultValue="ask"
-              onReset={() => props.onAdvancedChange("permission", "ask")}
-            />
-          }
-        />
-      </div>
-
-      <div class="ds-setting-section">
         <SectionLabel title="Question" />
         <SettingRow
           title="Response Timeout"

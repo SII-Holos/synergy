@@ -55,6 +55,8 @@ const CortexDelegationInfoInner = z.object({
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
+const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -90,8 +92,8 @@ export const Info = z
       }),
       pinned: z.number().optional(),
       permission: PermissionNext.Ruleset.optional(),
+      controlProfile: ControlProfileId.optional(),
       pendingReply: z.boolean().optional(),
-      allowAll: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
         .object({

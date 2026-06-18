@@ -20,10 +20,8 @@ describe("ControlProfile identity", () => {
     expect(labels).toEqual(["Manual Approval", "Guarded", "Autonomous", "Full Access"])
   })
 
-  test("legacy profile ids normalize to the new modes", () => {
-    expect(ControlProfileCompiler.normalize("review")).toBe("manual")
-    expect(ControlProfileCompiler.normalize("workspace")).toBe("guarded")
-    expect(ControlProfileCompiler.normalize("auto_review")).toBe("autonomous")
+  test("unknown profile ids normalize to guarded", () => {
+    expect(ControlProfileCompiler.normalize("bogus")).toBe("guarded")
   })
 })
 
@@ -36,10 +34,9 @@ describe("manual profile policy", () => {
     expect(rule(profile, "shell_destructive")?.action).toBe("ask")
   })
 
-  test("uses workspace sandbox and blocks allow-all bypass", () => {
+  test("uses workspace sandbox", () => {
     const profile = ControlProfileCompiler.resolve("manual", context)
     expect(profile.sandbox.mode).toBe("workspace_write")
-    expect(profile.allowAllBlocked).toBe(true)
   })
 })
 

@@ -52,9 +52,7 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    const result = { ...session }
-    delete result.allowAll
-    return result
+    return { ...session }
   }
 
   export type PageIndex = {
@@ -146,10 +144,7 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info> {
-    return {
-      ...withoutRuntimeInfo(session),
-      allowAll: await PermissionNext.isAllowingAll(session.id),
-    }
+    return withoutRuntimeInfo(session)
   }
 
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
@@ -163,6 +158,7 @@ export namespace Session {
     parentID?: string
     title?: string
     permission?: PermissionNext.Ruleset
+    controlProfile?: Info["controlProfile"]
     endpoint?: SessionEndpoint.Info
     id?: string
     agenda?: { itemID: string }
@@ -179,6 +175,7 @@ export namespace Session {
         scopeID: scope.id,
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
+    const controlProfile = input?.controlProfile ?? parent?.controlProfile
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
@@ -199,6 +196,7 @@ export namespace Session {
       category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
+      controlProfile,
       endpoint,
       interaction: inheritedInteraction,
       agenda: input?.agenda,
@@ -226,8 +224,6 @@ export namespace Session {
         scopeID: scope.id,
       })
     }
-
-    if (input?.parentID) PermissionNext.registerParent(result.id, input.parentID)
 
     SessionManager.registerRuntime(result.id)
     Scope.touch(scope.id)

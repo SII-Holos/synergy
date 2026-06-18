@@ -90,45 +90,6 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
     })
   })
 
-  test("nonBypassable defeats allowAll even with blanket allow rule", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await PermissionNext.setAllowAll("ses_anima_allowall_test", true)
-
-        const promise = PermissionNext.ask({
-          sessionID: "ses_anima_allowall_test",
-          permission: "external_directory",
-          patterns: ["/original-checkout/secrets.json"],
-          metadata: {
-            nonBypassable: true,
-            workspaceBoundary: true,
-            outsideWorkspace: true,
-          },
-          ruleset: [
-            // Even though allow rule exists AND allowAll enabled —
-            { permission: "external_directory", pattern: "*", action: "allow" },
-          ],
-        })
-
-        // nonBypassable defeats ALL auto-approve mechanisms
-        expect(promise).toBeInstanceOf(Promise)
-
-        const pending = await PermissionNext.list()
-        const found = pending.find((r) => r.sessionID === "ses_anima_allowall_test")
-        expect(found).toBeDefined()
-
-        if (found) {
-          await PermissionNext.reply({ requestID: found.id, reply: "once" })
-        }
-        await expect(promise).resolves.toBeUndefined()
-
-        await PermissionNext.setAllowAll("ses_anima_allowall_test", false)
-      },
-    })
-  })
-
   test("nonBypassable defeats unattended auto-approve with blanket allow rule", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

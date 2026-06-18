@@ -304,14 +304,19 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const allowAll = await PermissionNext.isAllowingAll(sessionID)
+          const topLevelProfile = await Config.get()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const profileId = ControlProfileCompiler.normalize(
+            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
+          )
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
           }
 
-          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
+          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
           const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
@@ -478,7 +483,9 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.get()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const profileId = ControlProfileCompiler.normalize(agent.controlProfile ?? topLevelProfile)
+          const profileId = ControlProfileCompiler.normalize(
+            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
+          )
           const resolved = ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -1069,13 +1076,13 @@ export namespace SessionInvoke {
   export function applyExternalPermissionMode(
     config: Record<string, unknown>,
     adapterName: string,
-    allowAll: boolean,
+    controlProfile: string,
   ): Record<string, unknown> {
-    config.allowAll = allowAll
+    config.controlProfile = controlProfile
 
     if (adapterName === "claude-code") {
       delete config.skipPermissions
-      config.permissionMode = allowAll ? "bypassPermissions" : "default"
+      config.permissionMode = controlProfile === "full_access" ? "bypassPermissions" : "default"
       return config
     }
 

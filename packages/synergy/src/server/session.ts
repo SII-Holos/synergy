@@ -19,6 +19,7 @@ import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
+const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
 
 export const SessionRoute = new Hono()
   .get(
@@ -256,6 +257,7 @@ export const SessionRoute = new Hono()
           parentID: z.string().optional(),
           title: z.string().optional(),
           id: z.string().optional(),
+          controlProfile: ControlProfileId.optional(),
         })
         .optional(),
     ),
@@ -324,6 +326,7 @@ export const SessionRoute = new Hono()
       z.object({
         title: z.string().optional(),
         pinned: z.number().optional(),
+        controlProfile: ControlProfileId.optional(),
         time: z
           .object({
             archived: z.number().optional(),
@@ -334,10 +337,12 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
+      if (updates.controlProfile !== undefined) SessionManager.assertIdle(sessionID)
 
       const updatedSession = await Session.update(sessionID, (session) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
+        if (updates.controlProfile !== undefined) session.controlProfile = updates.controlProfile
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
       })
 
