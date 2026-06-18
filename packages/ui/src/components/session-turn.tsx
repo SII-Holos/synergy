@@ -85,6 +85,10 @@ function AssistantMessageItem(props: {
   const filteredParts = createMemo(() => {
     let parts = msgParts()
 
+    if (props.hideReasoning) {
+      parts = parts.filter((part) => part?.type !== "reasoning")
+    }
+
     if (!props.hideResponsePart) return parts
 
     const responsePartId = props.responsePartId
@@ -672,7 +676,7 @@ export function SessionTurn(
                               message={assistantMessage}
                               responsePartId={responsePartId()}
                               hideResponsePart={hideResponsePart()}
-                              hideReasoning={false}
+                              hideReasoning={!working()}
                             />
                           )}
                         </For>
