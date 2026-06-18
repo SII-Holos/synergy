@@ -175,7 +175,7 @@ export namespace Session {
         scopeID: scope.id,
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
-    const controlProfile = input?.controlProfile ?? parent?.controlProfile
+    const controlProfile = parent?.controlProfile ?? input?.controlProfile
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
@@ -271,6 +271,41 @@ export namespace Session {
     return update(sessionID, (draft) => {
       draft.workspace = workspace
     })
+  }
+
+  async function descendants(sessionID: string): Promise<Info[]> {
+    const result: Info[] = []
+    const queue = await children(sessionID)
+    while (queue.length > 0) {
+      const child = queue.shift()!
+      result.push(child)
+      queue.push(...(await children(child.id)))
+    }
+    return result
+  }
+
+  export async function updateControlProfile(
+    sessionID: string,
+    controlProfile: NonNullable<Info["controlProfile"]>,
+    editor?: (session: Info) => void,
+  ): Promise<Info> {
+    const childSessions = await descendants(sessionID)
+    for (const id of [sessionID, ...childSessions.map((child) => child.id)]) {
+      SessionManager.assertIdle(id)
+    }
+
+    const updatedParent = await update(sessionID, (draft) => {
+      draft.controlProfile = controlProfile
+      editor?.(draft)
+    })
+
+    for (const child of childSessions) {
+      await update(child.id, (draft) => {
+        draft.controlProfile = controlProfile
+      })
+    }
+
+    return updatedParent
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {

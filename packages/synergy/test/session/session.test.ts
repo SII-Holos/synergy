@@ -84,4 +84,50 @@ describe("session lifecycle events", () => {
       },
     })
   })
+
+  test("child sessions inherit the parent control profile even when another profile is supplied", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "manual",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+          controlProfile: "full_access",
+        })
+
+        expect(child.controlProfile).toBe("manual")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("parent control profile updates propagate to existing child sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "guarded",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+        })
+        const grandchild = await Session.create({
+          parentID: child.id,
+        })
+
+        await Session.updateControlProfile(parent.id, "autonomous")
+
+        expect((await Session.get(parent.id)).controlProfile).toBe("autonomous")
+        expect((await Session.get(child.id)).controlProfile).toBe("autonomous")
+        expect((await Session.get(grandchild.id)).controlProfile).toBe("autonomous")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
 })

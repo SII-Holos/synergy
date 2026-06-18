@@ -337,14 +337,17 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
-      if (updates.controlProfile !== undefined) SessionManager.assertIdle(sessionID)
 
-      const updatedSession = await Session.update(sessionID, (session) => {
+      const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
-        if (updates.controlProfile !== undefined) session.controlProfile = updates.controlProfile
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-      })
+      }
+
+      const updatedSession =
+        updates.controlProfile === undefined
+          ? await Session.update(sessionID, applyOtherUpdates)
+          : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
 
       return c.json(updatedSession)
     },
