@@ -44,7 +44,9 @@ export interface GateOptions {
   originalCheckout?: string
 }
 
-const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo ", "dd "]
+const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo "]
+
+const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
 
 const NETWORK_PATTERNS = ["curl ", "wget ", "nc ", "netcat", "http://", "https://"]
 
@@ -86,7 +88,7 @@ const PLATFORM_CONTROL_TOOLS = new Set([
 
 function isDestructive(command: string): boolean {
   const lower = command.toLowerCase()
-  return DESTRUCTIVE_PATTERNS.some((p) => lower.includes(p))
+  return DESTRUCTIVE_PATTERNS.some((p) => lower.includes(p)) || DESTRUCTIVE_REGEX.test(lower)
 }
 
 function extractAbsolutePaths(command: string): string[] {

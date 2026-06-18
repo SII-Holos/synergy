@@ -222,6 +222,194 @@ describe("EnforcementGate shell classification", () => {
 })
 
 // ------------------------------------------------------------------
+// 2b. isDestructive boundary correctness
+// ------------------------------------------------------------------
+describe("isDestructive boundary correctness", () => {
+  // True positives — should be shell_destructive
+  test("rm -rf node_modules is destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "rm -rf node_modules" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test("sudo make install is destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "sudo make install" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test("dd if=/dev/zero of=foo is destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "dd if=/dev/zero of=foo" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  // Case insensitivity — destructive patterns should be caught regardless of case
+  test("RM -RF node_modules is destructive (case-insensitive)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "RM -RF node_modules" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test("SUDO make install is destructive (case-insensitive)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "SUDO make install" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test("DD if=/dev/zero of=foo is destructive (case-insensitive)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "DD if=/dev/zero of=foo" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  // False positives fixed — should NOT be shell_destructive
+  test("git add file.ts is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "git add file.ts" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("bun add react is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "bun add react" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("echo add foo is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "echo add foo" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("echo padded output is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "echo padded output" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("git commit -m add is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "git commit -m add" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("bun run add-stamp is NOT destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "bun run add-stamp" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+})
+
+// ------------------------------------------------------------------
 // 3. Network classification
 // ------------------------------------------------------------------
 describe("EnforcementGate network classification", () => {
