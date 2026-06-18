@@ -74,7 +74,7 @@ function SessionPageContent() {
   const prompt = usePrompt()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
-  const workspace = () => layout.workspace(sessionKey())
+  const workspace = createMemo(() => layout.workspace(sessionKey()))
   const view = createMemo(() => layout.view(sessionKey()))
 
   if (import.meta.env.DEV) {
@@ -1132,7 +1132,9 @@ function SessionPageContent() {
           />
         </Show>
       </div>
-      <WorkspacePanelMobile />
+      <Show when={!isDesktop()}>
+        <WorkspacePanelMobile />
+      </Show>
     </>
   )
 }

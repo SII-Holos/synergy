@@ -18,7 +18,7 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
     const layout = useLayout()
     const params = useParams()
     const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-    const ws = () => layout.workspace(sessionKey())
+    const ws = createMemo(() => layout.workspace(sessionKey()))
 
     const [tools, setTools] = createSignal<WorkspaceTool[]>([])
 
