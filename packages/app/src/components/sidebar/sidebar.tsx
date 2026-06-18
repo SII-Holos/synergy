@@ -96,7 +96,7 @@ export function Sidebar(props: SidebarProps) {
   const isGlobal = () => !dir() || dir() === "global" || !currentDirectory()
   const handleNewSession = async () => {
     if (isGlobal()) {
-      showToast({ title: "New Session", description: "Global sessions are coming soon." })
+      showToast({ type: "info", title: "New Session", description: "Global sessions are coming soon." })
       return
     }
     const scope = scopes().find((s) => s.worktree === currentDirectory())

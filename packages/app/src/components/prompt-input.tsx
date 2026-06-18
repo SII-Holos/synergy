@@ -446,6 +446,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
     if (working()) {
       showToast({
+        type: "warning",
         title: "Session is running",
         description: "Stop the session before changing its permission mode.",
       })
@@ -463,6 +464,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       close?.()
     } catch (err) {
       showToast({
+        type: "error",
         title: "Permission mode unchanged",
         description: err instanceof Error ? err.message : "Failed to update the session permission mode.",
       })
@@ -633,6 +635,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             : "This attachment couldn’t be prepared. Try another file."
 
       showToast({
+        type: "error",
         title: error instanceof PromptAttachmentError ? error.title : "Couldn’t attach file",
         description,
       })
@@ -1442,6 +1445,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const currentAgent = local.agent.current()
     if (!currentModel || !currentAgent) {
       showToast({
+        type: "warning",
         title: "Select an agent and model",
         description: "Choose an agent and model before sending a prompt.",
       })
@@ -1475,6 +1479,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           .then((x) => x.data)
           .catch((err) => {
             showToast({
+              type: "error",
               title: "Failed to create worktree",
               description: errorMessage(err),
             })
@@ -1483,6 +1488,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
         if (!createdWorktree?.path) {
           showToast({
+            type: "error",
             title: "Failed to create worktree",
             description: "Request failed",
           })
@@ -1577,6 +1583,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         })
         .catch((err) => {
           showToast({
+            type: "error",
             title: "Failed to send shell command",
             description: errorMessage(err),
           })
@@ -1645,6 +1652,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
           .catch((err) => {
             showToast({
+              type: "error",
               title: "Failed to send command",
               description: errorMessage(err),
             })
@@ -1885,6 +1893,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .then(() => {
         if (!wsConnected) {
           showToast({
+            type: "warning",
             title: "Message sent",
             description: "Response will appear after reconnection",
           })
@@ -1892,6 +1901,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
       .catch((err) => {
         showToast({
+          type: "error",
           title: "Failed to send prompt",
           description: errorMessage(err),
         })
@@ -2291,6 +2301,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           event.preventDefault()
                           event.stopPropagation()
                           showToast({
+                            type: "warning",
                             title: "Session is running",
                             description: "Stop the session before changing its permission mode.",
                           })

@@ -7,7 +7,7 @@ import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { usePlatform } from "@/context/platform"
 import { createStore } from "solid-js/store"
-import { showToast, Toast, toaster } from "@ericsanchezok/synergy-ui/toast"
+import { showToast, Toast, toaster, setToastConfig, type ToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { PanelProvider, usePanel, PANELS } from "@/context/panel"
@@ -47,6 +47,21 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
+  // Wire toast config from serialized config, watching the current directory's config.
+  createEffect(() => {
+    const dir = params.dir ? base64Decode(params.dir) : undefined
+    if (!dir) return
+    const [store] = globalSync.child(dir)
+    const cfg = (store.config as any)?.toast
+    setToastConfig(
+      cfg
+        ? {
+            muted: cfg.muted,
+            durationOverrides: cfg.durationOverrides,
+          }
+        : undefined,
+    )
+  })
 
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeLabel: Record<ColorScheme, string> = {
@@ -63,6 +78,7 @@ export default function Layout(props: ParentProps) {
     const next = colorSchemeOrder[nextIndex]
     theme.setColorScheme(next)
     showToast({
+      type: "info",
       title: "Color scheme",
       description: colorSchemeLabel[next],
     })
@@ -105,6 +121,7 @@ export default function Layout(props: ParentProps) {
       }
 
       const toastId = showToast({
+        type: "warning",
         persistent: true,
         icon: "shield-alert",
         title: "Permission required",
@@ -510,7 +527,7 @@ function LayoutContent(
       <MobilePanelOverlay />
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <GlobalPanelOverlay panelContent={() => <GlobalPanelSwitch />} />
-      <Toast.Region />
+      <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
     </div>
   )
 }

@@ -122,7 +122,7 @@ export function useSettingsSave(ctx: SaveContext) {
       setTimeout(() => setAutoStatus("idle"), 2000)
     } catch (error: any) {
       setAutoStatus("error")
-      showToast({ title: "Auto-save failed", description: error.message })
+      showToast({ type: "error", title: "Auto-save failed", description: error.message })
     }
   }
 
@@ -136,13 +136,14 @@ export function useSettingsSave(ctx: SaveContext) {
       setBgStatus("saved")
       await ctx.refreshAfterConfigChange()
       showToast({
+        type: "success",
         title: `Saved ${ctx.editingLabel()}`,
         description: `Updated: ${Object.keys(patch).join(", ")}`,
       })
       setTimeout(() => setBgStatus("idle"), 2000)
     } catch (error: any) {
       setBgStatus("error")
-      showToast({ title: "Background save failed", description: error.message })
+      showToast({ type: "error", title: "Background save failed", description: error.message })
     }
   }
 
@@ -217,6 +218,7 @@ export function useSettingsSave(ctx: SaveContext) {
 
       if (changed.length > 0) {
         showToast({
+          type: "success",
           title: shouldActivate ? `Saved and activated ${ctx.editingLabel()}` : `Saved ${ctx.editingLabel()}`,
           description: `Changed: ${changed.join(", ")}`,
         })
@@ -224,7 +226,7 @@ export function useSettingsSave(ctx: SaveContext) {
 
       if (options?.close) ctx.closeDialog()
     } catch (error: any) {
-      showToast({ title: "Failed to save", description: error.message })
+      showToast({ type: "error", title: "Failed to save", description: error.message })
     } finally {
       ctx.setSaving(false)
     }
@@ -236,7 +238,7 @@ export function useSettingsSave(ctx: SaveContext) {
 
     const valid = await ctx.validateRawConfig()
     if (!valid) {
-      showToast({ title: "Validation failed", description: "Fix the errors before saving." })
+      showToast({ type: "warning", title: "Validation failed", description: "Fix the errors before saving." })
       return
     }
 
@@ -258,13 +260,14 @@ export function useSettingsSave(ctx: SaveContext) {
 
       await ctx.refreshAfterConfigChange()
       showToast({
+        type: "success",
         title: shouldActivate ? `Saved and activated ${setName}` : `Saved ${setName}`,
         description: "Raw config saved and validated.",
       })
 
       if (options?.close) ctx.closeDialog()
     } catch (error: any) {
-      showToast({ title: "Failed to save", description: error.message })
+      showToast({ type: "error", title: "Failed to save", description: error.message })
     } finally {
       ctx.setSaving(false)
     }
@@ -326,9 +329,9 @@ export function useSettingsSave(ctx: SaveContext) {
           ctx.resetEditor()
           await globalSDK.client.config.set.activate({ name })
           await ctx.refreshAfterConfigChange()
-          showToast({ title: "Config Set activated", description: `Using ${name}` })
+          showToast({ type: "info", title: "Config Set activated", description: `Using ${name}` })
         } catch (error: any) {
-          showToast({ title: "Failed to switch Config Set", description: error.message })
+          showToast({ type: "error", title: "Failed to switch Config Set", description: error.message })
         } finally {
           ctx.setSaving(false)
         }
@@ -342,9 +345,9 @@ export function useSettingsSave(ctx: SaveContext) {
       ctx.resetEditor()
       await globalSDK.client.config.set.activate({ name })
       await ctx.refreshAfterConfigChange()
-      showToast({ title: "Config Set activated", description: `Using ${name}` })
+      showToast({ type: "info", title: "Config Set activated", description: `Using ${name}` })
     } catch (error: any) {
-      showToast({ title: "Failed to switch Config Set", description: error.message })
+      showToast({ type: "error", title: "Failed to switch Config Set", description: error.message })
     } finally {
       ctx.setSaving(false)
     }
@@ -353,7 +356,7 @@ export function useSettingsSave(ctx: SaveContext) {
   async function handleCreateSet(createSetName: string) {
     const name = createSetName.trim()
     if (!name) {
-      showToast({ title: "Config Set name required" })
+      showToast({ type: "warning", title: "Config Set name required" })
       return
     }
 
@@ -365,11 +368,12 @@ export function useSettingsSave(ctx: SaveContext) {
       ctx.setActiveTab("general")
       ctx.resetEditor()
       showToast({
+        type: "info",
         title: `Now editing ${name}`,
         description: `${name} starts as a copy of ${ctx.activeSet()?.name ?? "the active set"}. Review the tabs and save any changes you want to keep.`,
       })
     } catch (error: any) {
-      showToast({ title: "Failed to create Config Set", description: error.message })
+      showToast({ type: "error", title: "Failed to create Config Set", description: error.message })
     } finally {
       ctx.setSaving(false)
     }
@@ -377,7 +381,7 @@ export function useSettingsSave(ctx: SaveContext) {
 
   async function handleDeleteSet(name: string) {
     if (name === ctx.activeSet()?.name) {
-      showToast({ title: "Cannot delete active Config Set" })
+      showToast({ type: "warning", title: "Cannot delete active Config Set" })
       return
     }
 
@@ -386,9 +390,9 @@ export function useSettingsSave(ctx: SaveContext) {
       await globalSDK.client.config.set.delete({ name })
       await globalSync.loadConfigSets()
       if (ctx.selectedSet()?.name === name) ctx.setSelectedSetName(ctx.activeSet()?.name)
-      showToast({ title: "Config Set deleted", description: name })
+      showToast({ type: "info", title: "Config Set deleted", description: name })
     } catch (error: any) {
-      showToast({ title: "Failed to delete Config Set", description: error.message })
+      showToast({ type: "error", title: "Failed to delete Config Set", description: error.message })
     } finally {
       ctx.setSaving(false)
     }

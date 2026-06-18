@@ -1,19 +1,18 @@
 [data-component="toast-region"] {
   position: fixed;
-  bottom: 48px;
-  right: 32px;
+  bottom: 40px;
+  right: 24px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 400px;
-  width: 100%;
+  gap: 6px;
+  max-width: 380px;
   pointer-events: none;
 
   [data-slot="toast-list"] {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -22,31 +21,39 @@
 
 [data-component="toast"] {
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  padding: 16px 20px;
-  pointer-events: auto;
-  transition: all 150ms ease-out;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  height: 42px;
+  overflow: hidden;
+  transition:
+    height 200ms var(--motion-ease-emphasized),
+    padding 200ms var(--motion-ease-emphasized);
 
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-base);
+  border-left: 3px solid var(--toast-accent, var(--border-base));
   background: var(--surface-raised-stronger-non-alpha);
-  color: var(--text-base);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(16px);
+  pointer-events: auto;
 
-  [data-slot="toast-inner"] {
-    display: flex;
+  max-width: 380px;
+
+  &:hover,
+  &:focus-within {
+    height: auto;
+    max-height: 220px;
     align-items: flex-start;
-    gap: 10px;
+    padding: 14px 18px;
   }
 
   &[data-opened] {
-    animation: toastPopIn 150ms ease-out;
+    animation: toastPopIn 200ms var(--motion-ease-emphasized);
   }
 
   &[data-closed] {
-    animation: toastPopOut 100ms ease-in forwards;
+    animation: toastPopOut 150ms ease-in forwards;
   }
 
   &[data-swipe="move"] {
@@ -61,18 +68,6 @@
   &[data-swipe="end"] {
     animation: toastSwipeOut 100ms ease-out forwards;
   }
-
-  /* &[data-variant="success"] { */
-  /*   border-color: var(--color-semantic-positive); */
-  /* } */
-  /**/
-  /* &[data-variant="error"] { */
-  /*   border-color: var(--color-semantic-danger); */
-  /* } */
-  /**/
-  /* &[data-variant="loading"] { */
-  /*   border-color: var(--color-semantic-info); */
-  /* } */
 
   [data-slot="toast-icon"] {
     flex-shrink: 0;
@@ -89,42 +84,27 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 2px;
     min-width: 0;
   }
 
   [data-slot="toast-title"] {
     color: var(--text-strong);
-
-    /* text-14-medium */
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-style: normal;
+    font-size: 13px;
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large); /* 142.857% */
-    letter-spacing: var(--letter-spacing-normal);
-
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     margin: 0;
   }
 
   [data-slot="toast-description"] {
     color: var(--text-base);
-    text-wrap-style: pretty;
-
-    /* text-14-regular */
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
-    font-style: normal;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-x-large); /* 171.429% */
-    letter-spacing: var(--letter-spacing-normal);
-
-    margin: 0;
+    font-size: 13px;
   }
 
   [data-slot="toast-actions"] {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     margin-top: 8px;
   }
 
@@ -133,13 +113,9 @@
     border: none;
     padding: 0;
     cursor: pointer;
-
     color: var(--text-weak);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
+    font-size: 13px;
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
 
     &:hover {
       text-decoration: underline;
@@ -152,6 +128,13 @@
 
   [data-slot="toast-close-button"] {
     flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+
+  &:hover [data-slot="toast-close-button"],
+  &:focus-within [data-slot="toast-close-button"] {
+    opacity: 1;
   }
 
   [data-slot="toast-progress-track"] {
@@ -159,39 +142,116 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 3px;
-    background-color: var(--surface-base);
+    height: 2px;
+    background: var(--surface-base);
+    opacity: 0;
+    transition: opacity 150ms;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
     overflow: hidden;
+  }
+
+  &:hover [data-slot="toast-progress-track"],
+  &:focus-within [data-slot="toast-progress-track"] {
+    opacity: 1;
   }
 
   [data-slot="toast-progress-fill"] {
     height: 100%;
     width: var(--kb-toast-progress-fill-width);
-    background-color: var(--color-primary);
+    background: var(--toast-accent, var(--border-base));
     transition: width 250ms linear;
   }
+}
+
+.toast-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.toast-body {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition:
+    opacity 150ms ease,
+    max-height 200ms ease;
+}
+
+[data-component="toast"]:hover .toast-body,
+[data-component="toast"]:focus-within .toast-body {
+  opacity: 1;
+  max-height: 120px;
+}
+
+.toast-countdown {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-weaker);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  min-width: 24px;
+  text-align: right;
+  margin-left: auto;
+}
+
+[data-type="success"] {
+  --toast-accent: var(--icon-success-base);
+}
+[data-type="error"] {
+  --toast-accent: var(--icon-critical-base);
+}
+[data-type="warning"] {
+  --toast-accent: var(--icon-warning-base);
+}
+[data-type="info"] {
+  --toast-accent: var(--border-base);
+}
+
+[data-type="success"] [data-slot="toast-icon"] [data-component="icon"] {
+  color: var(--icon-success-base);
+}
+[data-type="error"] [data-slot="toast-icon"] [data-component="icon"] {
+  color: var(--icon-critical-base);
+}
+[data-type="warning"] [data-slot="toast-icon"] [data-component="icon"] {
+  color: var(--icon-warning-base);
+}
+[data-type="info"] [data-slot="toast-icon"] [data-component="icon"] {
+  color: var(--icon-base);
+}
+
+[data-slot="toast-list"] [data-component="toast"]:nth-child(n + 2) {
+  opacity: 0.85;
+  transform: translateY(-4px);
+}
+
+[data-slot="toast-list"] [data-component="toast"]:nth-child(n + 3) {
+  opacity: 0.6;
+  transform: translateY(-8px);
 }
 
 @keyframes toastPopIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(12px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes toastPopOut {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(8px) scale(0.97);
   }
 }
 

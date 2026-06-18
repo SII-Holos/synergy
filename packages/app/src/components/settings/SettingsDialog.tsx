@@ -358,7 +358,11 @@ export function SettingsDialog(props: DialogSettingsProps) {
     setGeneral("sendShortcut", value)
     if (value !== input.sendShortcut()) {
       input.setSendShortcut(value)
-      showToast({ title: "Send shortcut updated", description: "This device preference is saved immediately." })
+      showToast({
+        type: "info",
+        title: "Send shortcut updated",
+        description: "This device preference is saved immediately.",
+      })
     }
   }
 
@@ -499,6 +503,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                       resetEditor()
                       const isActive = globalSync.configSets.find((s) => s.name === name)?.active
                       showToast({
+                        type: "info",
                         title: `Opened ${name}`,
                         description: isActive
                           ? "You are now editing the active Config Set. Save changes to update runtime config."
@@ -512,6 +517,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   resetEditor()
                   const isActive = globalSync.configSets.find((s) => s.name === name)?.active
                   showToast({
+                    type: "info",
                     title: `Opened ${name}`,
                     description: isActive
                       ? "You are now editing the active Config Set. Save changes to update runtime config."

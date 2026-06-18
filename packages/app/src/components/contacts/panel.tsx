@@ -66,10 +66,10 @@ export function HolosPanel() {
   async function handleDisconnect() {
     try {
       await globalSDK.client.holos.logout()
-      showToast({ title: "Disconnected from Holos" })
+      showToast({ type: "info", title: "Disconnected from Holos" })
       void holos.refresh()
     } catch {
-      showToast({ title: "Failed to disconnect" })
+      showToast({ type: "error", title: "Failed to disconnect" })
     }
   }
 
@@ -78,7 +78,7 @@ export function HolosPanel() {
     setReconnecting(true)
     try {
       await globalSDK.client.holos.reconnect()
-      showToast({ title: "Reconnecting..." })
+      showToast({ type: "info", title: "Reconnecting..." })
     } catch (error: unknown) {
       const msg =
         error instanceof Error
@@ -90,7 +90,7 @@ export function HolosPanel() {
         void handleConnectHolos()
         return
       }
-      showToast({ title: "Reconnect failed", description: msg || "Failed to reconnect" })
+      showToast({ type: "error", title: "Reconnect failed", description: msg || "Failed to reconnect" })
     } finally {
       setReconnecting(false)
     }
@@ -101,7 +101,7 @@ export function HolosPanel() {
     globalSDK.client.holos.profile
       .reset()
       .then(() => auth.logout())
-      .catch(() => showToast({ title: "Failed to reset setup" }))
+      .catch(() => showToast({ type: "error", title: "Failed to reset setup" }))
   }
 
   const { trigger: handleConnectHolos, connecting } = useHolosLoginPopup({
@@ -111,9 +111,9 @@ export function HolosPanel() {
         auth.loginWithToken(agentId, { id: agentId })
       }
       void holos.refresh()
-      showToast({ title: "Connected to Holos" })
+      showToast({ type: "info", title: "Connected to Holos" })
     },
-    onError: (msg) => showToast({ title: msg }),
+    onError: (msg) => showToast({ type: "error", title: msg }),
   })
 
   return (

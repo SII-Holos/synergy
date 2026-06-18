@@ -20,10 +20,10 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
     try {
       const scopeID = props.scope.id ?? props.scope.worktree
       await globalSDK.client.scope.update({ scopeID, name: name().trim() || undefined })
-      showToast({ title: "Project updated", description: name() || getScopeLabel(props.scope) })
+      showToast({ type: "info", title: "Project updated", description: name() || getScopeLabel(props.scope) })
       dialog.close()
     } catch (e: any) {
-      showToast({ title: "Failed to update project", description: e?.message ?? "Unknown error" })
+      showToast({ type: "error", title: "Failed to update project", description: e?.message ?? "Unknown error" })
     } finally {
       setSaving(false)
     }

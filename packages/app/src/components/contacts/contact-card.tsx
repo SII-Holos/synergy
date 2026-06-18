@@ -182,7 +182,7 @@ function ContactCard(props: {
                     <DropdownMenu.Item
                       onSelect={() => {
                         navigator.clipboard.writeText(props.contact.holosId ?? "")
-                        showToast({ title: "ID copied" })
+                        showToast({ type: "info", title: "ID copied" })
                       }}
                     >
                       <Icon name="copy" size="small" class="mr-2" />

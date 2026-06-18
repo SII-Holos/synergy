@@ -147,7 +147,7 @@ export function AgentCard(props: {
                             <DropdownMenu.Item
                               onSelect={() => {
                                 navigator.clipboard.writeText(props.agentId ?? "")
-                                showToast({ title: "Agent ID copied" })
+                                showToast({ type: "info", title: "Agent ID copied" })
                               }}
                             >
                               <Icon name="copy" size="small" class="mr-2" />

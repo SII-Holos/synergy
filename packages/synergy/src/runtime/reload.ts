@@ -50,7 +50,7 @@ export namespace RuntimeReload {
     "external_agent",
     "email",
   ])
-  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout"])
+  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast"])
 
   export const Event = {
     Reloaded: BusEvent.define(

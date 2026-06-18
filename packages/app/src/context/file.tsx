@@ -322,7 +322,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
             }),
           )
           showToast({
-            variant: "error",
+            type: "error",
             title: "Failed to load file",
             description: e.message,
           })

@@ -147,6 +147,7 @@ import {
   Telescope,
   Terminal,
   TextSelect,
+  TriangleAlert,
   Trash2,
   Undo2,
   Redo2,
@@ -164,6 +165,7 @@ import {
 const icons = {
   activity: Activity,
   "align-right": AlignRight,
+  "alert-triangle": TriangleAlert,
   archive: Archive,
   "arrow-down-to-line": ArrowDownToLine,
   "arrow-left": ArrowLeft,
