@@ -39,6 +39,14 @@ const parameters = z.object({
         Category.descriptions() +
         "\nDefault: none (uses subagent's original model and prompt)",
     ),
+  worktree: z
+    .object({
+      create: z.literal(true),
+      name: z.string().optional(),
+      baseRef: z.enum(["current", "fresh"]).optional().default("current"),
+      reason: z.string().optional(),
+    })
+    .optional(),
 })
 
 interface TaskMetadata {
@@ -145,6 +153,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         parentMessageID: ctx.messageID,
         sessionID,
         model,
+        worktree: params.worktree,
       })
 
       await bindDagNode(ctx.sessionID, params.dag_node_id, task)

@@ -1,3 +1,4 @@
+import { Worktree } from "../project/worktree"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
 import { Identifier } from "../id/id"
@@ -77,6 +78,29 @@ export namespace Cortex {
       },
       workspace: (parent as import("../session/types").Info).workspace,
     })
+
+    if (input.worktree?.create) {
+      const parentWorkspace = (parent as import("../session/types").Info).workspace
+      if (parentWorkspace?.type !== "git_worktree") {
+        try {
+          const created = await Worktree.create({
+            name: input.worktree.name,
+            baseRef: input.worktree.baseRef,
+            bind: false,
+          })
+          await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
+          log.info("worktree bound to child session", {
+            taskID,
+            worktreeID: created.id,
+            worktreeName: created.name,
+          })
+        } catch (error) {
+          log.warn("failed to create worktree for child session", { taskID, error })
+        }
+      } else {
+        log.info("parent already in worktree, child inherits parent workspace", { taskID })
+      }
+    }
 
     const task: CortexTypes.Task = {
       id: taskID,

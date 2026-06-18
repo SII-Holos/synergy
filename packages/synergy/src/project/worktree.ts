@@ -551,6 +551,7 @@ export namespace Worktree {
   }
 
   async function bindSession(sessionID: string, info: Info) {
+    const { repoRoot } = ensureGitScope()
     await Session.updateWorkspace(sessionID, {
       type: "git_worktree",
       path: info.path,
@@ -559,6 +560,7 @@ export namespace Worktree {
       name: info.name,
       branch: info.branch,
       baseRef: info.baseRef,
+      originalCheckout: path.resolve(repoRoot),
     })
     await updateBinding(info, sessionID, "add")
   }

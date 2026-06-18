@@ -68,6 +68,13 @@ export namespace CortexTypes {
         modelID: z.string(),
       })
       .optional(),
+    worktree: z
+      .object({
+        create: z.literal(true),
+        name: z.string().optional(),
+        baseRef: z.enum(["current", "fresh"]).optional().default("current"),
+      })
+      .optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>
 }

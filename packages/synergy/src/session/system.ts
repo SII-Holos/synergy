@@ -1,3 +1,4 @@
+import { Session } from "../session"
 import { Ripgrep } from "../file/ripgrep"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
@@ -107,6 +108,15 @@ export namespace SystemPrompt {
       envLines.push(`  Session created: ${formatLocalDateTime(session.time.created)}`)
       if (session.parentID) {
         envLines.push(`  Parent session: ${session.parentID}`)
+        const parent = await Session.get(session.parentID).catch(() => undefined)
+        if (parent) {
+          const parentWs = (parent as any).workspace
+          const childWs = Instance.workspace
+          if (parentWs && childWs && parentWs.path !== childWs.path) {
+            envLines.push(`  Parent workspace type: ${parentWs.type}`)
+            envLines.push(`  Parent workspace path: ${parentWs.path}`)
+          }
+        }
       }
     }
 
