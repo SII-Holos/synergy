@@ -891,7 +891,7 @@ function SessionPageContent() {
               "flex-1 md:flex-none pt-3 pb-0 md:py-3": true,
             }}
             style={{
-              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : "100%",
+              width: isDesktop() && (showTabs() || workspace().opened()) ? `${layout.session.width()}px` : "100%",
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
           >
@@ -1114,22 +1114,7 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show
-            when={(() => {
-              const o = isDesktop() && workspace().opened()
-              console.log(
-                "[Session] WorkspacePanel render | isDesktop:",
-                isDesktop(),
-                "| opened:",
-                workspace().opened(),
-                "| active:",
-                workspace().active(),
-                "| verdict:",
-                o,
-              )
-              return o
-            })()}
-          >
+          <Show when={isDesktop() && workspace().opened()}>
             <WorkspacePanel />
           </Show>
         </div>

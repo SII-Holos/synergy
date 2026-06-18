@@ -13,7 +13,6 @@ export function WorkspacePanel() {
 
   const tool = () => workspace.activeTool()
 
-  // Escape key closes the panel
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && workspace.opened()) {
