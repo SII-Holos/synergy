@@ -1,3 +1,4 @@
+import { ConfigSet } from "../../config/set"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { withNetworkOptions } from "../network"
@@ -49,21 +50,18 @@ export const StartCommand = cmd({
 
     const interactive = !args.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
-    // TODO: redesign CLI Holos login flow so it does not duplicate the Web UI Holos onboarding.
-    // For now we intentionally skip the CLI entrypoint and let users connect from Web UI or `synergy holos login`.
-    // try {
-    //   await HolosStartup.resolveIdentity(interactive)
-    // } catch {
-    //   UI.println(
-    //     UI.Style.TEXT_DIM +
-    //       "Holos setup skipped — starting background service in standalone mode" +
-    //       UI.Style.TEXT_NORMAL,
-    //   )
-    // }
-    if (interactive) {
+    // Check if this is a first-run with no config — launch wizard
+    const configExists = await Bun.file(ConfigSet.defaultFilePath()).exists()
+    if (!configExists && interactive) {
+      const { runConfigWizard } = await import("./config")
+      const configured = await runConfigWizard()
+      if (!configured) {
+        UI.println("Config setup was cancelled. Run 'synergy config' later to set one up.")
+      }
+    } else if (!configExists && !interactive) {
       UI.println(
         UI.Style.TEXT_DIM +
-          "Holos login is skipped in CLI startup for now — use the Web UI or `synergy holos login` if you want to connect Holos." +
+          "No configuration found. Run 'synergy config' to set up, or use --non-interactive to skip." +
           UI.Style.TEXT_NORMAL,
       )
     }
@@ -133,7 +131,7 @@ async function modelReadinessNotes(url: string): Promise<string[] | undefined> {
     if (!res.ok) return undefined
     const payload = await res.json()
     if (payload?.modelReady === false) {
-      return ['No AI model configured — run "synergy config edit" to set up a provider.']
+      return ['No AI model configured — run "synergy config" to set one up interactively.']
     }
   } catch {}
   return undefined

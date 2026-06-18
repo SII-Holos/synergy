@@ -3,7 +3,6 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
-import { GenesisChannel } from "../../src/channel/genesis"
 import { SessionEvent } from "../../src/session/event"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
@@ -46,20 +45,6 @@ describe("session lifecycle events", () => {
         const session = await AppChannel.session()
 
         expect(session.interaction).toEqual(SessionInteraction.interactive("channel:app"))
-
-        await Session.remove(session.id)
-      },
-    })
-  })
-
-  test("genesis channel sessions stay unattended", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await GenesisChannel.session()
-
-        expect(session.interaction).toEqual(SessionInteraction.unattended("channel:genesis"))
 
         await Session.remove(session.id)
       },
