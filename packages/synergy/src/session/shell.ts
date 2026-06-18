@@ -194,6 +194,7 @@ export async function shell(input: ShellInput) {
     output += chunk.toString()
     if (part.state.status === "running") {
       part.state.metadata = {
+        ...part.state.metadata,
         output: output,
         description: "",
       }
@@ -205,6 +206,7 @@ export async function shell(input: ShellInput) {
     output += chunk.toString()
     if (part.state.status === "running") {
       part.state.metadata = {
+        ...part.state.metadata,
         output: output,
         description: "",
       }
@@ -253,6 +255,7 @@ export async function shell(input: ShellInput) {
       input: part.state.input,
       title: "",
       metadata: {
+        ...part.state.metadata,
         output,
         description: "",
       },

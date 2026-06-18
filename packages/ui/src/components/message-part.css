@@ -637,11 +637,13 @@
   left: -28px;
   top: 8px;
   width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: audit-icon-enter 300ms var(--motion-ease-emphasized) both;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  transition: background-color 150ms ease;
+  &:hover {
+    background: var(--surface-raised-base-hover);
+  }
+  animation: audit-icon-enter 2s var(--motion-ease-emphasized) both;
 }
 
 [data-component="tool-card-area"] {
