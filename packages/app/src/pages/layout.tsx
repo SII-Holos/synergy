@@ -25,7 +25,7 @@ import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { EngramPanel } from "@/components/engram"
 import { AgendaPanel } from "@/components/agenda"
-import { NotePanel } from "@/components/note-panel"
+
 import { HolosPanel } from "@/components/contacts"
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
@@ -465,9 +465,7 @@ function GlobalPanelSwitch() {
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
       </Match>
-      <Match when={panel.active() === "note" && !params.id}>
-        <NotePanel />
-      </Match>
+
       <Match when={panel.active() === "holos"}>
         <HolosPanel />
       </Match>
