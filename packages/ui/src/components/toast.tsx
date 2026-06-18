@@ -140,8 +140,9 @@ export function showToast(options: ToastOptions): number {
   return toaster.show((props) => {
     const [countdown, setCountdown] = createSignal("")
     const duration = resolvedDuration ?? 5000
+    const hasCountdown = !options.persistent && duration !== 0
 
-    if (!options.persistent && options.duration !== 0) {
+    if (hasCountdown) {
       const startTime = Date.now()
       let rafId: number
       const tick = () => {
@@ -164,7 +165,9 @@ export function showToast(options: ToastOptions): number {
             <Show when={options.title}>
               <Toast.Title>{options.title}</Toast.Title>
             </Show>
-            <span class="toast-countdown">{countdown()}</span>
+            <Show when={hasCountdown}>
+              <span class="toast-countdown">{countdown()}</span>
+            </Show>
           </div>
           <div class="toast-body">
             <Show when={options.description}>
