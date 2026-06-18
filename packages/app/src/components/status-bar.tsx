@@ -83,14 +83,14 @@ function iconButtonClass(tone?: "base" | "danger" | "success") {
 
 // ─── Holos icon button ────────────────────────────────────────────
 
-function HolosIconButton(props: { onClick: () => void }) {
+function HolosIconButton() {
   const holos = useHolos()
   const label = createMemo(() => holosLabel(holos))
   const dot = createMemo(() => holosTone(holos))
 
   return (
     <Tooltip placement="top" value={label()}>
-      <button type="button" classList={iconButtonClass()} onClick={props.onClick}>
+      <button type="button" classList={iconButtonClass()}>
         <Icon name={getSemanticIcon("connection.holos")} size="small" />
         <div
           classList={{
@@ -106,13 +106,13 @@ function HolosIconButton(props: { onClick: () => void }) {
 
 // ─── Workspace icon button ────────────────────────────────────────
 
-function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string; onClick: () => void }) {
+function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string }) {
   const icon = () => getSemanticIcon(props.isWorktree ? "workspace.worktree" : "workspace.main")
   const tooltip = () => (props.isWorktree ? `Worktree: ${props.workspaceName}` : "Main checkout")
 
   return (
     <Tooltip placement="top" value={tooltip()}>
-      <button type="button" classList={iconButtonClass(props.isWorktree ? "success" : "base")} onClick={props.onClick}>
+      <button type="button" classList={iconButtonClass(props.isWorktree ? "success" : "base")}>
         <Icon name={icon()} size="small" />
       </button>
     </Tooltip>
@@ -121,10 +121,10 @@ function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string
 
 // ─── Branch icon button ───────────────────────────────────────────
 
-function BranchIconButton(props: { branch: string; onClick: () => void }) {
+function BranchIconButton(props: { branch: string }) {
   return (
     <Tooltip placement="top" value={`Branch: ${props.branch}`}>
-      <button type="button" classList={iconButtonClass()} onClick={props.onClick}>
+      <button type="button" classList={iconButtonClass()}>
         <Icon name={getSemanticIcon("workspace.branch")} size="small" />
       </button>
     </Tooltip>
@@ -133,7 +133,7 @@ function BranchIconButton(props: { branch: string; onClick: () => void }) {
 
 // ─── Runtime icon button ──────────────────────────────────────────
 
-function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean; onClick: () => void }) {
+function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean }) {
   const icon = () => {
     if (props.waiting) return getSemanticIcon("session.waiting")
     if (props.status?.type === "busy") return getSemanticIcon("session.running")
@@ -144,7 +144,7 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
 
   return (
     <Tooltip placement="top" value={tooltip()}>
-      <button type="button" classList={iconButtonClass(tone())} onClick={props.onClick}>
+      <button type="button" classList={iconButtonClass(tone())}>
         <Icon name={icon()} size="small" />
       </button>
     </Tooltip>
@@ -305,12 +305,12 @@ export function StatusBar() {
   return (
     <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
       <div class="flex items-center gap-1.5 min-w-0 max-w-full overflow-visible px-2 py-1.5 rounded-full bg-surface-raised-stronger-non-alpha/80 backdrop-blur-md border border-border-base/50 shadow-sm">
-        <HolosIconButton onClick={openPanel} />
+        <HolosIconButton />
 
         <Show when={params.dir}>
-          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} onClick={openPanel} />
-          <Show when={branch()}>{(b) => <BranchIconButton branch={b()} onClick={openPanel} />}</Show>
-          <RuntimeIconButton status={status()} waiting={waiting()} onClick={openPanel} />
+          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} />
+          <Show when={branch()}>{(b) => <BranchIconButton branch={b()} />}</Show>
+          <RuntimeIconButton status={status()} waiting={waiting()} />
 
           <div class="w-px h-4 bg-border-weak" />
 
