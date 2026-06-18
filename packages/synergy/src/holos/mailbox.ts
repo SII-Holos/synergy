@@ -90,6 +90,7 @@ export namespace Mailbox {
         const msg = await Storage.read<Message>(key)
         if (msg) messages.push(msg)
       } catch {
+        log.warn("mailbox list: failed to read message", { key: key.join("/") })
         continue
       }
     }
@@ -114,6 +115,7 @@ export namespace Mailbox {
         const msg = await Storage.read<Message>(key)
         if (msg) messages.push(msg)
       } catch {
+        log.warn("mailbox getThread: failed to read message", { key: key.join("/") })
         continue
       }
     }

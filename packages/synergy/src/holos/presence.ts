@@ -23,10 +23,6 @@ export namespace Presence {
     return entry.status
   }
 
-  export function isOnline(agentId: string): boolean {
-    return get(agentId) === "online"
-  }
-
   export function markOnline(agentId: string): void {
     cache.set(agentId, { status: "online", lastChecked: Date.now() })
   }

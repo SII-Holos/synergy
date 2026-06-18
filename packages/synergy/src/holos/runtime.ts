@@ -142,10 +142,6 @@ export namespace HolosRuntime {
     return false
   }
 
-  async function syncRemoteExecutionState(current: RuntimeConnection) {
-    await syncRemoteExecution(current.provider ? { provider: current.provider } : null)
-  }
-
   export async function status(): Promise<Status> {
     const current = await state()
     return current.status
@@ -203,7 +199,7 @@ export namespace HolosRuntime {
       onDisconnect: (reason) => {
         if (signal.aborted) return
         current.provider = null
-        void syncRemoteExecutionState(current).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
+        void syncRemoteExecution(null).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
       },
@@ -213,7 +209,7 @@ export namespace HolosRuntime {
 
     current.provider = provider
     setStatus(current, { status: "connected" })
-    await syncRemoteExecutionState(current)
+    await syncRemoteExecution({ provider })
   }
 
   export async function stop(): Promise<void> {
@@ -225,7 +221,7 @@ export namespace HolosRuntime {
     current.provider = null
     current.abort.abort()
     setStatus(current, { status: "disconnected" })
-    await syncRemoteExecutionState(current).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
+    await syncRemoteExecution(null).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
   }
 
   export async function reload(): Promise<void> {
@@ -451,6 +447,8 @@ export class HolosProvider {
   }
 
   private async handleChatMessage(caller: Envelope.Caller, payload: unknown): Promise<void> {
+    // Silently drop: DO NOT echo our own messages back into the inbox.
+    // In multi-device scenarios, outbox sync is handled by the Mailbox module directly.
     if (!this.state.peerId || caller.agent_id === this.state.peerId) return
 
     const parsed = HolosProtocol.ChatMessagePayload.safeParse(payload)
@@ -465,7 +463,6 @@ export class HolosProvider {
 
     // Write to inbox
     try {
-      // @ts-ignore: mailbox module may not exist yet
       const { Mailbox } = await import("./mailbox")
       await Mailbox.receive({
         fromId: caller.agent_id,
@@ -474,9 +471,8 @@ export class HolosProvider {
         source: parsed.data.source,
       })
       log.info("message received", { from: caller.agent_id })
-    } catch (_err) {
-      // Mailbox module may not exist yet — log and continue
-      log.debug("mailbox receive skipped (module may not exist)", { from: caller.agent_id })
+    } catch (err) {
+      log.error("mailbox receive failed", { from: caller.agent_id, error: err })
     }
   }
 
@@ -499,6 +495,9 @@ export class HolosProvider {
     const parsed = HolosProtocol.PresencePongPayload.safeParse(payload)
     if (!parsed.success) return
 
+    // Update the contact name if the peer's profile name changed.
+    // This is a best-effort sync — contacts are manually managed, but
+    // catching name updates from presence pongs keeps the list current.
     void Contact.get(caller.agent_id).then(async (contact) => {
       if (!contact) return
       if (contact.name !== parsed.data.profile.name) {

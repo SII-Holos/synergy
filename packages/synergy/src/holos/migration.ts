@@ -1,6 +1,6 @@
-import { Storage } from "../storage/storage"
-import { StoragePath } from "../storage/path"
-import { Log } from "../util/log"
+import { Storage } from "@/storage/storage"
+import { StoragePath } from "@/storage/path"
+import { Log } from "@/util/log"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration"
 
