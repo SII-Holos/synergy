@@ -27,7 +27,6 @@ import { HolosLocalMeta, LocalMetaError } from "./local-meta"
 import { releaseManagedMode, HolosLocalTakeover } from "./local-takeover"
 import { HolosMessageMetadata } from "./message-metadata"
 import { HolosOutbound } from "./outbound"
-import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { MessageQueue } from "./queue"
 import { Presence } from "./presence"
@@ -448,15 +447,6 @@ export class HolosProvider {
           fn: () => {
             this.startBackgroundLoops()
             subs.push(HolosOutbound.init())
-            subs.push(
-              Bus.subscribe(HolosProfile.Event.Updated, () => {
-                this.notifyProfileUpdate().catch((err) =>
-                  log.warn("failed to broadcast profile update", {
-                    error: err,
-                  }),
-                )
-              }),
-            )
             Bus.publish(HolosRuntime.Event.Connected, { peerId: credentials.agentId })
           },
         }).catch((err) => log.warn("non-critical setup after ws open failed", { error: err }))
@@ -1100,10 +1090,10 @@ export class HolosProvider {
   }
 
   private async buildPeerProfile(): Promise<HolosProtocol.PeerProfile> {
-    const profile = await HolosProfile.get()
+    const osName = process.env.USER || process.env.USERNAME || "Synergy"
     return {
-      name: profile?.name ?? "Unknown",
-      bio: profile?.bio,
+      name: osName,
+      bio: undefined,
     }
   }
 

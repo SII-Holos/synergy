@@ -9,7 +9,6 @@ import { HolosMessageMetadata } from "../holos/message-metadata"
 import { HolosAuth } from "../holos/auth"
 import { HOLOS_URL } from "../holos/constants"
 import { HolosLoginFlow } from "../holos/login-flow"
-import { HolosProfile } from "../holos/profile"
 import { HolosProtocol } from "../holos/protocol"
 import { HolosReadiness } from "../holos/readiness"
 import { HolosRequest } from "../holos/request"
@@ -333,117 +332,6 @@ export const HolosDataRoute = new Hono()
       } catch {
         return c.json({ message: "Unable to reach Holos to verify credentials" }, 401)
       }
-    },
-  )
-
-  // --- Profile ---
-
-  .get(
-    "/profile",
-    describeRoute({
-      summary: "Get profile",
-      description: "Retrieve the current agent profile.",
-      operationId: "holos.profile.get",
-      responses: {
-        200: {
-          description: "Agent profile",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    agentId: z.string().nullable(),
-                    profile: HolosProfile.Info.nullable(),
-                  })
-                  .meta({ ref: "HolosProfileResponse" }),
-              ),
-            },
-          },
-        },
-      },
-    }),
-    async (c) => {
-      const [profile, credentials] = await Promise.all([HolosProfile.get(), HolosAuth.getStoredCredential()])
-      return c.json({ agentId: credentials?.agentId ?? null, profile: profile ?? null })
-    },
-  )
-
-  .put(
-    "/profile",
-    describeRoute({
-      summary: "Update profile",
-      description: "Update the current agent profile.",
-      operationId: "holos.profile.update",
-      responses: {
-        200: {
-          description: "Updated profile",
-          content: { "application/json": { schema: resolver(HolosProfile.Info) } },
-        },
-        ...errors(400),
-      },
-    }),
-    validator(
-      "json",
-      z.object({
-        name: z.string(),
-        bio: z.string(),
-      }),
-    ),
-
-    async (c) => {
-      const body = c.req.valid("json")
-      const existing = await HolosProfile.get()
-      const profile = await HolosProfile.update({
-        name: body.name,
-        bio: body.bio,
-        initialized: true,
-        initializedAt: existing?.initializedAt ?? Date.now(),
-      })
-
-      return c.json(profile)
-    },
-  )
-
-  .post(
-    "/profile/reset",
-    describeRoute({
-      summary: "Reset profile initialization",
-      description: "Set the profile initialized flag to false, allowing the user to re-run the onboarding setup flow.",
-      operationId: "holos.profile.reset",
-      responses: {
-        200: {
-          description: "Profile reset",
-          content: { "application/json": { schema: resolver(z.boolean()) } },
-        },
-      },
-    }),
-    async (c) => {
-      const existing = await HolosProfile.get()
-      if (existing) {
-        await HolosProfile.update({ ...existing, initialized: false })
-      }
-      return c.json(true)
-    },
-  )
-
-  .post(
-    "/profile/skip-genesis",
-    describeRoute({
-      summary: "Skip genesis and create default profile",
-      description: "Creates a default profile, skipping the onboarding chat. No-ops if profile is already initialized.",
-      operationId: "holos.profile.skipGenesis",
-      responses: {
-        200: {
-          description: "Profile",
-          content: { "application/json": { schema: resolver(HolosProfile.Info) } },
-        },
-      },
-    }),
-    async (c) => {
-      const existing = await HolosProfile.get()
-      if (existing?.initialized) return c.json(existing)
-      const profile = await HolosProfile.update(HolosProfile.defaultProfile())
-      return c.json(profile)
     },
   )
 

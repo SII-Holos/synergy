@@ -3,7 +3,6 @@ import { Contact } from "./contact"
 import { FriendRequest } from "./friend-request"
 import { HolosCapability } from "./capability"
 import { HolosEntitlement } from "./entitlement"
-import { HolosProfile } from "./profile"
 import { Presence } from "./presence"
 import { HolosReadiness } from "./readiness"
 
@@ -37,7 +36,7 @@ export namespace HolosState {
 
   export const Social = z
     .object({
-      profile: HolosProfile.Info.nullable(),
+      profile: z.object({ name: z.string(), bio: z.string(), initialized: z.boolean() }).nullable(),
       contacts: Contact.Info.array(),
       friendRequests: FriendRequest.Info.array(),
       presence: z.record(z.string(), z.enum(["online", "offline", "unknown"])),
@@ -61,7 +60,9 @@ export namespace HolosState {
     const [{ credential, status, readiness }, entitlement, profile, contacts, friendRequests] = await Promise.all([
       HolosReadiness.snapshot(),
       HolosEntitlement.get(),
-      HolosProfile.get(),
+      new Promise<{ name: string; bio: string; initialized: boolean } | undefined>((r) =>
+        r({ name: "", bio: "", initialized: false }),
+      ),
       Contact.list(),
       FriendRequest.list(),
     ])

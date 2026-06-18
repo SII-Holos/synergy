@@ -159,7 +159,6 @@ const INSPIRE_STATEFUL_TOOLS = new Set([
 const PLATFORM_CONTROL_TOOLS = new Set([
   "runtime_reload",
   "session_control",
-  "profile_update",
   "agenda_schedule",
   "agenda_watch",
   "agenda_update",

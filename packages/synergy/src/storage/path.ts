@@ -90,8 +90,6 @@ export namespace StoragePath {
   export const notesRoot = (scopeID: ScopeID) => ["notes", scopeID as string]
   export const note = (scopeID: ScopeID, noteID: string) => ["notes", scopeID as string, noteID]
 
-  export const holosProfile = () => ["holos", "profile"]
-
   export const holosContactsRoot = () => ["holos", "contacts"]
   export const holosContact = (id: string) => ["holos", "contacts", id]
 

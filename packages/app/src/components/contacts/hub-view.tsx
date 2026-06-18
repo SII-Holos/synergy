@@ -61,10 +61,8 @@ export function HubView(props: {
   reconnecting: boolean
   capabilityItems: HolosState["capability"]["items"]
   entitlements: HolosState["entitlement"]
-  onEditProfile: () => void
   onDisconnect: () => void
   onReconnect: () => void
-  onRerunSetup: () => void
   onConnectHolos: () => void
 }) {
   const issueItems = createMemo(() => props.capabilityItems.filter((item) => item.status !== "available"))
@@ -88,10 +86,8 @@ export function HubView(props: {
           isGuest={props.isGuest}
           connecting={props.connecting}
           reconnecting={props.reconnecting}
-          onEditProfile={props.onEditProfile}
           onDisconnect={props.onDisconnect}
           onReconnect={props.onReconnect}
-          onRerunSetup={props.onRerunSetup}
           onConnectHolos={props.onConnectHolos}
         />
 
