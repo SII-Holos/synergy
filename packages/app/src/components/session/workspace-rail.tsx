@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useWorkspace } from "@/context/workspace"
@@ -12,7 +12,7 @@ export function WorkspaceRail() {
       <div class="workspace-rail" role="toolbar" aria-label="Workspace tools">
         <For each={workspace.tools()}>
           {(tool) => {
-            const isActive = () => workspace.opened() && workspace.active() === tool.id
+            const isActive = createMemo(() => workspace.opened() && workspace.active() === tool.id)
             return (
               <Tooltip value={tool.label} placement="left">
                 <button

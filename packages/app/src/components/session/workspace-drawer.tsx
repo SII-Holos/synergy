@@ -1,4 +1,4 @@
-import { Show, onMount, onCleanup, createSignal, createMemo } from "solid-js"
+import { Show, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
@@ -37,6 +37,11 @@ export function WorkspaceDrawer() {
     }
 
     onCleanup(() => document.removeEventListener("keydown", keyHandler))
+  })
+
+  // Reset closing state when the drawer re-opens
+  createEffect(() => {
+    if (workspace.opened()) setClosing(false)
   })
 
   // Resize

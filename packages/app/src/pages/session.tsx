@@ -887,10 +887,7 @@ function SessionPageContent() {
 
           {/* Session panel */}
           <div
-            classList={{
-              "@container relative flex-1 min-w-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-              "pt-3 pb-0 md:py-3": true,
-            }}
+            class="@container relative flex-1 min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
             style={{
               width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,

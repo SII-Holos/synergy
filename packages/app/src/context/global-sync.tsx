@@ -88,7 +88,6 @@ type State = {
 
 export interface NoteUpdateSignal {
   id: string
-  scopeID: string
   version: number
   type: "created" | "updated" | "deleted"
 }
@@ -572,14 +571,12 @@ function createGlobalSync() {
       bumpNoteVersion()
       if (event.type === "note.deleted") {
         const props = event.properties as { id: string; scopeID: string }
-        setNoteUpdate({ id: props.id, scopeID: props.scopeID, version: -1, type: "deleted" })
+        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
       } else {
-        const props = event.properties as unknown as { note: { id: string; scopeID: string; version: number } }
-        const note = props.note
+        const props = event.properties as { note: { id: string; version: number } }
         setNoteUpdate({
-          id: note.id,
-          scopeID: note.scopeID,
-          version: note.version,
+          id: props.note.id,
+          version: props.note.version,
           type: event.type as "created" | "updated",
         })
       }
