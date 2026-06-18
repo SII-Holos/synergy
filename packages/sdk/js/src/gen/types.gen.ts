@@ -264,7 +264,7 @@ export type SessionNavEntry = {
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel" | "holos"
+  endpointKind?: "channel"
 }
 
 export type NavCursor = {
@@ -3478,11 +3478,6 @@ export type HolosProfileResponse = {
 
 export type HolosPresenceMap = {
   [key: string]: string
-}
-
-export type HolosPresenceRefreshResponse = {
-  success: true
-  count: number
 }
 
 export type HolosSendResponse = {
@@ -8948,24 +8943,6 @@ export type HolosPresenceResponses = {
 }
 
 export type HolosPresenceResponse = HolosPresenceResponses[keyof HolosPresenceResponses]
-
-export type HolosRefreshPresenceData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/refresh-presence"
-}
-
-export type HolosRefreshPresenceResponses = {
-  /**
-   * Presence refresh triggered
-   */
-  200: HolosPresenceRefreshResponse
-}
-
-export type HolosRefreshPresenceResponse = HolosRefreshPresenceResponses[keyof HolosRefreshPresenceResponses]
 
 export type HolosAgentsListData = {
   body?: never

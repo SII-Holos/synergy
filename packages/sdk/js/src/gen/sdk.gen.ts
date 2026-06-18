@@ -169,7 +169,6 @@ import type {
   HolosProfileUpdateResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
-  HolosRefreshPresenceResponses,
   HolosSendResponses,
   HolosSendRetryErrors,
   HolosSendRetryResponses,
@@ -2480,25 +2479,6 @@ export class Holos extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<HolosPresenceResponses, unknown, ThrowOnError>({
       url: "/holos/presence",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Refresh friend presence
-   *
-   * Trigger a fresh presence probe for all unblocked Holos contacts.
-   */
-  public refreshPresence<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<HolosRefreshPresenceResponses, unknown, ThrowOnError>({
-      url: "/holos/refresh-presence",
       ...options,
       ...params,
     })

@@ -9689,40 +9689,6 @@
         ]
       }
     },
-    "/holos/refresh-presence": {
-      "post": {
-        "operationId": "holos.refreshPresence",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Refresh friend presence",
-        "description": "Trigger a fresh presence probe for all unblocked Holos contacts.",
-        "responses": {
-          "200": {
-            "description": "Presence refresh triggered",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosPresenceRefreshResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.refreshPresence({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/holos/agents": {
       "get": {
         "operationId": "holos.agents.list",
@@ -12106,7 +12072,7 @@
           },
           "endpointKind": {
             "type": "string",
-            "enum": ["channel", "holos"]
+            "const": "channel"
           }
         },
         "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
@@ -19401,19 +19367,6 @@
         "additionalProperties": {
           "type": "string"
         }
-      },
-      "HolosPresenceRefreshResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "const": true
-          },
-          "count": {
-            "type": "number"
-          }
-        },
-        "required": ["success", "count"]
       },
       "HolosSendResponse": {
         "type": "object",

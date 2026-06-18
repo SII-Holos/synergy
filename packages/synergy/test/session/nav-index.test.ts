@@ -344,7 +344,7 @@ test("sets endpointKind on entries from session endpoint info", async () => {
 
       const holosEntry = index.entries.find((e) => e.id === holosSession.id)
       expect(holosEntry).toBeDefined()
-      expect(holosEntry!.endpointKind).toBe("holos")
+      expect(holosEntry!.endpointKind).toBeUndefined()
       expect(holosEntry!.category).toBe("channel")
 
       const plainEntry = index.entries.find((e) => e.id === plainSession.id)
