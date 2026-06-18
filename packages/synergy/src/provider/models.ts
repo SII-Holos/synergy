@@ -75,15 +75,22 @@ export namespace ModelsDev {
   export type Provider = z.infer<typeof Provider>
 
   let inFlight: Promise<void> | undefined
+  let cache: Record<string, any> | null = null
 
   export async function get() {
+    if (cache) return cache
     refresh()
     const file = Bun.file(filepath)
     const result = await file.json().catch(() => {})
-    if (result) return result as Record<string, Provider>
+    if (result) {
+      cache = result as Record<string, Provider>
+      return cache
+    }
     const json =
       typeof data === "function" ? await data() : await fetch("https://models.dev/api.json").then((x) => x.text())
-    return JSON.parse(json) as Record<string, Provider>
+    const parsed = JSON.parse(json) as Record<string, Provider>
+    cache = parsed
+    return parsed
   }
 
   export function refresh(): Promise<void> | undefined {
@@ -110,7 +117,15 @@ export namespace ModelsDev {
         error: e,
       })
     })
-    if (result && result.ok) await Bun.write(file, await result.text())
+    if (result && result.ok) {
+      const text = await result.text()
+      await Bun.write(file, text)
+      try {
+        cache = JSON.parse(text) as Record<string, Provider>
+      } catch {
+        // leave stale cache on parse failure
+      }
+    }
   }
 }
 

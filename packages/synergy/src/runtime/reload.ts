@@ -150,9 +150,7 @@ export namespace RuntimeReload {
         ])
       : requested
 
-    for (const target of targetsToExecute) {
-      await executeTarget(target, ctx)
-    }
+    await Promise.all(targetsToExecute.map((target) => executeTarget(target, ctx)))
 
     const executedSet = new Set(executed)
     const cascaded = executed.filter((target) => !requested.includes(target))
@@ -223,9 +221,7 @@ export namespace RuntimeReload {
       // Execute inline cascades (e.g. provider → agent)
       const cascades = TARGET_CASCADES[target]
       if (cascades) {
-        for (const cascade of cascades) {
-          await executeTarget(cascade, ctx)
-        }
+        await Promise.all(cascades.map((cascade) => executeTarget(cascade, ctx)))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
