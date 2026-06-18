@@ -49,13 +49,89 @@ export interface GateOptions {
   readRoots?: string[]
 }
 
-const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo "]
+const DESTRUCTIVE_PATTERNS = [
+  // File deletion
+  "rm -rf",
+  "rm -fr",
+  "rm -r ",
+  "rm -f ",
+  "rmdir ",
+  // Filesystem destruction
+  "mkfs ",
+  "fdisk ",
+  "parted ",
+  // LVM destructive
+  "lvremove ",
+  "pvremove ",
+  "vgremove ",
+  // Privilege escalation
+  "sudo ",
+  // Git destructive operations (subcommand-aware)
+  "git reset --hard",
+  "git clean -f",
+  "git clean -x",
+  "git branch -D",
+  "git push --force",
+  "git push -f",
+  "git push --delete",
+  "git stash clear",
+  "git stash drop",
+  // Git history rewriting
+  "git rebase ",
+  "git filter-branch",
+  "git reflog expire",
+  "git reflog delete",
+]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
 
-const NETWORK_PATTERNS = ["curl ", "wget ", "nc ", "netcat", "http://", "https://"]
+const NETWORK_PATTERNS = [
+  "curl ",
+  "wget ",
+  "nc ",
+  "netcat",
+  "http://",
+  "https://",
+  // Bash builtin network (critical — bypasses all tool-based detection)
+  "/dev/tcp/",
+  "/dev/udp/",
+  // Advanced network tools
+  "socat ",
+  "openssl s_client",
+  // Secure file transfer (exfiltration)
+  "ssh ",
+  "scp ",
+  "rsync ",
+  // DNS exfiltration
+  "dig ",
+  "nslookup ",
+  "host ",
+  // Raw network
+  "telnet ",
+  "ftp ",
+  "sftp ",
+  // Multi-protocol downloaders
+  "aria2c ",
+  "axel ",
+  // Package managers (download + arbitrary script execution)
+  "pip install",
+  "pip3 install",
+  "gem install",
+  "cargo install",
+]
 
-const SAFE_PSEUDO_PATHS = new Set(["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom"])
+const SAFE_PSEUDO_PATHS = new Set([
+  "/dev/null",
+  "/dev/zero",
+  "/dev/random",
+  "/dev/urandom",
+  "/dev/stdin",
+  "/dev/stdout",
+  "/dev/stderr",
+  "/dev/fd/0",
+  "/dev/fd/1",
+  "/dev/fd/2",
+])
 
 const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 
@@ -104,7 +180,16 @@ function extractAbsolutePaths(command: string): string[] {
     const candidate = match[1]
     if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
-  return paths
+  // Post-filter: reject likely non-filesystem paths (URL fragments, commit message artifacts)
+  const NON_PATH_PATTERNS = [
+    /^\/[A-Z]{2,}$/,
+    /^\/[a-z]{1,3}$/,
+    /^\/usr\/bin\/[^/]+$/,
+    /^\/bin\/[^/]+$/,
+    /^\/sbin\/[^/]+$/,
+    /:\/\//,
+  ]
+  return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
 }
 function pathFromHashlinePatch(input: unknown): string | undefined {
   if (typeof input !== "string") return undefined
@@ -163,12 +248,23 @@ function classifyPathCapability(
 
 function extractShellPathArguments(command: string, cwd: string): string[] {
   const paths: string[] = []
-  const commandPattern = /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown)\s+([^;&|]+)/g
+  const commandPattern =
+    /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown|cat|tee|ln|install|dd|python3?|python2?|node|ruby|perl)\s+([^;&|]+)/g
   let match: RegExpExecArray | null
   while ((match = commandPattern.exec(command)) !== null) {
     const [, name, rawArgs] = match
+    let prevWasFlag = false
     for (const raw of rawArgs.trim().split(/\s+/)) {
-      if (!raw || raw.startsWith("-") || (name === "chmod" && raw.startsWith("+"))) continue
+      if (!raw) continue
+      if (prevWasFlag) {
+        prevWasFlag = false
+        continue
+      }
+      if (raw.startsWith("-")) {
+        prevWasFlag = true
+        continue
+      }
+      if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
       paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
     }
   }
@@ -295,9 +391,16 @@ export namespace EnforcementGate {
       // Shell operations
       if (toolName === "bash") {
         const command: string = args.command ?? ""
-        caps.push({ class: ShellSafety.capability(command), nonBypassable: false })
+        const risk = ShellSafety.classifyBashRisk(command)
 
-        if (isDestructive(command)) {
+        if (risk === "shell_hardline") {
+          caps.push({ class: "shell_hardline", nonBypassable: true })
+          return { capabilities: caps }
+        }
+
+        caps.push({ class: risk, nonBypassable: false })
+
+        if (risk !== "shell_destructive" && isDestructive(command)) {
           caps.push({ class: "shell_destructive", nonBypassable: true })
         }
 
