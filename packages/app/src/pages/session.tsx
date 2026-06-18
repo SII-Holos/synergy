@@ -1114,7 +1114,22 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show when={isDesktop() && workspace().opened()}>
+          <Show
+            when={(() => {
+              const o = isDesktop() && workspace().opened()
+              console.log(
+                "[Session] WorkspacePanel render | isDesktop:",
+                isDesktop(),
+                "| opened:",
+                workspace().opened(),
+                "| active:",
+                workspace().active(),
+                "| verdict:",
+                o,
+              )
+              return o
+            })()}
+          >
             <WorkspacePanel />
           </Show>
         </div>

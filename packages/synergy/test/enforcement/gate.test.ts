@@ -835,3 +835,160 @@ describe("EnforcementGate multi-capability classification", () => {
     }
   })
 })
+
+// ------------------------------------------------------------------
+// 8. readRoots — Synergy data directory read access
+// ------------------------------------------------------------------
+describe("EnforcementGate readRoots", () => {
+  test("read inside readRoots is classified as file_read even when outside workspace", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const result = gate.classify("read", {
+      filePath: "/Users/test/.synergy/config/synergy.jsonc",
+    })
+
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    expect(ext).toBeUndefined()
+
+    const read = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(read).toBeDefined()
+    expect(read.nonBypassable).toBe(false)
+  })
+
+  test("look_at inside readRoots is file_read in autonomous mode", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("look_at", {
+      file_path: "/Users/test/.synergy/data/media/screenshot.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("attach inside readRoots is allowed in autonomous mode", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("attach", {
+      file_path: "/Users/test/.synergy/data/tool-output/report.pdf",
+    })
+
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("write inside readRoots is still file_external (readRoots does not grant write)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const result = gate.classify("write", {
+      filePath: "/Users/test/.synergy/config/synergy.jsonc",
+    })
+
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    expect(ext).toBeDefined()
+    expect(ext.nonBypassable).toBe(true)
+
+    const read = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(read).toBeUndefined()
+  })
+
+  test("path outside both workspace and readRoots stays file_external", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/etc/hosts",
+    })
+
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("denied in autonomous even with readRoots", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("look_at", {
+      file_path: "/Users/test/.ssh/id_rsa",
+    })
+
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("scan_document inside readRoots is allowed in autonomous mode", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("scan_document", {
+      filePath: "/Users/test/.synergy/data/exports/report.pdf",
+    })
+
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("multiple readRoots work — second root matches", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      readRoots: ["/mnt/nonexistent", "/Users/test/.synergy"],
+    })
+
+    const result = gate.classify("read", {
+      filePath: "/Users/test/.synergy/cache/models.json",
+    })
+
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    expect(ext).toBeUndefined()
+  })
+
+  test("custom SYNERGY_HOME path via readRoots", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/custom/synergy-home/.synergy"],
+    })
+
+    const envelope = gate.evaluate("look_at", {
+      file_path: "/custom/synergy-home/.synergy/data/media/screenshot.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+  })
+})

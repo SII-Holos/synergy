@@ -866,11 +866,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           active: createMemo(() => ws().active),
           width: createMemo(() => ws().width),
           open() {
+            console.log(
+              "[Layout] workspace.open | sessionKey:",
+              sessionKey,
+              "| before:",
+              JSON.stringify(store.workspaceSessions[sessionKey]),
+            )
             setStore("workspaceSessions", sessionKey, {
               opened: true,
               active: ws().active ?? null,
               width: ws().width ?? 400,
             })
+            console.log("[Layout] workspace.open | after:", JSON.stringify(store.workspaceSessions[sessionKey]))
           },
           close() {
             setStore("workspaceSessions", sessionKey, "opened", false)

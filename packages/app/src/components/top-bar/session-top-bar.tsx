@@ -103,6 +103,16 @@ export function SessionTopBar() {
                     class="stb-icon-btn"
                     classList={{ "stb-icon-btn--active": isActive() }}
                     onClick={() => {
+                      console.log(
+                        "[TopBar] notes click | opened:",
+                        workspace.opened(),
+                        "| active:",
+                        workspace.active(),
+                        "| tool.id:",
+                        tool.id,
+                        "| tools:",
+                        workspace.tools().map((t) => t.id),
+                      )
                       if (!workspace.opened()) {
                         workspace.setActive(tool.id)
                         workspace.openPanel()
@@ -112,6 +122,7 @@ export function SessionTopBar() {
                       } else {
                         workspace.setActive(tool.id)
                       }
+                      console.log("[TopBar] after click | opened:", workspace.opened(), "| active:", workspace.active())
                     }}
                   >
                     <Icon name={tool.icon} size="normal" />

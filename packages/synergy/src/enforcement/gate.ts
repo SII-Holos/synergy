@@ -1,3 +1,5 @@
+import { Filesystem } from "../util/filesystem"
+
 import { PathClassifier } from "./classify"
 import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
@@ -42,6 +44,9 @@ export interface GateOptions {
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
   originalCheckout?: string
+  /** Additional directories where read-only access is treated as inside-workspace.
+   *  Write operations are never allowed through readRoots. */
+  readRoots?: string[]
 }
 
 const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo "]
@@ -132,15 +137,22 @@ function uniqueCapability(caps: Capability[], cap: Capability) {
 function classifyPathCapability(
   caps: Capability[],
   pathInput: string,
-  options: { activeWorkspace: string; originalCheckout?: string; write?: boolean },
+  options: { activeWorkspace: string; originalCheckout?: string; write?: boolean; readRoots?: string[] },
 ) {
-  const result = PathClassifier.classifyPath(pathInput, {
+  const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
     originalCheckout: options.originalCheckout,
   })
-  if (result.boundary === "inside") {
+
+  if (classification.boundary === "inside") {
     uniqueCapability(caps, {
       class: options.write ? "file_write" : "file_read",
+      nonBypassable: false,
+      paths: [pathInput],
+    })
+  } else if (!options.write && options.readRoots?.some((r) => Filesystem.contains(r, pathInput))) {
+    uniqueCapability(caps, {
+      class: "file_read",
       nonBypassable: false,
       paths: [pathInput],
     })
@@ -185,6 +197,7 @@ export namespace EnforcementGate {
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
       originalCheckout,
+      readRoots,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
@@ -229,7 +242,7 @@ export namespace EnforcementGate {
       ) {
         const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout })
+          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
         }
         return { capabilities: caps }
       }
@@ -257,7 +270,7 @@ export namespace EnforcementGate {
         const raw = args.filePath ?? args.file_path ?? ""
         const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout })
+          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
         }
         return { capabilities: caps }
       }
@@ -290,7 +303,7 @@ export namespace EnforcementGate {
 
         const cwd = args.workdir ?? activeWorkspace
         if (args.workdir) {
-          classifyPathCapability(caps, args.workdir, { activeWorkspace, originalCheckout })
+          classifyPathCapability(caps, args.workdir, { activeWorkspace, originalCheckout, readRoots })
         }
 
         const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]

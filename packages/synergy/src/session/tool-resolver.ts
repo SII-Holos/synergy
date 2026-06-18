@@ -1,3 +1,4 @@
+import { Global } from "@/global"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import z from "zod"
 import { Agent } from "@/agent/agent"
@@ -488,12 +489,14 @@ export namespace ToolResolver {
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                const synergyRoot = Global.Path.root
                 const gate = EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
                   profileId,
+                  readRoots: [synergyRoot],
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
@@ -517,9 +520,8 @@ export namespace ToolResolver {
                       command: "/bin/sh",
                       args: ["-c", bashCommand],
                       workspace,
-                      executionCwd: ((args as Record<string, any>)?.workdir as string | undefined) ?? workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: approvedExternalRoots(ctx),
+                      extraReadRoots: [synergyRoot, ...approvedExternalRoots(ctx)],
                       extraWritableRoots: approvedExternalRoots(ctx),
                     })
                     if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
