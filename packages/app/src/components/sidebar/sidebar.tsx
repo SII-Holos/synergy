@@ -9,7 +9,6 @@ import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
@@ -110,16 +109,9 @@ export function Sidebar(props: SidebarProps) {
     return undefined
   })
   const currentDirectory = createMemo(() => (dir() === "global" ? undefined : dir()))
-  const isGlobal = () => !dir() || dir() === "global" || !currentDirectory()
   const handleNewSession = async () => {
-    if (isGlobal()) {
-      showToast({ type: "info", title: "New Session", description: "Global sessions are coming soon." })
-      return
-    }
-    const scope = scopes().find((s) => s.worktree === currentDirectory())
-    if (scope) {
-      navigate(`/${base64Encode(scope.worktree)}/session`)
-    }
+    await globalSDK.client.channel.app.reset()
+    navigate(`/${base64Encode("global")}/session`)
   }
 
   const handleProjectClick = (worktree: string) => {

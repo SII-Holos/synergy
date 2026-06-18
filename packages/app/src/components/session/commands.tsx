@@ -8,7 +8,6 @@ import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
 import { useWorkspace } from "@/context/workspace"
 import { extractPromptFromParts } from "@/utils/prompt"
-import { isGlobalScope } from "@/utils/scope"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -63,17 +62,13 @@ export function useSessionCommands(params: {
   command.register(() => [
     {
       id: "session.new",
-      title: isGlobalScope(sdk.directory) ? "Reset conversation" : "New session",
-      description: isGlobalScope(sdk.directory)
-        ? "Archive current conversation and start fresh"
-        : "Create a new session",
+      title: "New session",
+      description: "Start a fresh conversation",
       category: "Session",
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: async () => {
-        if (isGlobalScope(sdk.directory)) {
-          await sdk.client.channel.app.reset()
-        }
+        await sdk.client.channel.app.reset()
         navigate(`/${routeParams.dir}/session`)
       },
     },
