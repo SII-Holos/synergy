@@ -57,6 +57,25 @@ export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
 
+export const WorkingInfo = z
+  .union([
+    z.object({
+      status: z.literal("busy"),
+      description: z.string().optional(),
+    }),
+    z.object({
+      status: z.literal("retry"),
+      attempt: z.number(),
+      message: z.string(),
+      next: z.number(),
+    }),
+    z.object({
+      status: z.literal("recovering"),
+    }),
+  ])
+  .meta({ ref: "SessionWorkingInfo" })
+export type WorkingInfo = z.infer<typeof WorkingInfo>
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -115,32 +134,13 @@ export const Info = z
         })
         .optional(),
       cortex: CortexDelegationInfo.optional(),
+      working: WorkingInfo.optional(),
       workspace: Workspace.optional(),
     }),
   )
   .meta({
     ref: "Session",
   })
-export type Info = z.output<typeof Info>
-
-export const WorkingInfo = z
-  .union([
-    z.object({
-      status: z.literal("busy"),
-      description: z.string().optional(),
-    }),
-    z.object({
-      status: z.literal("retry"),
-      attempt: z.number(),
-      message: z.string(),
-      next: z.number(),
-    }),
-    z.object({
-      status: z.literal("recovering"),
-    }),
-  ])
-  .meta({ ref: "SessionWorkingInfo" })
-export type WorkingInfo = z.infer<typeof WorkingInfo>
 
 export const StatusInfo = z
   .union([
