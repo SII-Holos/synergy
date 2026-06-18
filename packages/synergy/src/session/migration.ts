@@ -10,6 +10,7 @@ import { Info } from "./types"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionNav } from "./nav"
+import { SessionProgress } from "./progress"
 
 import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
@@ -86,6 +87,51 @@ function normalizeLegacyHolosMetadata(metadata: Record<string, unknown>): {
 
   const normalized = compact(next)
   return { metadata: normalized, changed: JSON.stringify(normalized) !== original }
+}
+
+async function repairPendingReplyFlags(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"])
+  const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope))
+    const sessions = await Storage.readMany<Info>(
+      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
+    )
+
+    for (const info of sessions) {
+      if (!info || info.time.archived || info.pendingReply !== true) continue
+      tasks.push({ scopeID, sessionID: info.id, info })
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let cleared = 0
+  for (const { scopeID, sessionID, info } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    try {
+      const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
+      const pendingReply = SessionProgress.pendingReply(messages)
+      if (!pendingReply) {
+        await Storage.write(StoragePath.sessionInfo(scope, sid), {
+          ...info,
+          pendingReply: undefined,
+        })
+        cleared++
+      }
+    } catch (error) {
+      log.warn("failed to repair pendingReply flag", { scopeID, sessionID, error: String(error) })
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("pendingReply repair complete", { checked: tasks.length, cleared })
 }
 
 export const migrations: Migration[] = [
@@ -345,6 +391,13 @@ export const migrations: Migration[] = [
     async up() {
       // Schema-only change: Node.result is optional and transparent to old data.
       // No data transformation needed.
+    },
+  },
+  {
+    id: "20260619-session-repair-stale-pending-reply",
+    description: "Repair stale pendingReply flags on completed sessions",
+    async up(progress) {
+      await repairPendingReplyFlags(progress)
     },
   },
   {

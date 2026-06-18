@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
-import { McpSupervisor } from "../../src/mcp/supervisor"
+import { connectClientOrCloseOnFailure, McpSupervisor } from "../../src/mcp/supervisor"
 import { startForPlugin } from "../../src/plugin/mcp"
 import { Instance } from "../../src/scope/instance"
 import { Log } from "../../src/util/log"
@@ -72,6 +72,23 @@ describe.serial("McpSupervisor", () => {
         expect(tools).toEqual({})
       },
     })
+  })
+
+  test("closes MCP client when startup connect fails", async () => {
+    let closed = false
+    const client = {
+      connect: async () => {
+        throw new Error("connect failed")
+      },
+      close: async () => {
+        closed = true
+      },
+    }
+
+    await expect(
+      connectClientOrCloseOnFailure(client, undefined as never, undefined, "invalid", "connect:stdio"),
+    ).rejects.toThrow("connect failed")
+    expect(closed).toBe(true)
   })
 
   test("registers plugin MCP servers with defaults and skips metadata", async () => {

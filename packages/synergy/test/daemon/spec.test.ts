@@ -125,7 +125,7 @@ describe("daemon.spec", () => {
     expect(network.hostname).toBe("0.0.0.0")
     expect(network.port).toBe(4321)
 
-    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, unknown>
     expect(migrated.holos).toEqual({
       enabled: true,
       apiUrl: "https://www.holosai.io",
@@ -223,6 +223,39 @@ describe("daemon.spec", () => {
         retrieve: false,
       },
       autonomy: false,
+    })
+  })
+
+  test("CLI network options remove deprecated Holos friend reply config before reading config", async () => {
+    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+    await Bun.write(
+      target,
+      JSON.stringify({
+        holos_friend_reply_model: "openai/gpt-4.1-mini",
+        server: {
+          hostname: "0.0.0.0",
+          port: 4321,
+        },
+      }),
+    )
+    Config.global.reset()
+
+    await expect(Config.global()).rejects.toThrow()
+
+    const network = await resolveNetworkOptions({
+      hostname: "0.0.0.0",
+      port: 0,
+      mdns: false,
+      cors: [],
+    })
+    expect(network.hostname).toBe("0.0.0.0")
+    expect(network.port).toBe(4321)
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.holos_friend_reply_model).toBeUndefined()
+    expect(migrated.server).toEqual({
+      hostname: "0.0.0.0",
+      port: 4321,
     })
   })
 

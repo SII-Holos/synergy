@@ -696,7 +696,7 @@ export namespace SessionInvoke {
 
     // Clear pendingReply — the loop has fully completed and the assistant has
     // replied. Without this, a crashed/restarted server would see pendingReply=true
-    // on already-finished sessions and incorrectly re-trigger loop() via resumePending().
+    // on already-finished sessions and incorrectly mark them as pending resume.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
@@ -1414,7 +1414,7 @@ export namespace SessionInvoke {
 
       if (!pendingReply) continue
 
-      SessionManager.run(sessionID, () => loop(sessionID)).catch(() => {})
+      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
   }
 

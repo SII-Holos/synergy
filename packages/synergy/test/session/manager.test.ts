@@ -123,6 +123,24 @@ describe("SessionManager.getSession", () => {
         },
       })
     })
+
+    test("listStatuses only reports in-memory runtime status", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await Instance.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+          SessionManager.unregisterRuntime(session.id)
+
+          const statuses = await SessionManager.listStatuses(scope.id)
+          expect(statuses[session.id]).toBeUndefined()
+        },
+      })
+    })
   })
 })
 

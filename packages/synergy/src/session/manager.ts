@@ -11,7 +11,6 @@ import { SessionEvent } from "./event"
 import { Scope } from "@/scope"
 import { Instance } from "@/scope/instance"
 import { Info, type StatusInfo } from "./types"
-import * as SessionWorking from "./working"
 import { SessionEndpoint } from "./endpoint"
 
 const log = Log.create({ service: "session.manager" })
@@ -266,21 +265,6 @@ export namespace SessionManager {
         if ((session.scope as Scope).id !== scopeID) continue
       }
       result[runtime.sessionID] = runtime.status
-    }
-    if (scopeID) {
-      const scopeIDTyped = Identifier.asScopeID(scopeID)
-      const storedIDs = await Storage.scan(StoragePath.sessionsRoot(scopeIDTyped))
-      for (const storedID of storedIDs) {
-        if (storedID in result) continue
-        const info = await Storage.read<Info>(
-          StoragePath.sessionInfo(scopeIDTyped, Identifier.asSessionID(storedID)),
-        ).catch(() => undefined)
-        if (!info || info.pendingReply !== true) continue
-        const working = await SessionWorking.resolve(info.id)
-        if (working) {
-          result[info.id] = SessionWorking.toStatus(working)
-        }
-      }
     }
     return result
   }

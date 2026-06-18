@@ -200,6 +200,27 @@ function redactUrl(url: string): string {
   }
 }
 
+async function closeFailedClient(client: Client, name: string, phase: string): Promise<void> {
+  await client.close().catch((error) => {
+    log.error("failed to close MCP client after failed startup", { name, phase, error })
+  })
+}
+
+export async function connectClientOrCloseOnFailure(
+  client: Pick<Client, "connect" | "close">,
+  transport: Parameters<Client["connect"]>[0],
+  connectTimeout: number | undefined,
+  name: string,
+  phase: string,
+): Promise<void> {
+  try {
+    await withTimeout(client.connect(transport), connectTimeout)
+  } catch (error) {
+    await closeFailedClient(client as Client, name, phase)
+    throw error
+  }
+}
+
 function isServerDeclaration(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && "type" in value
 }
@@ -666,11 +687,11 @@ class McpSupervisorImpl {
       let lastError: Error | undefined
 
       for (const { name: tname, transport } of transports) {
+        const c = new Client({
+          name: "synergy",
+          version: Installation.VERSION,
+        })
         try {
-          const c = new Client({
-            name: "synergy",
-            version: Installation.VERSION,
-          })
           await withTimeout(c.connect(transport), connectTimeout)
           registerNotificationHandlers(handle, c)
           client = c
@@ -699,6 +720,7 @@ class McpSupervisorImpl {
             return
           }
 
+          await closeFailedClient(c, handle.name, `connect:${tname}`)
           log.debug("transport connection failed", {
             key: handle.name,
             transport: tname,
@@ -720,12 +742,12 @@ class McpSupervisorImpl {
         env: buildLocalEnv(cmd, config.environment),
       })
       const connectTimeout = config.connectTimeout ?? config.timeout ?? DEFAULT_TIMEOUT
+      const c = new Client({
+        name: "synergy",
+        version: Installation.VERSION,
+      })
       try {
-        const c = new Client({
-          name: "synergy",
-          version: Installation.VERSION,
-        })
-        await withTimeout(c.connect(transport), connectTimeout)
+        await connectClientOrCloseOnFailure(c, transport, connectTimeout, handle.name, "connect:stdio")
         registerNotificationHandlers(handle, c)
         client = c
       } catch (error) {

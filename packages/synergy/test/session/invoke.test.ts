@@ -4,6 +4,9 @@ import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
 import { PermissionNext } from "../../src/permission/next"
 import { Log } from "../../src/util/log"
+import { tmpdir } from "../fixture/fixture"
+import { Instance } from "../../src/scope/instance"
+import { Session } from "../../src/session"
 
 const sessionID = "ses_test"
 
@@ -121,5 +124,33 @@ describe("SessionInvoke.cancel", () => {
     expect(releaseSpy).not.toHaveBeenCalled()
 
     SessionManager.unregisterRuntime(sessionID)
+  })
+})
+
+describe("SessionInvoke.resumePending", () => {
+  test("does not start assistant loops for pending sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.updateMessage({
+          id: "msg_pending_user",
+          sessionID: session.id,
+          role: "user",
+          agent: "test",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          time: { created: 0 },
+        })
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+        })
+        SessionManager.unregisterRuntime(session.id)
+
+        await SessionInvoke.resumePending()
+
+        expect(SessionManager.getRuntime(session.id)).toBeUndefined()
+      },
+    })
   })
 })

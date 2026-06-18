@@ -83,7 +83,7 @@ describe("SessionWorking", () => {
       })
     })
 
-    test("returns recovering when pendingReply is true and no runtime", async () => {
+    test("ignores stored pendingReply without runtime work", async () => {
       await using tmp = await tmpdir({ git: true })
       await Instance.provide({
         scope: await tmp.scope(),
@@ -94,8 +94,7 @@ describe("SessionWorking", () => {
           })
 
           const result = await SessionWorking.resolve(session.id)
-          assertExists(result)
-          expect(result.status).toBe("recovering")
+          expect(result).toBeUndefined()
         },
       })
     })

@@ -20,10 +20,6 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
   if (!session) return undefined
   const scopeID = Identifier.asScopeID((session.scope as Scope).id)
   const sid = Identifier.asSessionID(sessionID)
-  if (session.pendingReply) {
-    log.info("detected recovering session (pendingReply)", { sessionID })
-    return { status: "recovering" }
-  }
   const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sid)).catch(() => [] as string[])
   for (let i = messageIDs.length - 1; i >= 0; i--) {
     const mid = messageIDs[i]

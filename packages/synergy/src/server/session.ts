@@ -105,7 +105,7 @@ export const SessionRoute = new Hono()
       },
     }),
     async (c) => {
-      const result = SessionManager.listStatuses(Instance.scope.id)
+      const result = await SessionManager.listStatuses(Instance.scope.id)
       return c.json(result)
     },
   )

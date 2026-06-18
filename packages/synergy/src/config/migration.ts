@@ -148,6 +148,32 @@ async function migrateSchemaUrl(filepath: string): Promise<boolean> {
   return true
 }
 
+async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const present = keys.filter((key) => key in config)
+  if (present.length === 0) return false
+
+  let text = raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  for (const key of present) {
+    text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+  }
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("removed deprecated top-level config keys", { path: filepath, keys: present })
+  return true
+}
+
 async function migrateSiiAuthToPlugin(): Promise<boolean> {
   const home = process.env.HOME || process.env.USERPROFILE || "~"
   const oldInspirePath = path.join(home, ".synergy", "data", "auth", "inspire.json")
@@ -629,6 +655,21 @@ export const migrations: Migration[] = [
       let done = 0
       for (const filepath of files) {
         await repairEngramLegacyShapes(filepath)
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260619-config-remove-holos-friend-reply-model",
+    description: "Remove deprecated Holos friend reply model config",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await removeTopLevelConfigKeys(filepath, ["holos_friend_reply_model"])
         done++
         progress(done, files.length)
       }

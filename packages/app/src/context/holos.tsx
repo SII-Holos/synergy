@@ -7,11 +7,6 @@ const HOLOS_EVENTS = new Set([
   "holos.contact.added",
   "holos.contact.removed",
   "holos.contact.updated",
-  "holos.contact.config_updated",
-  "holos.friend_request.created",
-  "holos.friend_request.updated",
-  "holos.friend_request.removed",
-  "holos.profile.updated",
   "holos.connection.status_changed",
 ])
 
