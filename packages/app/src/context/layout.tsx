@@ -75,6 +75,7 @@ export interface ScopeNavEntry {
 }
 
 const NAV_FIRST_PAGE_LIMIT = 50
+const RECENT_LIMIT = 20
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
@@ -233,6 +234,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       Record<string, { items: NavEntry[]; nextCursor: NavCursor | null; total: number }>
     >({})
 
+    const [recentEntries, setRecentEntries] = createStore<{
+      items: NavEntry[]
+      nextCursor: NavCursor | null
+      total: number
+    }>({ items: [], nextCursor: null, total: 0 })
     const navPending = new Set<string>()
 
     async function loadScopeIndex() {
@@ -303,6 +309,41 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
+    async function loadGlobalRecent(cursor?: NavCursor) {
+      const key = "__recent__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent({
+          parentOnly: true,
+          limit: RECENT_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = recentEntries.items
+          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))]
+          setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    function loadMoreNav(directory: string) {
+      const entry = directory === "__recent__" ? recentEntries : navEntries[directory]
+      if (!entry?.nextCursor) return
+      if (directory === "__recent__") {
+        loadGlobalRecent(entry.nextCursor)
+      } else if (directory === "global") {
+        loadHomeNav(entry.nextCursor)
+      } else {
+        loadScopeNav(directory, entry.nextCursor)
+      }
+    }
     // --- Nav event refresh ---
 
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -315,6 +356,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           ?.properties?.info
         const scope = info?.scope
         if (!scope) return
+        // Refresh recent entries on any session update (debounced)
+        const recentPending = navRefreshTimers.get("__recent__")
+        if (recentPending) clearTimeout(recentPending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            loadGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
         if (scope.id === "global") {
           if (!navEntries["global"]) return
           const pending = navRefreshTimers.get("global")
@@ -433,6 +484,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     onMount(() => {
       loadScopeIndex().then(() => {
+        loadGlobalRecent()
         loadHomeNav()
         const projects = list()
         const loaded = new Set<string>()
@@ -503,6 +555,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (a.pinned && b.pinned) return b.pinned - a.pinned
         return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
       })
+    }
+
+    function recentNavEntries(): NavEntry[] {
+      return recentEntries.items
+    }
+
+    function hasMoreRecent(): boolean {
+      return recentEntries.nextCursor != null
     }
 
     // Nav entries are now exclusively populated by loadScopeNav via /session/index.
@@ -677,6 +737,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         projectSessions,
         projectNavEntries,
         homeNavEntries,
+        recentEntries: recentNavEntries,
+        hasMoreRecent,
+        loadMoreNav,
         childStoreForScope,
         prefetchSession,
         resetPrefetch,

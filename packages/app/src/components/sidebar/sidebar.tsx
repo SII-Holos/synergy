@@ -75,6 +75,10 @@ export function Sidebar(props: SidebarProps) {
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
+  const recentEntries = createMemo(() => layout.nav.recentEntries())
+  const hasMoreGlobal = createMemo(() => layout.nav.navEntries()["global"]?.nextCursor != null)
+  const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
+  const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
 
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
@@ -311,6 +315,37 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
+      {/* Recent section: flat list of global recent sessions */}
+      <Show when={isExpanded()}>
+        <div class="sb-recent">
+          <div class="sb-section-header">Recent</div>
+          <Show when={recentEntries().length > 0} fallback={<div class="sb-recent-empty">No recent sessions</div>}>
+            <div class="sb-sessions">
+              <For each={recentEntries()}>
+                {(entry) => (
+                  <button
+                    type="button"
+                    classList={{
+                      "sb-session-row": true,
+                      "sb-session-active": entry.id === params.id,
+                    }}
+                    onClick={() => handleGlobalSessionClick(entry)}
+                  >
+                    <SessionRowIcon entry={entry} isGlobal={true} />
+                    <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+            <Show when={hasMoreRecent()}>
+              <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
+                Load more
+              </button>
+            </Show>
+          </Show>
+        </div>
+      </Show>
+
       {/* Synergy section: global sessions grouped by category */}
       <Show when={isExpanded()}>
         <div class="sb-synergy">
@@ -323,6 +358,11 @@ export function Sidebar(props: SidebarProps) {
             activeID={params.id}
             onSessionClick={handleGlobalSessionClick}
           />
+          <Show when={hasMoreGlobal()}>
+            <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("global")}>
+              Load more
+            </button>
+          </Show>
         </div>
       </Show>
 
@@ -459,6 +499,15 @@ export function Sidebar(props: SidebarProps) {
                           activeID={params.id}
                           onSessionClick={(entry) => handleSessionClick(scope, entry)}
                         />
+                        <Show when={hasMoreForProject(scope)}>
+                          <button
+                            type="button"
+                            class="sb-load-more-btn"
+                            onClick={() => layout.nav.loadMoreNav(scope.worktree)}
+                          >
+                            Load more
+                          </button>
+                        </Show>
                       </div>
                     </Show>
                   </div>

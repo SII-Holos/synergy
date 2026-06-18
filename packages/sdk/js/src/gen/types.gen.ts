@@ -254,6 +254,34 @@ export type AgendaItem = {
   }
 }
 
+export type SessionNavEntry = {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+}
+
+export type NavCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
+}
+
+export type PinnedResponse = {
+  items: Array<SessionNavEntry>
+  total: number
+}
+
 export type AgendaWebhookResult = {
   accepted: boolean
 }
@@ -1818,6 +1846,21 @@ export type Config = {
   category?: {
     [key: string]: CategoryConfig
   }
+  /**
+   * Toast notification preferences
+   */
+  toast?: {
+    /**
+     * Toast types to suppress. The underlying logic still runs but the visual card is not rendered.
+     */
+    muted?: Array<"info" | "success" | "warning" | "error">
+    /**
+     * Override auto-dismiss duration in ms per toast type (max 30s).
+     */
+    durationOverrides?: {
+      [key: string]: number
+    }
+  }
 }
 
 export type ConfigSetName = string
@@ -2078,29 +2121,6 @@ export type WorktreeCreateInput = {
 
 export type VcsInfo = {
   branch: string
-}
-
-export type SessionNavEntry = {
-  id: string
-  scopeID: string
-  scopeType: "global" | "project"
-  title: string
-  category: "project" | "home" | "channel" | "background"
-  lastActivityAt: number
-  pinned: number
-  archived: boolean
-  parentID?: string
-}
-
-export type NavCursor = {
-  lastActivityAt: number
-  id: string
-}
-
-export type SessionNavResponse = {
-  items: Array<SessionNavEntry>
-  nextCursor: NavCursor | null
-  total: number
 }
 
 export type SessionScope = {
@@ -4605,6 +4625,47 @@ export type GlobalSessionSearchResponses = {
 }
 
 export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
+
+export type GlobalNavRecentData = {
+  body?: never
+  path?: never
+  query?: {
+    parentOnly?: boolean
+    includeArchived?: boolean
+    search?: string
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/global/recent"
+}
+
+export type GlobalNavRecentResponses = {
+  /**
+   * Paginated recent sessions
+   */
+  200: SessionNavResponse
+}
+
+export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]
+
+export type GlobalNavPinnedData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+  }
+  url: "/global/pinned"
+}
+
+export type GlobalNavPinnedResponses = {
+  /**
+   * Pinned sessions
+   */
+  200: PinnedResponse
+}
+
+export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
 
 export type AgendaWebhookData = {
   body?: never

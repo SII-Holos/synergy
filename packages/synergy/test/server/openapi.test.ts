@@ -81,4 +81,20 @@ describe("OpenAPI spec generation", () => {
     const schema = JSON.stringify(appJson.schema)
     expect(schema).toContain("NoteInfo")
   })
+
+  test("includes /global/recent route with operationId global.nav.recent", async () => {
+    const spec = await Server.openapi()
+    const path = spec.paths["/global/recent"]
+    expect(path).toBeDefined()
+    expect(path!.get).toBeDefined()
+    expect(path!.get!.operationId).toBe("global.nav.recent")
+  })
+
+  test("includes /global/pinned route with operationId global.nav.pinned", async () => {
+    const spec = await Server.openapi()
+    const path = spec.paths["/global/pinned"]
+    expect(path).toBeDefined()
+    expect(path!.get).toBeDefined()
+    expect(path!.get!.operationId).toBe("global.nav.pinned")
+  })
 })
