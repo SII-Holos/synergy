@@ -190,7 +190,11 @@ export function SkillView(props: {
       const result = await scopedClient().skill.import({ file, scope })
       await refetch()
       const data = result.data as any
-      showToast({ type: "info", title: "Skill imported", description: `"${data?.name}" added to ${data?.scope ?? scope}` })
+      showToast({
+        type: "info",
+        title: "Skill imported",
+        description: `"${data?.name}" added to ${data?.scope ?? scope}`,
+      })
     } catch {
       showToast({ type: "error", title: "Import failed", description: "Check that the ZIP contains a valid SKILL.md" })
     }
@@ -207,7 +211,11 @@ export function SkillView(props: {
       const result = await scopedClient().skill.importUrl({ url, scope: "global" })
       await refetch()
       const data = result.data as any
-      showToast({ type: "info", title: "Skill imported", description: `"${data?.name}" added to ${data?.scope ?? "project"}` })
+      showToast({
+        type: "info",
+        title: "Skill imported",
+        description: `"${data?.name}" added to ${data?.scope ?? "project"}`,
+      })
     } catch {
       showToast({ type: "error", title: "Import failed", description: "Failed to download or extract. Check the URL." })
     }
