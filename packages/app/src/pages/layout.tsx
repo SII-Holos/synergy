@@ -122,7 +122,7 @@ export default function Layout(props: ParentProps) {
 
       const toastId = showToast({
         type: "warning",
-        persistent: true,
+        duration: 10000,
         icon: "shield-alert",
         title: "Permission required",
         description,
