@@ -84,6 +84,7 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
       ref={(el) => {
         rootRef = el
       }}
+      id="session-progress-drawer"
       class={`session-progress-drawer flex flex-col rounded-2xl bg-surface-raised-stronger-non-alpha border border-border-base shadow-sm overflow-hidden ${props.class ?? ""}`}
       aria-label="Current session progress"
       data-closing={closing() ? "" : undefined}

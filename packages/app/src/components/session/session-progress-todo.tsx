@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useSync } from "@/context/sync"
 import { computeTodoSummary, type TodoItem } from "./session-progress-summary"
 
@@ -86,6 +86,12 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
     return parts
   })
 
+  const [expandedTodoId, setExpandedTodoId] = createSignal<string | undefined>(undefined)
+
+  const toggleTodo = (id: string) => {
+    setExpandedTodoId((prev) => (prev === id ? undefined : id))
+  }
+
   return (
     <div class={`flex flex-col min-h-0 ${props.class ?? ""}`}>
       {/* Header */}
@@ -102,40 +108,62 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
           <For each={todos()}>
             {(todo) => {
               const isActive = () => todo.status === "in_progress"
+              const isExpanded = () => expandedTodoId() === todo.id && todo.content.length > 40
               return (
-                <div
-                  class="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-raised-base-hover"
-                  classList={{
-                    "bg-text-interactive-base/5 border-l-2 border-l-text-interactive-base": isActive(),
-                  }}
-                >
-                  {/* Status icon */}
-                  <span
-                    class={`shrink-0 text-sm leading-none ${statusClass(todo.status)}`}
-                    classList={{ "animate-pulse": isActive() }}
+                <>
+                  <div
+                    onClick={() => toggleTodo(todo.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e: KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        toggleTodo(todo.id)
+                      }
+                    }}
+                    class="flex items-center gap-2.5 px-3 py-2 transition-colors cursor-pointer select-none hover:bg-surface-raised-base-hover"
+                    classList={{
+                      "bg-text-interactive-base/5 border-l-2 border-l-text-interactive-base": isActive(),
+                    }}
                   >
-                    {statusIcon(todo.status)}
-                  </span>
+                    {/* Status icon */}
+                    <span
+                      class={`shrink-0 text-sm leading-none ${statusClass(todo.status)}`}
+                      classList={{ "animate-pulse": isActive() }}
+                    >
+                      {statusIcon(todo.status)}
+                    </span>
 
-                  {/* Content */}
-                  <span class={`text-xs leading-snug truncate flex-1 min-w-0 ${contentClass(todo.status)}`}>
-                    {todo.content}
-                  </span>
+                    {/* Content */}
+                    <span class={`text-xs leading-snug truncate flex-1 min-w-0 ${contentClass(todo.status)}`}>
+                      {todo.content}
+                    </span>
 
-                  {/* Priority */}
-                  <Show when={todo.priority === "high"}>
-                    <span class="shrink-0 size-1.5 rounded-full bg-border-warning-base/70" />
-                  </Show>
+                    {/* Priority */}
+                    <Show when={todo.priority === "high"}>
+                      <span class="shrink-0 size-1.5 rounded-full bg-border-warning-base/70" />
+                    </Show>
 
-                  {/* Status label */}
-                  <Show when={statusLabel(todo.status)}>
-                    {(label) => (
-                      <span class={`shrink-0 text-11-medium px-1.5 py-0.5 rounded-full ${labelClass(todo.status)}`}>
-                        {label()}
+                    {/* Status label */}
+                    <Show when={statusLabel(todo.status)}>
+                      {(label) => (
+                        <span class={`shrink-0 text-11-medium px-1.5 py-0.5 rounded-full ${labelClass(todo.status)}`}>
+                          {label()}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+
+                  {/* Expanded detail for long content */}
+                  <Show when={isExpanded()}>
+                    <div class="flex items-center gap-2.5 px-3 py-2 bg-surface-raised-base border-t border-border-weak-base/40">
+                      <span class="shrink-0 text-sm leading-none text-text-weaker"> </span>
+                      <span class="text-xs leading-snug text-text-base whitespace-pre-wrap break-words flex-1 min-w-0">
+                        {todo.content}
                       </span>
-                    )}
+                    </div>
                   </Show>
-                </div>
+                </>
               )
             }}
           </For>
