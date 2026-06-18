@@ -380,8 +380,10 @@ export namespace RuntimeReload {
       "vision_model",
     ].some((field) => changed.has(field))
     if (roleModelChanged) {
-      // Model role changes may reference providers not yet loaded in cached state
-      cascaded.push("provider", "agent")
+      // Model role changes only affect Config values, not Provider state.
+      // resolveRoleModel() reads cfg[field], not Provider state.
+      // Agent prompts reference the resolved model role and need reload.
+      cascaded.push("agent")
     }
     if (changed.has("category")) {
       // Category configs can specify model overrides that reference different providers
