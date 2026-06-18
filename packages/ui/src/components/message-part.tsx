@@ -1020,24 +1020,38 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: target || input.reason,
       }
     }
-    case "worktree_enter":
+    case "worktree_enter": {
+      const args: string[] = []
+      pushArg(args, input?.target)
+      pushArg(args, input?.baseRef !== "current" ? input?.baseRef : undefined)
+      pushArg(args, input?.force ? "force" : undefined)
       return {
         icon: "worktree-enter",
         title: "Enter Worktree",
         subtitle: (input?.target as string) ?? "New worktree",
+        args,
       }
-    case "worktree_leave":
+    }
+    case "worktree_leave": {
+      const args: string[] = []
+      pushArg(args, input?.cleanup === "remove_if_clean" ? "remove if clean" : undefined)
       return {
         icon: "worktree-leave",
         title: "Leave Worktree",
-        subtitle: input?.cleanup === "remove_if_clean" ? "Remove if clean" : "Keep",
+        subtitle: metadata?.previous?.name ?? metadata?.previous?.path ?? "",
+        args,
       }
-    case "worktree_list":
+    }
+    case "worktree_list": {
+      const args: string[] = []
+      pushArg(args, metadata?.worktrees ? `${metadata.worktrees.length} total` : undefined)
       return {
         icon: "worktree-list",
         title: "Worktrees",
-        subtitle: "",
+        subtitle: metadata?.active?.name ?? "",
+        args,
       }
+    }
     case "connect":
       return {
         icon: "cable",
