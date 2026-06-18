@@ -304,7 +304,7 @@ export function StatusBar() {
 
   return (
     <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
-      <div class="flex items-center gap-1.5 min-w-0 max-w-full overflow-visible px-2 py-1.5 rounded-full bg-surface-raised-stronger-non-alpha/80 backdrop-blur-md border border-border-base/50 shadow-sm">
+      <div class="flex items-center gap-1.5 min-w-0 max-w-full overflow-visible px-2 py-1.5 rounded-full bg-transparent backdrop-blur-2xl backdrop-saturate-150 backdrop-contrast-125 border border-border-base/20 shadow-sm">
         <HolosIconButton />
 
         <Show when={params.dir}>
