@@ -16,6 +16,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const RangeSchema = z.object({
@@ -54,6 +55,13 @@ function cappedPreviewMessage(filePath: string): string {
     "Only the beginning of the file is displayed. No [path#TAG] header is returned, so revise_file cannot use this output directly.",
     "Use scan_files or a narrower view_file range after locating the relevant lines.",
   ].join("\n")
+}
+
+function recordDisplayLines(sessionID: string, display: string, startLine: number, endLine: number): void {
+  if (endLine < startLine) return
+  const seenLines: number[] = []
+  for (let i = startLine; i <= endLine; i++) seenLines.push(i)
+  recordSeenSessionLines(sessionID, display, seenLines)
 }
 
 export const ViewFileTool = Tool.define("view_file", {
@@ -113,6 +121,12 @@ export const ViewFileTool = Tool.define("view_file", {
           truncatedLines: formatted.truncatedLines,
         }
       })
+
+      // Record all displayed ranges as seen lines
+      for (const rm of rangeMetadata) {
+        recordDisplayLines(ctx.sessionID, display, rm.startLine, rm.endLine)
+      }
+
       const outputParts = [warning, header, ...blocks].filter(Boolean)
       return {
         title: display,
@@ -137,6 +151,9 @@ export const ViewFileTool = Tool.define("view_file", {
     const limit = normalizeLineLimit(rawLimit)
     const formatted = formatLineRange(lines, offset, limit)
     const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
+
+    // Record the displayed offset..offset+limit range as seen lines
+    recordDisplayLines(ctx.sessionID, display, offset + 1, formatted.endLine)
 
     return {
       title: display,

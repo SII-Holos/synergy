@@ -4,6 +4,13 @@ export function normalizeContent(content: string): string {
     .replaceAll("\r", "\n")
     .replace(/[ \t]+(?=\n|$)/g, "")
 }
+export function splitContentLines(content: string): string[] {
+  const normalized = normalizeContent(content)
+  if (normalized === "") return []
+  const lines = normalized.split("\n")
+  if (lines.at(-1) === "") lines.pop()
+  return lines
+}
 
 export function computeTag(content: string): string {
   const normalized = normalizeContent(content)

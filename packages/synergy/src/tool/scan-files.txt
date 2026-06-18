@@ -14,4 +14,5 @@ Parameters:
 Critical:
 - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags.
 - Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search.
-- Match line numbers identify where to inspect/edit, but `revise_file` still requires tight ranges and the latest tag.
+- Match line numbers identify where to inspect/edit via `view_file`, but `revise_file` still requires tight ranges and the latest tag. Use `view_file` to visually confirm the range before editing.
+- After retrieving a match, call `view_file` with the matched region to get a fresh tag before attempting edits. Do not assume scan output alone provides an editable tag — `view_file` is the definitive source.

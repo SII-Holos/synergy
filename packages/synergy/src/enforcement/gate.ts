@@ -100,6 +100,13 @@ function extractAbsolutePaths(command: string): string[] {
   return paths
 }
 
+function pathFromHashlinePatch(input: unknown): string | undefined {
+  if (typeof input !== "string") return undefined
+  const header = input.replace(/^\s+/, "").split("\n", 1)[0]?.trimEnd()
+  const match = header?.match(/^\[([^#\]\n]+)#[0-9A-F]{4}\]$/)
+  return match?.[1]
+}
+
 function uniqueCapability(caps: Capability[], cap: Capability) {
   const existing = caps.find((item) => item.class === cap.class && item.nonBypassable === cap.nonBypassable)
   if (existing) {
@@ -216,7 +223,8 @@ export namespace EnforcementGate {
 
       // File write operations
       if (toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file") {
-        const filePath = args.filePath ?? args.path ?? ""
+        const filePath =
+          toolName === "revise_file" ? pathFromHashlinePatch(args.input) : (args.filePath ?? args.path ?? "")
         if (filePath) {
           classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
         }
