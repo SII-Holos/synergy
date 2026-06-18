@@ -142,6 +142,7 @@ export const Info = z
     ref: "Session",
   })
 
+export type Info = z.infer<typeof Info>
 export const StatusInfo = z
   .union([
     z.object({

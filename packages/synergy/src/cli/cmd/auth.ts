@@ -291,9 +291,7 @@ export const AuthLoginCommand = cmd({
               map((x) => ({
                 label: x.name,
                 value: x.id,
-                hint: {
-                  anthropic: "Claude Max or API key",
-                }[x.id],
+                hint: ({ anthropic: "Claude Max or API key" } as Record<string, string | undefined>)[x.id],
               })),
             ),
             {
