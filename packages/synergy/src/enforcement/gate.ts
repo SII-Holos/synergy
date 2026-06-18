@@ -1,4 +1,5 @@
 import { PathClassifier } from "./classify"
+import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 
@@ -47,6 +48,8 @@ const DESTRUCTIVE_PATTERNS = ["rm -rf", "sudo ", "dd "]
 
 const NETWORK_PATTERNS = ["curl ", "wget ", "nc ", "netcat", "http://", "https://"]
 
+const SAFE_PSEUDO_PATHS = new Set(["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom"])
+
 const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 
 const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
@@ -92,7 +95,7 @@ function extractAbsolutePaths(command: string): string[] {
   let match: RegExpExecArray | null
   while ((match = pathPattern.exec(command)) !== null) {
     const candidate = match[1]
-    if (candidate.includes("/")) paths.push(candidate)
+    if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
   return paths
 }
@@ -145,11 +148,11 @@ function hasNetworkActivity(command: string): boolean {
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
 }
 
-function matchRule(cap: Capability, rules: ProfileRule[]): ProfileRule {
+function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
   for (const rule of rules) {
     if (rule.permission === cap.class) return rule
   }
-  return { permission: cap.class, pattern: "*", action: "deny" }
+  return { permission: cap.class, pattern: "*", action: unmatchedAction }
 }
 
 export namespace EnforcementGate {
@@ -250,7 +253,7 @@ export namespace EnforcementGate {
       // Shell operations
       if (toolName === "bash") {
         const command: string = args.command ?? ""
-        caps.push({ class: "shell", nonBypassable: false })
+        caps.push({ class: ShellSafety.capability(command), nonBypassable: false })
 
         if (isDestructive(command)) {
           caps.push({ class: "shell_destructive", nonBypassable: true })
@@ -328,7 +331,7 @@ export namespace EnforcementGate {
 
       let deniedCapClass: string | undefined
       for (const cap of capabilities) {
-        const rule = matchRule(cap, rules)
+        const rule = matchRule(cap, rules, resolved.approval.highRisk)
 
         if (rule.action === "deny") {
           decision = "deny"

@@ -52,6 +52,7 @@ const PERMISSION_CAPABILITY: Record<string, string> = {
   revise_file: "file_write",
   save_file: "file_write",
   bash: "shell",
+  shell_read: "shell_read",
   external_directory: "file_external",
   webfetch: "network_request",
   websearch: "network_request",
@@ -87,8 +88,8 @@ function actionForRisk(approval: ProfileApproval, risk: RiskLevel) {
 
 function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: string[]) {
   if (approval.mode === "manual") return "Manual approval mode asks before every tool request."
-  if (approval.mode === "guarded" && risk === "high") {
-    return "Guarded mode requires user approval for high-risk capabilities."
+  if (approval.mode === "guarded" && risk !== "low") {
+    return "Guarded mode requires user approval before shell, write, network, external, or high-risk actions."
   }
   if (approval.mode === "autonomous" && risk === "high") {
     return "Autonomous mode blocks high-risk capabilities instead of prompting while the user is away."

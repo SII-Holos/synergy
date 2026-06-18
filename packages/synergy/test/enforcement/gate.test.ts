@@ -104,7 +104,7 @@ describe("EnforcementGate path classification", () => {
 // 2. Shell classification
 // ------------------------------------------------------------------
 describe("EnforcementGate shell classification", () => {
-  test("simple ls within workspace is classified as shell", () => {
+  test("simple ls within workspace is classified as shell_read", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -116,8 +116,41 @@ describe("EnforcementGate shell classification", () => {
       workdir: "/Users/test/synergy-control-profile",
     })
 
+    const shell = result.capabilities.find((c: any) => c.class === "shell_read")
+    expect(shell).toBeDefined()
+  })
+
+  test("build commands are classified as approval-required shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", {
+      command: "bun run build 2>&1 | head -30",
+      workdir: "/Users/test/synergy-control-profile",
+    })
+
     const shell = result.capabilities.find((c: any) => c.class === "shell")
     expect(shell).toBeDefined()
+  })
+
+  test("read-only inspection with stderr redirected to /dev/null remains shell_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", {
+      command: "ls -la script/generate.ts 2>/dev/null; head -50 script/generate.ts 2>/dev/null || true",
+      workdir: "/Users/test/synergy-control-profile",
+    })
+
+    const classNames = result.capabilities.map((c: any) => c.class)
+    expect(classNames).toContain("shell_read")
+    expect(classNames).not.toContain("file_external")
   })
 
   test("rm -rf is classified as shell_destructive", () => {
@@ -393,7 +426,7 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("gate with guarded profile allows inside-workspace write", () => {
+  test("gate with guarded profile asks for inside-workspace write", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -405,7 +438,19 @@ describe("EnforcementGate profile integration", () => {
       filePath: "/Users/test/synergy-control-profile/src/index.ts",
     })
 
-    expect(envelope.decision).toBe("allow")
+    expect(envelope.decision).toBe("ask")
+  })
+
+  test("gate with guarded profile allows safe read-only shell and asks for ordinary shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+
+    expect(gate.evaluate("bash", { command: "ls -la" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "bun dev generate 2>/dev/null" }).decision).toBe("ask")
   })
 
   test("gate with autonomous profile has same boundaries as guarded but denies high risk", () => {
@@ -422,6 +467,11 @@ describe("EnforcementGate profile integration", () => {
 
     expect(envelope.decision).toBe("allow")
     expect(envelope.profileId).toBe("autonomous")
+
+    const shell = gate.evaluate("bash", {
+      command: "bun run build",
+    })
+    expect(shell.decision).toBe("allow")
 
     const external = gate.evaluate("read", {
       filePath: "/etc/hosts",

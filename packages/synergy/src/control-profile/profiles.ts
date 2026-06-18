@@ -12,6 +12,7 @@ export const PROFILE_IDS: readonly ProfileId[] = ["manual", "guarded", "autonomo
 const CAPABILITY_PERMISSIONS = [
   "file_read",
   "file_write",
+  "shell_read",
   "shell",
   "shell_destructive",
   "network_request",
@@ -46,7 +47,7 @@ function rulesFor(actions: {
 }) {
   return CAPABILITY_PERMISSIONS.map((permission) => {
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
-    if (permission === "file_read") return rule(permission, actions.low)
+    if (permission === "file_read" || permission === "shell_read") return rule(permission, actions.low)
     return rule(permission, actions.medium)
   })
 }
@@ -84,7 +85,7 @@ function approval(mode: ProfileApproval["mode"]): ProfileApproval {
     case "manual":
       return { mode, lowRisk: "ask", mediumRisk: "ask", highRisk: "ask" }
     case "guarded":
-      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "ask" }
+      return { mode, lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" }
     case "autonomous":
       return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" }
     case "full_access":
@@ -138,8 +139,8 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
       const profile = {
         valid: true,
         label: "Guarded",
-        description: "Auto-allow ordinary workspace work and ask only for high-risk actions.",
-        ruleset: rulesFor({ low: "allow", medium: "allow", high: "ask" }),
+        description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
+        ruleset: rulesFor({ low: "allow", medium: "ask", high: "ask" }),
         ...policy,
         approval: approval("guarded"),
       }
@@ -151,13 +152,15 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
       const profile = {
         valid: true,
         label: "Autonomous",
-        description:
-          "Keep working unattended. High-risk actions are denied with semantic guidance instead of prompting.",
+        description: "Keep working unattended. High-risk actions are denied with guidance instead of prompting.",
         ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
         ...policy,
         approval: approval("autonomous"),
       }
-      return { ...profile, summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace) }
+      return {
+        ...profile,
+        summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace),
+      }
     }
 
     case "full_access": {

@@ -16,6 +16,8 @@ export function buildPermissionContext(profile: ResolvedProfile, workspaceRoot: 
     `- Low-risk requests: ${profile.approval.lowRisk}`,
     `- Medium-risk requests: ${profile.approval.mediumRisk}`,
     `- High-risk requests: ${profile.approval.highRisk}`,
+    `- Safe read-only shell commands are low risk. Other shell commands, writes, network calls, and external paths require approval unless Full Access is active.`,
+    `- Only Autonomous mode automatically denies high-risk actions. Manual and Guarded modes ask the user through the permission dock.`,
     ``,
     `Workspace boundary: ${workspaceRoot}`,
     `Sandbox mode: ${profile.sandbox.mode}`,

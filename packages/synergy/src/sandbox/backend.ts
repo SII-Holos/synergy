@@ -31,6 +31,7 @@ export interface PrepareWrapperOpts {
   command: string
   args: string[]
   workspace: string
+  executionCwd?: string
   sandboxMode: "none" | "read_only" | "workspace_write"
   forcePlatform?: string
   runtimeReadRoots?: string[]
@@ -54,9 +55,10 @@ export interface SeatbeltProfileOpts {
   workspace: string
   sandboxMode: "read_only" | "workspace_write"
   runtimeReadRoots: string[]
+  literalReadRoots?: string[]
   writableRoots: string[]
   protectedPaths: string[]
-  dataDenyRoots: string[]
+  dataDenyRoots?: string[]
 }
 export interface SandboxExecutionWrapper {
   command: string
@@ -96,6 +98,22 @@ function defaultRuntimeReadRoots(homedir: string): string[] {
 
 function uniqueRoots(roots: string[]): string[] {
   return [...new Set(roots.filter(Boolean))]
+}
+
+function ancestorLiterals(root: string): string[] {
+  const resolved = path.resolve(root)
+  const result: string[] = []
+  let current = resolved
+  while (current && current !== path.dirname(current)) {
+    result.push(current)
+    current = path.dirname(current)
+  }
+  result.push(current || path.parse(resolved).root)
+  return result.reverse()
+}
+
+function traversalLiterals(roots: string[]): string[] {
+  return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
 }
 
 const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
@@ -175,6 +193,8 @@ export namespace SandboxBackend {
   export function generateSeatbeltProfile(opts: SeatbeltProfileOpts): string[] {
     const { workspace, sandboxMode, runtimeReadRoots, writableRoots, protectedPaths } = opts
     const dataDenyRoots = opts.dataDenyRoots ?? []
+    const literalReadRoots =
+      opts.literalReadRoots ?? traversalLiterals([workspace, ...runtimeReadRoots, ...writableRoots])
     const lines: string[] = []
 
     lines.push("(version 1)")
@@ -189,7 +209,11 @@ export namespace SandboxBackend {
       lines.push(`(allow file-read* (subpath "${root}") (literal "${root}"))`)
     }
 
-    lines.push(`(allow file-read* (subpath "${workspace}"))`)
+    for (const root of literalReadRoots) {
+      lines.push(`(allow file-read* (literal "${root}"))`)
+    }
+
+    lines.push(`(allow file-read* (subpath "${workspace}") (literal "${workspace}"))`)
 
     if (sandboxMode === "workspace_write") {
       const writeRoots = [...writableRoots]
@@ -245,11 +269,18 @@ export namespace SandboxBackend {
     const writableRoots = uniqueRoots([...(opts.writableRoots ?? [workspace]), ...(opts.extraWritableRoots ?? [])])
     const protectedPaths = opts.protectedPaths ?? DEFAULT_PROTECTED_PATHS(os.homedir(), workspace)
     const dataDenyRoots = opts.dataDenyRoots ?? [os.homedir()]
+    const literalReadRoots = traversalLiterals([
+      workspace,
+      opts.executionCwd ?? workspace,
+      ...runtimeReadRoots,
+      ...writableRoots,
+    ])
 
     const profile = generateSeatbeltProfile({
       workspace,
       sandboxMode,
       runtimeReadRoots,
+      literalReadRoots,
       writableRoots,
       protectedPaths,
       dataDenyRoots,

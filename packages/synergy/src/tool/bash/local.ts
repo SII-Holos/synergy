@@ -12,6 +12,7 @@ import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
 import { SandboxDetector } from "@/enforcement/sandbox-detector"
 import { EnforcementError } from "@/enforcement/errors"
+import { ShellSafety } from "@/enforcement/shell-safety"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -101,15 +102,18 @@ export const LocalBashBackend: BashBackend = {
       tree.delete()
     }
 
-    if (patterns.size > 0) {
+    if (patterns.size > 0 && (ctx.extra as any)?.shellApprovedByUser !== true) {
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
-        metadata: {},
+        metadata: {
+          capability: ShellSafety.capability(params.command),
+        },
       })
     }
 
-    const sandboxWrapper = (ctx.extra as any)?.sandboxWrapper
+    const sandboxWrapper =
+      (ctx.extra as any)?.shellApprovedByUser === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
 
     let child: ReturnType<typeof spawn>

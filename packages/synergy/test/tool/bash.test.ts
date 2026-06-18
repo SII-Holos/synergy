@@ -114,7 +114,35 @@ describe("tool.bash permissions", () => {
         )
         expect(requests.length).toBe(1)
         expect(requests[0].permission).toBe("bash")
+        expect(requests[0].metadata.capability).toBe("shell")
         expect(requests[0].patterns).toContain("echo hello")
+      },
+    })
+  })
+
+  test("marks read-only shell commands as low-risk shell_read", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bash = await BashTool.init()
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash.execute(
+          {
+            command: "ls -la 2>/dev/null; head -5 package.json",
+            description: "Inspect files",
+          },
+          testCtx,
+        )
+        expect(requests.length).toBe(1)
+        expect(requests[0].permission).toBe("bash")
+        expect(requests[0].metadata.capability).toBe("shell_read")
       },
     })
   })
@@ -277,6 +305,36 @@ describe("tool.bash permissions", () => {
         )
         const bashReq = requests.find((r) => r.permission === "bash")
         expect(bashReq).toBeUndefined()
+      },
+    })
+  })
+
+  test("uses direct execution after user approval instead of an existing sandbox wrapper", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bash = await BashTool.init()
+        const testCtx = {
+          ...ctx,
+          extra: {
+            shellApprovedByUser: true,
+            sandboxWrapper: {
+              command: "false",
+              args: [],
+              sandboxed: true,
+            },
+          },
+        }
+        const result = await bash.execute(
+          {
+            command: "echo approved",
+            description: "Approved shell",
+          },
+          testCtx,
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("approved")
       },
     })
   })

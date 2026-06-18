@@ -41,12 +41,13 @@ describe("manual profile policy", () => {
 })
 
 describe("guarded profile policy", () => {
-  test("auto-allows ordinary workspace work and asks for high-risk capabilities", () => {
+  test("auto-allows safe read-only work and asks for approval-required capabilities", () => {
     const profile = ControlProfileCompiler.resolve("guarded", context)
-    expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "ask" })
+    expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
-    expect(rule(profile, "file_write")?.action).toBe("allow")
-    expect(rule(profile, "shell")?.action).toBe("allow")
+    expect(rule(profile, "shell_read")?.action).toBe("allow")
+    expect(rule(profile, "file_write")?.action).toBe("ask")
+    expect(rule(profile, "shell")?.action).toBe("ask")
     expect(rule(profile, "file_external")?.action).toBe("ask")
     expect(rule(profile, "shell_destructive")?.nonBypassable).toBe(true)
   })
@@ -64,6 +65,7 @@ describe("autonomous profile policy", () => {
     const profile = ControlProfileCompiler.resolve("autonomous", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
+    expect(rule(profile, "shell_read")?.action).toBe("allow")
     expect(rule(profile, "file_write")?.action).toBe("allow")
     expect(rule(profile, "shell")?.action).toBe("allow")
     expect(rule(profile, "file_external")?.action).toBe("deny")

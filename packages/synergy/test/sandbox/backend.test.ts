@@ -184,10 +184,10 @@ describe("SandboxBackend Seatbelt profile generation", () => {
     expect(profileStr).not.toMatch(/\(allow\s+file-read\*\)/)
     expect(profileStr).not.toMatch(/\(allow\s+file-read\*\s*\)/)
 
-    // All file-read* rules must be scoped to specific subpaths
+    // All file-read* rules must be scoped to specific subpaths or exact literals.
     const fileReadRules = profileStr.match(/\(allow\s+file-read\*[^)]*\)/g) ?? []
     for (const rule of fileReadRules) {
-      expect(rule).toMatch(/subpath/)
+      expect(rule).toMatch(/subpath|literal/)
     }
   })
 
@@ -328,7 +328,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
     )
 
     expect(profileStr).toContain('(deny file-read* file-write* (subpath "/Users/test"))')
-    expect(profileStr).toContain(`(allow file-read* (subpath "${workspace}"))`)
+    expect(profileStr).toContain(`(allow file-read* (subpath "${workspace}") (literal "${workspace}"))`)
     expect(denyHome).toBeGreaterThan(-1)
     expect(allowWorkspace).toBeGreaterThan(denyHome)
   })
@@ -397,6 +397,36 @@ describe("SandboxBackend Seatbelt profile generation", () => {
     })
 
     expect(profile.join("\n")).toContain(`(allow file-read* (subpath "${runtimeFile}") (literal "${runtimeFile}"))`)
+  })
+
+  test("profile allows literal parent directories for cwd traversal", () => {
+    const { SandboxBackend } = require("../../src/sandbox/backend")
+
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "pwd",
+      args: [],
+      workspace: "/Users/test/projects/app",
+      executionCwd: "/Users/test/projects/app/packages/core",
+      sandboxMode: "workspace_write",
+      forcePlatform: "macos",
+      runtimeReadRoots: ["/usr/lib"],
+      writableRoots: ["/Users/test/projects/app"],
+      dataDenyRoots: ["/Users/test"],
+    })
+
+    const fs = require("fs")
+    const profilePath = wrapper.args[1]
+    const profile = fs.readFileSync(profilePath, "utf8")
+    try {
+      expect(profile).toContain('(allow file-read* (literal "/Users"))')
+      expect(profile).toContain('(allow file-read* (literal "/Users/test"))')
+      expect(profile).toContain('(allow file-read* (literal "/Users/test/projects"))')
+      expect(profile).toContain('(allow file-read* (literal "/Users/test/projects/app"))')
+      expect(profile).toContain('(allow file-read* (literal "/Users/test/projects/app/packages"))')
+      expect(profile).toContain('(allow file-read* (literal "/Users/test/projects/app/packages/core"))')
+    } finally {
+      SandboxBackend.cleanupTemp(profilePath)
+    }
   })
 })
 

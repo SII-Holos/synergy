@@ -85,6 +85,7 @@ export namespace ToolResolver {
 
   function permissionForGateCapability(toolName: string, className: string): string {
     if (className === "file_external") return "external_directory"
+    if (className === "shell_read") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request")
       return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
@@ -103,6 +104,22 @@ export namespace ToolResolver {
 
   function approvedExternalRoots(ctx: Tool.Context): string[] {
     return ((ctx.extra as any).approvedExternalRoots ?? []) as string[]
+  }
+
+  function wasShellApprovedByUser(ctx: Tool.Context): boolean {
+    return (ctx.extra as any).shellApprovedByUser === true
+  }
+
+  function rememberApprovedShell(ctx: Tool.Context, permission: string, metadata: Record<string, unknown>) {
+    const capability = String(metadata.capability ?? "")
+    if (
+      permission === "bash" ||
+      capability === "shell" ||
+      capability === "shell_read" ||
+      capability === "shell_destructive"
+    ) {
+      ;(ctx.extra as any).shellApprovedByUser = true
+    }
   }
 
   function rememberApprovedExternalRoots(ctx: Tool.Context, patterns: string[]) {
@@ -285,6 +302,7 @@ export namespace ToolResolver {
             ) {
               rememberApprovedExternalRoots(ctx, req.patterns)
             }
+            rememberApprovedShell(ctx, req.permission, requestMetadata)
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
           } catch (error) {
             if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
@@ -356,12 +374,13 @@ export namespace ToolResolver {
                 let sandboxWrapper: SandboxExecutionWrapper | undefined
                 if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
-                  if (sandbox.mode !== "none") {
+                  if (sandbox.mode !== "none" && !wasShellApprovedByUser(ctx)) {
                     const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
                     sandboxWrapper = SandboxBackend.prepareWrapper({
                       command: "/bin/sh",
                       args: ["-c", bashCommand],
                       workspace,
+                      executionCwd: ((args as Record<string, any>)?.workdir as string | undefined) ?? workspace,
                       sandboxMode: sandbox.mode,
                       extraReadRoots: approvedExternalRoots(ctx),
                       extraWritableRoots: approvedExternalRoots(ctx),

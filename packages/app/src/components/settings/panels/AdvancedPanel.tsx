@@ -14,12 +14,12 @@ const FALLBACK_PROFILES: ControlProfileSummary[] = [
   {
     id: "guarded",
     label: "Guarded",
-    description: "Auto-allow ordinary workspace work and ask only for high-risk actions.",
+    description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
   },
   {
     id: "autonomous",
     label: "Autonomous",
-    description: "Keep working while you are away. High-risk actions are denied instead of prompting.",
+    description: "Keep working unattended. High-risk actions are denied instead of prompting.",
   },
   {
     id: "full_access",

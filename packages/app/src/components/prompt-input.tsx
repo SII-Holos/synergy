@@ -256,7 +256,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     id: "guarded",
     label: "Guarded",
     shortLabel: "Guarded",
-    description: "Auto-approve ordinary workspace work and ask only for high-risk actions.",
+    description: "Auto-approve safe read-only work. Ask before shell, write, network, or external actions.",
     icon: "shield-check",
     color: "Blue",
     triggerClass: "border-blue-300/70 bg-blue-50/80 text-blue-700 hover:bg-blue-100/80",
