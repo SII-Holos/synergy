@@ -63,8 +63,9 @@ dagwrite({ nodes: [
   { id: "tests",       content: "Write failing tests",             status: "pending", deps: ["design"], assign: "test-strategist" },
   { id: "impl",        content: "Implement the feature",           status: "pending", deps: ["tests"], assign: "implementation-engineer" },
   { id: "quality",     content: "Run quality gates",               status: "pending", deps: ["impl"], assign: "quality-gatekeeper" },
+  { id: "review-code", content: "Review maintainability (naming, dead code, structure)", status: "pending", deps: ["impl"], assign: "maintainability-reviewer" },
   { id: "review",      content: "Review security and contracts",   status: "pending", deps: ["impl"], assign: "security-reviewer" },
-  { id: "integrate",   content: "Integrate and verify",            status: "pending", deps: ["quality", "review"], assign: "self" }
+  { id: "integrate",   content: "Integrate and verify",            status: "pending", deps: ["quality", "review-code", "review"], assign: "self" }
 ]})
 ```
 
@@ -107,12 +108,13 @@ User: "Add a CLI command for exporting session history."
   5. Implement export formatter (implementation-engineer)
   6. Implement CLI adapter (implementation-engineer)
   7. Quality gates (quality-gatekeeper, depends on 5+6)
-  8. Review API compatibility (api-compatibility-reviewer)
-  9. Review security (security-reviewer)
-  10. Integrate and verify (self, depends on 7+8+9)
+  8. Review maintainability — naming, dead code, structure (maintainability-reviewer, depends on 5+6)
+  9. Review API compatibility (api-compatibility-reviewer)
+  10. Review security (security-reviewer)
+  11. Integrate and verify (self, depends on 7+8+9+10)
 → Dispatch 1+2 in parallel for exploration.
 → After design and tests: dispatch 5+6 in parallel — split by concern, same type.
-→ After implement: dispatch 8+9 in parallel.
+→ After implement: dispatch 8+9+10 in parallel.
 ```
 
 ## Bug Fix
@@ -215,11 +217,12 @@ User: "Add rate limiting to the API endpoints."
   5. Implement rate limit middleware (implementation-engineer, depends on 3+4)
   6. Implement rate limit storage/counters (implementation-engineer, depends on 3+4)
   7. Run quality gates (quality-gatekeeper, depends on 5+6)
-  8. Review security — rate limit bypass attempts (security-reviewer, depends on 5+6)
-  9. Integrate and verify (self, depends on 7+8)
+  8. Review maintainability — naming, dead code, structure (maintainability-reviewer, depends on 5+6)
+  9. Review security — rate limit bypass attempts (security-reviewer, depends on 5+6)
+  10. Integrate and verify (self, depends on 7+8+9)
 → Dispatch 1 first. Then 2. Then 3+4 in parallel.
 → Dispatch 5+6 in parallel — split by concern: HTTP middleware vs. storage engine.
-→ Run 7+8 in parallel after implementation.
+→ Run 7+8+9 in parallel after implementation.
 ```
 
 
@@ -339,7 +342,7 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 
 | Risk surface | Primary Agent | When NOT to use |
 |-------------|--------------|-----------------|
-| Maintainability — structure, abstraction, duplication | `maintainability-reviewer` | Only skip if purely mechanical (typo, formatting) |
+| Maintainability — readability, naming, dead code, redundant logic, structure, abstraction, root-cause fit | `maintainability-reviewer` | Only skip if purely mechanical (typo, formatting) |
 | Security — trust boundaries, credentials, injection | `security-reviewer` | If no auth, I/O, shell, or external API surface |
 | Performance — hot paths, concurrency, memory | `performance-reviewer` | If the path is cold |
 | API compatibility — SDK, schemas, CLI, config | `api-compatibility-reviewer` | If no public contract surface |
@@ -358,7 +361,7 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 These rules are non-negotiable. You must not skip them:
 
 1. **Bug reproduction before bug fix**: Before dispatching `implementation-engineer` for any bug fix, you MUST first dispatch `regression-reproducer` to build a deterministic reproduction. No repro, no fix.
-2. **Verify and review after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper` for mechanical verification, then the language-specific quality engineer matching changed files (e.g. `typescript-quality-engineer` for TS), then risk-surface reviewers from the Review table. At minimum: `maintainability-reviewer` for every meaningful change; `security-reviewer`, `performance-reviewer`, and `api-compatibility-reviewer` when their risk surfaces are touched.
+2. **Verify and review after every code change**: After every `implementation-engineer`, `refactoring-engineer`, or `integration-engineer` completes, dispatch `quality-gatekeeper` for toolchain-level verification, then the language-specific quality engineer matching changed files (e.g. `typescript-quality-engineer` for TS), then `maintainability-reviewer` for human-quality review on every meaningful change. Follow with risk-surface reviewers (`security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`) when their risk surfaces are touched.
 3. **Integration after parallel outputs**: If you dispatched parallel agents that produced overlapping code changes, you MUST dispatch `integration-engineer` to merge their outputs before running quality gates.
 4. **Broad research before broad conclusions**: For broad, current, multi-dimensional, or open-ended research requests, create a research DAG and dispatch `research-scout`; do not answer from self-search alone.
 5. **Academic grounding for empirical/theory claims**: If a research answer involves methods, benchmarks, HCI/cognitive theory, algorithms, or empirical claims, dispatch `literature-searcher`; dispatch `literature-analyst` when the papers materially affect the conclusion.
@@ -370,7 +373,7 @@ These rules are non-negotiable. You must not skip them:
 
 1. **Test before code, verify before deliver.** The first specialist after design comes from the Test phase.
 2. **Research before broad claims.** A broad research request needs explicit search goals, source coverage, and synthesis. Use `research-scout` for breadth and add `docs-researcher` or `literature-searcher` branches when exact verification or academic grounding matters.
-3. **Verify, then review.** After mechanical verification, dispatch risk-surface reviewers from the Review table. `maintainability-reviewer` applies to every meaningful code change; `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, and `documentation-reviewer` when their risk surfaces are touched. Dispatch qualifying reviewers in parallel.
+3. **Verify, then review.** After toolchain verification, dispatch `maintainability-reviewer` for human-quality review on every meaningful code change. Then dispatch risk-surface reviewers (`security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`) when their risk surfaces are touched. Dispatch qualifying reviewers in parallel.
 4. **Test specialization — choose by what you are verifying:**
    - Behavioral correctness → `test-strategist`
    - Bug reproduction → `regression-reproducer`

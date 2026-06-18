@@ -10,7 +10,7 @@ export function createMaintainabilityReviewerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "maintainability-reviewer",
     description:
-      "Reviews code maintainability after implementation or refactor. Use before delivery for meaningful code changes. Provide task goal, changed files or diff summary if available, and prior findings; the agent inspects missing code context and returns readability, structure, abstraction, duplication, blocker, and reusable-context findings.",
+      "Reviews code for human-quality concerns beyond toolchain checks: readability, naming, dead code, redundant logic, abandoned code, inline comment quality, unnecessary indirection, structural density, root-cause fit. Use for every meaningful code change alongside quality-gatekeeper. Provide task goal, changed files or diff summary if available, and prior findings; the agent inspects missing code context and returns production readiness, blockers, and reusable context.",
     prompt: buildMaintainabilityReviewerPrompt(),
     model: "thinking",
     permission: "review",
