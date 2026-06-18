@@ -146,10 +146,9 @@ export namespace SessionNav {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
-        const s = session.scope as { id: string; type?: string }
-        const st: "global" | "project" = s.id === "global" ? "global" : "project"
+        const scopeType: "global" | "project" = scopeID === "global" ? "global" : "project"
         const category = deriveCategory({
-          scopeType: st,
+          scopeType,
           endpointKind: session.endpoint?.kind,
           parentID: session.parentID,
           cortex: session.cortex,
@@ -164,7 +163,7 @@ export namespace SessionNav {
         entries.push({
           id: session.id,
           scopeID,
-          scopeType: st,
+          scopeType,
           title: session.title,
           category,
           lastActivityAt: session.time.updated,
@@ -215,11 +214,6 @@ export namespace SessionNav {
     return [...new Set(["global", ...projects.map((p) => p.id), ...sessionScopeIDs])]
   }
 
-  async function getProjectScopeIDs(): Promise<string[]> {
-    const ids = await getAllScopeIDs()
-    return ids.filter((id) => id !== "global")
-  }
-
   export async function queryScope(
     scopeID: string,
     opts?: {
@@ -245,7 +239,8 @@ export namespace SessionNav {
     cursor?: NavCursor
     limit?: number
   }): Promise<{ items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number }> {
-    const scopeIDs = await getProjectScopeIDs()
+    // Includes global scope sessions alongside project scopes for a cross-scope overview
+    const scopeIDs = await getAllScopeIDs()
     const allEntries: SessionNavEntry[] = []
     for (const sid of scopeIDs) {
       const index = await readNavIndex(sid)

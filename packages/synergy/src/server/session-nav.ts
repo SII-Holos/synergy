@@ -17,7 +17,7 @@ const SessionNavQuery = z
     cursorId: z.string().optional(),
   })
   .transform((v) => {
-    const parentOnly = v.category !== undefined ? false : (v.parentOnly ?? true)
+    const parentOnly = v.parentOnly ?? (v.category !== undefined ? false : true)
     const cursor: { lastActivityAt: number; id: string } | undefined =
       v.cursorLastActivityAt !== undefined && v.cursorId !== undefined
         ? { lastActivityAt: v.cursorLastActivityAt, id: v.cursorId }

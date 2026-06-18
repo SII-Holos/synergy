@@ -131,6 +131,57 @@ describe("GET /session/index (v2 nav)", () => {
     })
   })
 
+  test("category + parentOnly=true excludes children, category-only includes children", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let projectParentID: string | undefined
+    let backgroundChildID: string | undefined
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        // Create a project-category parent (project scope, no parentID)
+        const parent = await Session.create({ title: "Project Parent" })
+        projectParentID = parent.id
+        // Create a background-category child (has parentID → background)
+        const child = await Session.create({ title: "Background Child", parentID: parent.id })
+        backgroundChildID = child.id
+      },
+    })
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const baseUrl = `/session/index?directory=${encodeURIComponent(scope.directory)}`
+
+        // category=project + parentOnly=true → only project parent (no children)
+        const projectOnlyRes = await app.request(`${baseUrl}&category=project&parentOnly=true`)
+        const projectOnlyBody = await projectOnlyRes.json()
+        const projectOnlyIDs = projectOnlyBody.items.map((s: any) => s.id)
+        expect(projectOnlyIDs).toContain(projectParentID!)
+        expect(projectOnlyIDs).not.toContain(backgroundChildID!)
+
+        // category=background + parentOnly=false → includes children
+        const bgWithChildrenRes = await app.request(`${baseUrl}&category=background&parentOnly=false`)
+        const bgWithChildrenBody = await bgWithChildrenRes.json()
+        const bgWithChildrenIDs = bgWithChildrenBody.items.map((s: any) => s.id)
+        expect(bgWithChildrenIDs).toContain(backgroundChildID!)
+
+        // category=background + parentOnly=true → only root background sessions (no children)
+        const bgRootOnlyRes = await app.request(`${baseUrl}&category=background&parentOnly=true`)
+        const bgRootOnlyBody = await bgRootOnlyRes.json()
+        const bgRootOnlyIDs = bgRootOnlyBody.items.map((s: any) => s.id)
+        expect(bgRootOnlyIDs).not.toContain(backgroundChildID!)
+
+        // Cleanup
+        await Session.remove(backgroundChildID!)
+        await Session.remove(projectParentID!)
+      },
+    })
+  })
+
   test("respects includeArchived filter", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

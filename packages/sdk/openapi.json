@@ -465,6 +465,116 @@
         ]
       }
     },
+    "/global/recent": {
+      "get": {
+        "operationId": "global.nav.recent",
+        "summary": "Recent sessions across all scopes",
+        "description": "Get a paginated list of recently active sessions across all scopes (global + projects).",
+        "responses": {
+          "200": {
+            "description": "Paginated recent sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNavResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "parentOnly",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorLastActivityAt",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.recent({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/pinned": {
+      "get": {
+        "operationId": "global.nav.pinned",
+        "summary": "Pinned sessions across all scopes",
+        "description": "Get a list of pinned sessions across all scopes (global + projects), sorted by recent activity.",
+        "responses": {
+          "200": {
+            "description": "Pinned sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinnedResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.pinned({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/agenda/webhook/{token}": {
       "post": {
         "operationId": "agenda.webhook",
@@ -12296,6 +12406,93 @@
         },
         "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
+      "SessionNavEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": ["global", "project"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["project", "home", "channel", "background"]
+          },
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "pinned": {
+            "type": "number"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "parentID": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
+      },
+      "NavCursor": {
+        "type": "object",
+        "properties": {
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": ["lastActivityAt", "id"]
+      },
+      "SessionNavResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NavCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
+      },
+      "PinnedResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "total"]
+      },
       "AgendaWebhookResult": {
         "type": "object",
         "properties": {
@@ -14818,6 +15015,34 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/CategoryConfig"
             }
+          },
+          "toast": {
+            "description": "Toast notification preferences",
+            "type": "object",
+            "properties": {
+              "muted": {
+                "description": "Toast types to suppress. The underlying logic still runs but the visual card is not rendered.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["info", "success", "warning", "error"]
+                }
+              },
+              "durationOverrides": {
+                "description": "Override auto-dismiss duration in ms per toast type (max 30s).",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["info", "success", "warning", "error"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 30000
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -15576,78 +15801,6 @@
           }
         },
         "required": ["branch"]
-      },
-      "SessionNavEntry": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "scopeID": {
-            "type": "string"
-          },
-          "scopeType": {
-            "type": "string",
-            "enum": ["global", "project"]
-          },
-          "title": {
-            "type": "string"
-          },
-          "category": {
-            "type": "string",
-            "enum": ["project", "home", "channel", "background"]
-          },
-          "lastActivityAt": {
-            "type": "number"
-          },
-          "pinned": {
-            "type": "number"
-          },
-          "archived": {
-            "type": "boolean"
-          },
-          "parentID": {
-            "type": "string"
-          }
-        },
-        "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
-      },
-      "NavCursor": {
-        "type": "object",
-        "properties": {
-          "lastActivityAt": {
-            "type": "number"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": ["lastActivityAt", "id"]
-      },
-      "SessionNavResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SessionNavEntry"
-            }
-          },
-          "nextCursor": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NavCursor"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "total": {
-            "type": "number"
-          }
-        },
-        "required": ["items", "nextCursor", "total"]
       },
       "SessionScope": {
         "type": "object",
