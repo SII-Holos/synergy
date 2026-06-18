@@ -92,8 +92,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "workspace.close",
-      title: "Close workspace panel",
-      description: "Close the workspace panel",
+      title: "Close workspace drawer",
+      description: "Close the workspace drawer",
       category: "View",
       keybind: "mod+shift+w",
       disabled: !routeParams.id || !workspace.opened(),

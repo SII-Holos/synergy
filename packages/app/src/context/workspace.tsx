@@ -47,6 +47,17 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
       closePanel: () => ws().close(),
       setActive: (id: string | null) => ws().setActive(id),
       setWidth: (w: number) => ws().setWidth(w),
+      toggle(toolId: string) {
+        if (!ws().opened()) {
+          ws().setActive(toolId)
+          ws().open()
+        } else if (ws().active() === toolId) {
+          ws().setActive(null)
+          ws().close()
+        } else {
+          ws().setActive(toolId)
+        }
+      },
     }
   },
 })

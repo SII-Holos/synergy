@@ -86,6 +86,12 @@ type State = {
   }
 }
 
+export interface NoteUpdateSignal {
+  id: string
+  version: number
+  type: "created" | "updated" | "deleted"
+}
+
 function createGlobalSync() {
   const globalSDK = useGlobalSDK()
   const [globalStore, setGlobalStore] = createStore<{
@@ -113,6 +119,7 @@ function createGlobalSync() {
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
   const [noteVersion, setNoteVersion] = createSignal(0)
+  const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
   function bumpNoteVersion() {
     setNoteVersion((v) => v + 1)
   }
@@ -610,6 +617,17 @@ function createGlobalSync() {
     }
     if (event?.type === "note.created" || event?.type === "note.updated" || event?.type === "note.deleted") {
       bumpNoteVersion()
+      if (event.type === "note.deleted") {
+        const props = event.properties as { id: string; scopeID: string }
+        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
+      } else {
+        const props = event.properties as { note: { id: string; version: number } }
+        setNoteUpdate({
+          id: props.note.id,
+          version: props.note.version,
+          type: event.type as "created" | "updated",
+        })
+      }
     }
 
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
@@ -1068,6 +1086,7 @@ function createGlobalSync() {
     releaseChild,
     bootstrap,
     noteVersion,
+    noteUpdate,
     get agenda() {
       return globalStore.agenda
     },
