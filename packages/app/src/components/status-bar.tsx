@@ -142,10 +142,12 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
   const tooltip = () => `Runtime: ${runtimeLabel(props.status, props.waiting)}`
   const tone = () => (props.waiting ? ("danger" as const) : ("base" as const))
 
+  const iconClass = () => (icon() === getSemanticIcon("session.running") ? "animate-spin" : undefined)
+
   return (
     <Tooltip placement="top" value={tooltip()}>
       <button type="button" classList={iconButtonClass(tone())}>
-        <Icon name={icon()} size="small" />
+        <Icon name={icon()} size="small" class={iconClass()} />
       </button>
     </Tooltip>
   )
