@@ -757,7 +757,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon="list-checks"
         trigger={() => ({
           title: "To-dos",
@@ -840,7 +839,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
@@ -874,7 +872,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
@@ -908,7 +905,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "Read DAG",

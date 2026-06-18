@@ -9,6 +9,7 @@ import { NewSessionGreeting } from "./session-new-view"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
 import { SubagentDock } from "./subagent-dock"
+import { SessionProgressPanel } from "./session-progress-panel"
 import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
 import type { usePrompt } from "@/context/prompt"
@@ -122,6 +123,9 @@ export function PromptDock(props: {
                       </button>
                     </div>
                   )}
+                </Show>
+                <Show when={props.sessionID}>
+                  <SessionProgressPanel sessionID={props.sessionID!} />
                 </Show>
                 <div class="relative">
                   <PromptInput
