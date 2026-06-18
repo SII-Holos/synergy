@@ -290,13 +290,26 @@ export namespace Cortex {
     }
 
     setTimeout(() => {
-      void (async () => {
-        tasks.delete(taskID)
-        acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(task.sessionID)
-        log.info("task cleaned up", { taskID })
-      })()
+      const task = tasks.get(taskID)
+      if (task) {
+        task.prompt = ""
+        task.result = undefined
+        task.error = undefined
+        log.info("task strings evicted", { taskID })
+      }
     }, CLEANUP_DELAY_MS)
+
+    setTimeout(
+      () => {
+        void (async () => {
+          tasks.delete(taskID)
+          acquiredTasks.delete(taskID)
+          SessionManager.unregisterRuntime(task.sessionID)
+          log.info("task cleaned up", { taskID })
+        })()
+      },
+      CLEANUP_DELAY_MS + 5 * 60 * 1000,
+    )
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {

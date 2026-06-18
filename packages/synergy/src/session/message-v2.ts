@@ -662,6 +662,11 @@ export namespace MessageV2 {
       const results = await Storage.readMany<MessageV2.Part>(keys)
       const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
+      for (const part of parts) {
+        if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
+          part.state.output = ""
+        }
+      }
       return parts
     },
   )

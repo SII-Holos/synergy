@@ -65,7 +65,13 @@ export namespace SessionManager {
   const sweepTimer = setInterval(() => {
     const now = Date.now()
     for (const [sessionID, runtime] of runtimes) {
-      if (runtime.abort) continue
+      if (runtime.abort) {
+        if (runtime.abort.signal.aborted) {
+          runtime.abort = undefined
+        } else {
+          continue
+        }
+      }
       if (runtime.mailbox.length > 0) continue
       if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
       runtimes.delete(sessionID)
@@ -153,22 +159,29 @@ export namespace SessionManager {
   export async function run<T>(input: string | SessionEndpoint.Info, fn: () => Promise<T>): Promise<T> {
     const session = await requireSession(input)
     registerRuntime(session.id)
-    const scope = session.scope as Scope
-    return Instance.provide({
-      scope,
-      workspace: (session as Info).workspace,
-      fn: async () => {
-        const workspace = (session as Info).workspace
-        if (workspace?.type !== "git_worktree") return fn()
-        const { Worktree } = await import("../project/worktree")
-        await Worktree.lock(workspace.path)
-        try {
-          return await fn()
-        } finally {
-          await Worktree.unlock(workspace.path)
-        }
-      },
-    })
+    try {
+      const scope = session.scope as Scope
+      return await Instance.provide({
+        scope,
+        workspace: (session as Info).workspace,
+        fn: async () => {
+          const workspace = (session as Info).workspace
+          if (workspace?.type !== "git_worktree") return fn()
+          const { Worktree } = await import("../project/worktree")
+          await Worktree.lock(workspace.path)
+          try {
+            return await fn()
+          } finally {
+            await Worktree.unlock(workspace.path)
+          }
+        },
+      })
+    } finally {
+      const runtime = getRuntime(session.id)
+      if (runtime && !runtime.abort && runtime.mailbox.length === 0) {
+        unregisterRuntime(session.id)
+      }
+    }
   }
 
   export function acquire(sessionID: string): AbortSignal | undefined {
