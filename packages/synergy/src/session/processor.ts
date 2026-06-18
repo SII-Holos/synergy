@@ -301,7 +301,7 @@ export namespace SessionProcessor {
                   throw value.error
 
                 case "start-step":
-                  snapshot = await Snapshot.track()
+                  snapshot = await Snapshot.track(input.sessionID)
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -323,7 +323,7 @@ export namespace SessionProcessor {
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,
-                    snapshot: await Snapshot.track(),
+                    snapshot: await Snapshot.track(input.sessionID),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "step-finish",
@@ -332,7 +332,7 @@ export namespace SessionProcessor {
                   })
                   await Session.updateMessage(input.assistantMessage)
                   if (snapshot) {
-                    const patch = await Snapshot.patch(snapshot, { indexFresh: true })
+                    const patch = await Snapshot.patch(snapshot, input.sessionID, { indexFresh: true })
                     if (patch.files.length) {
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
@@ -438,7 +438,7 @@ export namespace SessionProcessor {
             })
           }
           if (snapshot) {
-            const patch = await Snapshot.patch(snapshot)
+            const patch = await Snapshot.patch(snapshot, input.sessionID)
             if (patch.files.length) {
               await Session.updatePart({
                 id: Identifier.ascending("part"),

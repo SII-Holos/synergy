@@ -1,3 +1,6 @@
+import { $ } from "bun"
+import path from "path"
+import fs from "fs/promises"
 import { Identifier } from "@/id/id"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
@@ -342,6 +345,82 @@ export const migrations: Migration[] = [
     async up() {
       // Schema-only change: Node.result is optional and transparent to old data.
       // No data transformation needed.
+    },
+  },
+  {
+    id: "20260619-snapshot-per-session",
+    description:
+      "Restructure snapshots from per-scope shared to per-session isolated repos with git alternates for backward hash resolution",
+    async up(progress) {
+      const { Global } = await import("../global")
+      const snapshotRoot = Global.Path.snapshot
+      const scopeIDs = await Storage.scan(["sessions"])
+      if (scopeIDs.length === 0) return
+
+      let done = 0
+      for (const scopeID of scopeIDs) {
+        const oldSharedPath = path.join(snapshotRoot, scopeID)
+        const sharedPath = path.join(oldSharedPath, ".shared.old")
+
+        // Detect old shared repo: bare-like git repo has HEAD at root (no .git/ wrapper)
+        let sharedExists = false
+        try {
+          const stat = await fs.stat(path.join(oldSharedPath, "HEAD"))
+          sharedExists = stat.isFile()
+        } catch {
+          sharedExists = false
+        }
+
+        // Two-step rename: move to sibling first, then into recreated scope dir
+        if (sharedExists) {
+          try {
+            const tmpPath = path.join(snapshotRoot, `.tmp-${scopeID}`)
+            await fs.rename(oldSharedPath, tmpPath)
+            await fs.mkdir(oldSharedPath, { recursive: true })
+            await fs.rename(tmpPath, sharedPath)
+            log.info("renamed shared snapshot repo", { scopeID, to: sharedPath })
+          } catch (err) {
+            log.warn("failed to rename shared snapshot repo", { scopeID, error: String(err) })
+          }
+        }
+
+        // Determine if shared old objects are reachable for alternates
+        const hasSharedOld =
+          sharedExists || ((await fs.stat(path.join(sharedPath, "HEAD")).catch(() => null))?.isFile() ?? false)
+
+        const sessions = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
+
+        for (const sessionID of sessions) {
+          const sessionRepo = path.join(oldSharedPath, sessionID)
+
+          // Idempotent: skip if repo already exists
+          try {
+            await fs.stat(path.join(sessionRepo, "HEAD"))
+            continue
+          } catch {
+            // Repo does not exist, create it
+          }
+
+          await fs.mkdir(sessionRepo, { recursive: true })
+          await $`git init`
+            .env({ GIT_DIR: sessionRepo, ...process.env })
+            .quiet()
+            .nothrow()
+
+          // Set git alternate to point to shared old objects for backward hash resolution
+          if (hasSharedOld) {
+            const objectsPath = path.join(sharedPath, "objects")
+            const infoDir = path.join(sessionRepo, "objects", "info")
+            await fs.mkdir(infoDir, { recursive: true })
+            await fs.writeFile(path.join(infoDir, "alternates"), objectsPath + "\n")
+          }
+        }
+
+        done++
+        progress(done, scopeIDs.length)
+      }
+
+      log.info("snapshot per-session migration complete", { scopesHandled: scopeIDs.length })
     },
   },
 ]

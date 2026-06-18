@@ -58,9 +58,9 @@ export namespace SessionRevert {
 
     if (revert) {
       const session = await Session.get(input.sessionID)
-      revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track())
-      await Snapshot.revert(patches)
-      if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot)
+      revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track(input.sessionID))
+      await Snapshot.revert(patches, input.sessionID)
+      if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot, input.sessionID)
       return Session.update(input.sessionID, (draft) => {
         draft.revert = revert
       })
@@ -73,7 +73,7 @@ export namespace SessionRevert {
     SessionManager.assertIdle(input.sessionID)
     const session = await Session.get(input.sessionID)
     if (!session.revert) return session
-    if (session.revert.snapshot) await Snapshot.restore(session.revert.snapshot)
+    if (session.revert.snapshot) await Snapshot.restore(session.revert.snapshot, input.sessionID)
     const next = await Session.update(input.sessionID, (draft) => {
       draft.revert = undefined
     })
