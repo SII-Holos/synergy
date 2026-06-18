@@ -279,21 +279,6 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
-        <Tooltip value="Notes" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": panel.active() === "note",
-            }}
-            onClick={() => panel.toggle("note")}
-          >
-            <Icon name="notebook-pen" size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Notes</span>
-            </Show>
-          </button>
-        </Tooltip>
         <Tooltip value="Agenda" placement="right">
           <button
             type="button"

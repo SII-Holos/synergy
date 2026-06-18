@@ -235,7 +235,7 @@ type PermissionModeVisual = {
   label: string
   shortLabel: string
   description: string
-  icon: "shield-alert" | "shield-check" | "lock-keyhole" | "zap"
+  icon: "hand" | "shield-check" | "orbit" | "shield-alert"
   iconClass: string
 }
 
@@ -245,7 +245,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     label: "Manual Approval",
     shortLabel: "Manual",
     description: "Ask before every tool request. Best when you want to review each action.",
-    icon: "shield-alert",
+    icon: "hand",
     iconClass: "text-icon-base",
   },
   {
@@ -254,22 +254,22 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: "Guarded",
     description: "Auto-approve safe read-only work. Ask before shell, write, network, or external actions.",
     icon: "shield-check",
-    iconClass: "text-icon-interactive-base",
+    iconClass: "text-icon-success-base",
   },
   {
     id: "autonomous",
     label: "Autonomous",
     shortLabel: "Auto",
     description: "Keep working unattended. High-risk actions are denied instead of prompting.",
-    icon: "lock-keyhole",
-    iconClass: "text-icon-success-base",
+    icon: "orbit",
+    iconClass: "text-icon-interactive-base",
   },
   {
     id: "full_access",
     label: "Full Access",
     shortLabel: "Full",
     description: "Allow all tool requests without approval prompts or workspace sandboxing.",
-    icon: "zap",
+    icon: "shield-alert",
     iconClass: "text-icon-warning-base",
   },
 ]
@@ -2314,7 +2314,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           size="small"
                           class={`shrink-0 ${activePermissionMode().iconClass}`}
                         />
-                        <span class="text-12-medium whitespace-nowrap">{activePermissionMode().shortLabel}</span>
+                        <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
+                          {activePermissionMode().shortLabel}
+                        </span>
                         <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
                       </button>
                     }
