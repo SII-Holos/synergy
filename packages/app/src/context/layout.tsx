@@ -319,6 +319,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             total: data.total,
           })
         }
+        // Pre-warm the global child store for live sidebar icons
+        globalSync.child("global")
       } finally {
         navPending.delete(key)
       }
@@ -342,6 +344,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
         } else {
           setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+        // Pre-warm child stores so sidebar icons resolve to live runtime status
+        for (const item of data.items) {
+          if (item.scopeType === "global") {
+            globalSync.child("global")
+          } else {
+            const scope = globalSync.data.scope.find((s) => s.id === item.scopeID)
+            if (scope?.worktree) globalSync.child(scope.worktree)
+          }
         }
       } finally {
         navPending.delete(key)
