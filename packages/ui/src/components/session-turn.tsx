@@ -391,21 +391,30 @@ export function SessionTurn(
     duration: duration(),
   })
 
-  function duration() {
-    const msg = message()
-    if (!msg) return ""
-    const completed = lastAssistantMessage()?.time.completed
-    const from = DateTime.fromMillis(msg.time.created)
-    const to = completed ? DateTime.fromMillis(completed) : DateTime.now()
+  function computeDuration(fromMs: number, toMs?: number): string {
+    const from = DateTime.fromMillis(fromMs)
+    const to = toMs != null ? DateTime.fromMillis(toMs) : DateTime.now()
     const interval = Interval.fromDateTimes(from, to)
     const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
-
     return interval.toDuration(unit).normalize().toHuman({
       notation: "compact",
       unitDisplay: "narrow",
       compactDisplay: "short",
       showZeros: false,
     })
+  }
+
+  function duration() {
+    const msg = message()
+    if (!msg) return ""
+    if (working()) {
+      return computeDuration(msg.time.created)
+    }
+    const completed = lastAssistantMessage()?.time.completed
+    if (completed != null) {
+      return computeDuration(msg.time.created, completed)
+    }
+    return ""
   }
 
   createEffect(
@@ -445,11 +454,25 @@ export function SessionTurn(
   )
 
   createEffect(() => {
+    if (!working()) return
     const timer = setInterval(() => {
       setStore("duration", duration())
     }, 1000)
     onCleanup(() => clearInterval(timer))
   })
+
+  createEffect(
+    on(
+      () => {
+        const completed = lastAssistantMessage()?.time.completed
+        return completed != null && !working()
+      },
+      () => {
+        setStore("duration", duration())
+      },
+      { defer: true },
+    ),
+  )
 
   createEffect(
     on(permissionCount, (count, prev) => {

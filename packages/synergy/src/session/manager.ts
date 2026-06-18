@@ -185,6 +185,21 @@ export namespace SessionManager {
     return controller.signal
   }
 
+  export function signalAbort(sessionID: string): void {
+    const runtime = getRuntime(sessionID)
+    if (!runtime) return
+
+    const abort = runtime.abort
+    if (abort) {
+      abort.abort()
+      for (const callback of runtime.waiters) {
+        callback.onCancel()
+      }
+      runtime.waiters = []
+    }
+    runtime.abort = undefined
+  }
+
   export async function release(sessionID: string): Promise<void> {
     const runtime = getRuntime(sessionID)
     if (!runtime) return
