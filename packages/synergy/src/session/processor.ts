@@ -60,6 +60,22 @@ export namespace SessionProcessor {
     let blocked = false
     let attempt = 0
 
+    function toolStartTime(part: MessageV2.ToolPart, fallback = Date.now()) {
+      if (part.state.status !== "running") return fallback
+      const approval = (part.state.metadata as any)?.approval
+      const executionStartedAt = approval?.time?.executionStartedAt
+      if (typeof executionStartedAt === "number") return executionStartedAt
+      if (
+        approval?.status === "pending_user" ||
+        approval?.status === "user_denied" ||
+        approval?.status === "auto_denied" ||
+        approval?.status === "policy_denied"
+      ) {
+        return fallback
+      }
+      return part.state.time.start
+    }
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -232,6 +248,7 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const startTime = toolStartTime(match)
                     await Session.updatePart({
                       ...match,
                       state: {
@@ -241,7 +258,7 @@ export namespace SessionProcessor {
                         metadata: value.output.metadata,
                         title: value.output.title,
                         time: {
-                          start: match.state.time.start,
+                          start: startTime,
                           end: Date.now(),
                         },
                         attachments: value.output.attachments,
@@ -256,6 +273,7 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const startTime = toolStartTime(match)
                     await Session.updatePart({
                       ...match,
                       state: {
@@ -263,7 +281,7 @@ export namespace SessionProcessor {
                         input: value.input,
                         error: (value.error as any).toString(),
                         time: {
-                          start: match.state.time.start,
+                          start: startTime,
                           end: Date.now(),
                         },
                       },
@@ -451,7 +469,7 @@ export namespace SessionProcessor {
           }
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const startTime = part.state.status === "running" ? part.state.time.start : Date.now()
+              const startTime = toolStartTime(part)
               const outcome = outcomes.get(part.callID)
               if (outcome?.status === "completed") {
                 await Session.updatePart({

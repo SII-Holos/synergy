@@ -24,6 +24,13 @@ export interface ApprovalMetadata {
   risk?: RiskLevel
   reason?: string
   capabilities?: string[]
+  time?: {
+    requestedAt?: number
+    approvalStartedAt?: number
+    approvalResolvedAt?: number
+    executionStartedAt?: number
+    approvalWaitMs?: number
+  }
 }
 
 const HIGH_RISK = new Set([

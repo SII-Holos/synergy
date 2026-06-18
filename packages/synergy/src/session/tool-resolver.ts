@@ -24,9 +24,11 @@ import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
+import { ExecutionBudget } from "@/util/execution-budget"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
+  const neverAbort = new AbortController().signal
 
   export interface Input {
     agent: Agent.Info
@@ -132,6 +134,137 @@ export namespace ToolResolver {
     ;(ctx.extra as any).approvedExternalRoots = [...new Set([...approvedExternalRoots(ctx), ...roots])]
   }
 
+  interface ToolTiming {
+    requestedAt: number
+    approvalStartedAt?: number
+    approvalResolvedAt?: number
+    approvalWaitMs: number
+    activeApprovalStartedAt?: number
+    executionStartedAt?: number
+    executionBudget?: ExecutionBudget.Info
+    sessionAbort: AbortSignal
+  }
+
+  function toolTiming(ctx: Tool.Context): ToolTiming {
+    return (ctx.extra as any).toolTiming as ToolTiming
+  }
+
+  function approvalTime(timing: ToolTiming): ApprovalMetadata["time"] {
+    return {
+      requestedAt: timing.requestedAt,
+      approvalStartedAt: timing.approvalStartedAt,
+      approvalResolvedAt: timing.approvalResolvedAt,
+      executionStartedAt: timing.executionStartedAt,
+      approvalWaitMs: timing.approvalWaitMs || undefined,
+    }
+  }
+
+  function stampApprovalTiming(ctx: Tool.Context, approval: ApprovalMetadata): ApprovalMetadata {
+    const timing = toolTiming(ctx)
+    const now = Date.now()
+
+    if (approval.status === "pending_user") {
+      timing.approvalStartedAt ??= now
+      timing.activeApprovalStartedAt = now
+    } else if (approval.status === "user_allowed" || approval.status === "user_denied") {
+      timing.approvalResolvedAt = now
+      if (timing.activeApprovalStartedAt !== undefined) {
+        timing.approvalWaitMs += Math.max(0, now - timing.activeApprovalStartedAt)
+        timing.activeApprovalStartedAt = undefined
+      }
+    } else if (
+      approval.status === "auto_allowed" ||
+      approval.status === "auto_denied" ||
+      approval.status === "policy_denied" ||
+      approval.status === "sandbox_blocked" ||
+      approval.status === "not_required"
+    ) {
+      timing.approvalResolvedAt ??= now
+    }
+
+    return {
+      ...approval,
+      time: approvalTime(timing),
+    }
+  }
+
+  async function updateRunningToolPart(
+    input: Input,
+    ctx: Tool.Context,
+    args: Record<string, any>,
+    state: {
+      title?: string
+      metadata?: Record<string, any>
+      start?: number
+    },
+  ) {
+    if (!ctx.callID) return
+    const match = input.processor.partFromToolCall(ctx.callID)
+    if (!match || match.state.status !== "running") return
+
+    const updated = await Session.updatePart({
+      ...match,
+      state: {
+        ...match.state,
+        title: state.title ?? match.state.title,
+        metadata: state.metadata ?? match.state.metadata,
+        status: "running",
+        input: args,
+        time: {
+          start: state.start ?? match.state.time.start,
+        },
+      },
+    })
+    Object.assign(match, updated)
+  }
+
+  async function markExecutionStarted(input: Input, ctx: Tool.Context, args: Record<string, any>) {
+    const timing = toolTiming(ctx)
+    if (timing.executionStartedAt !== undefined) return
+
+    timing.executionStartedAt = Date.now()
+    const approval = approvalFromContext(ctx)
+    if (approval) {
+      ;(ctx.extra as any).approval = {
+        ...approval,
+        time: approvalTime(timing),
+      } satisfies ApprovalMetadata
+    }
+
+    const match = ctx.callID ? input.processor.partFromToolCall(ctx.callID) : undefined
+    const metadata = {
+      ...(match?.state.status === "running" ? (match.state.metadata ?? {}) : {}),
+      ...(approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : {}),
+    }
+    await updateRunningToolPart(input, ctx, args, {
+      metadata,
+      start: timing.executionStartedAt,
+    })
+  }
+
+  function startExecutionBudget(ctx: Tool.Context, timeoutMs: number) {
+    const timing = toolTiming(ctx)
+    const budget = ExecutionBudget.create(timeoutMs)
+    timing.executionBudget = budget
+    return AbortSignal.any([timing.sessionAbort, budget.signal])
+  }
+
+  function disposeExecutionBudget(ctx: Tool.Context) {
+    const timing = toolTiming(ctx)
+    timing.executionBudget?.dispose()
+    timing.executionBudget = undefined
+  }
+
+  async function pauseExecutionBudgetForApproval<T>(ctx: Tool.Context, fn: () => Promise<T>): Promise<T> {
+    const budget = toolTiming(ctx).executionBudget
+    budget?.pause()
+    try {
+      return await fn()
+    } finally {
+      budget?.resume()
+    }
+  }
+
   async function applyGateApproval(
     ctx: Tool.Context,
     gate: ReturnType<typeof EnforcementGate.create>,
@@ -213,8 +346,9 @@ export namespace ToolResolver {
   }
 
   async function setApprovalMetadata(ctx: Tool.Context, approval: ApprovalMetadata) {
-    ;(ctx.extra as any).approval = approval
-    await ctx.metadata({ metadata: { approval } })
+    const stamped = stampApprovalTiming(ctx, approval)
+    ;(ctx.extra as any).approval = stamped
+    await ctx.metadata({ metadata: { approval: stamped } })
   }
 
   function approvalFromContext(ctx: Tool.Context): ApprovalMetadata | undefined {
@@ -240,30 +374,28 @@ export namespace ToolResolver {
         }
         return profilePromise
       }
+      const match = input.processor.partFromToolCall(options.toolCallId)
+      const sessionAbort = options.abortSignal ?? neverAbort
       const ctx: Tool.Context = {
         sessionID: input.sessionID,
-        abort: options.abortSignal!,
+        abort: sessionAbort,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
-        extra: { model: input.model },
+        extra: {
+          model: input.model,
+          toolTiming: {
+            requestedAt: match?.state.status === "running" ? match.state.time.start : Date.now(),
+            approvalWaitMs: 0,
+            sessionAbort,
+          } satisfies ToolTiming,
+        },
         agent: input.agent.name,
         metadata: async (val: { title?: string; metadata?: any }) => {
-          const match = input.processor.partFromToolCall(options.toolCallId)
-          if (match && match.state.status === "running") {
-            const approval = approvalFromContext(ctx)
-            await Session.updatePart({
-              ...match,
-              state: {
-                title: val.title,
-                metadata: approval ? { approval, ...val.metadata } : val.metadata,
-                status: "running",
-                input: args,
-                time: {
-                  start: Date.now(),
-                },
-              },
-            })
-          }
+          const approval = approvalFromContext(ctx)
+          await updateRunningToolPart(input, ctx, args as Record<string, any>, {
+            title: val.title,
+            metadata: approval ? { ...val.metadata, approval } : val.metadata,
+          })
         },
         async ask(req) {
           const profile = await resolvedProfile()
@@ -289,18 +421,20 @@ export namespace ToolResolver {
           await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "pending_user"))
           const forcedAsk = [{ permission: req.permission, pattern: "*", action: "ask" as const }]
           try {
-            await PermissionNext.ask({
-              ...req,
-              sessionID: input.sessionID,
-              tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-              metadata: requestMetadata,
-              ruleset: PermissionNext.merge(
-                input.agent.permission,
-                PermissionNext.sessionRuleset(input.session),
-                forcedAsk,
-              ),
-              signal: ctx.abort,
-            })
+            await pauseExecutionBudgetForApproval(ctx, () =>
+              PermissionNext.ask({
+                ...req,
+                sessionID: input.sessionID,
+                tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+                metadata: requestMetadata,
+                ruleset: PermissionNext.merge(
+                  input.agent.permission,
+                  PermissionNext.sessionRuleset(input.session),
+                  forcedAsk,
+                ),
+                signal: toolTiming(ctx).sessionAbort,
+              }),
+            )
             if (
               (requestMetadata as Record<string, unknown>).workspaceBoundary ||
               (requestMetadata as Record<string, unknown>).outsideWorkspace
@@ -341,21 +475,11 @@ export namespace ToolResolver {
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
               const ctx = context(args, options)
-              using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
               let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
               const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                 resolveExecution = r
               })
               runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
-
-              const timeoutCfg = await TimeoutConfig.resolve()
-              const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
-              const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
-              const combinedAbort = options.abortSignal
-                ? AbortSignal.any([options.abortSignal, toolDeadline])
-                : toolDeadline
-              ctx.abort = combinedAbort
-              const toolCtx = { ...ctx, abort: combinedAbort }
 
               try {
                 const workspace = Instance.directory
@@ -374,6 +498,14 @@ export namespace ToolResolver {
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
                 await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>)
+
+                const timeoutCfg = await TimeoutConfig.resolve()
+                const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+                const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
+                ctx.abort = combinedAbort
+                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                const toolCtx = { ...ctx, abort: combinedAbort }
+                using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
 
                 // ── Sandbox wrapping for bash ──────────────────────────
                 let sandboxWrapper: SandboxExecutionWrapper | undefined
@@ -455,6 +587,8 @@ export namespace ToolResolver {
                   metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                 })
                 throw error
+              } finally {
+                disposeExecutionBudget(ctx)
               }
             },
             toModelOutput(result) {
@@ -491,20 +625,11 @@ export namespace ToolResolver {
               ...item,
               execute: async (args, opts) => {
                 const ctx = context(args, opts)
-                using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
                 let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
                 const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                   resolveExecution = r
                 })
                 runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
-
-                const timeoutCfg = await TimeoutConfig.resolve()
-                const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
-                const toolDeadline = AbortSignal.timeout(toolTimeoutMs)
-                const combinedAbort = opts.abortSignal
-                  ? AbortSignal.any([opts.abortSignal, toolDeadline])
-                  : toolDeadline
-                ctx.abort = combinedAbort
 
                 try {
                   const workspace = Instance.directory
@@ -523,6 +648,13 @@ export namespace ToolResolver {
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
                   await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>)
+
+                  const timeoutCfg = await TimeoutConfig.resolve()
+                  const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                  const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
+                  ctx.abort = combinedAbort
+                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                  using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
 
                   await Plugin.trigger(
                     "tool.execute.before",
@@ -609,6 +741,8 @@ export namespace ToolResolver {
                     metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                   })
                   throw error
+                } finally {
+                  disposeExecutionBudget(ctx)
                 }
               },
               toModelOutput(result) {
