@@ -111,6 +111,62 @@ export const migrations: Migration[] = [
       log.info("contact migration complete", { count: contactKeys.length })
     },
   },
+  {
+    id: "20260620-archive-holos-endpoint-sessions",
+    description:
+      "Archive all sessions with holos endpoints. The friend system was removed in favor of SMS relay; these sessions are no longer reachable.",
+    domain: "holos",
+    async up(progress) {
+      const { Identifier } = await import("../id/id")
+      const sessionScopeIDs = await Storage.scan(["sessions"])
+      const allScopeIDs = [...sessionScopeIDs]
+      if (!allScopeIDs.includes("global")) allScopeIDs.push("global")
+
+      const targetKeys: Array<[string[], string]> = []
+      for (const scopeID of allScopeIDs) {
+        const sid = Identifier.asScopeID(scopeID)
+        const ids = await Storage.scan(StoragePath.sessionsRoot(sid))
+        for (const id of ids) {
+          const key = StoragePath.sessionInfo(sid, Identifier.asSessionID(id))
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(key)
+            if (!raw) continue
+            const ep = raw.endpoint as { kind?: string } | undefined
+            if (ep?.kind !== "holos") continue
+            const t = (raw.time ?? {}) as Record<string, unknown>
+            if (t.archived) continue
+            targetKeys.push([[key].flat(), id])
+          } catch {
+            // skip unreadable
+          }
+        }
+      }
+
+      const total = targetKeys.length
+      if (total === 0) {
+        progress(1, 1)
+        log.info("no holos endpoint sessions to archive")
+        return
+      }
+
+      let done = 0
+      for (const [key, sessionID] of targetKeys) {
+        try {
+          await Storage.update<Record<string, unknown>>(key, (draft) => {
+            const t = (draft.time ?? {}) as Record<string, unknown>
+            t.archived = Date.now()
+            draft.time = t
+          })
+        } catch (err) {
+          log.warn("failed to archive holos endpoint session", { sessionID, error: String(err) })
+        }
+        done++
+        progress(done, total)
+      }
+
+      log.info("archived holos endpoint sessions", { count: total })
+    },
+  },
 ]
 
 MigrationRegistry.register("holos", migrations)
