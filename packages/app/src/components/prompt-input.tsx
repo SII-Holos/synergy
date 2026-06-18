@@ -2337,7 +2337,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           }}
                         >
                           {(mode) => (
-                            <div class="flex items-start gap-3 min-w-0">
+                            <div class="flex items-start gap-3 min-w-0 text-left">
                               <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
                               <div class="min-w-0 flex-1">
                                 <div class="text-13-medium text-text-base">{mode.label}</div>
