@@ -363,8 +363,14 @@ export namespace SessionManager {
             })
           }
         })
-        .catch(() => {
-          // Session was cleaned up before the async fallback ran — safe to ignore.
+        .catch((err) => {
+          // Session was cleaned up before the async fallback ran — idle event dropped.
+          if (status.type === "idle") {
+            log.warn("emitStatus fallback: session already cleaned up, idle event dropped", {
+              sessionID: runtime.sessionID,
+              error: (err as Error)?.message ?? String(err),
+            })
+          }
         })
     }
   }
