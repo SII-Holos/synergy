@@ -182,5 +182,6 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     })(),
   })
 
+  params.setInitialized(true)
   return setName
 }

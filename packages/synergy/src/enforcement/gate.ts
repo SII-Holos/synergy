@@ -348,6 +348,35 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // Session query tools (read-only)
+      if (toolName === "session_list" || toolName === "session_search" || toolName === "session_read") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Note query tools (read-only)
+      if (toolName === "note_list" || toolName === "note_search" || toolName === "note_read") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Note write tools
+      if (toolName === "note_write" || toolName === "note_edit") {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Memory query tools (read-only)
+      if (toolName === "memory_search" || toolName === "memory_get") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Memory write tools
+      if (toolName === "memory_write" || toolName === "memory_edit") {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }
