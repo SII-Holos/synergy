@@ -1,3 +1,6 @@
+import { $ } from "bun"
+
+import { Worktree } from "../project/worktree"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
 import { Identifier } from "../id/id"
@@ -77,6 +80,29 @@ export namespace Cortex {
       },
       workspace: (parent as import("../session/types").Info).workspace,
     })
+
+    if (input.worktree?.create) {
+      const parentWorkspace = (parent as import("../session/types").Info).workspace
+      if (parentWorkspace?.type !== "git_worktree") {
+        try {
+          const created = await Worktree.create({
+            name: input.worktree.name,
+            baseRef: input.worktree.baseRef,
+            bind: false,
+          })
+          await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
+          log.info("worktree bound to child session", {
+            taskID,
+            worktreeID: created.id,
+            worktreeName: created.name,
+          })
+        } catch (error) {
+          log.warn("failed to create worktree for child session", { taskID, error })
+        }
+      } else {
+        log.info("parent already in worktree, child inherits parent workspace", { taskID })
+      }
+    }
 
     const task: CortexTypes.Task = {
       id: taskID,
@@ -288,6 +314,8 @@ export namespace Cortex {
     } else {
       notifyParentSession(task)
     }
+
+    void cleanupChildWorktree(task)
 
     setTimeout(() => {
       void (async () => {
@@ -600,5 +628,48 @@ export namespace Cortex {
     }
     taskWaiters.clear()
     CortexConcurrency.reset()
+  }
+
+  async function cleanupChildWorktree(task: CortexTypes.Task) {
+    try {
+      const session = await Session.get(task.sessionID)
+      const workspace = session.workspace
+      if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
+      const state = await Worktree.status(task.sessionID)
+      if (!state.worktree || !state.worktree.managed) return
+      const owner = state.worktree.owner
+      if (owner?.type !== "session" || owner.sessionID !== task.sessionID) return
+      if (state.dirty) {
+        await Worktree.markLifecycle(state.worktree.id, "gc_candidate")
+        log.info("child worktree dirty, marked for gc", {
+          taskID: task.id,
+          worktreeID: state.worktree.id,
+          worktreeName: state.worktree.name,
+        })
+        return
+      }
+      if (state.worktree.branch) {
+        const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(state.path)
+        const localOnly = parseInt(result.stdout.toString().trim(), 10)
+        if (!isNaN(localOnly) && localOnly > 0) {
+          log.info("child worktree has local-only commits, kept for review", {
+            taskID: task.id,
+            worktreeID: state.worktree.id,
+            worktreeName: state.worktree.name,
+            branch: state.worktree.branch,
+            localCommits: localOnly,
+          })
+          return
+        }
+      }
+      await Worktree.remove({ sessionID: task.sessionID, target: state.worktree.id, force: false })
+      log.info("child worktree removed", {
+        taskID: task.id,
+        worktreeID: state.worktree.id,
+        worktreeName: state.worktree.name,
+      })
+    } catch (error) {
+      log.warn("child worktree cleanup failed", { taskID: task.id, error })
+    }
   }
 }

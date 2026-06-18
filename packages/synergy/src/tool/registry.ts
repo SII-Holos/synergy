@@ -73,6 +73,9 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { WorktreeEnterTool } from "./worktree-enter"
+import { WorktreeLeaveTool } from "./worktree-leave"
+import { WorktreeListTool } from "./worktree-list"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -238,9 +241,10 @@ export namespace ToolRegistry {
       EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,
+      WorktreeEnterTool,
+      WorktreeLeaveTool,
+      WorktreeListTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-      ...custom,
     ]
   }
 

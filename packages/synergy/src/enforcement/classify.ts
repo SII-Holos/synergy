@@ -89,6 +89,11 @@ export namespace PathClassifier {
 
     if (!options.originalCheckout) return base
 
+    // If the base classifier already determined the path is inside the active
+    // workspace, the originalCheckout check must not override that.  Worktrees
+    // reside under the repo root (the original checkout), so without this guard
+    // every worktree-internal path would be incorrectly classified as outside.
+    if (base.boundary === "inside") return base
     const workspace = normalizeWorkspace(options.workspace)
     const candidate = normalizeCandidate(input, workspace)
     const oc = path.resolve(options.originalCheckout)

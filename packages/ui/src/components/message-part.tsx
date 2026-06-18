@@ -1020,6 +1020,24 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: target || input.reason,
       }
     }
+    case "worktree_enter":
+      return {
+        icon: "worktree-enter",
+        title: "Enter Worktree",
+        subtitle: (input?.target as string) ?? "New worktree",
+      }
+    case "worktree_leave":
+      return {
+        icon: "worktree-leave",
+        title: "Leave Worktree",
+        subtitle: input?.cleanup === "remove_if_clean" ? "Remove if clean" : "Keep",
+      }
+    case "worktree_list":
+      return {
+        icon: "worktree-list",
+        title: "Worktrees",
+        subtitle: "",
+      }
     case "connect":
       return {
         icon: "cable",

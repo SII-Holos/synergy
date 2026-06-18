@@ -348,6 +348,9 @@ const icons = {
   x: X,
   zap: Zap,
   workflow: Workflow,
+  "worktree-enter": GitBranch,
+  "worktree-leave": Undo2,
+  "worktree-list": ListCollapse,
 }
 
 export type IconName = keyof typeof icons
