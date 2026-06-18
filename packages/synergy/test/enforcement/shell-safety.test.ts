@@ -6,14 +6,14 @@ import { describe, expect, test } from "bun:test"
 // Tests for ShellSafety — the shell command safety classifier that
 // determines whether a shell command is read-only, destructive, or
 // hardline (never-executable). Covers the P0 security expansions:
-// SAFE_GIT_SUBCOMMANDS, UNSAFE_SHELL_TOKENS (builtins, interpreters,
+// SAFE_COMMANDS, UNSAFE_SHELL_TOKENS (builtins, interpreters,
 // network), isHardline, and classifyBashRisk.
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------
-// 1. SAFE_GIT_SUBCOMMANDS
+// 1. Git subcommand taxonomy
 // ------------------------------------------------------------------
-describe("ShellSafety SAFE_GIT_SUBCOMMANDS", () => {
+describe("ShellSafety git subcommand taxonomy", () => {
   const { ShellSafety } = require("../../src/enforcement/shell-safety")
 
   test("git branch with flag classification", () => {
@@ -420,12 +420,19 @@ describe("ShellSafety isReadOnly", () => {
 
   test("read-only commands return true", () => {
     expect(ShellSafety.isReadOnly("ls")).toBe(true)
-    expect(ShellSafety.isReadOnly("git log --oneline")).toBe(true)
-    expect(ShellSafety.isReadOnly("git diff HEAD~1")).toBe(true)
-    expect(ShellSafety.isReadOnly("git show")).toBe(true)
     expect(ShellSafety.isReadOnly("pwd")).toBe(true)
     expect(ShellSafety.isReadOnly("head -5 myfile")).toBe(true)
     expect(ShellSafety.isReadOnly("wc -l input.txt")).toBe(true)
+  })
+
+  test("git read-only commands classified via taxonomy, not isReadOnly", () => {
+    // SAFE_GIT_SUBCOMMANDS removed — git classification now unified in classifyBashRisk
+    expect(ShellSafety.classifyBashRisk("git log --oneline")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("git diff HEAD~1")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("git show")).toBe("shell_read")
+    // isReadOnly no longer handles git — that's correct, taxonomy owns git
+    expect(ShellSafety.isReadOnly("git log --oneline")).toBe(false)
+    expect(ShellSafety.isReadOnly("git diff HEAD~1")).toBe(false)
   })
 
   test("non-read-only commands return false", () => {
@@ -439,7 +446,9 @@ describe("ShellSafety isReadOnly", () => {
 
   test("safe redirects stripped before token check", () => {
     expect(ShellSafety.isReadOnly("ls -la 2>/dev/null")).toBe(true)
-    expect(ShellSafety.isReadOnly("git log 2>&1")).toBe(true)
+    // git log 2>&1: redirect stripped, but git no longer in SAFE_GIT_SUBCOMMANDS
+    // Classify via taxonomy instead
+    expect(ShellSafety.classifyBashRisk("git log 2>&1")).toBe("shell_read")
   })
 
   test("KNOWN GAP: cat file.txt is NOT read-only due to . token", () => {
@@ -457,7 +466,9 @@ describe("ShellSafety capability", () => {
 
   test("read-only commands return shell_read capability", () => {
     expect(ShellSafety.capability("ls")).toBe("shell_read")
-    expect(ShellSafety.capability("git log")).toBe("shell_read")
+    // capability() delegates to isReadOnly() — git no longer handled there
+    // Use classifyBashRisk() for git classification
+    expect(ShellSafety.classifyBashRisk("git log")).toBe("shell_read")
   })
 
   test("non-read-only commands return shell capability", () => {

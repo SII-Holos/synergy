@@ -1,21 +1,5 @@
 const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "true"])
 
-const SAFE_GIT_SUBCOMMANDS = new Set([
-  "blame",
-  "describe",
-  "diff",
-  "grep",
-  "log",
-  "ls-files",
-  "ls-tree",
-  "name-rev",
-  "rev-list",
-  "rev-parse",
-  "shortlog",
-  "show",
-  "status",
-  "tag",
-])
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   // ── read_only ──────────────────────────────────────────────
   ["blame", "shell_read"],
@@ -311,24 +295,11 @@ function commandName(words: string[]): string | undefined {
   return words[index]
 }
 
-function gitSubcommand(words: string[]): string | undefined {
-  for (const word of words.slice(1)) {
-    if (!word || word.startsWith("-") || word.includes("=")) continue
-    return word
-  }
-  return undefined
-}
-
 function isSafeSimpleCommand(segment: string): boolean {
   const words = shellWords(segment)
   if (words.length === 0) return true
-
   const name = commandName(words)
   if (!name || name === "cd") return true
-  if (name === "git") {
-    const subcommand = gitSubcommand(words)
-    return !!subcommand && SAFE_GIT_SUBCOMMANDS.has(subcommand)
-  }
   return SAFE_COMMANDS.has(name)
 }
 
@@ -462,6 +433,7 @@ export namespace ShellSafety {
 
       if (ShellSafety.hasPipeToShell(cmd)) return "shell_destructive"
       if (ShellSafety.hasArgumentInjection(cmd)) return "shell_destructive"
+      if (ShellSafety.hasDownloadExecuteChain(cmd)) return "shell_destructive"
 
       if (!hasCompoundOperators(cmd)) {
         return ShellSafety.classifyBashRisk(cmd)
@@ -532,6 +504,7 @@ export namespace ShellSafety {
 
     if (hasPipeToShell(normalized)) return "shell_destructive"
     if (hasArgumentInjection(normalized)) return "shell_destructive"
+    if (hasDownloadExecuteChain(normalized)) return "shell_destructive"
 
     if (hasCompoundOperators(normalized)) {
       return classifyCompoundRisk(normalized)
@@ -562,5 +535,18 @@ export namespace ShellSafety {
 
   export function hasArgumentInjection(normalized: string): boolean {
     return ARGUMENT_INJECTION_PATTERNS.some(({ pattern }) => pattern.test(normalized))
+  }
+  // ── download-then-execute chain detection ─────────────────────────────
+  const DOWNLOAD_EXEC_CHAINS: RegExp[] = [
+    // Download + chmod + execute (3-step chain with &&)
+    /\b(?:curl|wget)\b[^;|]+(?:&&|[;&])[^;|&]*\bchmod\b[^;|]*\+x[^;|]*(?:&&|[;&])/,
+    // Download to file + interpreter that file
+    /\b(?:curl|wget)\b[^;|]+(?:-o\s+\S+|>\s*\S+)[^;|]*(?:&&|[;&])\s*(?:bash|sh|zsh|dash|python3|python|node|ruby|perl)\s+\S+/,
+    // Download to file + source that file
+    /\b(?:curl|wget)\b[^;|]+(?:-o\s+\S+|>\s*\S+)[^;|]*(?:&&|[;&])\s*(?:source|\.)\s+\S+/,
+  ]
+
+  export function hasDownloadExecuteChain(command: string): boolean {
+    return DOWNLOAD_EXEC_CHAINS.some((p) => p.test(command))
   }
 }
