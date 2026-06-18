@@ -159,7 +159,6 @@ export namespace ConfigSetup {
     thinking_model?: string
     long_context_model?: string
     creative_model?: string
-    holos_friend_reply_model?: string
     provider?: Record<string, Config.Provider>
     auth?: Record<string, StagedAuthChange>
   }
@@ -698,7 +697,6 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
   ] as const
 
   const ROLE_KEYS = [
@@ -709,7 +707,6 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
   ] as const
 
@@ -1489,7 +1486,6 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
     "default_agent",
     "username",

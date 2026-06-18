@@ -32,7 +32,6 @@ export namespace RuntimeReload {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
     "default_agent",
     "username",
@@ -376,7 +375,6 @@ export namespace RuntimeReload {
       "thinking_model",
       "long_context_model",
       "creative_model",
-      "holos_friend_reply_model",
       "vision_model",
     ].some((field) => changed.has(field))
     if (roleModelChanged) {

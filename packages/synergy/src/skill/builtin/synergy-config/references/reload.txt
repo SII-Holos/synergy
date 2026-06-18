@@ -26,7 +26,7 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 |---|---|---|
 | API key in credential store | `provider` | Directly reloads provider SDKs with new key |
 | Provider config in JSONC | `config` | Detects `provider` field change → cascades to `provider` → `agent` |
-| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `holos_friend_reply_model`, `vision_model` |
+| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
 | `default_agent` | `config` | Live-applied |
 | MCP server config in JSONC | `config` or `mcp` | Config detects `mcp` field → cascades to `mcp` → `command` |
 | Agent config in JSONC | `config` | Detects `agent` field → cascades to `agent` |

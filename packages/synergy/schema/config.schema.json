@@ -147,10 +147,6 @@
       "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
       "type": "string"
     },
-    "holos_friend_reply_model": {
-      "description": "Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.",
-      "type": "string"
-    },
     "vision_model": {
       "description": "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
       "type": "string"

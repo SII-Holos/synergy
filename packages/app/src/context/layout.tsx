@@ -57,7 +57,7 @@ export interface NavEntry {
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel" | "holos"
+  endpointKind?: "channel"
 }
 
 export interface NavCursor {
