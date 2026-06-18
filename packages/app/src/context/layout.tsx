@@ -362,6 +362,65 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const entry = rootNavStore[category]
       if (entry?.nextCursor) loadRootNavSection(category, entry.nextCursor)
     }
+    async function refreshGlobalRecent() {
+      const key = "__refresh__recent__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent({
+          parentOnly: true,
+          limit: Math.max(RECENT_LIMIT, recentEntries.items.length),
+        })
+        if (!res.data) return
+        const data = res.data
+        setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function refreshRootNavSection(category: RootNavSectionKey) {
+      const key = `__refresh_root_${category}`
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const existing = rootNavStore[category]
+        const res = await globalSdk.client.session.index({
+          scopeID: "global",
+          category,
+          parentOnly: "true",
+          limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+        })
+        if (!res.data) return
+        const data = res.data
+        setRootNavStore(category, {
+          items: data.items as NavEntry[],
+          nextCursor: data.nextCursor,
+          total: data.total,
+        })
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function refreshScopeNav(directory: string) {
+      const key = `__refresh_${directory}`
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const existing = navEntries[directory]
+        const res = await globalSdk.client.session.index({
+          directory,
+          parentOnly: "true",
+          limit: Math.max(NAV_FIRST_PAGE_LIMIT, existing?.items.length ?? 0),
+        })
+        if (!res.data) return
+        const data = res.data
+        setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+      } finally {
+        navPending.delete(key)
+      }
+    }
 
     function rootNavEntriesFor(category: RootNavSectionKey): NavEntry[] {
       const entry = rootNavStore[category]
@@ -379,7 +438,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     // --- Nav event refresh ---
-
+    // On session.updated, refresh nav lists preserving current depth.
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
     const NAV_REFRESH_DEBOUNCE_MS = 300
 
@@ -390,14 +449,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           ?.properties?.info
         const scope = info?.scope
         if (!scope) return
-        // Refresh recent entries on any session update (debounced)
         const recentPending = navRefreshTimers.get("__recent__")
         if (recentPending) clearTimeout(recentPending)
         navRefreshTimers.set(
           "__recent__",
           setTimeout(() => {
             navRefreshTimers.delete("__recent__")
-            loadGlobalRecent()
+            refreshGlobalRecent()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
         if (scope.id === "global") {
@@ -409,7 +467,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               `__root_${category}`,
               setTimeout(() => {
                 navRefreshTimers.delete(`__root_${category}`)
-                loadRootNavSection(category)
+                refreshRootNavSection(category)
               }, NAV_REFRESH_DEBOUNCE_MS),
             )
           }
@@ -423,7 +481,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           dir,
           setTimeout(() => {
             navRefreshTimers.delete(dir)
-            loadScopeNav(dir)
+            refreshScopeNav(dir)
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
       })
@@ -592,9 +650,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return recentEntries.nextCursor != null
     }
 
-    // Nav entries are now exclusively populated by loadScopeNav via /session/index.
-    // Session events (created/updated/archived/deleted) trigger debounced per-directory
-    // nav refreshes via the onMount event listener defined above.
+    // Nav entries are populated via loadScopeNav / loadGlobalRecent / loadRootNavSection.
+    // Session events trigger depth-preserving refreshes via refreshScopeNav / etc.
 
     function childStoreForScope(scope: LocalScope | undefined) {
       if (!scope) return undefined
