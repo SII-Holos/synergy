@@ -75,6 +75,34 @@ export namespace SessionProcessor {
       }
       return part.state.time.start
     }
+    async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
+      const startTime = toolStartTime(part)
+      if (outcome.status === "completed") {
+        await Session.updatePart({
+          ...part,
+          state: {
+            status: "completed",
+            input: outcome.input,
+            output: outcome.result.output,
+            metadata: outcome.result.metadata,
+            title: outcome.result.title,
+            time: { start: startTime, end: Date.now() },
+            attachments: outcome.result.attachments,
+          },
+        })
+      } else {
+        await Session.updatePart({
+          ...part,
+          state: {
+            status: "error",
+            input: outcome.input,
+            error: outcome.error,
+            metadata: outcome.metadata,
+            time: { start: startTime, end: Date.now() },
+          },
+        })
+      }
+    }
 
     const result = {
       get message() {
@@ -248,23 +276,8 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const startTime = toolStartTime(match)
-                    await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "completed",
-                        input: value.input,
-                        output: value.output.output,
-                        metadata: value.output.metadata,
-                        title: value.output.title,
-                        time: {
-                          start: startTime,
-                          end: Date.now(),
-                        },
-                        attachments: value.output.attachments,
-                      },
-                    })
-
+                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    if (outcome) await settleToolPart(match, outcome)
                     delete toolcalls[value.toolCallId]
                   }
                   break
@@ -273,27 +286,15 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const startTime = toolStartTime(match)
-                    await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "error",
-                        input: value.input,
-                        error: (value.error as any).toString(),
-                        time: {
-                          start: startTime,
-                          end: Date.now(),
-                        },
-                      },
-                    })
-
-                    if (
-                      value.error instanceof PermissionNext.RejectedError ||
-                      value.error instanceof Question.RejectedError
-                    ) {
-                      blocked = shouldBreak
-                    }
+                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    if (outcome) await settleToolPart(match, outcome)
                     delete toolcalls[value.toolCallId]
+                  }
+                  if (
+                    value.error instanceof PermissionNext.RejectedError ||
+                    value.error instanceof Question.RejectedError
+                  ) {
+                    blocked = shouldBreak
                   }
                   break
                 }
@@ -469,39 +470,11 @@ export namespace SessionProcessor {
           }
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const startTime = toolStartTime(part)
               const outcome = outcomes.get(part.callID)
-              if (outcome?.status === "completed") {
-                await Session.updatePart({
-                  ...part,
-                  state: {
-                    status: "completed",
-                    input: outcome.input,
-                    output: outcome.result.output,
-                    metadata: outcome.result.metadata,
-                    title: outcome.result.title,
-                    time: {
-                      start: startTime,
-                      end: Date.now(),
-                    },
-                    attachments: outcome.result.attachments,
-                  },
-                })
-              } else if (outcome?.status === "error") {
-                await Session.updatePart({
-                  ...part,
-                  state: {
-                    status: "error",
-                    input: outcome.input,
-                    error: outcome.error,
-                    metadata: outcome.metadata,
-                    time: {
-                      start: startTime,
-                      end: Date.now(),
-                    },
-                  },
-                })
+              if (outcome) {
+                await settleToolPart(part, outcome)
               } else {
+                const startTime = toolStartTime(part)
                 await Session.updatePart({
                   ...part,
                   state: {
@@ -509,7 +482,7 @@ export namespace SessionProcessor {
                     status: "error",
                     error: "Tool execution aborted",
                     time: {
-                      start: Date.now(),
+                      start: startTime,
                       end: Date.now(),
                     },
                   },
