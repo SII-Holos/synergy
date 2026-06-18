@@ -1,3 +1,5 @@
+import { $ } from "bun"
+
 import { Worktree } from "../project/worktree"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
@@ -645,6 +647,20 @@ export namespace Cortex {
           worktreeName: state.worktree.name,
         })
         return
+      }
+      if (state.worktree.branch) {
+        const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(state.path)
+        const localOnly = parseInt(result.stdout.toString().trim(), 10)
+        if (!isNaN(localOnly) && localOnly > 0) {
+          log.info("child worktree has local-only commits, kept for review", {
+            taskID: task.id,
+            worktreeID: state.worktree.id,
+            worktreeName: state.worktree.name,
+            branch: state.worktree.branch,
+            localCommits: localOnly,
+          })
+          return
+        }
       }
       await Worktree.remove({ sessionID: task.sessionID, target: state.worktree.id, force: false })
       log.info("child worktree removed", {
