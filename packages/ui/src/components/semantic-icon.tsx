@@ -8,18 +8,18 @@ import type { IconName } from "./icon"
 
 export const SemanticIconToken = {
   // === Workspace 类型 ===
-  "workspace.main": "folder", // main checkout — uses folder to avoid clashing with Home session's home
-  "workspace.worktree": "layers", // git worktree — layers suggests multi-checkout structure
+  "workspace.main": "home", // main checkout — home is the root / primary workspace
+  "workspace.worktree": "git-fork", // git worktree — fork = parallel checkout, independent branch
   "workspace.branch": "git-branch", // git branch name — reserved for real git branch
 
   // === Session 运行时 ===
-  "session.idle": "circle-check", // idle — quiet completed state
-  "session.running": "activity", // running — activity reads as "active now" rather than "reload"
-  "session.waiting": "shield-alert", // waiting for user — high visibility, must be obvious
-  "session.child": "corner-down-left", // child session
+  "session.idle": "circle", // idle — empty circle, neutral rest state
+  "session.running": "loader-circle", // running — partial arc indicates in-progress
+  "session.waiting": "help-circle", // waiting for user — question circle, expects input
+  "session.child": "arrow-down-from-line", // child session — derived from parent, vertical lineage
   "session.background": "calendar-days", // background / agenda session
   "session.channel": "message-circle", // channel session
-  "session.default": "file-text", // default session icon (transitional)
+  "session.default": "message-square", // default session — it's a conversation
 
   // === 连接状态 ===
   "connection.holos": "orbit", // Holos identity / connection
