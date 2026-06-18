@@ -122,6 +122,19 @@ function open(): Database {
   conn.exec("PRAGMA foreign_keys=ON")
   initialize(conn)
   db = conn
+
+  // Periodic WAL checkpoint to prevent unbounded WAL file growth.
+  // TRUNCATE checkpoints and zeros the WAL file; failures are non-critical.
+  const checkpointTimer = setInterval(
+    () => {
+      try {
+        conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+      } catch {}
+    },
+    5 * 60 * 1000,
+  )
+  checkpointTimer.unref()
+
   return conn
 }
 
