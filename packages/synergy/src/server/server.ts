@@ -84,6 +84,9 @@ export namespace Server {
   let _url: URL | undefined
   let _corsWhitelist = new Set<string>()
   let _appMounted = false
+  let _globalEventBroadcastOff: (() => void) | undefined
+  let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
+  let _globalEventClients: Set<any> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -263,6 +266,7 @@ export namespace Server {
               }
             }
             GlobalBus.on("event", broadcastHandler)
+            _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
             const heartbeat = setInterval(() => {
               for (const client of globalEventClients) {
                 try {
@@ -279,6 +283,8 @@ export namespace Server {
                 }
               }
             }, 30000)
+            _globalEventHeartbeatInterval = heartbeat
+            _globalEventClients = globalEventClients
             return upgradeWebSocket(() => ({
               onOpen(_event, ws) {
                 log.info("global event ws connected")
@@ -1049,6 +1055,9 @@ export namespace Server {
     server.stop = async (closeActiveConnections?: boolean) => {
       Agenda.stop()
       if (shouldPublishMDNS) MDNS.unpublish()
+      _globalEventBroadcastOff?.()
+      if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
+      _globalEventClients?.clear()
       return originalStop(closeActiveConnections)
     }
 

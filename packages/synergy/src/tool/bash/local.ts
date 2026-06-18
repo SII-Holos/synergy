@@ -293,6 +293,7 @@ export const LocalBashBackend: BashBackend = {
       child.once("error", (error) => {
         exited = true
         cleanup()
+        ProcessRegistry.remove(regProc.id)
         if (sandboxWrapper?.tempPath) {
           SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
         }

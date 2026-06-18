@@ -260,6 +260,7 @@ export namespace SessionCompaction {
       await Promise.all(
         completed.map((part) => {
           part.state.time.compacted = Date.now()
+          part.state.output = ""
           return Session.updatePart(part)
         }),
       )

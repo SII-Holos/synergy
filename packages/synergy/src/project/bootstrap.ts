@@ -19,11 +19,18 @@ export async function InstanceBootstrap() {
   File.init()
   Vcs.init()
 
-  Bus.subscribe(Command.Event.Executed, async (payload) => {
-    if (payload.properties.name === Command.Default.INIT) {
-      await Scope.setInitialized(Instance.scope.id)
-    }
-  })
+  const commandState = Instance.state(
+    () => {
+      const unsub = Bus.subscribe(Command.Event.Executed, async (payload) => {
+        if (payload.properties.name === Command.Default.INIT) {
+          await Scope.setInitialized(Instance.scope.id)
+        }
+      })
+      return { unsub }
+    },
+    async (s) => s.unsub(),
+  )
+  void commandState()
 }
 
 export async function ChannelBootstrap() {
