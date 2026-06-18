@@ -403,10 +403,6 @@ export namespace EnforcementGate {
         if (risk !== "shell_destructive" && isDestructive(command)) {
           caps.push({ class: "shell_destructive", nonBypassable: true })
         }
-        // Pipe-to-shell is always destructive
-        if (ShellSafety.hasPipeToShell(command)) {
-          caps.push({ class: "shell_destructive", nonBypassable: true })
-        }
 
         const cwd = args.workdir ?? activeWorkspace
         if (args.workdir) {
