@@ -43,6 +43,14 @@ export namespace MessageV2 {
     }),
   )
   export type APIError = z.infer<typeof APIError.Schema>
+  export const SessionTerminalError = NamedError.create(
+    "SessionTerminalError",
+    z.object({
+      message: z.string(),
+      errorName: z.string(),
+    }),
+  )
+  export type SessionTerminalError = z.infer<typeof SessionTerminalError.Schema>
 
   const PartBase = z.object({
     id: z.string(),

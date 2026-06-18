@@ -707,6 +707,18 @@ export namespace SessionInvoke {
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
     }
+    // If the assistant message is marked with an error (LLM API error, auth
+    // error, output length exceeded, abort, or unknown), propagate it as an
+    // exception so cortex/runTask records task.status = "error" instead of
+    // silently marking the task as "completed".
+    if (resultMessage.info.role === "assistant" && resultMessage.info.error) {
+      const err = resultMessage.info.error
+      throw new MessageV2.SessionTerminalError({
+        errorName: err.name,
+        message:
+          err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
+      })
+    }
     for (const q of runtime.waiters) {
       q.onComplete(resultMessage)
     }
