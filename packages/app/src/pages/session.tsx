@@ -39,13 +39,13 @@ import { TabsPanel } from "@/components/session/tabs-panel"
 import { WorkspacePanelMobile } from "@/components/session/workspace-panel"
 import { WorkspaceRail } from "@/components/session/workspace-rail"
 import { WorkspaceDrawer } from "@/components/session/workspace-drawer"
+import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { getScopeLabel } from "@/utils/scope"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-
 const handoff = {
   prompt: "",
   terminals: [] as string[],
@@ -1115,7 +1115,7 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show when={isDesktop() && workspace().opened()}>
+          <Show when={isDesktop() && !!params.id}>
             <WorkspaceDrawer />
           </Show>
           <Show when={isDesktop() && !!params.id}>
