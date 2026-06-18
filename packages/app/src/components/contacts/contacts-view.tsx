@@ -86,6 +86,7 @@ function AddFriendForm(props: { onClose: () => void; onSent: () => void; existin
         ...(peerBio ? { peerBio } : {}),
       })
       showToast({
+        type: "info",
         title: result.data?.queued ? "Request queued" : "Friend request sent",
         description: result.data?.queued
           ? "The agent appears to be offline. Request will be delivered when they come online."
@@ -249,10 +250,10 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
     setRequestLoadingIds((prev) => new Set([...prev, id]))
     try {
       await globalSDK.client.holos.friendRequest.respond({ id, status })
-      showToast({ title: status === "accepted" ? "Friend request accepted" : "Friend request rejected" })
+      showToast({ type: "info", title: status === "accepted" ? "Friend request accepted" : "Friend request rejected" })
       await holos.refresh()
     } catch (e: any) {
-      showToast({ title: "Failed", description: e.message })
+      showToast({ type: "error", title: "Failed", description: e.message })
     } finally {
       setRequestLoadingIds((prev) => {
         const next = new Set(prev)
@@ -266,10 +267,10 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
     setRequestLoadingIds((prev) => new Set([...prev, id]))
     try {
       await globalSDK.client.holos.friendRequest.remove({ id })
-      showToast({ title: "Request cancelled" })
+      showToast({ type: "info", title: "Request cancelled" })
       await holos.refresh()
     } catch (e: any) {
-      showToast({ title: "Failed", description: e.message })
+      showToast({ type: "error", title: "Failed", description: e.message })
     } finally {
       setRequestLoadingIds((prev) => {
         const next = new Set(prev)
@@ -282,10 +283,10 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
   const handleRemoveContact = async (id: string) => {
     try {
       await globalSDK.client.holos.contact.remove({ id })
-      showToast({ title: "Contact removed" })
+      showToast({ type: "info", title: "Contact removed" })
       await holos.refresh()
     } catch (e: any) {
-      showToast({ title: "Failed", description: e.message })
+      showToast({ type: "error", title: "Failed", description: e.message })
     }
   }
 
@@ -294,7 +295,7 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
       await globalSDK.client.holos.contact.updateConfig({ id, ...config })
       await holos.refresh()
     } catch (e: any) {
-      showToast({ title: "Failed to update config", description: e.message })
+      showToast({ type: "error", title: "Failed to update config", description: e.message })
     }
   }
 
@@ -305,7 +306,7 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
       navigate(`/${base64Encode(directory)}/session/${sessionID}`)
       panel.close()
     } catch (e: any) {
-      showToast({ title: "Failed to open conversation", description: e?.message || String(e) })
+      showToast({ type: "error", title: "Failed to open conversation", description: e?.message || String(e) })
     }
   }
 

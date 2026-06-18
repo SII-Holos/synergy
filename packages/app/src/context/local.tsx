@@ -427,7 +427,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           })
           .catch((e) => {
             showToast({
-              variant: "error",
+              type: "error",
               title: "Failed to load file",
               description: e.message,
             })

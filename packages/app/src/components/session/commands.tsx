@@ -202,6 +202,7 @@ export function useSessionCommands(params: {
       onSelect: () => {
         local.model.variant.cycle()
         showToast({
+          type: "info",
           title: "Thinking effort changed",
           description: "The thinking effort has been changed to " + (local.model.variant.current() ?? "Default"),
         })
@@ -271,6 +272,7 @@ export function useSessionCommands(params: {
         const model = local.model.current()
         if (!model) {
           showToast({
+            type: "warning",
             title: "No model selected",
             description: "Connect a provider to summarize this session",
           })

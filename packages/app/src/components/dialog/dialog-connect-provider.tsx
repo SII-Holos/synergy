@@ -109,7 +109,7 @@ export function DialogConnectProvider(props: { provider: string }) {
     await globalSDK.client.global.dispose()
     dialog.close()
     showToast({
-      variant: "success",
+      type: "success",
       icon: "circle-check",
       title: `${provider().name} connected`,
       description: `${provider().name} models are now available to use.`,

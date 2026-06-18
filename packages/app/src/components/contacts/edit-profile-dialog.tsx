@@ -16,7 +16,7 @@ export function EditProfileDialog(props: { profile: HolosProfile; onSaved: () =>
 
   async function handleSave() {
     if (!name().trim()) {
-      showToast({ title: "Name cannot be empty" })
+      showToast({ type: "warning", title: "Name cannot be empty" })
       return
     }
 
@@ -26,11 +26,11 @@ export function EditProfileDialog(props: { profile: HolosProfile; onSaved: () =>
         name: name().trim(),
         bio: bio().trim(),
       })
-      showToast({ title: "Profile updated" })
+      showToast({ type: "info", title: "Profile updated" })
       props.onSaved()
       dialog.close()
     } catch (e: any) {
-      showToast({ title: "Failed to save profile", description: e.message })
+      showToast({ type: "error", title: "Failed to save profile", description: e.message })
     } finally {
       setSaving(false)
     }
@@ -42,11 +42,11 @@ export function EditProfileDialog(props: { profile: HolosProfile; onSaved: () =>
     setResetting(true)
     try {
       await globalSDK.client.holos.profile.reset()
-      showToast({ title: "Setup will restart" })
+      showToast({ type: "info", title: "Setup will restart" })
       props.onRerunSetup()
       dialog.close()
     } catch (e: any) {
-      showToast({ title: "Failed to reset setup", description: e.message })
+      showToast({ type: "error", title: "Failed to reset setup", description: e.message })
     } finally {
       setResetting(false)
     }

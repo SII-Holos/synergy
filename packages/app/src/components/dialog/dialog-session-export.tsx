@@ -80,10 +80,10 @@ export function DialogSessionExport() {
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      showToast({ title: "Session export downloading" })
+      showToast({ type: "info", title: "Session export downloading" })
       dialog.close()
     } catch (e: any) {
-      showToast({ title: "Export failed", description: e.message })
+      showToast({ type: "error", title: "Export failed", description: e.message })
     } finally {
       setExporting(false)
     }

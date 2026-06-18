@@ -1217,6 +1217,20 @@ export const Info = z
       .record(z.string(), CategoryConfig)
       .optional()
       .describe("Custom category configurations for background tasks. Categories define model and prompt presets."),
+    toast: z
+      .object({
+        muted: z
+          .array(z.enum(["info", "success", "warning", "error"]))
+          .optional()
+          .describe("Toast types to suppress. The underlying logic still runs but the visual card is not rendered."),
+        durationOverrides: z
+          .record(z.enum(["info", "success", "warning", "error"]), z.number().int().positive().max(30000))
+          .optional()
+          .describe("Override auto-dismiss duration in ms per toast type (max 30s)."),
+      })
+      .strict()
+      .optional()
+      .describe("Toast notification preferences"),
   })
   .strict()
   .meta({

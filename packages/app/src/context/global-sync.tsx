@@ -372,7 +372,7 @@ function createGlobalSync() {
         console.error("Failed to load sessions", err)
         if (!sdk) {
           const project = getFilename(directory)
-          showToast({ title: `Failed to load sessions for ${project}`, description: err.message })
+          showToast({ type: "error", title: `Failed to load sessions for ${project}`, description: err.message })
         }
       })
   }
