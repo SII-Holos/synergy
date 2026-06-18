@@ -39,7 +39,6 @@ export namespace SystemPrompt {
 
   const endpointLabels: Record<string, string> = {
     feishu: "Feishu (Lark)",
-    holos: "Holos",
   }
 
   export async function environment(options?: {
@@ -101,9 +100,6 @@ export namespace SystemPrompt {
       if (ch.chatId) envLines.push(`  Chat ID: ${ch.chatId}`)
       if (ch.senderName) envLines.push(`  User: ${ch.senderName}`)
       else if (ch.senderId) envLines.push(`  Sender ID: ${ch.senderId}`)
-    } else if (session?.endpoint?.kind === "holos") {
-      envLines.push(`  Session source: Holos contact`)
-      envLines.push(`  Contact: ${session.endpoint.agentId}`)
     } else if (endpointType) {
       envLines.push(`  Session source: ${endpointLabels[endpointType] ?? endpointType} endpoint`)
     }

@@ -54,15 +54,8 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
     }
   }
 
-  async function handleNavigateToContact(contact: Contact) {
-    try {
-      const res = await globalSDK.client.holos.contact.session({ id: contact.id })
-      const { sessionID, directory } = res.data!
-      navigate(`/${base64Encode(directory)}/session/${sessionID}`)
-      panel.close()
-    } catch (e: any) {
-      showToast({ type: "error", title: "Failed to open conversation", description: e?.message || String(e) })
-    }
+  async function handleNavigateToContact(_contact: Contact) {
+    showToast({ type: "info", title: "Holos messaging", description: "Contact sessions are no longer supported." })
   }
 
   return (

@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
-import { SessionEndpoint } from "../session/endpoint"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Scope } from "@/scope"
@@ -12,9 +11,7 @@ import { AppChannel } from "../channel/app"
 import DESCRIPTION from "./session-read.txt"
 
 const parameters = z.object({
-  target: z
-    .string()
-    .describe("Session to read. A session ID (ses_xxx), 'home' for the app home session, or a Holos contact/agent ID."),
+  target: z.string().describe("Session to read. A session ID (ses_xxx), 'home' for the app home session."),
   limit: z.coerce.number().default(20).describe("Number of messages to return."),
   offset: z.coerce.number().default(0).describe("Number of messages to skip (0 = most recent)."),
   around: z
@@ -32,11 +29,7 @@ async function resolveSession(target: string): Promise<Session.Info> {
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  const session = await SessionManager.getSession(SessionEndpoint.holos(target))
-  if (!session) {
-    throw new Error(`No session found for contact "${target}". The contact may not have an active conversation.`)
-  }
-  return session
+  throw new Error(`Unknown target "${target}". Use a session ID (ses_xxx) or 'home'.`)
 }
 
 function extractMessageText(parts: MessageV2.Part[]): string {

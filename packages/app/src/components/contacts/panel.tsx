@@ -32,16 +32,8 @@ export function HolosPanel() {
     if (refreshingContacts()) return
     setRefreshingContacts(true)
     await holos.refresh()
-    try {
-      await globalSDK.client.holos.refreshPresence()
-    } finally {
-      await holos.refresh()
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        await holos.refresh()
-      }
-      setRefreshingContacts(false)
-    }
+    // refreshPresence route removed; holos.refresh() already fetches latest state
+    setRefreshingContacts(false)
   }
 
   function handleEditProfile() {

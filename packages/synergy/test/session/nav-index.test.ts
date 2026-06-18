@@ -331,7 +331,7 @@ test("sets endpointKind on entries from session endpoint info", async () => {
       })
       const holosSession = await Session.create({
         title: "Holos Friend",
-        endpoint: SessionEndpoint.holos("agent-42"),
+        endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-holos" }),
       })
       const plainSession = await Session.create({ title: "Plain Project" })
 
@@ -344,7 +344,7 @@ test("sets endpointKind on entries from session endpoint info", async () => {
 
       const holosEntry = index.entries.find((e) => e.id === holosSession.id)
       expect(holosEntry).toBeDefined()
-      expect(holosEntry!.endpointKind).toBeUndefined()
+      expect(holosEntry!.endpointKind).toBe("channel")
       expect(holosEntry!.category).toBe("channel")
 
       const plainEntry = index.entries.find((e) => e.id === plainSession.id)

@@ -56,7 +56,7 @@ export const ScopeNavEntry = z
 
 export interface DeriveCategoryInput {
   scopeType: "global" | "project"
-  endpointKind?: "channel" | "holos"
+  endpointKind?: "channel"
   parentID?: string
   cortex?: {
     parentSessionID: string
@@ -109,7 +109,7 @@ export namespace SessionNav {
   const log = Log.create({ service: "session.nav" })
 
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
-    if (input.endpointKind === "channel" || input.endpointKind === "holos") return "channel"
+    if (input.endpointKind === "channel") return "channel"
     if (input.parentID || input.cortex || input.agenda) return "background"
     if (input.scopeType === "global") return "home"
     return "project"

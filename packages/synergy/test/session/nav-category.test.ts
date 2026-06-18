@@ -61,10 +61,10 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("channel")
   })
 
-  test("channel session: holos endpoint maps to channel category (not separate holos)", () => {
+  test("channel session: channel endpoint maps to channel category", () => {
     const cat = SessionNav.deriveCategory({
       scopeType: "project",
-      endpointKind: "holos",
+      endpointKind: "channel",
       parentID: undefined,
       cortex: undefined,
       agenda: undefined,
@@ -155,10 +155,10 @@ describe("SessionNav.deriveCategory", () => {
 
   // ── Precedence rules ──────────────────────────────────────────────────
   test("channel overrides everything", () => {
-    // channel/holos always wins
+    // channel always wins
     const cat = SessionNav.deriveCategory({
       scopeType: "global",
-      endpointKind: "holos",
+      endpointKind: "channel",
       parentID: "ses_child",
       cortex: {
         parentSessionID: "ses_root",
@@ -209,11 +209,11 @@ describe("SessionNav.deriveCategory", () => {
   // ── Type narrowing (only 4 categories exist) ──────────────────────────
   const validCategories = ["project", "home", "channel", "background"] as const
 
-  test("deriveCategory never returns holos as a separate category", () => {
-    // Holos sessions must return "channel", never "holos"
+  test("deriveCategory never returns a separate channel category name", () => {
+    // Channel sessions must return "channel", never anything else
     const cat = SessionNav.deriveCategory({
       scopeType: "project",
-      endpointKind: "holos",
+      endpointKind: "channel",
       parentID: undefined,
       cortex: undefined,
       agenda: undefined,

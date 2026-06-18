@@ -378,12 +378,11 @@ describe("GET /session/index (v2 nav)", () => {
   })
 })
 
-test("returns endpointKind for channel and holos sessions", async () => {
+test("returns endpointKind for channel sessions", async () => {
   await using tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
 
   let channelID: string | undefined
-  let holosID: string | undefined
 
   await Instance.provide({
     scope,
@@ -393,14 +392,8 @@ test("returns endpointKind for channel and holos sessions", async () => {
         endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-holos" }),
       })
       channelID = ch.id
-      const ho = await Session.create({
-        title: "Holos Contact",
-        endpoint: SessionEndpoint.holos("agent-7"),
-      })
-      holosID = ho.id
     },
   })
-
   await Instance.provide({
     scope,
     fn: async () => {
@@ -412,12 +405,7 @@ test("returns endpointKind for channel and holos sessions", async () => {
       expect(channelItem).toBeDefined()
       expect(channelItem.endpointKind).toBe("channel")
 
-      const holosItem = body.items.find((s: any) => s.id === holosID!)
-      expect(holosItem).toBeDefined()
-      expect(holosItem.endpointKind).toBe("holos")
-
       await Session.remove(channelID!)
-      await Session.remove(holosID!)
     },
   })
 })
