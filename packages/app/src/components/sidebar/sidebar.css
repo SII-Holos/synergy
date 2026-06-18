@@ -204,13 +204,18 @@
   background: var(--sb-active-bg);
 }
 
-/* ===== Projects section ===== */
+/* ===== Unified scroll region ===== */
 
-.sb-projects {
+.sb-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 0 4px;
+}
+
+.sb-projects {
+  padding: 0;
 }
 
 /* Collapsed projects — just the icon trigger */
@@ -417,7 +422,7 @@
   background: var(--sb-control-hover-bg);
 }
 
-/* ===== Sessions under project (expanded) ===== */
+/* ===== Sessions ===== */
 
 .sb-sessions {
   display: flex;
@@ -563,8 +568,6 @@
 .sb-menu-item-danger:hover:not(:disabled) {
   background: var(--surface-critical-base);
 }
-
-/* ===== Spacer ===== */
 
 /* ===== Bottom ===== */
 
@@ -715,21 +718,14 @@
   text-align: left;
 }
 
-/* ===== Synergy section (global sessions) ===== */
+/* ===== Root section (Home / Channel / Background) ===== */
 
-.sb-synergy {
-  padding: 0 4px;
-  flex-shrink: 0;
+.sb-root-section {
+  padding: 0;
 }
 
-.sb-synergy-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 8px;
-  user-select: none;
+.sb-root-section .sb-sessions {
+  padding-left: 0;
 }
 
 /* ===== Session group (category grouping) ===== */
@@ -753,30 +749,10 @@
 
 /* ===== Recent section ===== */
 
-.sb-recent {
-  padding: 0 4px;
-  flex-shrink: 0;
-}
-
-.sb-section-header {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-weak);
-  user-select: none;
-}
-
-.sb-recent-empty {
+.sb-section-empty {
   padding: 4px 12px;
   font-size: 12px;
   color: var(--text-subtle);
-}
-
-.sb-recent .sb-sessions {
-  padding-left: 0;
 }
 
 /* ===== Load more button ===== */

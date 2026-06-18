@@ -146,10 +146,9 @@ export namespace SessionNav {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
-        const s = session.scope as { id: string; type?: string }
-        const st: "global" | "project" = s.id === "global" ? "global" : "project"
+        const scopeType: "global" | "project" = scopeID === "global" ? "global" : "project"
         const category = deriveCategory({
-          scopeType: st,
+          scopeType,
           endpointKind: session.endpoint?.kind,
           parentID: session.parentID,
           cortex: session.cortex,
@@ -164,7 +163,7 @@ export namespace SessionNav {
         entries.push({
           id: session.id,
           scopeID,
-          scopeType: st,
+          scopeType,
           title: session.title,
           category,
           lastActivityAt: session.time.updated,

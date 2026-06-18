@@ -227,6 +227,38 @@ describe("SessionNav.buildNavIndex", () => {
       },
     })
   })
+
+  test("ignores stale session.scope.id when building index for a project scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Stale Scope Session" })
+
+        // Simulate stale scope data: overwrite the stored scope.id to "global"
+        // while the session is actually in a project scope.
+        const sid = Identifier.asScopeID(scope.id)
+        const ssid = Identifier.asSessionID(session.id)
+        const key = StoragePath.sessionInfo(sid, ssid)
+        const raw = await Storage.read<any>(key)
+        raw.scope = { ...raw.scope, id: "global" }
+        await Storage.write(key, raw)
+
+        // buildNavIndex must use the authoritative scopeID parameter,
+        // not the stale session.scope.id.
+        const index = await SessionNav.buildNavIndex(scope.id)
+        const entry = index.entries.find((e) => e.id === session.id)
+        expect(entry).toBeDefined()
+        expect(entry!.scopeType).toBe("project")
+        expect(entry!.category).toBe("project")
+        expect(entry!.scopeID).toBe(scope.id)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
 })
 
 describe("SessionNav.rebuildAllNavIndexes", () => {
