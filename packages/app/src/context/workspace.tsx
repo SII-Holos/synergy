@@ -47,7 +47,10 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
         console.log("[Workspace] openPanel called, sessionKey:", sessionKey())
         ws().open()
       },
-      closePanel: () => ws().close(),
+      closePanel: () => {
+        console.log("[Workspace] closePanel called, sessionKey:", sessionKey())
+        ws().close()
+      },
       setActive: (id: string | null) => {
         console.log("[Workspace] setActive:", id, "sessionKey:", sessionKey())
         ws().setActive(id)
