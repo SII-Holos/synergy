@@ -254,16 +254,19 @@ export namespace SessionManager {
       }
       result[runtime.sessionID] = runtime.status
     }
-    for (const runtime of runtimes.values()) {
-      if (runtime.abort) continue
-      if (runtime.sessionID in result) continue
-      if (scopeID) {
-        const session = await requireSession(runtime.sessionID)
-        if ((session.scope as Scope).id !== scopeID) continue
-      }
-      const working = await SessionWorking.resolve(runtime.sessionID)
-      if (working) {
-        result[runtime.sessionID] = SessionWorking.toStatus(working)
+    if (scopeID) {
+      const scopeIDTyped = Identifier.asScopeID(scopeID)
+      const storedIDs = await Storage.scan(StoragePath.sessionsRoot(scopeIDTyped))
+      for (const storedID of storedIDs) {
+        if (storedID in result) continue
+        const info = await Storage.read<Info>(
+          StoragePath.sessionInfo(scopeIDTyped, Identifier.asSessionID(storedID)),
+        ).catch(() => undefined)
+        if (!info || info.pendingReply !== true) continue
+        const working = await SessionWorking.resolve(info.id)
+        if (working) {
+          result[info.id] = SessionWorking.toStatus(working)
+        }
       }
     }
     return result
