@@ -1,34 +1,25 @@
 import { createMemo, Show } from "solid-js"
-import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useSync } from "@/context/sync"
+import { StatusBarIndicator } from "@/components/status-bar-indicator"
 import { DialogSelectMcp } from "@/components/dialog"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { computeMcpStats } from "./session-connection-stats"
 
 export function SessionMcpIndicator() {
   const sync = useSync()
   const dialog = useDialog()
 
-  const mcpStats = createMemo(() => {
-    const mcp = sync.data.mcp ?? {}
-    const entries = Object.entries(mcp)
-    const enabled = entries.filter(([, status]) => status.status === "connected").length
-    const failed = entries.some(([, status]) => status.status === "failed")
-    const total = entries.length
-    return { enabled, failed, total }
-  })
+  const stats = createMemo(() => computeMcpStats(sync.data.mcp))
 
   return (
-    <Show when={mcpStats().total > 0}>
-      <Button variant="ghost" onClick={() => dialog.show(() => <DialogSelectMcp />)}>
-        <Icon
-          name={getSemanticIcon("connection.mcp")}
-          size="small"
-          class={mcpStats().failed ? "text-icon-critical-base" : undefined}
-        />
-        <span class="text-12-regular text-text-weak">{mcpStats().enabled}</span>
-      </Button>
+    <Show when={stats().total > 0}>
+      <StatusBarIndicator
+        icon={getSemanticIcon("connection.mcp")}
+        value={stats().enabled}
+        onClick={() => dialog.show(() => <DialogSelectMcp />)}
+        iconClass={stats().failed ? "text-icon-critical-base" : undefined}
+      />
     </Show>
   )
 }

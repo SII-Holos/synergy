@@ -108,6 +108,21 @@ a:active,
     box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
   }
 }
+@keyframes statusbarDotPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1px var(--color-surface-raised-base),
+      0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+  }
+  50% {
+    opacity: 0.78;
+    box-shadow:
+      0 0 0 1px var(--color-surface-raised-base),
+      0 0 0 2.5px color-mix(in srgb, currentColor 8%, transparent);
+  }
+}
 
 .statusbar-glass {
   position: relative;
@@ -134,6 +149,14 @@ a:active,
 .statusbar-glass > * {
   position: relative;
   z-index: 1;
+}
+.statusbar-indicator-value {
+  display: inline-block;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  line-height: 16px; /* optical centering with 16px status-bar icons */
+  transform: translateY(0.5px);
 }
 
 @keyframes dotPopIn {

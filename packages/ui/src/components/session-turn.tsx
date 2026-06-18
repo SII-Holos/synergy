@@ -3,6 +3,7 @@ import {
   Message as MessageType,
   Part as PartType,
   type PermissionRequest,
+  ReasoningPart,
   TextPart,
   ToolPart,
   type UserMessage,
@@ -234,6 +235,18 @@ export function SessionTurn(
     }
     return undefined
   })
+  const lastReasoningPart = createMemo(() => {
+    const msgs = assistantMessages()
+    for (let mi = msgs.length - 1; mi >= 0; mi--) {
+      const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
+      for (let pi = msgParts.length - 1; pi >= 0; pi--) {
+        const part = msgParts[pi]
+        if (part?.type === "reasoning") return part as ReasoningPart
+        if (part?.type === "tool") return undefined
+      }
+    }
+    return undefined
+  })
 
   const hasSteps = createMemo(() => {
     for (const m of assistantMessages()) {
@@ -347,7 +360,7 @@ export function SessionTurn(
     return s
   })
 
-  const response = createMemo(() => lastTextPart()?.text)
+  const response = createMemo(() => lastTextPart()?.text ?? lastReasoningPart()?.text)
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
   const hideResponsePart = createMemo(() => !working() && !!responsePartId())

@@ -15,11 +15,12 @@ import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
-    "size-1.5 rounded-full shadow-[0_0_0_2px_color-mix(in_srgb,currentColor_20%,transparent)]": true,
-    "bg-icon-success-base text-icon-success-base animate-[statusPulse_3s_ease-in-out_infinite]": status === "success",
-    "bg-icon-critical-base text-icon-critical-base animate-[statusPulse_1.5s_ease-in-out_infinite]":
+    "size-1 rounded-full shadow-[0_0_0_1px_var(--color-surface-raised-base)]": true,
+    "bg-icon-success-base text-icon-success-base animate-[statusbarDotPulse_3s_ease-in-out_infinite]":
+      status === "success",
+    "bg-icon-critical-base text-icon-critical-base animate-[statusbarDotPulse_1.5s_ease-in-out_infinite]":
       status === "danger",
-    "bg-icon-base text-icon-base animate-[statusPulse_2s_ease-in-out_infinite]": status === "active",
+    "bg-icon-base text-icon-base animate-[statusbarDotPulse_2s_ease-in-out_infinite]": status === "active",
     "bg-border-strong text-border-strong": status === "muted",
   }
 }
@@ -91,12 +92,11 @@ function HolosIconButton() {
   return (
     <Tooltip placement="top" value={label()}>
       <button type="button" classList={iconButtonClass()}>
-        <Icon name={getSemanticIcon("connection.holos")} size="small" />
+        <Icon name={getSemanticIcon("connection.holos")} size="small" class="translate-y-px" />
         <div
           classList={{
             ...statusDotClass(dot()),
-            "absolute bottom-0 right-0": true,
-            "shadow-[0_0_0_1px_var(--color-surface-raised-base)]": true,
+            "absolute bottom-1 right-1": true,
           }}
         />
       </button>
@@ -143,12 +143,13 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
   const tone = () => (props.waiting ? ("danger" as const) : ("base" as const))
 
   const spin = () => icon() === getSemanticIcon("session.running")
+  const idle = () => icon() === getSemanticIcon("session.idle")
 
   return (
     <Tooltip placement="top" value={tooltip()}>
       <button type="button" classList={iconButtonClass(tone())}>
         <span classList={{ "sb-session-icon-pulse": spin() }}>
-          <Icon name={icon()} size="small" />
+          <Icon name={icon()} size="small" class={idle() ? "translate-y-0.5" : undefined} />
         </span>
       </button>
     </Tooltip>
