@@ -196,6 +196,8 @@ export function DagGraph(props: {
   variant?: "default" | "panel"
   selectedNodeId?: string
   onSelectNode?: (node: DagNode) => void
+  focusNodeId?: string
+  onViewportInteraction?: () => void
 }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
@@ -227,6 +229,18 @@ export function DagGraph(props: {
     const l = layout()
     if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
     focusActiveNodes()
+  })
+
+  createEffect(() => {
+    const focusId = props.focusNodeId
+    if (!focusId || hasUserMoved() || nodes().length > 200) return
+    const laid = layout().laid
+    if (laid.length === 0) return
+    const target = laid.find((ln) => ln.node.id === focusId)
+    if (!target || target.h === 0) return
+    requestAnimationFrame(() => {
+      fitToNodes([target])
+    })
   })
 
   function fitView() {
@@ -277,6 +291,7 @@ export function DagGraph(props: {
     setScale(next)
     setPan({ x: originX - worldX * next, y: originY - worldY * next })
     setHasUserMoved(true)
+    props.onViewportInteraction?.()
   }
 
   function handleWheel(event: WheelEvent) {
@@ -292,6 +307,7 @@ export function DagGraph(props: {
     if (target?.closest("button")) return
     setDragging(true)
     setHasUserMoved(true)
+    props.onViewportInteraction?.()
     setPointerMoved(false)
     const card = target?.closest('[data-slot="dag-graph-card"]')
     clickNodeId = (card as HTMLElement | undefined)?.dataset.id ?? undefined

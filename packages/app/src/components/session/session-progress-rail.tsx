@@ -54,7 +54,7 @@ export function SessionProgressRail(props: SessionProgressRailProps) {
     <Show when={text()}>
       <button
         type="button"
-        class={`flex items-center gap-1.5 rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-12-regular text-text-weak shadow-sm transition-all duration-150 hover:bg-surface-raised-stronger-hover active:scale-[0.97] ${props.class ?? ""}`}
+        class={`flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-11-medium text-text-weak shadow-sm transition-all duration-150 hover:bg-surface-raised-stronger-hover active:scale-[0.98] ${props.class ?? ""}`}
         aria-label={ariaLabel()}
         aria-expanded={props.expanded}
         onClick={props.onClick}

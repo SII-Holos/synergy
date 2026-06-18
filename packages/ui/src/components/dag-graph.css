@@ -160,6 +160,10 @@
     z-index: 1;
   }
 
+  .dag-graph[data-variant="panel"] [data-slot="dag-graph-stage"] {
+    transition: transform 500ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
   [data-slot="dag-graph-edges"] {
     position: absolute;
     top: 0;
@@ -423,4 +427,68 @@
 /* Selected node — subtle ring accent */
 .dag-node[data-selected="true"] {
   box-shadow: 0 0 0 2px var(--surface-interactive-selected);
+}
+
+/* ── Session Progress Drawer Animations ── */
+
+@keyframes drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawer-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.session-progress-drawer {
+  animation: drawer-enter 250ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.session-progress-drawer[data-closing] {
+  animation: drawer-exit 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes drawer-enter {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes drawer-exit {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  .session-progress-drawer {
+    animation-name: drawer-enter;
+    animation-duration: 150ms;
+    animation-timing-function: ease;
+  }
+
+  .session-progress-drawer[data-closing] {
+    animation-name: drawer-exit;
+    animation-duration: 150ms;
+    animation-timing-function: ease;
+  }
 }

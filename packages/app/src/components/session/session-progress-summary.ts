@@ -1,7 +1,5 @@
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
 
-export type { DagNode }
-
 export interface DagSummary {
   total: number
   completed: number

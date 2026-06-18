@@ -10,11 +10,11 @@ interface SessionProgressDagProps {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-surface-success-base text-text-on-success",
-  running: "bg-surface-interactive-base text-text-on-interactive",
+  completed: "bg-surface-success-base text-on-success-base",
+  running: "bg-surface-interactive-base text-on-interactive-base",
   pending: "bg-surface-raised-stronger text-text-weak",
-  blocked: "bg-surface-danger-base text-text-on-danger",
-  failed: "bg-surface-danger-strong text-text-on-danger",
+  blocked: "bg-surface-critical-base text-on-critical-base",
+  failed: "bg-surface-critical-strong text-on-critical-base",
   cancelled: "bg-surface-raised-stronger text-text-subtle",
 }
 
@@ -24,6 +24,32 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
   const nodes = createMemo<DagNode[]>(() => sync.data.dag[props.sessionID] ?? [])
 
   const summary = createMemo<DagSummary>(() => computeDagSummary(nodes()))
+  const [userInteracted, setUserInteracted] = createSignal(false)
+  let previousNodes = new Map<string, string>()
+
+  const changedNodeId = createMemo(() => {
+    const current = nodes()
+    if (previousNodes.size === 0 && current.length > 0) {
+      for (const n of current) previousNodes.set(n.id, n.status)
+      return undefined
+    }
+    const changed: Array<{ id: string; newStatus: string }> = []
+    for (const n of current) {
+      const prev = previousNodes.get(n.id)
+      if (prev && prev !== n.status) {
+        changed.push({ id: n.id, newStatus: n.status })
+      }
+      previousNodes.set(n.id, n.status)
+    }
+    if (changed.length === 0) return undefined
+    const first = (status: string) => changed.find((c) => c.newStatus === status)
+    return first("failed")?.id ?? first("blocked")?.id ?? first("running")?.id ?? changed[0].id
+  })
+
+  const focusNodeId = createMemo(() => {
+    if (userInteracted() || nodes().length === 0 || nodes().length > 200) return undefined
+    return changedNodeId()
+  })
 
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | undefined>(undefined)
 
@@ -68,6 +94,8 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
           variant="panel"
           selectedNodeId={selectedNodeId()}
           onSelectNode={handleSelectNode}
+          focusNodeId={focusNodeId()}
+          onViewportInteraction={() => setUserInteracted(true)}
         />
         <Show when={selectedNode()}>
           {(node) => (

@@ -1,4 +1,4 @@
-import { Show, onMount, onCleanup, type JSX } from "solid-js"
+import { Show, onMount, onCleanup, createSignal, type JSX } from "solid-js"
 
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { formatRailText } from "./session-progress-summary"
@@ -23,10 +23,22 @@ function footerText(dag: DagSummary): string {
 }
 
 export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
+  const [closing, setClosing] = createSignal(false)
+
+  const handleClose = () => {
+    setClosing(true)
+  }
+
+  const handleAnimationEnd = (e: AnimationEvent) => {
+    if (e.animationName === "drawer-exit") {
+      props.onClose()
+    }
+  }
+
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        props.onClose()
+        handleClose()
       }
     }
     document.addEventListener("keydown", handler)
@@ -57,7 +69,9 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
 
   return (
     <div
-      class={`flex flex-col rounded-2xl bg-surface-raised-stronger-non-alpha border border-border-base shadow-sm overflow-hidden ${props.class ?? ""}`}
+      class={`session-progress-drawer flex flex-col rounded-2xl bg-surface-raised-stronger-non-alpha border border-border-base shadow-sm overflow-hidden ${props.class ?? ""}`}
+      data-closing={closing() ? "" : undefined}
+      onAnimationEnd={handleAnimationEnd}
       style={{
         "max-height": "min(52vh, 560px)",
         "min-height": "280px",
@@ -83,7 +97,7 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
           <button
             type="button"
             class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={props.onClose}
+            onClick={handleClose}
           >
             <Icon name="x" size="small" />
           </button>
