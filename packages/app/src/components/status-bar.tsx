@@ -141,15 +141,13 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
   }
   const tooltip = () => `Runtime: ${runtimeLabel(props.status, props.waiting)}`
   const tone = () => (props.waiting ? ("danger" as const) : ("base" as const))
-
-  const spin = () => icon() === getSemanticIcon("session.running")
-  const idle = () => icon() === getSemanticIcon("session.idle")
+  const pulse = () => icon() === getSemanticIcon("session.running") || icon() === getSemanticIcon("session.waiting")
 
   return (
     <Tooltip placement="top" value={tooltip()}>
       <button type="button" classList={iconButtonClass(tone())}>
-        <span classList={{ "sb-session-icon-pulse": spin() }}>
-          <Icon name={icon()} size="small" class={idle() ? "translate-y-0.5" : undefined} />
+        <span classList={{ "sb-session-icon-pulse": pulse() }}>
+          <Icon name={icon()} size="small" class="translate-y-0.5" />
         </span>
       </button>
     </Tooltip>

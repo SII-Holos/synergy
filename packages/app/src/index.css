@@ -216,3 +216,15 @@ a:active,
     height: min(calc(100dvh - 20px), 760px);
   }
 }
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sb-session-icon-pulse [data-slot="icon-svg"] {
+  animation: spin 1.1s linear infinite;
+}
