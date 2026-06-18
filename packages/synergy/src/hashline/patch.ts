@@ -3,6 +3,7 @@ export type PatchOp =
   | { type: "delete"; startLine: number; endLine: number }
   | { type: "insert"; position: "before" | "after"; lineNumber: number; lines: string[] }
   | { type: "insert"; position: "head" | "tail"; lines: string[] }
+  | { type: "blockSwap"; blockRef: string; lines: string[] }
 
 export interface HashlinePatch {
   path: string
@@ -15,6 +16,14 @@ const REPLACE_PATTERN = /^replace\s+(\d+)\.\.(\d+)\s*:\s*$/
 const DELETE_PATTERN = /^delete\s+(\d+)(?:\.\.(\d+))?\s*:?\s*$/
 const INSERT_BEFORE_AFTER_PATTERN = /^insert\s+(?:(before|after)\s+(\d+)|(\d+)\s+(before|after))\s*:\s*$/
 const INSERT_HEAD_TAIL_PATTERN = /^insert\s+(head|tail)\s*:\s*$/
+const OMP_SWAP_PATTERN = /^SWAP\s+(\d+)\.\.(\d+)\s*:\s*$/
+const OMP_SWAP_EQ_PATTERN = /^SWAP\s+(\d+)\.=(\d+)\s*:\s*$/
+const OMP_DEL_PATTERN = /^DEL\s+(\d+)(?:\.\.(\d+))?\s*:?\s*$/
+const OMP_INS_PRE_PATTERN = /^INS\.PRE\s+(\d+)\s*:\s*$/
+const OMP_INS_POST_PATTERN = /^INS\.POST\s+(\d+)\s*:\s*$/
+const OMP_INS_HEAD_PATTERN = /^INS\.HEAD\s*:\s*$/
+const OMP_INS_TAIL_PATTERN = /^INS\.TAIL\s*:\s*$/
+const OMP_SWAP_BLK_PATTERN = /^SWAP\.BLK\s+(\S[^\n:]*)\s*:\s*$/
 
 function parseBody(lines: string[], cursor: { value: number }): string[] {
   const body: string[] = []
@@ -37,7 +46,15 @@ function isOperationHeader(line: string): boolean {
     REPLACE_PATTERN.test(line) ||
     DELETE_PATTERN.test(line) ||
     INSERT_BEFORE_AFTER_PATTERN.test(line) ||
-    INSERT_HEAD_TAIL_PATTERN.test(line)
+    INSERT_HEAD_TAIL_PATTERN.test(line) ||
+    OMP_SWAP_PATTERN.test(line) ||
+    OMP_SWAP_EQ_PATTERN.test(line) ||
+    OMP_DEL_PATTERN.test(line) ||
+    OMP_INS_PRE_PATTERN.test(line) ||
+    OMP_INS_POST_PATTERN.test(line) ||
+    OMP_INS_HEAD_PATTERN.test(line) ||
+    OMP_INS_TAIL_PATTERN.test(line) ||
+    OMP_SWAP_BLK_PATTERN.test(line)
   )
 }
 
@@ -63,7 +80,9 @@ export function parseHashlinePatch(input: string): HashlinePatch {
       continue
     }
 
-    let match = line.match(REPLACE_PATTERN)
+    let match: RegExpMatchArray | null
+
+    match = line.match(REPLACE_PATTERN)
     if (match) {
       cursor.value++
       const startLine = Number(match[1])
@@ -104,6 +123,91 @@ export function parseHashlinePatch(input: string): HashlinePatch {
       const body = parseBody(lines, cursor)
       if (body.length === 0) throw new Error(`insert ${position} requires at least one + body row`)
       ops.push({ type: "insert", position, lines: body })
+      continue
+    }
+
+    match = line.match(OMP_SWAP_PATTERN)
+    if (match) {
+      cursor.value++
+      const startLine = Number(match[1])
+      const endLine = Number(match[2])
+      assertRange(startLine, endLine)
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error(`SWAP ${startLine}..${endLine} requires at least one + body row`)
+      ops.push({ type: "replace", startLine, endLine, lines: body })
+      continue
+    }
+
+    match = line.match(OMP_SWAP_EQ_PATTERN)
+    if (match) {
+      cursor.value++
+      const startLine = Number(match[1])
+      const endLine = Number(match[2])
+      assertRange(startLine, endLine)
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error(`SWAP ${startLine}.=${endLine} requires at least one + body row`)
+      ops.push({ type: "replace", startLine, endLine, lines: body })
+      continue
+    }
+
+    match = line.match(OMP_DEL_PATTERN)
+    if (match) {
+      cursor.value++
+      const startLine = Number(match[1])
+      const endLine = Number(match[2] ?? match[1])
+      assertRange(startLine, endLine)
+      ops.push({ type: "delete", startLine, endLine })
+      continue
+    }
+
+    match = line.match(OMP_INS_PRE_PATTERN)
+    if (match) {
+      cursor.value++
+      const lineNumber = Number(match[1])
+      if (lineNumber < 1) throw new Error("Patch line numbers are 1-indexed and must be >= 1")
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error(`INS.PRE ${lineNumber} requires at least one + body row`)
+      ops.push({ type: "insert", position: "before", lineNumber, lines: body })
+      continue
+    }
+
+    match = line.match(OMP_INS_POST_PATTERN)
+    if (match) {
+      cursor.value++
+      const lineNumber = Number(match[1])
+      if (lineNumber < 1) throw new Error("Patch line numbers are 1-indexed and must be >= 1")
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error(`INS.POST ${lineNumber} requires at least one + body row`)
+      ops.push({ type: "insert", position: "after", lineNumber, lines: body })
+      continue
+    }
+
+    match = line.match(OMP_INS_HEAD_PATTERN)
+    if (match) {
+      cursor.value++
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error("INS.HEAD requires at least one + body row")
+      ops.push({ type: "insert", position: "head", lines: body })
+      continue
+    }
+
+    match = line.match(OMP_INS_TAIL_PATTERN)
+    if (match) {
+      cursor.value++
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error("INS.TAIL requires at least one + body row")
+      ops.push({ type: "insert", position: "tail", lines: body })
+      continue
+    }
+
+    match = line.match(OMP_SWAP_BLK_PATTERN)
+    if (match) {
+      cursor.value++
+      const blockRef = match[1].trimEnd()
+      if (!blockRef) throw new Error("SWAP.BLK requires a block reference name")
+      const body = parseBody(lines, cursor)
+      if (body.length === 0) throw new Error(`SWAP.BLK ${blockRef} requires at least one + body row`)
+      ops.push({ type: "blockSwap", blockRef, lines: body })
       continue
     }
 

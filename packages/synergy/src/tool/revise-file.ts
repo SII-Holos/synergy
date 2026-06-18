@@ -14,6 +14,7 @@ import { applyPatchOps } from "../hashline/revise"
 import { recoverPatchOps } from "../hashline/recovery"
 import { SessionHashlineStore } from "../hashline/store"
 import { computeTag, normalizeContent } from "../hashline/tag"
+import { SessionSeenStore } from "../hashline/seen"
 import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
 import { collectWriteDiagnostics } from "./write-quality"
 
@@ -21,11 +22,53 @@ function summarizeOperations(operations: ReturnType<typeof parseHashlinePatch>["
   return operations.map((op) => {
     if (op.type === "replace") return `replace ${op.startLine}..${op.endLine}`
     if (op.type === "delete") return `delete ${op.startLine}..${op.endLine}`
-    if (op.position === "before" || op.position === "after") return `insert ${op.position} ${op.lineNumber}`
-    return `insert ${op.position}`
+    if (op.type === "blockSwap") return `blockSwap ${op.blockRef}`
+    if (op.type === "insert" && (op.position === "before" || op.position === "after"))
+      return `insert ${op.position} ${op.lineNumber}`
+    if (op.type === "insert") return `insert ${op.position}`
+    return `unknown`
   })
 }
 
+function validateSeenRanges(
+  sessionID: string,
+  filePath: string,
+  ops: ReturnType<typeof parseHashlinePatch>["ops"],
+  lineCount: number,
+): string | undefined {
+  const seenStore = SessionSeenStore.get(sessionID)
+  const unseen: string[] = []
+
+  for (const op of ops) {
+    if (op.type === "replace" || op.type === "delete") {
+      if (op.startLine > lineCount || op.endLine > lineCount) continue
+      if (!seenStore.isRangeSeen(filePath, op.startLine, op.endLine)) {
+        unseen.push(`${op.type} ${op.startLine}..${op.endLine}`)
+      }
+    } else if (op.type === "insert" && (op.position === "before" || op.position === "after")) {
+      if (op.lineNumber > lineCount) continue
+      if (!seenStore.isRangeSeen(filePath, op.lineNumber, op.lineNumber)) {
+        unseen.push(`insert ${op.position} ${op.lineNumber}`)
+      }
+    }
+    // head/tail inserts and blockSwap are always allowed
+  }
+
+  if (unseen.length === 0) return undefined
+
+  const seenRanges = seenStore.getSeenRanges(filePath)
+  const seenRangesStr =
+    seenRanges.length > 0
+      ? `Seen ranges: ${seenRanges.map((r) => `${r.startLine}..${r.endLine}`).join(", ")}`
+      : "No lines have been recorded as seen for this file."
+
+  return [
+    `Unseen anchored ranges: ${unseen.join(", ")}.`,
+    seenRangesStr,
+    "Use view_file, scan_files, or parse_code to inspect each target range before editing.",
+    "Unanchored operations (insert head, insert tail) may be used without prior inspection.",
+  ].join(" ")
+}
 const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReload.reload>> | undefined
 
 export const ReviseFileTool = Tool.define("revise_file", {
@@ -56,9 +99,8 @@ export const ReviseFileTool = Tool.define("revise_file", {
         const file = Bun.file(filePath)
         const stats = await file.stat().catch(() => undefined)
         if (!stats) throw new Error(`File not found: ${filePath}`)
-        if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-
         const oldContent = normalizeContent(await file.text())
+        const lineCount = oldContent.split("\n").length - (oldContent.endsWith("\n") ? 1 : 0)
         const conflict = detectConflicts(oldContent)
         if (conflict.hasConflicts) {
           const ranges = conflict.conflicts.map((item) => `${item.startLine}-${item.endLine}`).join(", ")
@@ -67,6 +109,10 @@ export const ReviseFileTool = Tool.define("revise_file", {
           )
         }
 
+        const seenError = validateSeenRanges(ctx.sessionID, title, patch.ops, lineCount)
+        if (seenError) {
+          throw new Error(seenError)
+        }
         const liveTag = computeTag(oldContent)
         let activeOps = patch.ops
         let recoveryMode: "three-way-merge" | undefined

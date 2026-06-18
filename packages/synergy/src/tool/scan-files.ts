@@ -12,6 +12,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const DEFAULT_FILE_LIMIT = 20
@@ -205,6 +206,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       blocks.push(`${warning ? `${warning}\n` : ""}${outputMode === "files" ? body : body}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
+      recordSeenSessionLines(ctx.sessionID, pathLabel, lines)
       tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }

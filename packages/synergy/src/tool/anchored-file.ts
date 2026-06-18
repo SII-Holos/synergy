@@ -4,7 +4,8 @@ import { FileTime } from "../file/time"
 import { Instance } from "../scope/instance"
 import { formatHashline, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
-import { normalizeContent } from "../hashline/tag"
+import { recordSeenRanges, SessionSeenStore } from "../hashline/seen"
+import { normalizeContent, splitContentLines } from "../hashline/tag"
 
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
 export const MIN_VIEW_LINES = 120
@@ -111,9 +112,7 @@ export function truncateLineForDisplay(line: string): { text: string; truncated:
 }
 
 export function splitDisplayLines(content: string): string[] {
-  const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")
-  if (lines.at(-1) === "") lines.pop()
-  return lines
+  return splitContentLines(content)
 }
 
 export function formatSelectedLine(lines: string[], lineNumber: number): { output: string; truncated: boolean } {
@@ -147,4 +146,9 @@ export function diffStats(diff: string): { additions: number; deletions: number 
     if (line.startsWith("-")) deletions++
   }
   return { additions, deletions }
+}
+
+export function recordSeenSessionLines(sessionID: string, displayPath: string, lines: number[]): void {
+  if (lines.length === 0) return
+  recordSeenRanges(SessionSeenStore.get(sessionID), displayPath, lines)
 }

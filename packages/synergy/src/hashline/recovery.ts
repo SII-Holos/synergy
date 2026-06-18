@@ -1,4 +1,5 @@
 import type { PatchOp } from "./patch"
+import { splitContentLines } from "./tag"
 
 const MAX_CONTEXT_RADIUS = 5
 
@@ -12,13 +13,6 @@ class RecoveryFailure extends Error {
     super(message)
     this.name = "RecoveryFailure"
   }
-}
-
-function splitLines(content: string): string[] {
-  if (content === "") return []
-  const lines = content.split("\n")
-  if (lines.at(-1) === "") lines.pop()
-  return lines
 }
 
 function matchesAt(lines: string[], candidateStart: number, needle: string[]): boolean {
@@ -73,11 +67,28 @@ function locateUniqueRange(snapshotLines: string[], liveLines: string[], startLi
 }
 
 export function recoverPatchOps(snapshotContent: string, liveContent: string, ops: PatchOp[]): RecoveryResult {
-  const snapshotLines = splitLines(snapshotContent)
-  const liveLines = splitLines(liveContent)
+  const snapshotLines = splitContentLines(snapshotContent)
+  const liveLines = splitContentLines(liveContent)
   const recovered: PatchOp[] = []
 
   for (const op of ops) {
+    if (op.type === "blockSwap") {
+      // Verify the snapshot content (which represents the block) still exists
+      // somewhere in the live file. If not, refuse recovery.
+      if (snapshotLines.length === 0) throw new RecoveryFailure("blockSwap recovery requires non-empty snapshot")
+      try {
+        locateUniqueRange(snapshotLines, liveLines, 1, snapshotLines.length)
+      } catch (err) {
+        if (err instanceof RecoveryFailure) {
+          throw new RecoveryFailure(`blockSwap recovery failed: block content not found in live file`)
+        }
+        throw err
+      }
+      // Block content found — pass blockSwap through unchanged
+      recovered.push(op)
+      continue
+    }
+
     if (op.type === "replace") {
       const startLine = locateUniqueRange(snapshotLines, liveLines, op.startLine, op.endLine)
       recovered.push({ ...op, startLine, endLine: startLine + (op.endLine - op.startLine) })
@@ -90,7 +101,7 @@ export function recoverPatchOps(snapshotContent: string, liveContent: string, op
       continue
     }
 
-    if (op.position === "before" || op.position === "after") {
+    if (op.type === "insert" && (op.position === "before" || op.position === "after")) {
       const lineNumber = locateUniqueRange(snapshotLines, liveLines, op.lineNumber, op.lineNumber)
       recovered.push({ ...op, lineNumber })
       continue

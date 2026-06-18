@@ -13,6 +13,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const DEFAULT_AST_LIMIT = 50
@@ -175,6 +176,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
       tags[pathLabel] = tag
+      recordSeenSessionLines(ctx.sessionID, pathLabel, lines)
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 

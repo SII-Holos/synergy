@@ -8,8 +8,16 @@ import { File } from "../file"
 import { FileTime } from "../file/time"
 import { detectConflicts } from "../conflict/detect"
 import { RuntimeReload } from "../runtime/reload"
-import { diffStats, displayPath, ensureParentDir, hashlineHeaderFor, resolveFilePath } from "./anchored-file"
+import {
+  diffStats,
+  displayPath,
+  ensureParentDir,
+  hashlineHeaderFor,
+  recordSeenSessionLines,
+  resolveFilePath,
+} from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
+import { splitContentLines } from "../hashline/tag"
 import { collectWriteDiagnostics } from "./write-quality"
 
 export const SaveFileTool = Tool.define("save_file", {
@@ -73,6 +81,11 @@ export const SaveFileTool = Tool.define("save_file", {
           : undefined
         const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
         const header = hashlineHeaderFor(ctx.sessionID, filePath, finalContent)
+        recordSeenSessionLines(
+          ctx.sessionID,
+          title,
+          splitContentLines(finalContent).map((_, index) => index + 1),
+        )
         const finalDiff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, finalContent))
         const finalChangeSummary = diffStats(finalDiff)
         let output = header
