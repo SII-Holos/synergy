@@ -35,6 +35,7 @@ export interface ApprovalMetadata {
 
 const HIGH_RISK = new Set([
   "shell_destructive",
+  "shell_hardline",
   "file_external",
   "mcp_invoke",
   "plugin_invoke",

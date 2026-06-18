@@ -15,6 +15,7 @@ const CAPABILITY_PERMISSIONS = [
   "shell_read",
   "shell",
   "shell_destructive",
+  "shell_hardline",
   "network_request",
   "file_external",
   "mcp_invoke",
@@ -26,6 +27,7 @@ const CAPABILITY_PERMISSIONS = [
 ]
 
 const HIGH_RISK_PERMISSIONS = [
+  "shell_hardline",
   "shell_destructive",
   "file_external",
   "mcp_invoke",
@@ -46,6 +48,7 @@ function rulesFor(actions: {
   high: "allow" | "deny" | "ask"
 }) {
   return CAPABILITY_PERMISSIONS.map((permission) => {
+    if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, actions.low)
     return rule(permission, actions.medium)
