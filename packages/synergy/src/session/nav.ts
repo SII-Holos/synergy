@@ -18,6 +18,7 @@ export const SessionNavEntry = z
     pinned: z.number(),
     archived: z.boolean(),
     parentID: z.string().optional(),
+    endpointKind: z.enum(["channel", "holos"]).optional(),
   })
   .meta({ ref: "SessionNavEntry" })
 
@@ -82,6 +83,7 @@ export interface SessionNavEntry {
   pinned: number
   archived: boolean
   parentID?: string
+  endpointKind?: "channel" | "holos"
 }
 export interface ScopeNavEntry {
   scopeID: string
@@ -170,6 +172,7 @@ export namespace SessionNav {
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           parentID: session.parentID,
+          endpointKind: session.endpoint?.kind as "channel" | "holos" | undefined,
         })
       }
     }

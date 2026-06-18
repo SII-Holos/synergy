@@ -6,6 +6,7 @@ import { Log } from "../../src/util/log"
 import { Instance } from "../../src/scope/instance"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
+import { SessionEndpoint } from "../../src/session/endpoint"
 
 Log.init({ print: false })
 
@@ -299,6 +300,8 @@ describe("GET /session/index (v2 nav)", () => {
         expect(item.title).toBeTypeOf("string")
         expect(item.category).toBeOneOf(["project", "home", "channel", "background"])
         expect(item.lastActivityAt).toBeTypeOf("number")
+        // endpointKind is optional; JSON may omit it when undefined
+        expect(item.endpointKind === undefined || item.endpointKind === null).toBe(true)
         expect(item.scopeID).toBeTypeOf("string")
 
         await Session.remove(sessionID!)
@@ -372,5 +375,49 @@ describe("GET /session/index (v2 nav)", () => {
         await Session.remove(projectSessionID!)
       },
     })
+  })
+})
+
+test("returns endpointKind for channel and holos sessions", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
+
+  let channelID: string | undefined
+  let holosID: string | undefined
+
+  await Instance.provide({
+    scope,
+    fn: async () => {
+      const ch = await Session.create({
+        title: "Feishu Chat",
+        endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-holos" }),
+      })
+      channelID = ch.id
+      const ho = await Session.create({
+        title: "Holos Contact",
+        endpoint: SessionEndpoint.holos("agent-7"),
+      })
+      holosID = ho.id
+    },
+  })
+
+  await Instance.provide({
+    scope,
+    fn: async () => {
+      const app = Server.App()
+      const res = await app.request(`/session/index?directory=${encodeURIComponent(scope.directory)}`)
+      const body = await res.json()
+
+      const channelItem = body.items.find((s: any) => s.id === channelID!)
+      expect(channelItem).toBeDefined()
+      expect(channelItem.endpointKind).toBe("channel")
+
+      const holosItem = body.items.find((s: any) => s.id === holosID!)
+      expect(holosItem).toBeDefined()
+      expect(holosItem.endpointKind).toBe("holos")
+
+      await Session.remove(channelID!)
+      await Session.remove(holosID!)
+    },
   })
 })

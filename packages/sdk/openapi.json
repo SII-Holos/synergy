@@ -12437,6 +12437,10 @@
           },
           "parentID": {
             "type": "string"
+          },
+          "endpointKind": {
+            "type": "string",
+            "enum": ["channel", "holos"]
           }
         },
         "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]

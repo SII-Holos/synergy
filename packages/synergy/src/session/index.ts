@@ -123,6 +123,7 @@ export namespace Session {
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
       parentID: session.parentID,
+      endpointKind: session.endpoint?.kind as "channel" | "holos" | undefined,
     }
   }
 

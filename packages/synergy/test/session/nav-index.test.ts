@@ -6,6 +6,7 @@ import { Log } from "../../src/util/log"
 import { Instance } from "../../src/scope/instance"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
+import { SessionEndpoint } from "../../src/session/endpoint"
 import { Identifier } from "../../src/id/id"
 
 Log.init({ print: false })
@@ -314,5 +315,46 @@ describe("SessionNav.rebuildAllNavIndexes", () => {
       },
     })
     // Can't easily clean up in the right scope context, skip explicit cleanup
+  })
+})
+
+test("sets endpointKind on entries from session endpoint info", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
+
+  await Instance.provide({
+    scope,
+    fn: async () => {
+      const channelSession = await Session.create({
+        title: "Channel DM",
+        endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "acc", chatId: "chat-1" }),
+      })
+      const holosSession = await Session.create({
+        title: "Holos Friend",
+        endpoint: SessionEndpoint.holos("agent-42"),
+      })
+      const plainSession = await Session.create({ title: "Plain Project" })
+
+      const index = await SessionNav.buildNavIndex(scope.id)
+
+      const channelEntry = index.entries.find((e) => e.id === channelSession.id)
+      expect(channelEntry).toBeDefined()
+      expect(channelEntry!.endpointKind).toBe("channel")
+      expect(channelEntry!.category).toBe("channel")
+
+      const holosEntry = index.entries.find((e) => e.id === holosSession.id)
+      expect(holosEntry).toBeDefined()
+      expect(holosEntry!.endpointKind).toBe("holos")
+      expect(holosEntry!.category).toBe("channel")
+
+      const plainEntry = index.entries.find((e) => e.id === plainSession.id)
+      expect(plainEntry).toBeDefined()
+      expect(plainEntry!.endpointKind).toBeUndefined()
+      expect(plainEntry!.category).toBe("project")
+
+      await Session.remove(channelSession.id)
+      await Session.remove(holosSession.id)
+      await Session.remove(plainSession.id)
+    },
   })
 })

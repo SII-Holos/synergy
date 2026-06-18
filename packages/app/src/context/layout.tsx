@@ -57,6 +57,7 @@ export interface NavEntry {
   pinned: number
   archived: boolean
   parentID?: string
+  endpointKind?: "channel" | "holos"
 }
 
 export interface NavCursor {
@@ -74,15 +75,15 @@ export interface ScopeNavEntry {
   icon?: { url?: string; color?: string }
 }
 
-const ROOT_NAV_SECTION_LIMIT = 50
+const ROOT_NAV_SECTION_LIMIT = 10
 const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
 type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
 type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
 function emptyNavList(): NavListState {
   return { items: [], nextCursor: null, total: 0 }
 }
-const NAV_FIRST_PAGE_LIMIT = 50
-const RECENT_LIMIT = 20
+const NAV_FIRST_PAGE_LIMIT = 10
+const RECENT_LIMIT = 10
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",

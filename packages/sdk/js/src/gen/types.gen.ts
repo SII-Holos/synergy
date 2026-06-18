@@ -264,6 +264,7 @@ export type SessionNavEntry = {
   pinned: number
   archived: boolean
   parentID?: string
+  endpointKind?: "channel" | "holos"
 }
 
 export type NavCursor = {
