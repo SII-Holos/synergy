@@ -24,6 +24,7 @@ function footerText(dag: DagSummary): string {
 
 export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
   const [closing, setClosing] = createSignal(false)
+  let rootRef: HTMLDivElement | undefined
 
   const handleClose = () => {
     setClosing(true)
@@ -36,13 +37,24 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
   }
 
   onMount(() => {
-    const handler = (e: KeyboardEvent) => {
+    const keyHandler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         handleClose()
       }
     }
-    document.addEventListener("keydown", handler)
-    onCleanup(() => document.removeEventListener("keydown", handler))
+    document.addEventListener("keydown", keyHandler)
+
+    const clickHandler = (e: MouseEvent) => {
+      if (rootRef && !rootRef.contains(e.target as Node)) {
+        handleClose()
+      }
+    }
+    document.addEventListener("click", clickHandler)
+
+    onCleanup(() => {
+      document.removeEventListener("keydown", keyHandler)
+      document.removeEventListener("click", clickHandler)
+    })
   })
 
   const showFooter = () =>
@@ -69,7 +81,11 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
 
   return (
     <div
+      ref={(el) => {
+        rootRef = el
+      }}
       class={`session-progress-drawer flex flex-col rounded-2xl bg-surface-raised-stronger-non-alpha border border-border-base shadow-sm overflow-hidden ${props.class ?? ""}`}
+      aria-label="Current session progress"
       data-closing={closing() ? "" : undefined}
       onAnimationEnd={handleAnimationEnd}
       style={{
@@ -80,7 +96,9 @@ export function SessionProgressDrawer(props: SessionProgressDrawerProps) {
       {/* Header */}
       <div class="shrink-0 flex items-center justify-between px-4 h-11 gap-2">
         <div class="flex items-baseline gap-1.5 min-w-0">
-          <span class="text-xs text-text-weak shrink-0">Current work</span>
+          <span class="text-xs text-text-weak shrink-0">
+            {props.mode === "todo" ? "Current tasks" : "Current work"}
+          </span>
           <Show when={railText()}>
             <span class="text-xs text-text-subtle truncate">{railText()}</span>
           </Show>

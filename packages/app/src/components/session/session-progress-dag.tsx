@@ -1,4 +1,4 @@
-import { createMemo, createEffect, createSignal, Show, on } from "solid-js"
+import { createMemo, createEffect, createSignal, Show, on, onCleanup } from "solid-js"
 import { useSync } from "@/context/sync"
 import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
@@ -46,9 +46,23 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
     return first("failed")?.id ?? first("blocked")?.id ?? first("running")?.id ?? changed[0].id
   })
 
+  const [debouncedNodeId, setDebouncedNodeId] = createSignal<string | undefined>(undefined)
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined
+
+  createEffect(() => {
+    const id = changedNodeId()
+    if (id === undefined) return
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      setDebouncedNodeId(id)
+    }, 120)
+  })
+
+  onCleanup(() => clearTimeout(debounceTimer))
+
   const focusNodeId = createMemo(() => {
     if (userInteracted() || nodes().length === 0 || nodes().length > 200) return undefined
-    return changedNodeId()
+    return debouncedNodeId()
   })
 
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | undefined>(undefined)

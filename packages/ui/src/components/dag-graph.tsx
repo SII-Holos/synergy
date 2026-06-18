@@ -445,6 +445,15 @@ export function DagGraph(props: {
                   data-status={ln.node.status}
                   data-ready={readySet().has(ln.node.id)}
                   data-selected={props.selectedNodeId && props.selectedNodeId === ln.node.id ? "true" : undefined}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`DAG node: ${ln.node.content}`}
+                  onKeyDown={(e: KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      props.onSelectNode?.(ln.node)
+                    }
+                  }}
                   style={{
                     left: `${ln.x}px`,
                     top: `${ln.y}px`,

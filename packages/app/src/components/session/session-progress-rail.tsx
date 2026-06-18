@@ -1,6 +1,7 @@
 import { Show, createMemo } from "solid-js"
 import type { DagSummary, TodoSummary } from "./session-progress-summary"
 import { formatRailText, formatProgressText } from "./session-progress-summary"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 
 export interface SessionProgressRailProps {
   mode: "dag" | "todo" | "both"
@@ -54,21 +55,22 @@ export function SessionProgressRail(props: SessionProgressRailProps) {
     <Show when={text()}>
       <button
         type="button"
-        class={`flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-11-medium text-text-weak shadow-sm transition-all duration-150 hover:bg-surface-raised-stronger-hover active:scale-[0.98] ${props.class ?? ""}`}
+        class={`absolute -top-4 left-4 flex items-center gap-1.5 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-1 text-11-medium text-text-weak shadow-sm transition-all duration-150 hover:bg-surface-raised-stronger-hover active:scale-[0.98] ${props.class ?? ""}`}
         aria-label={ariaLabel()}
         aria-expanded={props.expanded}
         onClick={props.onClick}
       >
+        {/* Colored dot: no filled circle icon available in the project icon system */}
         <span
           class={`size-2 shrink-0 rounded-full ${dotColor()} ${shouldPulse() ? "motion-safe:animate-pulse" : ""}`}
         />
         <span class="truncate">{text()}</span>
-        <span
-          class="shrink-0 text-[8px] leading-none transition-transform duration-150"
+        <Icon
+          name="chevron-down"
+          size="small"
+          class="shrink-0 transition-transform duration-150"
           classList={{ "rotate-180": props.expanded }}
-        >
-          ▾
-        </span>
+        />
       </button>
     </Show>
   )
