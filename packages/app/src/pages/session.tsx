@@ -631,7 +631,7 @@ function SessionPageContent() {
   })
 
   const isWorking = createMemo(() => {
-    // Canonical source: Session.Info.working field from the server
+    // TODO: remove `as any` after SDK regenerate picks up WorkingInfo type
     const session = currentSession()
     if ((session as any)?.working) return true
     // Fallback for pre-update sessions (before server returns working field)
