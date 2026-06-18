@@ -90,7 +90,6 @@ export namespace Embedding {
       })
   }
 
-
   /**
    * Release the local embedding model to free memory.
    * No-op if the model was never loaded or was already disposed.
