@@ -5,7 +5,7 @@ import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
@@ -166,7 +166,7 @@ function PanelRow(props: { children: JSX.Element }) {
   return <div class="text-12-regular text-text-base">{props.children}</div>
 }
 
-function PanelIconRow(props: { icon: string; label: string; tone?: "base" | "danger" }) {
+function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "danger" }) {
   return (
     <div class="flex items-center gap-2 text-12-regular">
       <Icon
@@ -267,7 +267,7 @@ export function StatusBar() {
       <PanelSection title="Runtime">
         <PanelRow>
           {runtime()}
-          <Show when={status()?.type === "busy" && status()?.description}>
+          <Show when={status()?.type === "busy" && (status() as Extract<SessionStatus, { type: "busy" }>)?.description}>
             {(desc) => <span class="text-text-weaker"> · {desc()}</span>}
           </Show>
         </PanelRow>

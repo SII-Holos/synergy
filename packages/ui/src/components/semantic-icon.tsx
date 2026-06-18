@@ -35,5 +35,5 @@ export const SemanticIconToken = {
 export type SemanticIconTokenName = keyof typeof SemanticIconToken
 
 export function getSemanticIcon(token: SemanticIconTokenName): IconName {
-  return SemanticIconToken[token]
+  return SemanticIconToken[token] as IconName
 }

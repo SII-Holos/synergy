@@ -4,7 +4,7 @@ import type { Message } from "@ericsanchezok/synergy-sdk"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { useData } from "@ericsanchezok/synergy-ui/context"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ConversationViewport } from "./conversation-viewport"
 import {
@@ -70,7 +70,7 @@ function SenderAvatar(props: { sender: HolosSender; contactName: string; myName:
   )
 }
 
-function HeaderPill(props: { icon: "message-square" | "sparkles" | string; label: string }) {
+function HeaderPill(props: { icon: IconName | "message-square" | "sparkles"; label: string }) {
   return (
     <span class="inline-flex items-center gap-1.5 h-7 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak whitespace-nowrap">
       <Icon name={props.icon} size="small" />
@@ -130,7 +130,7 @@ function HolosConversationHeader(props: {
   )
 }
 
-function HolosContextButton(props: { icon: "message-square" | string; label: string; onClick: () => void }) {
+function HolosContextButton(props: { icon: IconName | "message-square"; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
