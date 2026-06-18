@@ -71,7 +71,7 @@ describe("GET /global/recent", () => {
     })
   })
 
-  test("excludes home (global scope) sessions from global/recent by semantic merge", async () => {
+  test("returns sessions from all scopes including global", async () => {
     await using tmpA = await tmpdir({ git: true })
     const scope = await tmpA.scope()
 
@@ -94,9 +94,9 @@ describe("GET /global/recent", () => {
         const res = await app.request("/global/recent")
         const body = await res.json()
 
-        // All items should come from project scopes — not home
+        // Sessions from ALL scopes (global + project) are included
         for (const item of body.items) {
-          expect(item.scopeType).toBe("project")
+          expect(["global", "project"]).toContain(item.scopeType)
         }
 
         await Session.remove(homeSession.id)

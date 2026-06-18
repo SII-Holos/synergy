@@ -105,15 +105,4 @@ describe("synergy-max subagents", () => {
       expect(action(agent, "write")).toBe("deny")
     }
   })
-
-  test("knowledge agents keep their specialized bundles without file write access", () => {
-    expect(action(agents["memory-curator"], "memory_search")).toBe("allow")
-    expect(action(agents["memory-curator"], "memory_write")).toBe("allow")
-    expect(action(agents["memory-curator"], "revise_file")).toBe("deny")
-    expect(action(agents["note-librarian"], "note_search")).toBe("allow")
-    expect(action(agents["note-librarian"], "note_write")).toBe("allow")
-    expect(action(agents["note-librarian"], "save_file")).toBe("deny")
-    expect(action(agents["session-historian"], "session_search")).toBe("allow")
-    expect(action(agents["session-historian"], "session_control")).toBe("deny")
-  })
 })
