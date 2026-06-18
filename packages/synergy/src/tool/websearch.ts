@@ -2,7 +2,6 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import DESCRIPTION from "./websearch.txt"
-import { HolosRequest } from "@/holos/request"
 
 interface SearXNGResult {
   title: string
@@ -65,17 +64,11 @@ export const WebSearchTool = Tool.define("websearch", {
 
     const url = `${Flag.SYNERGY_SEARXNG_URL}/search?${searchParams}`
 
-    const response = await HolosRequest.fetch(
-      url,
-      {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-        },
-        signal: AbortSignal.any([controller.signal, ctx.abort]),
-      },
-      { capability: "websearch" },
-    ).catch((error) => {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.any([controller.signal, ctx.abort]),
+    }).catch((error) => {
       clearTimeout(timeoutId)
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error("Search request timed out")
