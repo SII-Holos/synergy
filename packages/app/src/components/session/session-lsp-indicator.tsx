@@ -1,6 +1,8 @@
 import { createMemo, Show } from "solid-js"
 import { useSync } from "@/context/sync"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function SessionLspIndicator() {
   const sync = useSync()
@@ -23,14 +25,12 @@ export function SessionLspIndicator() {
     <Show when={lspStats().total > 0}>
       <Tooltip placement="top" value={tooltipContent()}>
         <div class="flex items-center gap-1 px-2 cursor-default select-none">
-          <div
-            classList={{
-              "size-1.5 rounded-full": true,
-              "bg-icon-critical-base": lspStats().hasError,
-              "bg-icon-success-base": !lspStats().hasError && lspStats().connected > 0,
-            }}
+          <Icon
+            name={getSemanticIcon("connection.lsp")}
+            size="small"
+            class={lspStats().hasError ? "text-icon-critical-base" : undefined}
           />
-          <span class="text-12-regular text-text-weak">{lspStats().connected} LSP</span>
+          <span class="text-12-regular text-text-weak">{lspStats().connected}</span>
         </div>
       </Tooltip>
     </Show>

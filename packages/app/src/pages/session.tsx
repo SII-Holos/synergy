@@ -43,6 +43,7 @@ import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { getScopeLabel } from "@/utils/scope"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const handoff = {
   prompt: "",
@@ -915,7 +916,7 @@ function SessionPageContent() {
                       </div>
                     </div>
                     <div class="hidden md:flex items-center gap-1.5 text-11-medium text-text-subtle shrink-0">
-                      <Icon name="git-branch" size="small" />
+                      <Icon name={getSemanticIcon("orchestration.holos-branch")} size="small" />
                       <span>Holos branch</span>
                     </div>
                   </button>

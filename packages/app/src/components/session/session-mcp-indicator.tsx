@@ -3,6 +3,8 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useSync } from "@/context/sync"
 import { DialogSelectMcp } from "@/components/dialog"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function SessionMcpIndicator() {
   const sync = useSync()
@@ -20,14 +22,12 @@ export function SessionMcpIndicator() {
   return (
     <Show when={mcpStats().total > 0}>
       <Button variant="ghost" onClick={() => dialog.show(() => <DialogSelectMcp />)}>
-        <div
-          classList={{
-            "size-1.5 rounded-full": true,
-            "bg-icon-critical-base": mcpStats().failed,
-            "bg-icon-success-base": !mcpStats().failed && mcpStats().enabled > 0,
-          }}
+        <Icon
+          name={getSemanticIcon("connection.mcp")}
+          size="small"
+          class={mcpStats().failed ? "text-icon-critical-base" : undefined}
         />
-        <span class="text-12-regular text-text-weak">{mcpStats().enabled} MCP</span>
+        <span class="text-12-regular text-text-weak">{mcpStats().enabled}</span>
       </Button>
     </Show>
   )
