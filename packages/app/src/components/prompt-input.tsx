@@ -2325,36 +2325,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     placement="top-start"
                   >
                     {(close) => (
-                      <div class="p-1.5">
-                        <For each={PERMISSION_MODES}>
+                      <>
+                        <List
+                          class="p-1"
+                          items={PERMISSION_MODES}
+                          key={(mode) => mode.id}
+                          current={PERMISSION_MODES.find((m) => m.id === selectedControlProfile())}
+                          onSelect={(mode) => {
+                            if (!mode) return
+                            updateControlProfile(mode.id, close)
+                          }}
+                        >
                           {(mode) => (
-                            <button
-                              type="button"
-                              class="w-full flex items-start gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-surface-raised-base-hover transition-colors"
-                              classList={{ "bg-surface-base": selectedControlProfile() === mode.id }}
-                              onClick={() => updateControlProfile(mode.id, close)}
-                            >
-                              <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-2">
-                                  <Icon name={mode.icon} size="small" class="shrink-0 text-icon-base" />
-                                  <span class="text-13-medium text-text-base">{mode.label}</span>
-                                  <Show when={selectedControlProfile() === mode.id}>
-                                    <Icon name="check" size="small" class="ml-auto shrink-0 text-icon-success-base" />
-                                  </Show>
-                                </span>
-                                <span class="block mt-0.5 text-12-regular text-text-weak leading-snug">
-                                  {mode.description}
-                                </span>
-                              </span>
-                            </button>
+                            <div class="flex items-start gap-3 min-w-0">
+                              <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
+                              <div class="min-w-0 flex-1">
+                                <div class="text-13-medium text-text-base">{mode.label}</div>
+                                <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
+                              </div>
+                            </div>
                           )}
-                        </For>
+                        </List>
                         <Show when={working()}>
-                          <div class="mt-1 px-2.5 pb-1 text-11-regular text-text-warning">
+                          <div class="px-3 pb-2 text-11-regular text-text-warning">
                             Stop the session before changing permission mode.
                           </div>
                         </Show>
-                      </div>
+                      </>
                     )}
                   </ToolbarSelectorPopover>
                 </Match>
