@@ -101,12 +101,23 @@ function extractAbsolutePaths(command: string): string[] {
   }
   return paths
 }
-
 function pathFromHashlinePatch(input: unknown): string | undefined {
   if (typeof input !== "string") return undefined
   const header = input.replace(/^\s+/, "").split("\n", 1)[0]?.trimEnd()
-  const match = header?.match(/^\[([^#\]\n]+)#[0-9A-F]{4}\]$/)
+  const match = header?.match(/^\[([^#\]\n]+)#[0-9A-Fa-f]{4}\]$/)
   return match?.[1]
+}
+
+function allPathsFromMultiSectionPatch(input: unknown): string[] {
+  if (typeof input !== "string") return []
+  const headerPattern = /^\[([^#\]\n]+)#[0-9A-Fa-f]{4}\]$/gm
+  const paths: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = headerPattern.exec(input)) !== null) {
+    const p = m[1]
+    if (p && !paths.includes(p)) paths.push(p)
+  }
+  return paths
 }
 
 function uniqueCapability(caps: Capability[], cap: Capability) {
@@ -225,10 +236,18 @@ export namespace EnforcementGate {
 
       // File write operations
       if (toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file") {
-        const filePath =
-          toolName === "revise_file" ? pathFromHashlinePatch(args.input) : (args.filePath ?? args.path ?? "")
-        if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
+        if (toolName === "revise_file") {
+          const multiPaths = allPathsFromMultiSectionPatch(args.input)
+          const paths =
+            multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
+          for (const p of paths) {
+            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
+          }
+        } else {
+          const filePath = args.filePath ?? args.path ?? ""
+          if (filePath) {
+            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
+          }
         }
         return { capabilities: caps }
       }

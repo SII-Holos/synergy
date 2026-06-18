@@ -206,7 +206,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       blocks.push(`${warning ? `${warning}\n` : ""}${outputMode === "files" ? body : body}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
-      recordSeenSessionLines(ctx.sessionID, pathLabel, lines)
+      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
       tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }

@@ -2,9 +2,8 @@ import * as fs from "fs"
 import * as path from "path"
 import { FileTime } from "../file/time"
 import { Instance } from "../scope/instance"
-import { formatHashline, formatHashlineBlock } from "../hashline/format"
+import { formatHashlineHeader, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
-import { recordSeenRanges, SessionSeenStore } from "../hashline/seen"
 import { normalizeContent, splitContentLines } from "../hashline/tag"
 
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
@@ -99,7 +98,7 @@ export function markFileRead(sessionID: string, filePath: string): void {
 
 export function hashlineHeaderFor(sessionID: string, filePath: string, content: string): string {
   const tag = recordHashlineSnapshot(sessionID, filePath, content)
-  return formatHashline(displayPath(filePath), tag)
+  return formatHashlineHeader(displayPath(filePath), tag)
 }
 
 export function normalizeLineLimit(limit: number | undefined, fallback = DEFAULT_VIEW_LINES): number {
@@ -148,7 +147,12 @@ export function diffStats(diff: string): { additions: number; deletions: number 
   return { additions, deletions }
 }
 
-export function recordSeenSessionLines(sessionID: string, displayPath: string, lines: number[]): void {
+/**
+ * Record that lines were displayed to the agent, keyed by the snapshot tag.
+ * The Patcher's seen-lines check reads from the snapshot store (by hash),
+ * not from the old parallel SeenStore.
+ */
+export function recordSeenSessionLines(sessionID: string, filePath: string, lines: number[], tag: string): void {
   if (lines.length === 0) return
-  recordSeenRanges(SessionSeenStore.get(sessionID), displayPath, lines)
+  SessionHashlineStore.get(sessionID).recordSeenLines(filePath, tag, lines)
 }
