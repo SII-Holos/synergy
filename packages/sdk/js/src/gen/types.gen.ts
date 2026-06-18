@@ -2188,6 +2188,21 @@ export type SessionCortexDelegation = {
   error?: string
 }
 
+export type SessionWorkingInfo =
+  | {
+      status: "busy"
+      description?: string
+    }
+  | {
+      status: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      status: "recovering"
+    }
+
 export type SessionWorkspace = {
   type: string
   path: string
@@ -2234,6 +2249,7 @@ export type Session = {
     diff?: string
   }
   cortex?: SessionCortexDelegation
+  working?: SessionWorkingInfo
   workspace?: SessionWorkspace
 }
 
@@ -2249,6 +2265,10 @@ export type SessionStatus =
     }
   | {
       type: "busy"
+      description?: string
+    }
+  | {
+      type: "recovering"
       description?: string
     }
 

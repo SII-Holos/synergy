@@ -84,10 +84,6 @@ function AssistantMessageItem(props: {
   const filteredParts = createMemo(() => {
     let parts = msgParts()
 
-    if (props.hideReasoning) {
-      parts = parts.filter((part) => part?.type !== "reasoning")
-    }
-
     if (!props.hideResponsePart) return parts
 
     const responsePartId = props.responsePartId
@@ -328,7 +324,17 @@ export function SessionTurn(
   })
 
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
-  const working = createMemo(() => status().type !== "idle" && isLastUserMessage())
+  const working = createMemo(() => {
+    if (!isLastUserMessage()) return false
+    // Canonical truth: the last assistant message is incomplete
+    const last = lastAssistantMessage()
+    if (last?.time.completed == null) return true
+    // Runtime overlay — for the brief window where a new turn has started
+    // but the assistant message hasn't been created in the store yet
+    const s = data.store.session_status[props.sessionID]
+    if (s && s.type !== "idle") return true
+    return false
+  })
   const statusDescription = createMemo(() => {
     const s = status()
     if (s.type === "busy") return s.description
@@ -653,7 +659,7 @@ export function SessionTurn(
                               message={assistantMessage}
                               responsePartId={responsePartId()}
                               hideResponsePart={hideResponsePart()}
-                              hideReasoning={!working()}
+                              hideReasoning={false}
                             />
                           )}
                         </For>

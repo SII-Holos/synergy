@@ -649,6 +649,7 @@ function createGlobalSync() {
         setStore("dag", (event as any).properties.sessionID, reconcile((event as any).properties.nodes, { key: "id" }))
         break
       case "session.status": {
+        // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
@@ -925,82 +926,15 @@ function createGlobalSync() {
   })
   onCleanup(unsub)
 
-  // Track sessions that were busy at disconnect time so we can reconcile
-  // their parts on reconnect — WS events during disconnect are lost.
-  const disconnectedBusy = new Map<string, Set<string>>()
-
-  let wasConnected = false
   createEffect(() => {
     const isConnected = globalSDK.connected()
 
-    if (!isConnected && wasConnected) {
-      for (const [directory, [store]] of Object.entries(children)) {
-        const busyIds = new Set<string>()
-        for (const s of store.session) {
-          const status = store.session_status[s.id]
-          if (status?.type === "busy" || status?.type === "retry") busyIds.add(s.id)
-        }
-        if (busyIds.size > 0) disconnectedBusy.set(directory, busyIds)
-      }
-    }
-
-    if (isConnected && !wasConnected && globalStore.ready) {
+    if (isConnected && globalStore.ready) {
       for (const directory of Object.keys(children)) {
-        // Full resync of volatile state to recover from lost WS events.
         resyncInstance(directory).catch(() => {})
-
-        // Additionally reconcile message parts for sessions that were busy
-        // at disconnect time — resyncInstance doesn't cover message/part data.
-        const [store, setStore] = children[directory]
-        const busyIds = disconnectedBusy.get(directory)
-        disconnectedBusy.delete(directory)
-        if (!busyIds || busyIds.size === 0) continue
-
-        // resyncInstance already fetched session_status into the store.
-        // Merge sessions that were busy at disconnect + sessions busy now.
-        const toReconcile = new Set(busyIds)
-        for (const [id, status] of Object.entries(store.session_status)) {
-          if (status?.type === "busy" || status?.type === "retry") toReconcile.add(id)
-        }
-        if (toReconcile.size === 0) continue
-
-        const scopeSdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
-        for (const sessionID of toReconcile) {
-          scopeSdk.session
-            .messages({ sessionID, limit: 2 })
-            .then((result) => {
-              const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-              const latest = items
-                .filter((x) => x.info.role === "assistant")
-                .sort((a, b) => b.info.id.localeCompare(a.info.id))[0]
-              if (!latest) return
-              batch(() => {
-                setStore(
-                  "message",
-                  sessionID,
-                  produce((draft) => {
-                    const idx = draft.findIndex((m) => m.id === latest.info.id)
-                    if (idx === -1) draft.push(latest.info)
-                    else draft[idx] = latest.info
-                  }),
-                )
-                setStore(
-                  "part",
-                  latest.info.id,
-                  reconcile(
-                    latest.parts.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
-              })
-            })
-            .catch(() => {})
-        }
       }
       loadGlobalAgenda()
     }
-
-    wasConnected = isConnected
   })
 
   async function bootstrap() {
