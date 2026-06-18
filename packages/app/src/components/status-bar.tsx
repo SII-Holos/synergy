@@ -2,11 +2,15 @@ import { createMemo, createSignal, Show, type JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
-import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { useGlobalSync } from "@/context/global-sync"
+import { useSync } from "@/context/sync"
+import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
@@ -40,22 +44,6 @@ function holosTone(holos: ReturnType<typeof useHolos>) {
   return "muted" as const
 }
 
-function HolosStatusIndicator() {
-  const holos = useHolos()
-  const label = createMemo(() => holosLabel(holos))
-  const dot = createMemo(() => holosTone(holos))
-
-  return (
-    <div
-      class="flex items-center gap-2 h-7 px-2.5 rounded-full transition-colors hover:bg-surface-raised-base-hover shrink-0"
-      title={label()}
-    >
-      <div classList={statusDotClass(dot())} />
-      <span class="text-12-medium text-text-base">Holos</span>
-    </div>
-  )
-}
-
 function decodeDirectory(value: string | undefined) {
   if (!value) return undefined
   try {
@@ -70,19 +58,6 @@ function workspaceField(session: Session | undefined, key: string) {
   return typeof value === "string" ? value : undefined
 }
 
-function shortPath(path: string | undefined, root: string | undefined) {
-  if (!path) return "—"
-  if (root && path === root) return "main checkout"
-  if (root && path.startsWith(root)) return path.slice(root.length + 1)
-  return path.replace(/^\/Users\/[^/]+\//, "~/")
-}
-function endpointLabel(session: Session | undefined) {
-  const endpoint = session?.endpoint
-  if (!endpoint) return "Web"
-  if (endpoint.kind === "holos") return "Holos"
-  return endpoint.channel.type
-}
-
 function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
   if (waiting) return "waiting"
   if (!status || status.type === "idle") return "idle"
@@ -91,60 +66,127 @@ function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
   return "idle"
 }
 
-function runtimeTone(_status: SessionStatus | undefined, waiting: boolean): "base" | "danger" {
-  if (waiting) return "danger"
-  return "base"
-}
-
-function DetailRow(props: { label: string; value: string | undefined }) {
-  return (
-    <div class="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-12-regular">
-      <div class="text-text-weaker">{props.label}</div>
-      <div class="text-text-base break-all" title={props.value || undefined}>
-        {props.value || "—"}
-      </div>
-    </div>
-  )
-}
-
-function DetailGroup(props: { title: string; children: JSX.Element }) {
-  return (
-    <div class="space-y-1.5 min-w-0">
-      <div class="text-12-medium text-text-weak">{props.title}</div>
-      {props.children}
-    </div>
-  )
-}
-
-function StatusPill(props: { icon?: IconName; label: string; tone?: "base" | "danger" | "active"; class?: string }) {
-  return (
-    <div
-      classList={{
-        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-12-medium whitespace-nowrap transition-colors shrink-0": true,
-        [props.class || ""]: !!props.class,
-        "bg-surface-raised-base text-text-base hover:bg-surface-raised-base-hover":
-          !props.tone || props.tone === "base" || props.tone === "active",
-        "bg-surface-critical-subtle text-text-critical-base hover:bg-surface-critical-base": props.tone === "danger",
-      }}
-      title={props.label}
-    >
-      <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" class="text-current" />}</Show>
-      <span>{props.label}</span>
-    </div>
-  )
-}
-
 function serverStatusLabel(healthy: boolean | undefined) {
   if (healthy === true) return "active"
   if (healthy === false) return "unavailable"
   return "unknown"
 }
 
+function iconButtonClass(tone?: "base" | "danger" | "success") {
+  return {
+    "relative size-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-surface-raised-base-hover": true,
+    "text-icon-base": !tone || tone === "base",
+    "text-icon-critical-base": tone === "danger",
+    "text-icon-success-base": tone === "success",
+  }
+}
+
+// ─── Holos icon button ────────────────────────────────────────────
+
+function HolosIconButton(props: { onClick: () => void }) {
+  const holos = useHolos()
+  const label = createMemo(() => holosLabel(holos))
+  const dot = createMemo(() => holosTone(holos))
+
+  return (
+    <Tooltip placement="top" value={label()}>
+      <button type="button" classList={iconButtonClass()} onClick={props.onClick}>
+        <Icon name={getSemanticIcon("connection.holos")} size="small" />
+        <div
+          classList={{
+            ...statusDotClass(dot()),
+            "absolute bottom-0 right-0": true,
+            "shadow-[0_0_0_1px_var(--color-surface-raised-base)]": true,
+          }}
+        />
+      </button>
+    </Tooltip>
+  )
+}
+
+// ─── Workspace icon button ────────────────────────────────────────
+
+function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string; onClick: () => void }) {
+  const icon = () => getSemanticIcon(props.isWorktree ? "workspace.worktree" : "workspace.main")
+  const tooltip = () => (props.isWorktree ? `Worktree: ${props.workspaceName}` : "Main checkout")
+
+  return (
+    <Tooltip placement="top" value={tooltip()}>
+      <button type="button" classList={iconButtonClass(props.isWorktree ? "success" : "base")} onClick={props.onClick}>
+        <Icon name={icon()} size="small" />
+      </button>
+    </Tooltip>
+  )
+}
+
+// ─── Branch icon button ───────────────────────────────────────────
+
+function BranchIconButton(props: { branch: string; onClick: () => void }) {
+  return (
+    <Tooltip placement="top" value={`Branch: ${props.branch}`}>
+      <button type="button" classList={iconButtonClass()} onClick={props.onClick}>
+        <Icon name={getSemanticIcon("workspace.branch")} size="small" />
+      </button>
+    </Tooltip>
+  )
+}
+
+// ─── Runtime icon button ──────────────────────────────────────────
+
+function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean; onClick: () => void }) {
+  const icon = () => {
+    if (props.waiting) return getSemanticIcon("session.waiting")
+    if (props.status?.type === "busy") return getSemanticIcon("session.running")
+    return getSemanticIcon("session.idle")
+  }
+  const tooltip = () => `Runtime: ${runtimeLabel(props.status, props.waiting)}`
+  const tone = () => (props.waiting ? ("danger" as const) : ("base" as const))
+
+  return (
+    <Tooltip placement="top" value={tooltip()}>
+      <button type="button" classList={iconButtonClass(tone())} onClick={props.onClick}>
+        <Icon name={icon()} size="small" />
+      </button>
+    </Tooltip>
+  )
+}
+
+// ─── Panel components ─────────────────────────────────────────────
+
+function PanelSection(props: { title: string; children: JSX.Element }) {
+  return (
+    <div class="mb-3 last:mb-0">
+      <div class="text-11-medium text-text-weaker uppercase tracking-wider mb-1">{props.title}</div>
+      <div class="space-y-0.5">{props.children}</div>
+    </div>
+  )
+}
+
+function PanelRow(props: { children: JSX.Element }) {
+  return <div class="text-12-regular text-text-base">{props.children}</div>
+}
+
+function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "danger" }) {
+  return (
+    <div class="flex items-center gap-2 text-12-regular">
+      <Icon
+        name={props.icon}
+        size="small"
+        class={props.tone === "danger" ? "text-icon-critical-base" : "text-icon-weak"}
+      />
+      <span class={props.tone === "danger" ? "text-text-critical-base" : "text-text-base"}>{props.label}</span>
+    </div>
+  )
+}
+
+// ─── StatusBar ────────────────────────────────────────────────────
+
 export function StatusBar() {
   const params = useParams()
   const globalSync = useGlobalSync()
   const holos = useHolos()
   const server = useServer()
+  const sync = useSync()
   const [expanded, setExpanded] = createSignal(false)
 
   const directory = createMemo(() => decodeDirectory(params.dir))
@@ -175,74 +217,126 @@ export function StatusBar() {
   const isWorktree = () => workspaceType() === "git_worktree"
   const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
   const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
-  const workspacePath = createMemo(() => session()?.workspace?.path || session()?.scope.directory || directory())
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
   const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
-  return (
-    <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
-      <Show when={params.dir}>
-        <div
-          class="grid w-[min(900px,calc(100vw-2rem))] transition-[grid-template-rows,opacity,transform] duration-300 ease-out"
-          classList={{ "-translate-y-1": !expanded(), "translate-y-0": expanded() }}
-          style={{ "grid-template-rows": expanded() ? "1fr" : "0fr", opacity: expanded() ? 1 : 0 }}
-        >
-          <div class="overflow-hidden min-h-0">
-            <div class="rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha/95 shadow-lg p-3 backdrop-blur-md">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-x-5 gap-y-3">
-                <DetailGroup title="Workspace">
-                  <DetailRow label="Scope" value={scopeLabel()} />
-                  <DetailRow label="Type" value={isWorktree() ? "git worktree" : "main"} />
-                  <DetailRow label="Name" value={workspaceName()} />
-                  <DetailRow label="Branch" value={branch()} />
-                </DetailGroup>
-                <DetailGroup title="Session">
-                  <DetailRow label="Runtime" value={runtime()} />
-                  <DetailRow label="Path" value={shortPath(workspacePath(), scope()?.worktree || directory())} />
-                  <DetailRow label="Parent" value={session()?.parentID ? "child session" : "root session"} />
-                  <DetailRow label="Endpoint" value={endpointLabel(session())} />
-                </DetailGroup>
-                <DetailGroup title="Connection">
-                  <DetailRow label="Holos" value={holosLabel(holos)} />
-                  <DetailRow label="Server" value={`${server.name} · ${serverStatusLabel(server.healthy())}`} />
-                  <DetailRow label="Config" value={activeConfig()} />
-                </DetailGroup>
-              </div>
-            </div>
-          </div>
+  // Inline accessors for panel connection stats
+  const lspConnected = () => {
+    const lsp = sync.data.lsp ?? []
+    return lsp.filter((s) => s.status === "connected").length
+  }
+  const lspTotal = () => (sync.data.lsp ?? []).length
+  const mcpConnected = () => {
+    const mcp = sync.data.mcp ?? {}
+    return Object.entries(mcp).filter(([, s]) => s.status === "connected").length
+  }
+  const mcpFailed = () => {
+    const mcp = sync.data.mcp ?? {}
+    return Object.entries(mcp).filter(([, s]) => s.status === "failed").length
+  }
+  const mcpTotal = () => Object.keys(sync.data.mcp ?? {}).length
+  const cortexRunning = () =>
+    params.id ? sync.data.cortex.filter((t) => t.parentSessionID === params.id && t.status === "running").length : 0
+  const cortexCompleted = () =>
+    params.id
+      ? sync.data.cortex.filter(
+          (t) => t.parentSessionID === params.id && (t.status === "completed" || t.status === "error"),
+        ).length
+      : 0
+
+  const openPanel = () => setExpanded(true)
+
+  const panelContent = (
+    <div class="w-64">
+      <Show when={waiting()}>
+        <div class="rounded-xl bg-surface-critical-subtle p-2.5 mb-3">
+          <PanelIconRow icon={getSemanticIcon("session.waiting")} label="Permission required" tone="danger" />
         </div>
       </Show>
 
-      <div
-        class="flex flex-wrap items-center justify-center gap-2 min-w-0 max-w-full overflow-visible"
-        style={{ "max-width": "min(100%, 900px)" }}
-      >
-        <HolosStatusIndicator />
-        <Show when={params.dir}>
-          <button
-            type="button"
-            class="flex flex-wrap items-center justify-center gap-1.5 rounded-full px-1 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
-            onClick={() => setExpanded((value) => !value)}
-          >
-            <StatusPill
-              icon={isWorktree() ? "git-branch" : "home"}
-              label={isWorktree() ? `worktree · ${workspaceName()}` : "main"}
-              tone={isWorktree() ? "active" : "base"}
-            />
-            <Show when={branch()}>{(value) => <StatusPill icon="git-branch" label={value()} />}</Show>
-            <StatusPill label={runtime()} tone={runtimeTone(status(), waiting())} />
-            <Icon name={expanded() ? "chevron-down" : "chevron-up"} size="small" class="text-icon-weak mx-1 shrink-0" />
-          </button>
+      <PanelSection title="Workspace">
+        <PanelRow>{isWorktree() ? "Git worktree" : "Main checkout"}</PanelRow>
+        <PanelRow>{scopeLabel()}</PanelRow>
+        <Show when={isWorktree()}>
+          <PanelRow>{workspaceName()}</PanelRow>
         </Show>
-        <Show when={params.dir}>
-          <div class="flex items-center gap-0.5 shrink-0">
-            <SessionLspIndicator />
-            <SessionMcpIndicator />
-            <Show when={params.id}>
-              <SessionCortexIndicator sessionID={params.id!} />
+        <Show when={branch()}>{(b) => <PanelRow>{b()}</PanelRow>}</Show>
+      </PanelSection>
+
+      <PanelSection title="Runtime">
+        <PanelRow>
+          {runtime()}
+          <Show when={status()?.type === "busy" && (status() as Extract<SessionStatus, { type: "busy" }>)?.description}>
+            {(desc) => <span class="text-text-weaker"> · {desc()}</span>}
+          </Show>
+        </PanelRow>
+      </PanelSection>
+
+      <PanelSection title="Connections">
+        <PanelRow>Holos · {holosLabel(holos)}</PanelRow>
+        <Show when={lspTotal() > 0}>
+          <PanelRow>LSP · {lspConnected()} active</PanelRow>
+        </Show>
+        <Show when={mcpTotal() > 0}>
+          <PanelRow>
+            MCP · {mcpConnected()} connected
+            <Show when={mcpFailed() > 0}>
+              <span class="text-text-critical-base">, {mcpFailed()} unavailable</span>
             </Show>
-          </div>
+          </PanelRow>
+        </Show>
+        <Show when={cortexRunning() > 0 || cortexCompleted() > 0}>
+          <PanelRow>
+            Cortex · {cortexCompleted()} done
+            <Show when={cortexRunning() > 0}>
+              <span class="text-text-interactive-base"> · {cortexRunning()} running</span>
+            </Show>
+          </PanelRow>
+        </Show>
+        <PanelRow>
+          Server · {server.name} ({serverStatusLabel(server.healthy())})
+        </PanelRow>
+        <PanelRow>Config · {activeConfig()}</PanelRow>
+      </PanelSection>
+    </div>
+  )
+
+  return (
+    <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
+      <div class="flex items-center gap-1.5 min-w-0 max-w-full overflow-visible">
+        <HolosIconButton onClick={openPanel} />
+
+        <Show when={params.dir}>
+          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} onClick={openPanel} />
+          <Show when={branch()}>{(b) => <BranchIconButton branch={b()} onClick={openPanel} />}</Show>
+          <RuntimeIconButton status={status()} waiting={waiting()} onClick={openPanel} />
+
+          <div class="w-px h-4 bg-border-weak" />
+
+          <SessionLspIndicator />
+          <SessionMcpIndicator />
+          <Show when={params.id}>
+            <SessionCortexIndicator sessionID={params.id!} />
+          </Show>
+
+          <div class="w-px h-4 bg-border-weak" />
+
+          <Popover
+            open={expanded()}
+            onOpenChange={setExpanded}
+            placement="top"
+            gutter={8}
+            trigger={
+              <Tooltip placement="top" value="Details">
+                <button type="button" classList={iconButtonClass()}>
+                  <Icon name="panel-bottom-open" size="small" />
+                </button>
+              </Tooltip>
+            }
+          >
+            {panelContent}
+          </Popover>
         </Show>
       </div>
     </div>

@@ -11,6 +11,7 @@ import { useCodeComponent } from "../context/code"
 import { createAutoScroll } from "../hooks"
 import { BasicTool } from "./basic-tool"
 import { Icon } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiagramRenderer } from "./diagram"
@@ -840,7 +841,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
           subtitle: firstReady() || "",
@@ -874,7 +875,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
           subtitle: "updated",
@@ -908,7 +909,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "Read DAG",
           args: ratio() ? [ratio()] : [],

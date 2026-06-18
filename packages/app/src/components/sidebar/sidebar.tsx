@@ -7,6 +7,7 @@ import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { assetPath } from "@/utils/proxy"
@@ -46,21 +47,27 @@ function resolveSessionVisualState(store: SessionStoreSlice, entry: NavEntry): S
   const childTasksRunning = store.cortex.some((task) => task.parentSessionID === entry.id && task.status === "running")
   const fullSession = store.session.find((session) => session.id === entry.id)
 
-  if (running || childTasksRunning) return { icon: "rotate-cw", label: "Running session", tone: "active", pulse: true }
-  if (waiting) return { icon: "shield-alert", label: "Waiting for you", tone: "waiting", pulse: true }
+  if (running || childTasksRunning)
+    return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
+  if (waiting)
+    return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
   if (fullSession?.workspace?.type === "git_worktree")
-    return { icon: "git-branch", label: "Worktree session", tone: "worktree" }
-  if (entry.parentID) return { icon: "corner-down-left", label: "Child session", tone: "muted" }
-  if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
-  if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
-  return { icon: "file-text", label: "Session", tone: "default" }
+    return { icon: getSemanticIcon("workspace.worktree"), label: "Worktree session", tone: "worktree" }
+  if (entry.parentID) return { icon: getSemanticIcon("session.child"), label: "Child session", tone: "muted" }
+  if (entry.category === "background")
+    return { icon: getSemanticIcon("session.background"), label: "Background session", tone: "muted" }
+  if (entry.category === "channel")
+    return { icon: getSemanticIcon("session.channel"), label: "Channel session", tone: "muted" }
+  return { icon: getSemanticIcon("session.default"), label: "Session", tone: "default" }
 }
 
 function resolveGlobalSessionIcon(entry: NavEntry): SessionVisualState {
-  if (entry.category === "background") return { icon: "calendar-days", label: "Background session", tone: "muted" }
-  if (entry.category === "channel") return { icon: "message-circle", label: "Channel session", tone: "muted" }
+  if (entry.category === "background")
+    return { icon: getSemanticIcon("session.background"), label: "Background session", tone: "muted" }
+  if (entry.category === "channel")
+    return { icon: getSemanticIcon("session.channel"), label: "Channel session", tone: "muted" }
   if (entry.category === "home") return { icon: "home", label: "Home session", tone: "default" }
-  return { icon: "file-text", label: "Session", tone: "default" }
+  return { icon: getSemanticIcon("session.default"), label: "Session", tone: "default" }
 }
 
 export function Sidebar(props: SidebarProps) {

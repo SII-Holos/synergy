@@ -4,7 +4,8 @@ import type { Message } from "@ericsanchezok/synergy-sdk"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { useData } from "@ericsanchezok/synergy-ui/context"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ConversationViewport } from "./conversation-viewport"
 import {
   type HolosBubbleGroup,
@@ -69,7 +70,7 @@ function SenderAvatar(props: { sender: HolosSender; contactName: string; myName:
   )
 }
 
-function HeaderPill(props: { icon: "message-square" | "git-branch" | "sparkles"; label: string }) {
+function HeaderPill(props: { icon: IconName | "message-square" | "sparkles"; label: string }) {
   return (
     <span class="inline-flex items-center gap-1.5 h-7 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak whitespace-nowrap">
       <Icon name={props.icon} size="small" />
@@ -100,7 +101,10 @@ function HolosConversationHeader(props: {
           <span class="text-13-medium text-text-strong truncate max-w-40 md:max-w-none">{props.contactName}</span>
           <HeaderPill icon="message-square" label="Holos conversation" />
           <Show when={props.branchCount > 0}>
-            <HeaderPill icon="git-branch" label={`${props.branchCount} branch${props.branchCount === 1 ? "" : "es"}`} />
+            <HeaderPill
+              icon={getSemanticIcon("orchestration.holos-branch")}
+              label={`${props.branchCount} branch${props.branchCount === 1 ? "" : "es"}`}
+            />
           </Show>
           <span class="hidden md:inline text-11-medium text-text-subtle">
             {props.messageCount} message{props.messageCount === 1 ? "" : "s"}
@@ -126,7 +130,7 @@ function HolosConversationHeader(props: {
   )
 }
 
-function HolosContextButton(props: { icon: "git-branch" | "message-square"; label: string; onClick: () => void }) {
+function HolosContextButton(props: { icon: IconName | "message-square"; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -182,7 +186,7 @@ function HolosMessageMeta(props: {
         <Show when={props.branchSessionId}>
           {(branchSessionId) => (
             <HolosContextButton
-              icon="git-branch"
+              icon={getSemanticIcon("orchestration.holos-branch")}
               label="Open branch"
               onClick={() => props.onOpenBranch?.(branchSessionId(), props.message.id)}
             />
