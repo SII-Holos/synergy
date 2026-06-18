@@ -74,7 +74,7 @@ export const ConfigPathCommand = cmd({
   },
 })
 
-function FormatError(error: unknown): string {
+function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message
   }
@@ -175,7 +175,7 @@ async function importConfigFromURL(input: { url: string; probe: boolean; force: 
     prompts.outro("Done")
   } catch (error) {
     spinner.stop("✗ Import failed")
-    UI.error(FormatError(error))
+    UI.error(formatError(error))
   }
 }
 
@@ -345,34 +345,52 @@ export const ConfigRerankCommand = cmd({
     prompts.outro("Done")
   },
 })
+
 // ── Provider env-var detection ──
 
-const FEATURED_PROVIDERS = ["anthropic", "openai", "google", "deepseek"] as const
+interface ProviderEntry {
+  name: string
+  envVars: string[]
+  defaultModel: string
+  order: number
+}
 
-const PROVIDER_ENV_MAP: Record<string, { name: string; envVars: string[]; defaultModel: string }> = {
-  anthropic: { name: "Anthropic", envVars: ["ANTHROPIC_API_KEY"], defaultModel: "claude-sonnet-4-5" },
-  openai: { name: "OpenAI", envVars: ["OPENAI_API_KEY"], defaultModel: "gpt-4o" },
-  google: { name: "Google", envVars: ["GEMINI_API_KEY", "GOOGLE_API_KEY"], defaultModel: "gemini-2.5-flash" },
-  deepseek: { name: "DeepSeek", envVars: ["DEEPSEEK_API_KEY"], defaultModel: "deepseek-chat" },
-  groq: { name: "Groq", envVars: ["GROQ_API_KEY"], defaultModel: "llama-4-scout-17b-16e-instruct" },
-  openrouter: { name: "OpenRouter", envVars: ["OPENROUTER_API_KEY"], defaultModel: "openai/gpt-4o" },
-  xai: { name: "xAI", envVars: ["XAI_API_KEY"], defaultModel: "grok-3" },
-  siliconflow: { name: "SiliconFlow", envVars: ["SILICONFLOW_API_KEY"], defaultModel: "Qwen/Qwen3-235B-A22B" },
-  mistral: { name: "Mistral", envVars: ["MISTRAL_API_KEY"], defaultModel: "mistral-large-latest" },
-  cerebras: { name: "Cerebras", envVars: ["CEREBRAS_API_KEY"], defaultModel: "llama-4-scout-17b-16e-instruct" },
+const PROVIDER_ENV_MAP: Record<string, ProviderEntry> = {
+  anthropic: { name: "Anthropic", envVars: ["ANTHROPIC_API_KEY"], defaultModel: "claude-sonnet-4-5", order: 1 },
+  openai: { name: "OpenAI", envVars: ["OPENAI_API_KEY"], defaultModel: "gpt-4o", order: 2 },
+  google: { name: "Google", envVars: ["GEMINI_API_KEY", "GOOGLE_API_KEY"], defaultModel: "gemini-2.5-flash", order: 3 },
+  deepseek: { name: "DeepSeek", envVars: ["DEEPSEEK_API_KEY"], defaultModel: "deepseek-chat", order: 4 },
+  groq: { name: "Groq", envVars: ["GROQ_API_KEY"], defaultModel: "llama-4-scout-17b-16e-instruct", order: 10 },
+  openrouter: { name: "OpenRouter", envVars: ["OPENROUTER_API_KEY"], defaultModel: "openai/gpt-4o", order: 11 },
+  xai: { name: "xAI", envVars: ["XAI_API_KEY"], defaultModel: "grok-3", order: 12 },
+  siliconflow: {
+    name: "SiliconFlow",
+    envVars: ["SILICONFLOW_API_KEY"],
+    defaultModel: "Qwen/Qwen3-235B-A22B",
+    order: 13,
+  },
+  mistral: { name: "Mistral", envVars: ["MISTRAL_API_KEY"], defaultModel: "mistral-large-latest", order: 14 },
+  cerebras: {
+    name: "Cerebras",
+    envVars: ["CEREBRAS_API_KEY"],
+    defaultModel: "llama-4-scout-17b-16e-instruct",
+    order: 15,
+  },
   deepinfra: {
     name: "DeepInfra",
     envVars: ["DEEPINFRA_API_KEY"],
     defaultModel: "meta-llama/Meta-Llama-3.3-70B-Instruct",
+    order: 16,
   },
-  perplexity: { name: "Perplexity", envVars: ["PERPLEXITY_API_KEY"], defaultModel: "sonar-pro" },
+  perplexity: { name: "Perplexity", envVars: ["PERPLEXITY_API_KEY"], defaultModel: "sonar-pro", order: 17 },
   togetherai: {
     name: "Together AI",
     envVars: ["TOGETHER_API_KEY"],
     defaultModel: "meta-llama/Meta-Llama-3.3-70B-Instruct-Turbo",
+    order: 18,
   },
-  cohere: { name: "Cohere", envVars: ["COHERE_API_KEY"], defaultModel: "command-r-plus" },
-  vercel: { name: "Vercel", envVars: ["AI_GATEWAY_API_KEY", "VERCEL_API_KEY"], defaultModel: "gpt-4o" },
+  cohere: { name: "Cohere", envVars: ["COHERE_API_KEY"], defaultModel: "command-r-plus", order: 19 },
+  vercel: { name: "Vercel", envVars: ["AI_GATEWAY_API_KEY", "VERCEL_API_KEY"], defaultModel: "gpt-4o", order: 20 },
 }
 
 interface DetectedProvider {
@@ -385,13 +403,8 @@ interface DetectedProvider {
 
 function detectProviders(): DetectedProvider[] {
   const results: DetectedProvider[] = []
-  const seenProviderIDs = new Set<string>()
 
-  // Featured providers first in order
-  for (const providerID of FEATURED_PROVIDERS) {
-    seenProviderIDs.add(providerID)
-    const info = PROVIDER_ENV_MAP[providerID]
-    if (!info) continue
+  for (const [providerID, info] of Object.entries(PROVIDER_ENV_MAP)) {
     const detected = info.envVars.some((v) => Boolean(process.env[v]))
     results.push({
       providerID,
@@ -402,24 +415,27 @@ function detectProviders(): DetectedProvider[] {
     })
   }
 
-  // Remaining providers sorted alphabetically
-  const remaining = Object.keys(PROVIDER_ENV_MAP)
-    .filter((id) => !seenProviderIDs.has(id))
-    .sort()
-
-  for (const providerID of remaining) {
-    const info = PROVIDER_ENV_MAP[providerID]
-    const detected = info.envVars.some((v) => Boolean(process.env[v]))
-    results.push({
-      providerID,
-      providerName: info.name,
-      envVars: info.envVars,
-      detected,
-      defaultModel: info.defaultModel,
-    })
-  }
+  results.sort((a, b) => {
+    const infoA = PROVIDER_ENV_MAP[a.providerID]
+    const infoB = PROVIDER_ENV_MAP[b.providerID]
+    return infoA.order - infoB.order || a.providerName.localeCompare(b.providerName)
+  })
 
   return results
+}
+
+// ── Config saver helper ──
+
+async function saveConfig(spinner: ReturnType<typeof prompts.spinner>, fn: () => Promise<void>): Promise<boolean> {
+  try {
+    await fn()
+    return true
+  } catch (error) {
+    spinner.stop("✗ Failed to save configuration")
+    UI.error(formatError(error))
+    prompts.outro("Setup failed")
+    return false
+  }
 }
 
 // ── Config Wizard ──
@@ -463,7 +479,25 @@ export async function runConfigWizard() {
     }
 
     if (action === "use-detected") {
-      return await useDetectedProviders(detectedEnv)
+      let selectedProvider: string
+      if (detectedEnv.length > 1) {
+        const choice = await prompts.select({
+          message: "Which provider should be the default model?",
+          options: detectedEnv.map((p) => ({
+            value: p.providerID,
+            label: p.providerName,
+            hint: p.defaultModel,
+          })),
+        })
+        if (prompts.isCancel(choice)) {
+          prompts.outro("Setup cancelled")
+          return false
+        }
+        selectedProvider = choice as string
+      } else {
+        selectedProvider = detectedEnv[0].providerID
+      }
+      return await useDetectedProviders(detectedEnv, selectedProvider)
     }
     if (action === "add-another") {
       return await manualProviderSelection()
@@ -480,10 +514,8 @@ export async function runConfigWizard() {
   }
 }
 
-async function useDetectedProviders(detectedEnv: DetectedProvider[]): Promise<boolean> {
-  // Pick first detected as default model
-  const primary = detectedEnv[0]
-
+async function useDetectedProviders(detectedEnv: DetectedProvider[], primaryProviderID: string): Promise<boolean> {
+  const primary = detectedEnv.find((p) => p.providerID === primaryProviderID)!
   const modelString = `${primary.providerID}/${primary.defaultModel}`
 
   UI.empty()
@@ -508,7 +540,7 @@ async function useDetectedProviders(detectedEnv: DetectedProvider[]): Promise<bo
   const spinner = prompts.spinner()
   spinner.start("Saving configuration...")
 
-  try {
+  return await saveConfig(spinner, async () => {
     // Save API keys for all detected providers
     for (const provider of detectedEnv) {
       const apiKey = provider.envVars.reduce<string | undefined>(
@@ -524,59 +556,31 @@ async function useDetectedProviders(detectedEnv: DetectedProvider[]): Promise<bo
     await Config.updateGlobal({ model: modelString } as Config.Info)
 
     spinner.stop("✓ Configuration saved")
-
     prompts.log.success(`Default model set to ${modelString}`)
     prompts.log.info(`Config file: ${ConfigSet.defaultFilePath()}`)
     prompts.outro("Done")
-    return true
-  } catch (error) {
-    spinner.stop("✗ Failed to save configuration")
-    UI.error(FormatError(error))
-    prompts.outro("Setup failed")
-    return false
-  }
+  })
 }
 
 async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
-  const allProviders = Object.entries(PROVIDER_ENV_MAP).sort(([, a], [, b]) => a.name.localeCompare(b.name))
-
-  const options = allProviders.map(([id, info]) => ({
-    value: id,
-    label: info.name,
-    hint: info.defaultModel,
+  const entries = Object.entries(PROVIDER_ENV_MAP).map(([id, info]) => ({ id, ...info }))
+  const featured = entries.filter((e) => e.order <= 4).sort((a, b) => a.order - b.order)
+  const rest = entries.filter((e) => e.order > 4).sort((a, b) => a.name.localeCompare(b.name))
+  const selectOptions = [...featured, ...rest].map((e) => ({
+    value: e.id,
+    label: featured.includes(e) ? `✦ ${e.name}` : e.name,
+    hint: e.defaultModel,
   }))
 
-  options.unshift(
-    ...FEATURED_PROVIDERS.map((id) => {
-      const info = PROVIDER_ENV_MAP[id]
-      const idx = options.findIndex((o) => o.value === id)
-      if (idx >= 1) {
-        options.splice(idx, 1)
-      }
-      // Remove from original position to re-add at top
-      return { value: id, label: `✦ ${info.name}`, hint: info.defaultModel }
-    }),
-  )
-
-  // Deduplicate: featured providers already moved to top
-  const seen = new Set<string>()
-  const uniqueOptions = options.filter((o) => {
-    if (seen.has(o.value)) return false
-    seen.add(o.value)
-    return true
-  })
+  const firstValue = entries.sort((a, b) => a.order - b.order)[0].id
 
   UI.empty()
   prompts.intro(selectedCount > 0 ? "Add Another Provider" : "Select a Provider")
 
   const providerID = await prompts.select({
     message: "Choose an AI provider:",
-    options: uniqueOptions.map((o) => ({
-      value: o.value,
-      label: o.label,
-      hint: o.hint,
-    })),
-    initialValue: FEATURED_PROVIDERS[0],
+    options: selectOptions,
+    initialValue: firstValue,
   })
   if (prompts.isCancel(providerID)) {
     prompts.outro("Setup cancelled")
@@ -610,7 +614,7 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
   const spinner = prompts.spinner()
   spinner.start("Saving configuration...")
 
-  try {
+  const saved = await saveConfig(spinner, async () => {
     if (apiKey) {
       await Auth.set(providerID as string, { type: "api", key: apiKey })
     }
@@ -625,30 +629,26 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
     }
 
     spinner.stop("✓ Provider configured")
-
     prompts.log.success(`${providerInfo.name} configured — default model: ${modelString}`)
     prompts.log.info(`Config file: ${ConfigSet.defaultFilePath()}`)
+  })
 
-    const addAnother = await prompts.confirm({
-      message: "Add another provider?",
-      initialValue: false,
-    })
-    if (prompts.isCancel(addAnother)) {
-      prompts.outro("Done")
-      return true
-    }
-    if (addAnother) {
-      return await manualProviderSelection(selectedCount + 1)
-    }
+  if (!saved) return false
 
+  const addAnother = await prompts.confirm({
+    message: "Add another provider?",
+    initialValue: false,
+  })
+  if (prompts.isCancel(addAnother)) {
     prompts.outro("Done")
     return true
-  } catch (error) {
-    spinner.stop("✗ Failed to save configuration")
-    UI.error(FormatError(error))
-    prompts.outro("Setup failed")
-    return false
   }
+  if (addAnother) {
+    return await manualProviderSelection(selectedCount + 1)
+  }
+
+  prompts.outro("Done")
+  return true
 }
 
 async function advancedConfig(): Promise<boolean> {
@@ -675,13 +675,14 @@ async function advancedConfig(): Promise<boolean> {
   }
 
   // Full interactive setup: walk through core fields
+  const allEntries = Object.entries(PROVIDER_ENV_MAP)
+    .map(([id, info]) => ({ id, ...info }))
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+
   const primary = await prompts.select({
     message: "Select primary AI provider:",
-    options: FEATURED_PROVIDERS.map((id) => {
-      const info = PROVIDER_ENV_MAP[id]
-      return { value: id, label: info.name, hint: info.defaultModel }
-    }),
-    initialValue: FEATURED_PROVIDERS[0],
+    options: allEntries.map((e) => ({ value: e.id, label: e.name, hint: e.defaultModel })),
+    initialValue: allEntries[0].id,
   })
   if (prompts.isCancel(primary)) {
     prompts.outro("Cancelled")
@@ -767,7 +768,7 @@ async function advancedConfig(): Promise<boolean> {
   const spinner = prompts.spinner()
   spinner.start("Saving configuration...")
 
-  try {
+  return await saveConfig(spinner, async () => {
     if (apiKey) {
       await Auth.set(primary as string, { type: "api", key: apiKey })
     }
@@ -776,13 +777,7 @@ async function advancedConfig(): Promise<boolean> {
     prompts.log.success("Advanced configuration saved")
     prompts.log.info(`Config file: ${ConfigSet.defaultFilePath()}`)
     prompts.outro("Done")
-    return true
-  } catch (error) {
-    spinner.stop("✗ Failed to save configuration")
-    UI.error(FormatError(error))
-    prompts.outro("Setup failed")
-    return false
-  }
+  })
 }
 
 export const ConfigWizardCommand = cmd({

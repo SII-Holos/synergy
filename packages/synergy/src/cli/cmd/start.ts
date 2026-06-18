@@ -5,6 +5,7 @@ import { withNetworkOptions } from "../network"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
+import * as prompts from "@clack/prompts"
 
 export const StartCommand = cmd({
   command: "start",
@@ -56,7 +57,14 @@ export const StartCommand = cmd({
       const { runConfigWizard } = await import("./config")
       const configured = await runConfigWizard()
       if (!configured) {
-        UI.println("Config setup was cancelled. Run 'synergy config' later to set one up.")
+        const exit = await prompts.confirm({
+          message: "No configuration was set. Start Synergy anyway? (It won't have an AI model yet.)",
+          initialValue: false,
+        })
+        if (prompts.isCancel(exit) || !exit) {
+          prompts.outro("Exiting. Run 'synergy config' later to set up.")
+          process.exit(0)
+        }
       }
     } else if (!configExists && !interactive) {
       UI.println(
