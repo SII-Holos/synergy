@@ -9,6 +9,7 @@ import { Session } from "../session"
 import type { Scope } from "../scope"
 import { Instance } from "../scope/instance"
 import { fn } from "../util/fn"
+import { Log } from "../util/log"
 
 export namespace Worktree {
   export const Owner = z.discriminatedUnion("type", [
@@ -676,5 +677,96 @@ export namespace Worktree {
       sessionID,
       "remove",
     )
+  }
+  const log = Log.create({ service: "worktree" })
+
+  export type CleanupAction = "keep" | "safe_to_remove" | "prompt"
+  export interface CleanupDecision {
+    action: CleanupAction
+    reason: string
+  }
+
+  export function cleanupState(info: Info): CleanupDecision {
+    if (!info.managed) return { action: "keep", reason: "external worktree, not managed by Synergy" }
+    if (info.isMain) return { action: "keep", reason: "main worktree" }
+    if (info.lifecycle === "active" && info.bindings && info.bindings.length > 0)
+      return { action: "keep", reason: "active with live bindings" }
+    if (info.lifecycle === "active" && activeLocks.has(info.path)) return { action: "keep", reason: "locked" }
+    if (info.dirty === true) return { action: "prompt", reason: "has uncommitted changes" }
+    if (info.lifecycle === "gc_candidate") return { action: "safe_to_remove", reason: "marked for garbage collection" }
+    if (info.stale === true && (!info.bindings || info.bindings.length === 0))
+      return { action: "safe_to_remove", reason: "stale with no bindings" }
+    return { action: "keep", reason: "in use or undetermined" }
+  }
+
+  async function unlockStale(directory: string, repoRoot: string) {
+    try {
+      const result = await $`git worktree unlock ${directory}`.quiet().nothrow().cwd(repoRoot)
+      return result.exitCode === 0
+    } catch {
+      return false
+    }
+  }
+
+  export async function collectGarbage(): Promise<{ removed: string[]; skipped: string[] }> {
+    const removed: string[] = []
+    const skipped: string[] = []
+    const { repoRoot } = ensureGitScope()
+    const items = await list()
+    log.info("starting gc scan", { count: items.length })
+
+    for (const item of items) {
+      try {
+        if (item.stale) {
+          await unlockStale(item.path, repoRoot)
+          log.info("unlocked stale worktree locks", { id: item.id, name: item.name })
+        }
+
+        const decision = cleanupState(item)
+        if (decision.action === "keep") {
+          log.info("gc keeping worktree", { id: item.id, name: item.name, reason: decision.reason })
+          continue
+        }
+
+        if (decision.action === "prompt") {
+          log.info("gc skipping worktree (prompt)", { id: item.id, name: item.name, reason: decision.reason })
+          skipped.push(item.id)
+          continue
+        }
+
+        if (decision.action === "safe_to_remove") {
+          log.info("gc removing worktree", { id: item.id, name: item.name, reason: decision.reason })
+          const dirty = await isDirty(item.path).catch(() => true)
+          if (dirty) {
+            log.warn("gc skipping worktree (unexpected dirty)", { id: item.id, name: item.name })
+            skipped.push(item.id)
+            continue
+          }
+          const op = await $`git worktree remove ${item.path}`.quiet().nothrow().cwd(repoRoot)
+          if (op.exitCode !== 0) {
+            log.warn("gc failed to remove worktree", { id: item.id, name: item.name, error: errorText(op) })
+            skipped.push(item.id)
+          } else {
+            if (item.managed) await removeRegistry(item.id, repoRoot)
+            removed.push(item.id)
+            log.info("gc removed worktree", { id: item.id, name: item.name })
+          }
+        }
+      } catch (error) {
+        log.warn("gc error for worktree", { id: item.id, name: item.name, error })
+        skipped.push(item.id)
+      }
+    }
+
+    log.info("gc scan complete", { removed: removed.length, skipped: skipped.length })
+    return { removed, skipped }
+  }
+
+  export async function markLifecycle(id: string, lifecycle: RegistryInfo["lifecycle"]) {
+    const { repoRoot } = ensureGitScope()
+    const current = await readJson(registryPath({ id }, repoRoot), RegistryInfo)
+    if (!current) return
+    const updated = RegistryInfo.parse({ ...current, lifecycle, updatedAt: Date.now() })
+    await writeRegistry(updated, repoRoot)
   }
 }

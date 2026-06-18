@@ -313,6 +313,8 @@ export namespace Cortex {
       notifyParentSession(task)
     }
 
+    void cleanupChildWorktree(task)
+
     setTimeout(() => {
       void (async () => {
         tasks.delete(taskID)
@@ -624,5 +626,34 @@ export namespace Cortex {
     }
     taskWaiters.clear()
     CortexConcurrency.reset()
+  }
+
+  async function cleanupChildWorktree(task: CortexTypes.Task) {
+    try {
+      const session = await Session.get(task.sessionID)
+      const workspace = session.workspace
+      if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
+      const state = await Worktree.status(task.sessionID)
+      if (!state.worktree || !state.worktree.managed) return
+      const owner = state.worktree.owner
+      if (owner?.type !== "session" || owner.sessionID !== task.sessionID) return
+      if (state.dirty) {
+        await Worktree.markLifecycle(state.worktree.id, "gc_candidate")
+        log.info("child worktree dirty, marked for gc", {
+          taskID: task.id,
+          worktreeID: state.worktree.id,
+          worktreeName: state.worktree.name,
+        })
+        return
+      }
+      await Worktree.remove({ sessionID: task.sessionID, target: state.worktree.id, force: false })
+      log.info("child worktree removed", {
+        taskID: task.id,
+        worktreeID: state.worktree.id,
+        worktreeName: state.worktree.name,
+      })
+    } catch (error) {
+      log.warn("child worktree cleanup failed", { taskID: task.id, error })
+    }
   }
 }
