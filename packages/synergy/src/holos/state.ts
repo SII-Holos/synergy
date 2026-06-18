@@ -1,6 +1,5 @@
 import z from "zod"
 import { Contact } from "./contact"
-import { HolosProfile } from "./profile"
 import { Presence } from "./presence"
 import { HolosReadiness } from "./readiness"
 
@@ -34,7 +33,7 @@ export namespace HolosState {
 
   export const Social = z
     .object({
-      profile: HolosProfile.Info.nullable(),
+      profile: z.object({ name: z.string(), bio: z.string(), initialized: z.boolean() }).nullable(),
       contacts: Contact.Info.array(),
       presence: z.record(z.string(), z.enum(["online", "offline", "unknown"])),
     })
@@ -52,7 +51,9 @@ export namespace HolosState {
   export async function get(): Promise<Info> {
     const [{ credential, status, readiness }, profile, contacts] = await Promise.all([
       HolosReadiness.snapshot(),
-      HolosProfile.get(),
+      new Promise<{ name: string; bio: string; initialized: boolean } | undefined>((r) =>
+        r({ name: "", bio: "", initialized: false }),
+      ),
       Contact.list(),
     ])
 

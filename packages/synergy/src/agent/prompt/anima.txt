@@ -24,7 +24,7 @@ Use the `since` parameter on list tools to focus on recent activity.
 - `session_search` — Search across sessions for specific topics.
 - `note_list` / `note_search` / `note_read` — Check recent note activity. Has anything important been captured? Is anything outdated?
 - `memory_search` / `memory_get` — Your long-term memories are auto-loaded, but search actively for specific knowledge to check if something is already recorded or needs updating.
-- `profile_get` — Review your own profile. Does it still reflect who you are?
+
 - `agenda_list` — See all existing scheduled tasks. What's active? What's pending? Are there stale items?
 - `agenda_logs` — Check execution history. Did anything fail? Do any items have consecutive errors?
 - `agora_search` — Browse recent Agora workspace threads. What's new? Any replies to your earlier posts?

@@ -13,7 +13,6 @@ import { embed, generateText, type ModelMessage } from "ai"
 import { mergeDeep } from "remeda"
 import z from "zod"
 import path from "path"
-import fs from "fs/promises"
 
 export namespace ConfigSetup {
   export interface ProviderInfo {
@@ -163,7 +162,7 @@ export namespace ConfigSetup {
     auth?: Record<string, StagedAuthChange>
   }
 
-  export type RequiredCoreField = "model" | "vision_model" | "embedding" | "rerank"
+  export type RequiredCoreField = "model" | "embedding" | "rerank"
 
   export type ValidationMode = "static" | "live" | "catalog" | "unsupported"
 
@@ -178,7 +177,7 @@ export namespace ConfigSetup {
 
   export interface RequiredCoreValidationResult {
     valid: boolean
-    fields: Record<RequiredCoreField, FieldValidationResult>
+    fields: Record<string, FieldValidationResult>
   }
 
   interface LiveProbeOptions {
@@ -721,7 +720,7 @@ export namespace ConfigSetup {
     }
   }
 
-  function summarizeValidation(fields: Record<RequiredCoreField, FieldValidationResult>): RequiredCoreValidationResult {
+  function summarizeValidation(fields: Record<string, FieldValidationResult>): RequiredCoreValidationResult {
     return {
       valid: Object.values(fields).every((field) => field.valid),
       fields,
@@ -1245,7 +1244,7 @@ export namespace ConfigSetup {
   export async function validateRequiredCore(config: SetupDraft): Promise<RequiredCoreValidationResult> {
     const { embedding, rerank } = extractEmbeddingRerank(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
-    const fields: Record<RequiredCoreField, FieldValidationResult> = {
+    const fields: Record<string, FieldValidationResult> = {
       model: config.model
         ? await verifyLanguageModel(config.model, { label: "Default model", importContext: context })
         : requiredMissing("Default model is required"),
@@ -1255,7 +1254,7 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: context,
           })
-        : requiredMissing("Vision model is required"),
+        : recommendedSkipped("No vision model configured — look_at will be disabled"),
       embedding: embedding
         ? await verifyIdentityModel(embedding, "embedding")
         : recommendedSkipped("No embedding configured — using local model"),
@@ -1283,7 +1282,7 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: context,
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? probeEmbeddingModel(embedding)
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
@@ -1318,7 +1317,7 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: { config },
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? verifyIdentityModel(embedding, "embedding")
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
@@ -1350,7 +1349,7 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: { config },
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? probeEmbeddingModel(embedding)
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),

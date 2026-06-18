@@ -57,7 +57,6 @@ export namespace ExperienceEncoder {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (!session?.scope) return { encoded: false, skipped: true }
     if (session.parentID) return { encoded: false, skipped: true }
-    if (SessionEndpoint.type(session.endpoint) === "genesis") return { encoded: false, skipped: true }
 
     const scope = session.scope as Scope
 
@@ -237,7 +236,6 @@ export namespace ExperienceEncoder {
   async function checkRewardWindow(sessionID: string) {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (session?.parentID) return
-    if (SessionEndpoint.type(session?.endpoint) === "genesis") return
 
     const config = await Config.get()
     const engram = (config as any).engram as

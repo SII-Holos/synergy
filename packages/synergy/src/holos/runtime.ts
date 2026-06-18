@@ -9,7 +9,6 @@ import { Log } from "@/util/log"
 import { Contact } from "./contact"
 import { Envelope } from "./envelope"
 import { HolosAuth } from "./auth"
-import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { Presence } from "./presence"
 
@@ -510,10 +509,10 @@ export class HolosProvider {
   }
 
   private async buildPeerProfile(): Promise<HolosProtocol.PeerProfile> {
-    const profile = await HolosProfile.get()
+    const osName = process.env.USER || process.env.USERNAME || "Synergy"
     return {
-      name: profile?.name ?? "Unknown",
-      bio: profile?.bio,
+      name: osName,
+      bio: undefined,
     }
   }
 }

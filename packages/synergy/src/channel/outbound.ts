@@ -8,7 +8,7 @@ import { Channel } from "."
 
 const log = Log.create({ service: "channel.outbound" })
 
-const INTERNAL_CHANNEL_TYPES = new Set(["app", "genesis"])
+const INTERNAL_CHANNEL_TYPES = new Set(["app"])
 
 export namespace ChannelOutbound {
   let unsubscribe: (() => void) | null = null

@@ -149,9 +149,8 @@ export namespace SessionInvoke {
     scopeID: string,
     sessionMessages: MessageV2.WithParts[],
     isTopSession: boolean,
-    isGenesis: boolean,
   ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
-    if (step === 1 && isTopSession && !isGenesis) {
+    if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.get()
       return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
@@ -440,7 +439,6 @@ export namespace SessionInvoke {
         // prompt assembly, cortex context, and memory recall (flashback) all
         // run concurrently to minimise time-to-first-token.
         const isTopSession = !session.parentID
-        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
         const [
           toolDefinitions,
@@ -465,7 +463,7 @@ export namespace SessionInvoke {
           buildCortexExecutionContext(sessionID),
           buildCortexReminder(sessionID),
           buildAgendaReminder(sessionID, scopeID),
-          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
         ])
 
         // Layered system prompt assembly: stable → semi-stable → dynamic

@@ -5,7 +5,6 @@ import { SessionInteraction } from "../../src/session/interaction"
 import { PermissionNext } from "../../src/permission/next"
 import { Question } from "../../src/question"
 import { AppChannel } from "../../src/channel/app"
-import { GenesisChannel } from "../../src/channel/genesis"
 import { Instance } from "../../src/scope/instance"
 import { tmpdir } from "../fixture/fixture"
 
@@ -127,17 +126,6 @@ test("app channel sessions remain interactive", async () => {
     fn: async () => {
       const session = await AppChannel.session()
       expect(session.interaction).toEqual(SessionInteraction.interactive("channel:app"))
-    },
-  })
-})
-
-test("genesis channel sessions remain unattended", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const session = await GenesisChannel.session()
-      expect(session.interaction).toEqual(SessionInteraction.unattended("channel:genesis"))
     },
   })
 })

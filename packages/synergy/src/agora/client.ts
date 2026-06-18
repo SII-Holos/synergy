@@ -5,7 +5,6 @@
 
 import { Flag } from "@/flag/flag"
 import { Config } from "@/config/config"
-import { HolosProfile } from "@/holos/profile"
 import { HolosAuth } from "@/holos/auth"
 import { Log } from "@/util/log"
 
@@ -81,8 +80,7 @@ export namespace AgoraClient {
   }
 
   async function registerActor(config: AgoraConfig, token: string): Promise<void> {
-    const profile = await HolosProfile.get()
-    const displayName = profile?.name || "Synergy Agent"
+    const displayName = process.env.USER || process.env.USERNAME || "Synergy Agent"
 
     const res = await fetch(`${config.url}/api/actors`, {
       method: "POST",

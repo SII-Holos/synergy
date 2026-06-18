@@ -139,7 +139,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
       if (!model) {
         return {
           title: "Model not available",
-          output: `Error: No available model found for ${MULTIMODAL_AGENT} agent`,
+          output: `Error: No vision model is configured. The look_at tool requires a vision model to analyze images. Run 'synergy config --advanced' to configure one, or add 'vision_model' to your synergy.jsonc config file.`,
           metadata: { error: "model_not_available" },
         }
       }

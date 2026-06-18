@@ -1,13 +1,11 @@
 import { createSignal, Show } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
 import { Panel } from "@/components/panel"
 import { ViewTab } from "@/components/engram/shared"
-import { EditProfileDialog } from "./edit-profile-dialog"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
 
@@ -22,7 +20,6 @@ export function HolosPanel() {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const auth = useAuth()
-  const dialogCtx = useDialog()
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
@@ -34,21 +31,6 @@ export function HolosPanel() {
     await holos.refresh()
     // refreshPresence route removed; holos.refresh() already fetches latest state
     setRefreshingContacts(false)
-  }
-
-  function handleEditProfile() {
-    const p = holos.state.social.profile
-    if (!p) return
-    dialogCtx.show(() => (
-      <EditProfileDialog
-        profile={p}
-        onSaved={() => void holos.refresh()}
-        onRerunSetup={() => {
-          void holos.refresh()
-          auth.logout()
-        }}
-      />
-    ))
   }
 
   async function handleDisconnect() {
@@ -82,14 +64,6 @@ export function HolosPanel() {
     } finally {
       setReconnecting(false)
     }
-  }
-
-  function handleRerunSetup() {
-    if (!confirm("Re-run the onboarding setup? Your current profile data will be preserved.")) return
-    globalSDK.client.holos.profile
-      .reset()
-      .then(() => auth.logout())
-      .catch(() => showToast({ type: "error", title: "Failed to reset setup" }))
   }
 
   const { trigger: handleConnectHolos, connecting } = useHolosLoginPopup({
@@ -130,10 +104,8 @@ export function HolosPanel() {
               isGuest={auth.status === "guest"}
               connecting={connecting()}
               reconnecting={reconnecting()}
-              onEditProfile={handleEditProfile}
               onDisconnect={handleDisconnect}
               onReconnect={handleReconnect}
-              onRerunSetup={handleRerunSetup}
               onConnectHolos={handleConnectHolos}
             />
           </Show>

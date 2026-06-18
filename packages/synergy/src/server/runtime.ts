@@ -367,7 +367,8 @@ export async function run(options: RuntimeOptions) {
   // Normal path (unchanged)
   await SingleInstance.acquire()
 
-  // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
+  // Holos login: intentionally skipped at CLI startup.
+  // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
   // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.
   // try {
   //   await HolosStartup.resolveIdentity(options.interactive)

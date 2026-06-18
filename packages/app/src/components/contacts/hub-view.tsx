@@ -11,10 +11,8 @@ export function HubView(props: {
   isGuest: boolean
   connecting: boolean
   reconnecting: boolean
-  onEditProfile: () => void
   onDisconnect: () => void
   onReconnect: () => void
-  onRerunSetup: () => void
   onConnectHolos: () => void
 }) {
   return (
@@ -28,10 +26,8 @@ export function HubView(props: {
           isGuest={props.isGuest}
           connecting={props.connecting}
           reconnecting={props.reconnecting}
-          onEditProfile={props.onEditProfile}
           onDisconnect={props.onDisconnect}
           onReconnect={props.onReconnect}
-          onRerunSetup={props.onRerunSetup}
           onConnectHolos={props.onConnectHolos}
         />
       </section>
