@@ -879,10 +879,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             setStore("workspaceSessions", sessionKey, "opened", (x) => !(x ?? false))
           },
           setActive(tool: string | null) {
-            setStore("workspaceSessions", sessionKey, "active", tool)
+            if (!store.workspaceSessions[sessionKey]) {
+              setStore("workspaceSessions", sessionKey, { opened: false, active: tool, width: 400 })
+            } else {
+              setStore("workspaceSessions", sessionKey, "active", tool)
+            }
           },
           setWidth(width: number) {
-            setStore("workspaceSessions", sessionKey, "width", width)
+            if (!store.workspaceSessions[sessionKey]) {
+              setStore("workspaceSessions", sessionKey, { opened: false, active: null, width })
+            } else {
+              setStore("workspaceSessions", sessionKey, "width", width)
+            }
           },
         }
       },

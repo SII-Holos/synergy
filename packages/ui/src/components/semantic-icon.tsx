@@ -22,7 +22,7 @@ export const SemanticIconToken = {
   "session.default": "message-square", // default session — it's a conversation
 
   // === 连接状态 ===
-  "connection.holos": "orbit", // Holos identity / connection
+  "connection.holos": "satellite", // Holos identity / connection — satellite node in orbit, distinct from auto-orbit
   "connection.lsp": "braces", // language server
   "connection.mcp": "server", // MCP / external tool server
   "connection.cortex": "workflow", // background orchestration tasks

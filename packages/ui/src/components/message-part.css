@@ -637,6 +637,10 @@
   left: -28px;
   top: 8px;
   width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   border-radius: var(--radius-full);
   transition: background-color 150ms ease;

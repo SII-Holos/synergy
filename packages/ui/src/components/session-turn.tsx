@@ -396,12 +396,16 @@ export function SessionTurn(
     const to = toMs != null ? DateTime.fromMillis(toMs) : DateTime.now()
     const interval = Interval.fromDateTimes(from, to)
     const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
-    return interval.toDuration(unit).normalize().toHuman({
-      notation: "compact",
-      unitDisplay: "narrow",
-      compactDisplay: "short",
-      showZeros: false,
-    })
+    return interval
+      .toDuration(unit)
+      .normalize()
+      .mapUnits((x) => Math.round(x))
+      .toHuman({
+        notation: "compact",
+        unitDisplay: "narrow",
+        compactDisplay: "short",
+        showZeros: false,
+      })
   }
 
   function duration() {
