@@ -82,9 +82,7 @@ export namespace SessionInvoke {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
 
-    SessionManager.release(sessionID).catch((err) => {
-      log.error("release failed", { sessionID, error: err })
-    })
+    SessionManager.signalAbort(sessionID)
   }
 
   export const invoke = fn(InvokeInput, async (input) => {
@@ -190,7 +188,10 @@ export namespace SessionInvoke {
       })
     }
 
-    using _ = defer(() => cancel(sessionID))
+    await using _ = defer(async () => {
+      evictRecallCache(sessionID)
+      await SessionManager.release(sessionID)
+    })
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
