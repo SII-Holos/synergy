@@ -10,7 +10,6 @@ import { HolosLoginFlow } from "../holos/login-flow"
 import { HolosProfile } from "../holos/profile"
 import { HolosProtocol } from "../holos/protocol"
 import { HolosReadiness } from "../holos/readiness"
-import { HolosRequest } from "../holos/request"
 import { Presence } from "../holos/presence"
 import { HolosRuntime } from "../holos/runtime"
 import { HolosState } from "../holos/state"
@@ -663,8 +662,8 @@ export const HolosDataRoute = new Hono()
         need_active: String(query.need_active),
       })
 
-      const res = await HolosRequest.fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), undefined, {
-        capability: "agent_lookup",
+      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), {
+        headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Holos API error: ${res.status}` }, 503)
 
@@ -698,8 +697,8 @@ export const HolosDataRoute = new Hono()
       }
 
       const agentId = c.req.valid("param").agentId
-      const res = await HolosRequest.fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), undefined, {
-        capability: "agent_lookup",
+      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), {
+        headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Agent not found: ${res.status}` }, 404)
 
