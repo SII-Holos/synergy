@@ -165,8 +165,6 @@ const PLATFORM_CONTROL_TOOLS = new Set([
   "agenda_update",
   "agenda_cancel",
   "agenda_trigger",
-  "worktree_enter",
-  "worktree_leave",
 ])
 
 function isDestructive(command: string): boolean {
@@ -496,9 +494,13 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Worktree read-only tool
+      // Worktree tools
       if (toolName === "worktree_list") {
         caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "worktree_enter" || toolName === "worktree_leave") {
+        caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }
 
