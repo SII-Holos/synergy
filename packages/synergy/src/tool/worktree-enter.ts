@@ -2,7 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Worktree } from "../project/worktree"
 import { Instance } from "../scope/instance"
-import { PermissionNext } from "@/permission/next"
+import { PermissionNext } from "../permission/next"
 import { EnforcementError } from "@/enforcement/errors"
 
 const parameters = z.object({
@@ -54,10 +54,10 @@ function denialMetadata(
 
 export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMetadata>("worktree_enter", {
   description:
-    "Enter a git worktree for the current session. " +
-    "The session's workspace is relocated into an isolated worktree directory. " +
-    "Provide a target to enter an existing worktree (matched by name, ID, branch, or path) " +
-    "or omit target to create a new uniquely-named worktree from the current HEAD.",
+    "Create or enter a git worktree for the current session. " +
+    "When 'target' matches an existing worktree (by name, ID, branch, or path), enter that worktree. " +
+    "When no match is found, create a new worktree using 'target' as the name. " +
+    "Omit 'target' to create a new worktree with an auto-generated unique name.",
   parameters,
   async execute(params, ctx) {
     const currentWorkspace = Instance.workspace

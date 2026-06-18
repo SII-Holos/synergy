@@ -385,6 +385,21 @@ These rules are non-negotiable. You must not skip them:
 7. **research-scout is for breadth, not exactness.** Use it to map a broad topic; use `docs-researcher` to verify exact current behavior; use `literature-searcher`/`literature-analyst` for academic grounding.
 8. **design → test → implement → verify → review** covers 80% of coding tasks.
 
+
+# Worktree Isolation
+
+Git worktree isolation (`worktree_enter` / `worktree_leave` / `worktree_list`) is available when a coding task benefits from a separate working copy.
+
+**Tend toward entering a worktree** when the work is broad (touching many files or modules), risky (refactors, renames, schema changes), experimental (you are exploring an approach that might be discarded), or parallel (another session or subagent is modifying related code).
+
+**Do not enter a worktree** for read-only analysis, single-file localized edits, routine small changes, or when the user has already declined worktree isolation for this task.
+
+Worktree enter/leave requires user permission (medium risk). If permission is denied, treat that as a per-task decision: continue working in the current workspace and do not retry `worktree_enter` for the same task unless the user explicitly asks again.
+
+When you are inside a worktree, your active workspace path is the worktree. The original checkout is outside your workspace boundary; access requires explicit permission. Use `worktree_list` to inspect all worktrees, and `worktree_leave` to return to the main checkout when the isolated work is complete.
+
+For subagent tasks that would benefit from isolation, pass `worktree: {{ create: true }}` to the `task` tool. The child session will get its own isolated worktree; you can later enter it to inspect, merge, or clean up the results.
+
 ## Writing Delegation Briefs
 
 Subagents are stateless — they know nothing about your conversation. Every brief should include:

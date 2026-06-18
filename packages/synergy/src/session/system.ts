@@ -75,6 +75,12 @@ export namespace SystemPrompt {
           `  Worktree isolation: this session's active workspace is the worktree path above. Stay inside it by default; access outside the active workspace, including the original checkout, requires explicit permission. Do not use cd or workdir to operate outside the worktree unless the user asks for that specific path.`,
         )
         envLines.push(`  Workspace boundary: enforced by tools and permission checks`)
+        if (workspace.originalCheckout) {
+          envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
+        }
+        envLines.push(
+          `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,
+        )
       }
     }
 

@@ -78,7 +78,7 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
       throw error
     }
 
-    const previous = { type: workspace.type as string, path: worktreePath, name: worktreeName }
+    const previous = { type: workspace.type, path: worktreePath, name: worktreeName }
 
     await Worktree.leave(ctx.sessionID)
     const restored = { type: "main", path: Instance.scope.directory }

@@ -23,7 +23,7 @@ const description =
 export const WorktreeListTool = Tool.define<typeof parameters, WorktreeListMetadata>("worktree_list", {
   description,
   parameters,
-  async execute() {
+  async execute(_params, _ctx) {
     const worktrees = await Worktree.list()
     const ws = Instance.workspace
 

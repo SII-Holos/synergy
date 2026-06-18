@@ -44,7 +44,6 @@ const parameters = z.object({
       create: z.literal(true),
       name: z.string().optional(),
       baseRef: z.enum(["current", "fresh"]).optional().default("current"),
-      reason: z.string().optional(),
     })
     .optional(),
 })
