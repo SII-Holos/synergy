@@ -158,9 +158,11 @@ export function PromptDock(props: {
             </Show>
           </div>
         </Show>
-        <div class="hidden md:block pointer-events-auto">
-          <StatusBar />
-        </div>
+        <Show when={!props.isNewSession()}>
+          <div class="hidden md:block pointer-events-auto">
+            <StatusBar />
+          </div>
+        </Show>
       </div>
     </div>
   )
