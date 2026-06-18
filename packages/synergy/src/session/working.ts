@@ -42,8 +42,11 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
 
 export function toStatus(working: WorkingInfo): StatusInfo {
   switch (working.status) {
-    case "busy": return { type: "busy", description: working.description }
-    case "retry": return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
-    case "recovering": return { type: "recovering" }
+    case "busy":
+      return { type: "busy", description: working.description }
+    case "retry":
+      return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
+    case "recovering":
+      return { type: "recovering" }
   }
 }
