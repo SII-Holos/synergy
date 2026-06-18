@@ -24,11 +24,13 @@ import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
   Info as InfoType,
   StatusInfo as StatusInfoType,
+  WorkingInfo as WorkingInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
 } from "./types"
 import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
+import * as SessionWorking from "./working"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -144,8 +146,10 @@ export namespace Session {
     await Storage.remove(StoragePath.endpointSession(endpointKey, asSessionID(session.id))).catch(() => undefined)
   }
 
-  export async function withRuntimeInfo(session: Info): Promise<Info> {
-    return withoutRuntimeInfo(session)
+  export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const working = await SessionWorking.resolve(session.id)
+    if (!working) return withoutRuntimeInfo(session)
+    return { ...withoutRuntimeInfo(session), working }
   }
 
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {

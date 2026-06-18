@@ -11,6 +11,7 @@ import { SessionEvent } from "./event"
 import { Scope } from "@/scope"
 import { Instance } from "@/scope/instance"
 import { Info, type StatusInfo } from "./types"
+import * as SessionWorking from "./working"
 import { SessionEndpoint } from "./endpoint"
 
 const log = Log.create({ service: "session.manager" })
@@ -252,6 +253,18 @@ export namespace SessionManager {
         if ((session.scope as Scope).id !== scopeID) continue
       }
       result[runtime.sessionID] = runtime.status
+    }
+    for (const runtime of runtimes.values()) {
+      if (runtime.abort) continue
+      if (runtime.sessionID in result) continue
+      if (scopeID) {
+        const session = await requireSession(runtime.sessionID)
+        if ((session.scope as Scope).id !== scopeID) continue
+      }
+      const working = await SessionWorking.resolve(runtime.sessionID)
+      if (working) {
+        result[runtime.sessionID] = SessionWorking.toStatus(working)
+      }
     }
     return result
   }

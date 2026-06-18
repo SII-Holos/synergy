@@ -123,6 +123,25 @@ export const Info = z
   })
 export type Info = z.output<typeof Info>
 
+export const WorkingInfo = z
+  .union([
+    z.object({
+      status: z.literal("busy"),
+      description: z.string().optional(),
+    }),
+    z.object({
+      status: z.literal("retry"),
+      attempt: z.number(),
+      message: z.string(),
+      next: z.number(),
+    }),
+    z.object({
+      status: z.literal("recovering"),
+    }),
+  ])
+  .meta({ ref: "SessionWorkingInfo" })
+export type WorkingInfo = z.infer<typeof WorkingInfo>
+
 export const StatusInfo = z
   .union([
     z.object({
@@ -136,6 +155,10 @@ export const StatusInfo = z
     }),
     z.object({
       type: z.literal("busy"),
+      description: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("recovering"),
       description: z.string().optional(),
     }),
   ])
