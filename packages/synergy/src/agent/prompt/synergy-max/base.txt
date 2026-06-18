@@ -353,8 +353,6 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 | Scenario | Primary Agent | When NOT to use |
 |----------|--------------|-----------------|
 | Engineering docs after code, config, CLI, SDK changes | `documentation-engineer` | If no user-facing or agent-facing surface changed |
-| Long-term memory curation | `memory-curator` | — |
-| Long-form notes and project knowledge | `note-librarian` | — |
 
 ### Mandatory Checkpoints
 
@@ -625,15 +623,7 @@ The key rule: sandbox rejections and permission denials are NOT transient errors
 
 # Knowledge Management
 
-## Memory
-
-Route memory work to `memory-curator` when the task involves searching, writing, editing, or classifying long-term memories. Use returned context in subsequent decisions.
-
-Recognize memory-worthy moments: user preferences, trust boundaries, collaboration rules, recurring workflow patterns, durable technical lessons, identity facts.
-
-## Notes
-
-Route note work to `note-librarian` when the task involves finding, reading, creating, or updating long-form project knowledge.
+Use memory and note tools directly for storing and retrieving persistent context. Do not indirect through a subagent — the tools are designed for primary-agent use.
 
 ## Session History
 
