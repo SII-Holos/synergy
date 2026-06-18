@@ -248,12 +248,23 @@ function classifyPathCapability(
 
 function extractShellPathArguments(command: string, cwd: string): string[] {
   const paths: string[] = []
-  const commandPattern = /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown)\s+([^;&|]+)/g
+  const commandPattern =
+    /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown|cat|tee|ln|install|dd|python3?|python2?|node|ruby|perl)\s+([^;&|]+)/g
   let match: RegExpExecArray | null
   while ((match = commandPattern.exec(command)) !== null) {
     const [, name, rawArgs] = match
+    let prevWasFlag = false
     for (const raw of rawArgs.trim().split(/\s+/)) {
-      if (!raw || raw.startsWith("-") || (name === "chmod" && raw.startsWith("+"))) continue
+      if (!raw) continue
+      if (prevWasFlag) {
+        prevWasFlag = false
+        continue
+      }
+      if (raw.startsWith("-")) {
+        prevWasFlag = true
+        continue
+      }
+      if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
       paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
     }
   }
@@ -390,6 +401,10 @@ export namespace EnforcementGate {
         caps.push({ class: risk, nonBypassable: false })
 
         if (risk !== "shell_destructive" && isDestructive(command)) {
+          caps.push({ class: "shell_destructive", nonBypassable: true })
+        }
+        // Pipe-to-shell is always destructive
+        if (ShellSafety.hasPipeToShell(command)) {
           caps.push({ class: "shell_destructive", nonBypassable: true })
         }
 
