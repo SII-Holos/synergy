@@ -43,32 +43,6 @@ export namespace HolosProfile {
     await Storage.write(StoragePath.holosProfile(), profile)
     await Bus.publish(Event.Updated, { profile })
     log.info("profile updated", { name: profile.name })
-    syncToRemote(profile).catch((err) => log.debug("remote profile sync skipped", { error: err }))
     return profile
-  }
-
-  async function syncToRemote(profile: Info): Promise<void> {
-    const { HolosReadiness } = await import("./readiness")
-    const { HolosRequest } = await import("./request")
-    const { HOLOS_URL } = await import("./constants")
-
-    const { readiness } = await HolosReadiness.snapshot()
-    if (!readiness.ready) return
-
-    const url = new URL("/api/v1/holos/agent_tunnel/me/profile", HOLOS_URL).toString()
-    const response = await HolosRequest.fetch(
-      url,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: { name: profile.name, description: profile.bio } }),
-      },
-      { capability: "profile_sync" },
-    )
-    if (response.ok) {
-      log.info("profile synced to Holos")
-    } else {
-      log.debug("remote profile sync failed", { status: response.status })
-    }
   }
 }

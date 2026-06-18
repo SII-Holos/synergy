@@ -5,14 +5,10 @@ import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { AppChannel } from "../channel/app"
-import { Contact } from "../holos/contact"
-import { HolosRuntime } from "../holos/runtime"
 import DESCRIPTION from "./session-send.txt"
 
 const parameters = z.object({
-  target: z
-    .string()
-    .describe("Target session. A session ID (ses_xxx), 'home' for the app home session, or a Holos contact/agent ID."),
+  target: z.string().describe("Target session. A session ID (ses_xxx) or 'home' for the app home session."),
   content: z.string().describe("The text content to send."),
   role: z
     .enum(["user", "assistant"])
@@ -34,15 +30,7 @@ async function resolveSession(target: string): Promise<Session.Info> {
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  // Treat as holos contact ID
-  const contact = await Contact.get(target)
-  if (!contact) {
-    throw new Error(`Contact "${target}" not found.`)
-  }
-  if (contact.config.blocked) {
-    throw new Error(`Contact "${target}" is blocked.`)
-  }
-  return HolosRuntime.getOrCreateSession(contact.holosId ?? contact.id)
+  throw new Error(`Unknown session target "${target}". Expected a session ID (ses_xxx) or 'home'.`)
 }
 
 export const SessionSendTool = Tool.define("session_send", {

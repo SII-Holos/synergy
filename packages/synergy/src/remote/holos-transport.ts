@@ -38,10 +38,10 @@ export class HolosRemoteExecutionTransport {
       this.provider
         .send(input.targetAgentID, MetaProtocolBridge.RequestEvent, input)
         .then((result) => {
-          if (result.queued) {
+          if (!result.sent) {
             clearTimeout(timer)
             this.#pending.delete(input.requestID)
-            reject(new Error(`Remote request ${input.requestID} was queued instead of delivered.`))
+            reject(new Error(`Remote request ${input.requestID} was not delivered.`))
           }
         })
         .catch((error) => {

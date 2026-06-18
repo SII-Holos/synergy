@@ -60,7 +60,6 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   thinking_model: "background",
   long_context_model: "background",
   creative_model: "background",
-  holos_friend_reply_model: "background",
   channel: "background",
   mcp: "explicit",
   plugin: "explicit",

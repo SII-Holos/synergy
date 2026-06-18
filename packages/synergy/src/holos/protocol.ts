@@ -95,33 +95,8 @@ export namespace HolosProtocol {
   })
   export type Envelope = z.infer<typeof Envelope>
 
-  export const AppEvent = z.enum([
-    "friend.request",
-    "friend.accept",
-    "friend.reject",
-    "friend.remove",
-    "chat.message",
-    "profile.update",
-    "presence.ping",
-    "presence.pong",
-  ])
+  export const AppEvent = z.enum(["chat.message", "presence.ping", "presence.pong"])
   export type AppEvent = z.infer<typeof AppEvent>
-
-  export const FriendRequestPayload = z.object({
-    profile: PeerProfile,
-  })
-  export type FriendRequestPayload = z.infer<typeof FriendRequestPayload>
-
-  export const FriendAcceptPayload = z.object({
-    profile: PeerProfile,
-  })
-  export type FriendAcceptPayload = z.infer<typeof FriendAcceptPayload>
-
-  export const FriendRejectPayload = z.object({})
-  export type FriendRejectPayload = z.infer<typeof FriendRejectPayload>
-
-  export const FriendRemovePayload = z.object({})
-  export type FriendRemovePayload = z.infer<typeof FriendRemovePayload>
 
   export const ChatMessagePayload = z.object({
     text: z.string(),
@@ -131,11 +106,6 @@ export namespace HolosProtocol {
   })
   export type ChatMessagePayload = z.infer<typeof ChatMessagePayload>
 
-  export const ProfileUpdatePayload = z.object({
-    profile: PeerProfile,
-  })
-  export type ProfileUpdatePayload = z.infer<typeof ProfileUpdatePayload>
-
   export const PresencePingPayload = z.object({})
   export type PresencePingPayload = z.infer<typeof PresencePingPayload>
 
@@ -143,17 +113,4 @@ export namespace HolosProtocol {
     profile: PeerProfile,
   })
   export type PresencePongPayload = z.infer<typeof PresencePongPayload>
-
-  const DAY_MS = 24 * 60 * 60 * 1000
-
-  export const QueueExpiry: Record<string, number> = {
-    "friend.request": 30 * DAY_MS,
-    "friend.accept": 30 * DAY_MS,
-    "friend.reject": 30 * DAY_MS,
-    "friend.remove": 30 * DAY_MS,
-    "profile.update": 30 * DAY_MS,
-    "chat.message": 7 * DAY_MS,
-  }
-
-  export const DEFAULT_QUEUE_EXPIRY = 7 * DAY_MS
 }

@@ -1,4 +1,4 @@
-import { Show, Match, Switch, createMemo, createEffect, createSignal, createResource, on, onCleanup } from "solid-js"
+import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -27,23 +27,17 @@ import { SessionReviewTab } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
 import { isGlobalScope } from "@/utils/scope"
-import { isHolosSession } from "@/utils/session"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
-import { HolosConversation, HolosGreeting } from "@/components/session/holos-conversation"
-import { HolosPromptInput } from "@/components/session/holos-prompt-input"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
 import { WorkspacePanel, WorkspacePanelMobile } from "@/components/session/workspace-panel"
-import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
+import { WorkspaceProvider } from "@/context/workspace"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { getScopeLabel } from "@/utils/scope"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const handoff = {
   prompt: "",
@@ -179,7 +173,6 @@ function SessionPageContent() {
     mobileTab: "session" as "session" | "review",
     newSessionWorktree: "main",
     promptHeight: 0,
-    holosReplyToMessageId: undefined as string | undefined,
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
@@ -187,11 +180,6 @@ function SessionPageContent() {
   const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
-  const holosReplyToMessage = createMemo(() => {
-    const replyToMessageId = store.holosReplyToMessageId
-    if (!replyToMessageId) return undefined
-    return messages().find((message) => message.id === replyToMessageId)
-  })
   const [resolvingHome, setResolvingHome] = createSignal(false)
   const isNewSession = createMemo(() => {
     if (resolvingHome()) return false
@@ -419,49 +407,10 @@ function SessionPageContent() {
     if (!current?.parentID) return undefined
     return sync.data.session.find((s) => s.id === current.parentID)
   })
-  const parentHolosContactId = createMemo(() => {
-    const session = parentSession()
-    return isHolosSession(session) ? session.endpoint.agentId : undefined
-  })
-  const [parentHolosContact] = createResource(parentHolosContactId, async (contactId) => {
-    const res = await sdk.client.holos.contact.get({ id: contactId })
-    return res.data
-  })
   const backPath = createMemo(() => {
     if (parentSession()) return undefined
     const from = (location.state as { from?: string } | undefined)?.from
     return from ?? undefined
-  })
-
-  const isHolosConversation = createMemo(() => isHolosSession(currentSession()))
-  const holosContactId = createMemo(() => {
-    const session = currentSession()
-    return isHolosSession(session) ? session.endpoint.agentId : undefined
-  })
-  const [holosContact] = createResource(holosContactId, async (contactId) => {
-    const res = await sdk.client.holos.contact.get({ id: contactId })
-    return res.data
-  })
-  const [myProfile] = createResource(isHolosConversation, async (isHolos) => {
-    if (!isHolos) return undefined
-    const res = await sdk.client.holos.profile.get()
-    return res.data
-  })
-  const holosReplyMappingKey = createMemo(() => {
-    if (!isHolosConversation() || !params.id) return undefined
-    const msgCount = messages()?.length ?? 0
-    return { sessionId: params.id, msgCount }
-  })
-  const [holosReplyMappings] = createResource(holosReplyMappingKey, async (key) => {
-    const res = await sdk.client.holos.friendReply.list({ sessionId: key.sessionId })
-    return res.data ?? []
-  })
-  const holosBranchMap = createMemo(() => {
-    const result: Record<string, string> = {}
-    for (const mapping of holosReplyMappings() ?? []) {
-      result[mapping.triggerMessageId] = mapping.subSessionId
-    }
-    return result
   })
 
   createEffect(() => {
@@ -469,9 +418,6 @@ function SessionPageContent() {
     let title: string
     if (isGlobalScope(sdk.directory)) {
       title = "Home"
-    } else if (isHolosConversation()) {
-      const contact = holosContact()
-      title = contact?.name || contact?.id || "New session"
     } else {
       title = session?.title || "New session"
     }
@@ -488,7 +434,6 @@ function SessionPageContent() {
       () => {
         setStore("messageId", undefined)
         setStore("expanded", {})
-        setStore("holosReplyToMessageId", undefined)
       },
       { defer: true },
     ),
@@ -903,57 +848,8 @@ function SessionPageContent() {
           >
             <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
               <SessionTopBar />
-              <Show when={isHolosSession(parentSession())}>
-                <div class="shrink-0 px-4 md:px-6 pb-2">
-                  <button
-                    type="button"
-                    class="w-full min-w-0 md:max-w-200 md:mx-auto flex items-center justify-between gap-3 rounded-[22px] border border-border-base bg-surface-raised-stronger-non-alpha px-4 py-3 text-left shadow-sm hover:bg-surface-raised-base-hover active:scale-[0.995] transition-all duration-150"
-                    onClick={() => navigate(`/${params.dir}/session/${parentSession()!.id}`)}
-                  >
-                    <div class="min-w-0 flex items-center gap-3">
-                      <div class="size-9 rounded-full bg-surface-brand-base/12 border border-border-base flex items-center justify-center shrink-0">
-                        <Icon name="arrow-left" size="small" />
-                      </div>
-                      <div class="min-w-0">
-                        <div class="text-12-medium text-text-weak">Back to Holos conversation</div>
-                        <div class="text-14-medium text-text-strong truncate">
-                          {parentHolosContact()?.name ?? parentSession()?.title ?? "Return to Holos conversation"}
-                        </div>
-                      </div>
-                    </div>
-                    <div class="hidden md:flex items-center gap-1.5 text-11-medium text-text-subtle shrink-0">
-                      <Icon name={getSemanticIcon("orchestration.holos-branch")} size="small" />
-                      <span>Holos branch</span>
-                    </div>
-                  </button>
-                </div>
-              </Show>
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
-                  <Match when={isHolosConversation() && holosContact()}>
-                    <HolosConversation
-                      sessionID={params.id!}
-                      contactName={holosContact()!.name}
-                      contactBio={holosContact()!.bio}
-                      myName={myProfile()?.profile?.name ?? "Me"}
-                      messages={messages}
-                      branchMap={holosBranchMap}
-                      onOpenBranch={(subSessionId, triggerMessageId) =>
-                        navigate(`/${params.dir}/session/${subSessionId}#message-${triggerMessageId}`, {
-                          state: { from: window.location.pathname + window.location.search + window.location.hash },
-                        })
-                      }
-                      onReplyToMessage={(messageId: string) => {
-                        setStore("holosReplyToMessageId", messageId)
-                        requestAnimationFrame(() => {
-                          const textarea = document.querySelector<HTMLTextAreaElement>("[data-holos-input='true']")
-                          textarea?.focus()
-                        })
-                      }}
-                      autoScroll={autoScroll}
-                      setScrollRef={setScrollRef}
-                    />
-                  </Match>
                   <Match when={!isNewSession()}>
                     <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
                       <Show
@@ -1025,62 +921,29 @@ function SessionPageContent() {
               </div>
             </div>
 
-            <Show
-              when={isHolosConversation() && holosContact()}
-              fallback={
-                <PromptDock
-                  ref={(el) => (promptDock = el)}
-                  inputRef={(el) => {
-                    inputRef = el
-                  }}
-                  isNewSession={isNewSession}
-                  showTabs={showTabs}
-                  isGlobal={isGlobalScope(sdk.directory)}
-                  sessionID={params.id}
-                  prompt={prompt}
-                  sync={sync}
-                  sdk={sdk}
-                  navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
-                  handoffPrompt={handoff.prompt}
-                  meta={sessionMeta}
-                  parentTitle={parentSession()?.title}
-                  backPath={backPath}
-                  newSessionWorktree={newSessionWorktree}
-                  onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
-                  scopeName={scopeName}
-                  branch={branch}
-                  lastModified={lastModified}
-                />
-              }
-            >
-              <div
-                ref={(el) => (promptDock = el)}
-                classList={{
-                  "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-4 md:px-0 pointer-events-none": true,
-                  "pt-12 pb-4 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent":
-                    (messages()?.length ?? 0) > 0,
-                  "pb-4": (messages()?.length ?? 0) === 0,
-                }}
-                style={{
-                  transform: (messages()?.length ?? 0) === 0 ? "translateY(-35vh)" : "translateY(0)",
-                  transition: "transform 400ms ease-out",
-                }}
-              >
-                <div class="w-full min-w-0 md:px-6 md:max-w-200 pointer-events-auto">
-                  <Show when={(messages()?.length ?? 0) === 0}>
-                    <HolosGreeting contactName={holosContact()!.name} />
-                  </Show>
-                  <HolosPromptInput
-                    contactId={holosContact()!.id}
-                    contactName={holosContact()!.name}
-                    sessionId={params.id!}
-                    replyToMessage={holosReplyToMessage()}
-                    replyToParts={holosReplyToMessage() ? (sync.data.part[holosReplyToMessage()!.id] ?? []) : undefined}
-                    onCancelReply={() => setStore("holosReplyToMessageId", undefined)}
-                  />
-                </div>
-              </div>
-            </Show>
+            <PromptDock
+              ref={(el) => (promptDock = el)}
+              inputRef={(el) => {
+                inputRef = el
+              }}
+              isNewSession={isNewSession}
+              showTabs={showTabs}
+              isGlobal={isGlobalScope(sdk.directory)}
+              sessionID={params.id}
+              prompt={prompt}
+              sync={sync}
+              sdk={sdk}
+              navigate={(id) => navigate(`/${params.dir}/session/${id}`)}
+              handoffPrompt={handoff.prompt}
+              meta={sessionMeta}
+              parentTitle={parentSession()?.title}
+              backPath={backPath}
+              newSessionWorktree={newSessionWorktree}
+              onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+              scopeName={scopeName}
+              branch={branch}
+              lastModified={lastModified}
+            />
 
             <Show when={isDesktop() && showTabs()}>
               <ResizeHandle

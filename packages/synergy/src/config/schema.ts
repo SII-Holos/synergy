@@ -1020,12 +1020,6 @@ export const Info = z
         "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
       )
       .optional(),
-    holos_friend_reply_model: z
-      .string()
-      .describe(
-        "Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.",
-      )
-      .optional(),
     vision_model: z
       .string()
       .describe(

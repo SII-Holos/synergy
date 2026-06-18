@@ -54,7 +54,6 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     mini_model: cfg.mini_model ?? MODEL_DEFAULTS.mini_model,
     mid_model: cfg.mid_model ?? MODEL_DEFAULTS.mid_model,
     vision_model: cfg.vision_model ?? MODEL_DEFAULTS.vision_model,
-    holos_friend_reply_model: cfg.holos_friend_reply_model ?? MODEL_DEFAULTS.holos_friend_reply_model,
     thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,

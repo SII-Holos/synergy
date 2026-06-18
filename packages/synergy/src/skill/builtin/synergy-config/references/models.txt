@@ -19,7 +19,6 @@ Synergy uses model roles for different internal tasks. Each falls back through a
 | `thinking_model` | Deep reasoning: complex architecture, planning | → `model` |
 | `long_context_model` | Extra-large context for very long inputs | → `model` |
 | `creative_model` | Creative/visual: UI design, writing, artistry | → `model` |
-| `holos_friend_reply_model` | Holos automatic friend replies | → `model` |
 | `vision_model` | Image analysis via `look_at` tool (screenshots, diagrams, charts) | (disabled if not set) |
 
 **Important:** `vision_model` must be explicitly set for `look_at` to work. It does NOT fall back to `model`.
@@ -95,7 +94,6 @@ Models can have variants (e.g., different reasoning effort levels). Variants are
 | `thinking_model` | Used by the advisor agent for deep architectural analysis and complex debugging. If unset, the advisor falls back to `model` — still functional, but may reason less thoroughly on hard problems. |
 | `long_context_model` | Engaged automatically when inputs exceed the default model's context window. Without it, very long inputs may be truncated or fail. |
 | `creative_model` | Used by the scribe agent and frontend-design skill for writing, UI design, and other creative tasks. A stronger model here produces more nuanced prose and better visual design suggestions. |
-| `holos_friend_reply_model` | Controls the model used for automatic replies in Holos friend conversations. Defaults to `model` if unset, which may be overpowered (and expensive) for casual chat replies. |
 | `vision_model` | **Must be set explicitly or the `look_at` tool is completely disabled.** Does NOT fall back to `model`. Without this field, image analysis is unavailable. Use the `read` tool for PDF/DOCX/XLSX/PPTX text extraction — no vision model needed. |
 
 ## Common model configurations

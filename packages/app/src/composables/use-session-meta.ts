@@ -2,7 +2,7 @@ import type { Session, SessionCortexDelegation } from "@ericsanchezok/synergy-sd
 import { createMemo, type Accessor } from "solid-js"
 export interface SessionMeta {
   // Source
-  source: "web" | "channel" | "holos"
+  source: "web" | "channel"
 
   // Hierarchy
   isSubsession: boolean
@@ -51,8 +51,7 @@ export function deriveSessionMeta(session: Session | undefined, hasMessages: boo
   if (!session) return DEFAULT_META
 
   const endpointKind = session.endpoint?.kind
-  const source: SessionMeta["source"] =
-    endpointKind === "channel" ? "channel" : endpointKind === "holos" ? "holos" : "web"
+  const source: SessionMeta["source"] = endpointKind === "channel" ? "channel" : "web"
 
   const isSubsession = session.parentID != null
   const isCortexSubagent = session.cortex != null

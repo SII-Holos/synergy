@@ -132,7 +132,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
     mini_model: "" as string,
     mid_model: "" as string,
     vision_model: "" as string,
-    holos_friend_reply_model: "" as string,
     thinking_model: "" as string,
     long_context_model: "" as string,
     creative_model: "" as string,
