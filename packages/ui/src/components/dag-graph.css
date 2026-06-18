@@ -385,3 +385,42 @@
     pointer-events: none;
   }
 }
+
+/* Panel variant — more compact for the progress drawer */
+.dag-graph[data-variant="panel"] {
+  [data-slot="dag-graph-viewport"] {
+    height: clamp(200px, 32vh, 380px);
+  }
+}
+
+/* Panel variant: node card slightly smaller */
+.dag-graph[data-variant="panel"] .dag-node {
+  padding: 8px 10px;
+  gap: 7px;
+
+  [data-slot="dag-graph-card-content"] {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  [data-slot="dag-graph-status-label"] {
+    font-size: 10px;
+  }
+
+  [data-slot="dag-graph-assign"] {
+    font-size: 9px;
+  }
+
+  [data-slot="dag-graph-task"] {
+    font-size: 9px;
+  }
+
+  [data-slot="dag-graph-memo"] {
+    font-size: 10px;
+  }
+}
+
+/* Selected node — subtle ring accent */
+.dag-node[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--surface-interactive-selected);
+}
