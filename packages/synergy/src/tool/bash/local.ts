@@ -102,7 +102,7 @@ export const LocalBashBackend: BashBackend = {
       tree.delete()
     }
 
-    if (patterns.size > 0 && (ctx.extra as any)?.shellApprovedByUser !== true) {
+    if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
@@ -113,7 +113,7 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const sandboxWrapper =
-      (ctx.extra as any)?.shellApprovedByUser === true ? undefined : (ctx.extra as any)?.sandboxWrapper
+      (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
 
     let child: ReturnType<typeof spawn>

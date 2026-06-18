@@ -106,11 +106,15 @@ export namespace ToolResolver {
     return ((ctx.extra as any).approvedExternalRoots ?? []) as string[]
   }
 
-  function wasShellApprovedByUser(ctx: Tool.Context): boolean {
-    return (ctx.extra as any).shellApprovedByUser === true
+  function shouldBypassShellSandbox(ctx: Tool.Context): boolean {
+    return (ctx.extra as any).shellBypassSandbox === true
   }
 
-  function rememberApprovedShell(ctx: Tool.Context, permission: string, metadata: Record<string, unknown>) {
+  function markShellSandboxBypass(ctx: Tool.Context) {
+    ;(ctx.extra as any).shellBypassSandbox = true
+  }
+
+  function rememberShellApproval(ctx: Tool.Context, permission: string, metadata: Record<string, unknown>) {
     const capability = String(metadata.capability ?? "")
     if (
       permission === "bash" ||
@@ -118,7 +122,7 @@ export namespace ToolResolver {
       capability === "shell_read" ||
       capability === "shell_destructive"
     ) {
-      ;(ctx.extra as any).shellApprovedByUser = true
+      markShellSandboxBypass(ctx)
     }
   }
 
@@ -145,6 +149,7 @@ export namespace ToolResolver {
 
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
+      if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
 
@@ -302,7 +307,7 @@ export namespace ToolResolver {
             ) {
               rememberApprovedExternalRoots(ctx, req.patterns)
             }
-            rememberApprovedShell(ctx, req.permission, requestMetadata)
+            rememberShellApproval(ctx, req.permission, requestMetadata)
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
           } catch (error) {
             if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
@@ -374,7 +379,7 @@ export namespace ToolResolver {
                 let sandboxWrapper: SandboxExecutionWrapper | undefined
                 if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
-                  if (sandbox.mode !== "none" && !wasShellApprovedByUser(ctx)) {
+                  if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
                     const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
                     sandboxWrapper = SandboxBackend.prepareWrapper({
                       command: "/bin/sh",

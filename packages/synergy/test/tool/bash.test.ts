@@ -309,7 +309,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("uses direct execution after user approval instead of an existing sandbox wrapper", async () => {
+  test("uses direct execution after profile approval instead of an existing sandbox wrapper", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       scope: await tmp.scope(),
@@ -318,7 +318,7 @@ describe("tool.bash permissions", () => {
         const testCtx = {
           ...ctx,
           extra: {
-            shellApprovedByUser: true,
+            shellBypassSandbox: true,
             sandboxWrapper: {
               command: "false",
               args: [],
