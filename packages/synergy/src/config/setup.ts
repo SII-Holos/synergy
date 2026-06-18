@@ -13,7 +13,6 @@ import { embed, generateText, type ModelMessage } from "ai"
 import { mergeDeep } from "remeda"
 import z from "zod"
 import path from "path"
-import fs from "fs/promises"
 
 export namespace ConfigSetup {
   export interface ProviderInfo {

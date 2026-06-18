@@ -97,7 +97,7 @@ export function HolosPanel() {
   }
 
   function handleRerunSetup() {
-    if (!confirm("Re-run the onboarding setup? Your current profile data will be preserved.")) return
+    if (!confirm("Reset your Holos profile setup? Your current profile data will be preserved.")) return
     globalSDK.client.holos.profile
       .reset()
       .then(() => auth.logout())

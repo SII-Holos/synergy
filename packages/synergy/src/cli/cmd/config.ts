@@ -1,6 +1,4 @@
 import { Auth } from "../../provider/api-key"
-import { ModelsDev } from "../../provider/models"
-import path from "path"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"

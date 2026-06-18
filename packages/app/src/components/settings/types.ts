@@ -69,7 +69,7 @@ export const MODEL_ROLES: Array<{ key: ModelKey; label: string; description: str
   {
     key: "mini_model",
     label: "Mini Model",
-    description: "Intent detection, script extraction, reward evaluation, and genesis bootstrapping",
+    description: "Intent detection, script extraction, and reward evaluation",
   },
   {
     key: "mid_model",
