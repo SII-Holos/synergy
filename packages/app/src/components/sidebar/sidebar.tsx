@@ -87,9 +87,9 @@ export function Sidebar(props: SidebarProps) {
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
-  const [homeSectionOpen, setHomeSectionOpen] = createSignal(true)
-  const [channelSectionOpen, setChannelSectionOpen] = createSignal(true)
-  const [backgroundSectionOpen, setBackgroundSectionOpen] = createSignal(true)
+  const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
+  const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
+  const [backgroundSectionOpen, setBackgroundSectionOpen] = createSignal(false)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
