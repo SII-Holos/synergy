@@ -152,37 +152,29 @@ import type {
   HolosContactGetResponses,
   HolosContactListResponses,
   HolosContactRemoveResponses,
-  HolosContactSendMessageErrors,
-  HolosContactSendMessageResponses,
-  HolosContactSessionErrors,
-  HolosContactSessionResponses,
-  HolosContactUpdateConfigErrors,
-  HolosContactUpdateConfigResponses,
+  HolosContactToggleBlockErrors,
+  HolosContactToggleBlockResponses,
   HolosCredentialsErrors,
   HolosCredentialsResponses,
   HolosCredentialsStatusResponses,
-  HolosFriendReplyListResponses,
-  HolosFriendRequestCreateErrors,
-  HolosFriendRequestCreateResponses,
-  HolosFriendRequestListResponses,
-  HolosFriendRequestRemoveResponses,
-  HolosFriendRequestRespondErrors,
-  HolosFriendRequestRespondResponses,
-  HolosFriendRequestSendErrors,
-  HolosFriendRequestSendResponses,
+  HolosInboxListResponses,
   HolosLoginResponses,
   HolosLogoutResponses,
+  HolosOutboxListResponses,
   HolosPresenceResponses,
   HolosProfileGetResponses,
   HolosProfileResetResponses,
   HolosProfileSkipGenesisResponses,
   HolosProfileUpdateErrors,
   HolosProfileUpdateResponses,
-  HolosQueueListResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
   HolosRefreshPresenceResponses,
+  HolosSendResponses,
+  HolosSendRetryErrors,
+  HolosSendRetryResponses,
   HolosStateResponses,
+  HolosThreadGetResponses,
   HolosVerifyResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -2038,9 +2030,7 @@ export class Contact extends HeyApiClient {
     parameters?: {
       directory?: string
       id?: string
-      holosId?: string
       name?: string
-      bio?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2051,9 +2041,7 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "body", key: "id" },
-            { in: "body", key: "holosId" },
             { in: "body", key: "name" },
-            { in: "body", key: "bio" },
           ],
         },
       ],
@@ -2073,7 +2061,7 @@ export class Contact extends HeyApiClient {
   /**
    * Remove contact
    *
-   * Remove a contact and notify the peer via WebSocket.
+   * Remove a contact.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2131,18 +2119,15 @@ export class Contact extends HeyApiClient {
   }
 
   /**
-   * Update contact config
+   * Toggle contact blocked status
    *
-   * Update per-contact configuration (autoReply, autoInitiate, blocked).
+   * Block or unblock a contact. Blocked contacts' messages are silently discarded.
    */
-  public updateConfig<ThrowOnError extends boolean = false>(
+  public toggleBlock<ThrowOnError extends boolean = false>(
     parameters: {
       id: string
       directory?: string
-      autoReply?: boolean
-      autoInitiate?: boolean
       blocked?: boolean
-      maxAutoTurns?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2153,271 +2138,17 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
-            { in: "body", key: "autoReply" },
-            { in: "body", key: "autoInitiate" },
             { in: "body", key: "blocked" },
-            { in: "body", key: "maxAutoTurns" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).put<
-      HolosContactUpdateConfigResponses,
-      HolosContactUpdateConfigErrors,
+      HolosContactToggleBlockResponses,
+      HolosContactToggleBlockErrors,
       ThrowOnError
     >({
-      url: "/holos/contact/{id}/config",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get or create session for contact
-   *
-   * Returns the friend session for a contact, creating one if it doesn't exist yet.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<HolosContactSessionResponses, HolosContactSessionErrors, ThrowOnError>({
-      url: "/holos/contact/{id}/session",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Send message to contact
-   *
-   * Send a message to a contact via the friend session mailbox. The outbound hook handles Holos WS delivery automatically.
-   */
-  public sendMessage<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      text?: string
-      replyToMessageId?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "text" },
-            { in: "body", key: "replyToMessageId" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosContactSendMessageResponses,
-      HolosContactSendMessageErrors,
-      ThrowOnError
-    >({
-      url: "/holos/contact/{id}/message",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class FriendRequest extends HeyApiClient {
-  /**
-   * List friend requests
-   *
-   * List all friend requests.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<HolosFriendRequestListResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-request",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create friend request
-   *
-   * Create a new outgoing friend request.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-      peerId?: string
-      peerName?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-            { in: "body", key: "peerId" },
-            { in: "body", key: "peerName" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosFriendRequestCreateResponses,
-      HolosFriendRequestCreateErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Remove friend request
-   *
-   * Remove a friend request.
-   */
-  public remove<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<HolosFriendRequestRemoveResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-request/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Send friend request
-   *
-   * Send an outgoing friend request to another agent via WebSocket.
-   */
-  public send<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      peerId?: string
-      peerName?: string
-      peerBio?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "peerId" },
-            { in: "body", key: "peerName" },
-            { in: "body", key: "peerBio" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosFriendRequestSendResponses,
-      HolosFriendRequestSendErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request/send",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Respond to friend request
-   *
-   * Accept or reject a friend request. Sends the response over WebSocket and updates local storage.
-   */
-  public respond<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      status?: "accepted" | "rejected"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "status" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<
-      HolosFriendRequestRespondResponses,
-      HolosFriendRequestRespondErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request/{id}/respond",
+      url: "/holos/contact/{id}/block",
       ...options,
       ...params,
       headers: {
@@ -2495,36 +2226,15 @@ export class Agents extends HeyApiClient {
   }
 }
 
-export class Queue extends HeyApiClient {
+export class Send extends HeyApiClient {
   /**
-   * List message queue
+   * Retry sending a failed message
    *
-   * List all pending messages in the outgoing message queue.
+   * Attempt to resend a previously failed outbox message.
    */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<HolosQueueListResponses, unknown, ThrowOnError>({
-      url: "/holos/queue",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class FriendReply extends HeyApiClient {
-  /**
-   * List friend reply sub-sessions
-   *
-   * List all sub-session mappings for a friend session. Maps trigger message IDs to sub-session IDs.
-   */
-  public list<ThrowOnError extends boolean = false>(
+  public retry<ThrowOnError extends boolean = false>(
     parameters: {
-      sessionId: string
+      messageId: string
       directory?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2534,14 +2244,88 @@ export class FriendReply extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "sessionId" },
+            { in: "path", key: "messageId" },
             { in: "query", key: "directory" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosFriendReplyListResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-reply/{sessionId}",
+    return (options?.client ?? this.client).post<HolosSendRetryResponses, HolosSendRetryErrors, ThrowOnError>({
+      url: "/holos/send/{messageId}/retry",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Inbox extends HeyApiClient {
+  /**
+   * List inbox messages
+   *
+   * List all received messages, sorted by timestamp descending.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosInboxListResponses, unknown, ThrowOnError>({
+      url: "/holos/inbox",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Outbox extends HeyApiClient {
+  /**
+   * List outbox messages
+   *
+   * List all sent messages, sorted by timestamp descending.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosOutboxListResponses, unknown, ThrowOnError>({
+      url: "/holos/outbox",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Thread extends HeyApiClient {
+  /**
+   * Get conversation thread
+   *
+   * Get all messages (inbound + outbound) with a specific contact.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      contactId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "contactId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<HolosThreadGetResponses, unknown, ThrowOnError>({
+      url: "/holos/thread/{contactId}",
       ...options,
       ...params,
     })
@@ -2720,19 +2504,60 @@ export class Holos extends HeyApiClient {
     })
   }
 
+  /**
+   * Send message to Holos contact
+   *
+   * Send a text message to a Holos agent by ID. Messages are sent via WebSocket. If the recipient is offline, the message will be marked as failed.
+   */
+  public send<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      toId?: string
+      text?: string
+      replyToMessageId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "toId" },
+            { in: "body", key: "text" },
+            { in: "body", key: "replyToMessageId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<HolosSendResponses, unknown, ThrowOnError>({
+      url: "/holos/send",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   credentials2 = new Credentials({ client: this.client })
 
   profile = new Profile({ client: this.client })
 
   contact = new Contact({ client: this.client })
 
-  friendRequest = new FriendRequest({ client: this.client })
-
   agents = new Agents({ client: this.client })
 
-  queue = new Queue({ client: this.client })
+  send2 = new Send({ client: this.client })
 
-  friendReply = new FriendReply({ client: this.client })
+  inbox = new Inbox({ client: this.client })
+
+  outbox = new Outbox({ client: this.client })
+
+  thread = new Thread({ client: this.client })
 }
 
 export class Scope extends HeyApiClient {

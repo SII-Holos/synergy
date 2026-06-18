@@ -49,22 +49,9 @@ const DEFAULT_STATE: HolosState = {
   readiness: {
     ready: false,
   },
-  capability: {
-    items: [],
-  },
-  entitlement: {
-    quotas: {
-      dailyFreeUsage: {
-        status: "unknown",
-        remaining: null,
-        limit: null,
-      },
-    },
-  },
   social: {
     profile: null,
     contacts: [],
-    friendRequests: [],
     presence: {},
   },
 }

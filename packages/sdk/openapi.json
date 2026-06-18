@@ -9479,13 +9479,7 @@
                   "id": {
                     "type": "string"
                   },
-                  "holosId": {
-                    "type": "string"
-                  },
                   "name": {
-                    "type": "string"
-                  },
-                  "bio": {
                     "type": "string"
                   }
                 },
@@ -9573,7 +9567,7 @@
           }
         ],
         "summary": "Remove contact",
-        "description": "Remove a contact and notify the peer via WebSocket.",
+        "description": "Remove a contact.",
         "responses": {
           "200": {
             "description": "Removed",
@@ -9594,216 +9588,9 @@
         ]
       }
     },
-    "/holos/friend-request": {
-      "get": {
-        "operationId": "holos.friendRequest.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "List friend requests",
-        "description": "List all friend requests.",
-        "responses": {
-          "200": {
-            "description": "List of friend requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/FriendRequest"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.list({\n  ...\n})"
-          }
-        ]
-      },
-      "post": {
-        "operationId": "holos.friendRequest.create",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Create friend request",
-        "description": "Create a new outgoing friend request.",
-        "responses": {
-          "200": {
-            "description": "Created friend request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FriendRequest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "peerId": {
-                    "type": "string"
-                  },
-                  "peerName": {
-                    "type": "string"
-                  }
-                },
-                "required": ["id", "peerId"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.create({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/friend-request/{id}": {
-      "delete": {
-        "operationId": "holos.friendRequest.remove",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Remove friend request",
-        "description": "Remove a friend request.",
-        "responses": {
-          "200": {
-            "description": "Removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.remove({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/friend-request/send": {
-      "post": {
-        "operationId": "holos.friendRequest.send",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Send friend request",
-        "description": "Send an outgoing friend request to another agent via WebSocket.",
-        "responses": {
-          "200": {
-            "description": "Friend request sent or queued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FriendRequestSendResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "peerId": {
-                    "type": "string"
-                  },
-                  "peerName": {
-                    "type": "string"
-                  },
-                  "peerBio": {
-                    "type": "string"
-                  }
-                },
-                "required": ["peerId"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.send({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/friend-request/{id}/respond": {
+    "/holos/contact/{id}/block": {
       "put": {
-        "operationId": "holos.friendRequest.respond",
+        "operationId": "holos.contact.toggleBlock",
         "parameters": [
           {
             "in": "query",
@@ -9821,86 +9608,8 @@
             "required": true
           }
         ],
-        "summary": "Respond to friend request",
-        "description": "Accept or reject a friend request. Sends the response over WebSocket and updates local storage.",
-        "responses": {
-          "200": {
-            "description": "Updated friend request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FriendRequest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "status": {
-                    "type": "string",
-                    "enum": ["accepted", "rejected"]
-                  }
-                },
-                "required": ["status"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendRequest.respond({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/contact/{id}/config": {
-      "put": {
-        "operationId": "holos.contact.updateConfig",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Update contact config",
-        "description": "Update per-contact configuration (autoReply, autoInitiate, blocked).",
+        "summary": "Toggle contact blocked status",
+        "description": "Block or unblock a contact. Blocked contacts' messages are silently discarded.",
         "responses": {
           "200": {
             "description": "Updated contact",
@@ -9912,16 +9621,6 @@
               }
             }
           },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
           "404": {
             "description": "Not found",
             "content": {
@@ -9939,152 +9638,11 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "autoReply": {
-                    "type": "boolean"
-                  },
-                  "autoInitiate": {
-                    "type": "boolean"
-                  },
                   "blocked": {
                     "type": "boolean"
-                  },
-                  "maxAutoTurns": {
-                    "type": "number"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.updateConfig({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/contact/{id}/session": {
-      "get": {
-        "operationId": "holos.contact.session",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Get or create session for contact",
-        "description": "Returns the friend session for a contact, creating one if it doesn't exist yet.",
-        "responses": {
-          "200": {
-            "description": "Session info for navigation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosContactSessionResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.session({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/contact/{id}/message": {
-      "post": {
-        "operationId": "holos.contact.sendMessage",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Send message to contact",
-        "description": "Send a message to a contact via the friend session mailbox. The outbound hook handles Holos WS delivery automatically.",
-        "responses": {
-          "200": {
-            "description": "Message delivered to session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosSendMessageResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "replyToMessageId": {
-                    "type": "string"
                   }
                 },
-                "required": ["text"]
+                "required": ["blocked"]
               }
             }
           }
@@ -10092,7 +9650,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.sendMessage({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.contact.toggleBlock({\n  ...\n})"
           }
         ]
       }
@@ -10361,9 +9919,9 @@
         ]
       }
     },
-    "/holos/queue": {
-      "get": {
-        "operationId": "holos.queue.list",
+    "/holos/send": {
+      "post": {
+        "operationId": "holos.send",
         "parameters": [
           {
             "in": "query",
@@ -10373,53 +9931,41 @@
             }
           }
         ],
-        "summary": "List message queue",
-        "description": "List all pending messages in the outgoing message queue.",
+        "summary": "Send message to Holos contact",
+        "description": "Send a text message to a Holos agent by ID. Messages are sent via WebSocket. If the recipient is offline, the message will be marked as failed.",
         "responses": {
           "200": {
-            "description": "Queue items",
+            "description": "Send result",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "targetAgentId": {
-                        "type": "string"
-                      },
-                      "event": {
-                        "type": "string"
-                      },
-                      "payload": {},
-                      "status": {
-                        "default": "pending",
-                        "type": "string",
-                        "enum": ["pending", "sending", "delivered", "expired", "failed"]
-                      },
-                      "createdAt": {
-                        "type": "number"
-                      },
-                      "expiresAt": {
-                        "type": "number"
-                      },
-                      "retryCount": {
-                        "default": 0,
-                        "type": "number"
-                      },
-                      "lastRetryAt": {
-                        "type": "number"
-                      },
-                      "wsRequestId": {
-                        "type": "string"
-                      }
-                    },
-                    "required": ["id", "targetAgentId", "event", "payload", "createdAt", "expiresAt"]
-                  }
+                  "$ref": "#/components/schemas/HolosSendResponse"
                 }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "toId": {
+                    "description": "Recipient Holos agent ID",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "description": "Message text",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "replyToMessageId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["toId", "text"]
               }
             }
           }
@@ -10427,14 +9973,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.queue.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.send({\n  ...\n})"
           }
         ]
       }
     },
-    "/holos/friend-reply/{sessionId}": {
-      "get": {
-        "operationId": "holos.friendReply.list",
+    "/holos/send/{messageId}/retry": {
+      "post": {
+        "operationId": "holos.send.retry",
         "parameters": [
           {
             "in": "query",
@@ -10445,22 +9991,32 @@
           },
           {
             "in": "path",
-            "name": "sessionId",
+            "name": "messageId",
             "schema": {
               "type": "string"
             },
             "required": true
           }
         ],
-        "summary": "List friend reply sub-sessions",
-        "description": "List all sub-session mappings for a friend session. Maps trigger message IDs to sub-session IDs.",
+        "summary": "Retry sending a failed message",
+        "description": "Attempt to resend a previously failed outbox message.",
         "responses": {
           "200": {
-            "description": "Sub-session mappings",
+            "description": "Retry result",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FriendReplyMapping"
+                  "$ref": "#/components/schemas/HolosRetryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -10469,7 +10025,117 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.friendReply.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.send.retry({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/inbox": {
+      "get": {
+        "operationId": "holos.inbox.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List inbox messages",
+        "description": "List all received messages, sorted by timestamp descending.",
+        "responses": {
+          "200": {
+            "description": "Inbox messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxMessageList"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.inbox.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/outbox": {
+      "get": {
+        "operationId": "holos.outbox.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List outbox messages",
+        "description": "List all sent messages, sorted by timestamp descending.",
+        "responses": {
+          "200": {
+            "description": "Outbox messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxMessageList"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.outbox.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/thread/{contactId}": {
+      "get": {
+        "operationId": "holos.thread.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contactId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get conversation thread",
+        "description": "Get all messages (inbound + outbound) with a specific contact.",
+        "responses": {
+          "200": {
+            "description": "Thread messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxMessageList"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.thread.get({\n  ...\n})"
           }
         ]
       }
@@ -14634,10 +14300,6 @@
           },
           "creative_model": {
             "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
-            "type": "string"
-          },
-          "holos_friend_reply_model": {
-            "description": "Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.",
             "type": "string"
           },
           "vision_model": {
@@ -19601,128 +19263,6 @@
         },
         "required": ["ready"]
       },
-      "HolosCapabilityKey": {
-        "type": "string",
-        "enum": ["agora", "websearch", "arxiv", "remote_execution"]
-      },
-      "HolosCapabilityStatus": {
-        "type": "string",
-        "enum": ["available", "locked", "degraded", "unknown"]
-      },
-      "HolosCapabilityReason": {
-        "type": "string",
-        "enum": [
-          "not_logged_in",
-          "not_connected",
-          "quota_unavailable",
-          "quota_exhausted",
-          "temporarily_unavailable",
-          "unknown"
-        ]
-      },
-      "HolosCapabilityActionKind": {
-        "type": "string",
-        "enum": ["login_holos", "reconnect_holos", "open_settings", "wait"]
-      },
-      "HolosCapabilityAction": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/HolosCapabilityActionKind"
-          },
-          "label": {
-            "type": "string"
-          }
-        },
-        "required": ["kind", "label"]
-      },
-      "HolosCapabilityItem": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "$ref": "#/components/schemas/HolosCapabilityKey"
-          },
-          "status": {
-            "$ref": "#/components/schemas/HolosCapabilityStatus"
-          },
-          "reason": {
-            "$ref": "#/components/schemas/HolosCapabilityReason"
-          },
-          "title": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "action": {
-            "$ref": "#/components/schemas/HolosCapabilityAction"
-          }
-        },
-        "required": ["key", "status", "title", "description"]
-      },
-      "HolosCapabilityState": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/HolosCapabilityItem"
-            }
-          }
-        },
-        "required": ["items"]
-      },
-      "HolosQuotaStatus": {
-        "type": "string",
-        "enum": ["available", "exhausted", "unknown", "unavailable"]
-      },
-      "HolosQuotaInfo": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/HolosQuotaStatus"
-          },
-          "remaining": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "limit": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
-            "type": "string"
-          }
-        },
-        "required": ["status", "remaining", "limit"]
-      },
-      "HolosEntitlementState": {
-        "type": "object",
-        "properties": {
-          "quotas": {
-            "type": "object",
-            "properties": {
-              "dailyFreeUsage": {
-                "$ref": "#/components/schemas/HolosQuotaInfo"
-              }
-            },
-            "required": ["dailyFreeUsage"]
-          }
-        },
-        "required": ["quotas"]
-      },
       "HolosProfile": {
         "type": "object",
         "properties": {
@@ -19745,101 +19285,24 @@
         "type": "object",
         "properties": {
           "id": {
-            "description": "Local contact identifier",
-            "type": "string"
-          },
-          "holosId": {
-            "description": "Holos platform ID (when available)",
+            "description": "Holos Agent ID",
             "type": "string"
           },
           "name": {
             "description": "Display name",
             "type": "string"
           },
-          "bio": {
-            "description": "Short bio",
-            "type": "string"
-          },
-          "status": {
-            "default": "active",
-            "type": "string",
-            "enum": ["active", "blocked"]
+          "blocked": {
+            "description": "Block messages from this contact",
+            "default": false,
+            "type": "boolean"
           },
           "addedAt": {
             "description": "Timestamp when contact was added",
             "type": "number"
-          },
-          "config": {
-            "default": {
-              "autoReply": false,
-              "autoInitiate": false,
-              "blocked": false,
-              "maxAutoTurns": 10
-            },
-            "type": "object",
-            "properties": {
-              "autoReply": {
-                "description": "Allow the agent to automatically reply to messages from this contact",
-                "type": "boolean"
-              },
-              "autoInitiate": {
-                "description": "Allow the agent to proactively send messages to this contact",
-                "type": "boolean"
-              },
-              "blocked": {
-                "description": "Block all messages from this contact",
-                "type": "boolean"
-              },
-              "maxAutoTurns": {
-                "description": "Maximum consecutive auto-replies without human intervention",
-                "default": 10,
-                "type": "number"
-              }
-            },
-            "required": ["autoReply", "autoInitiate", "blocked"]
           }
         },
         "required": ["id", "name", "addedAt"]
-      },
-      "FriendRequest": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "description": "Request identifier",
-            "type": "string"
-          },
-          "direction": {
-            "description": "Whether this request was sent or received",
-            "type": "string",
-            "enum": ["incoming", "outgoing"]
-          },
-          "peerId": {
-            "description": "Holos ID of the other party",
-            "type": "string"
-          },
-          "peerName": {
-            "description": "Display name of the other party",
-            "type": "string"
-          },
-          "peerBio": {
-            "description": "Short bio of the other party",
-            "type": "string"
-          },
-          "status": {
-            "default": "pending",
-            "type": "string",
-            "enum": ["pending", "accepted", "rejected", "pending_delivery"]
-          },
-          "createdAt": {
-            "description": "Timestamp when request was created",
-            "type": "number"
-          },
-          "respondedAt": {
-            "description": "Timestamp when request was accepted/rejected",
-            "type": "number"
-          }
-        },
-        "required": ["id", "direction", "peerId", "createdAt"]
       },
       "HolosSocialState": {
         "type": "object",
@@ -19860,12 +19323,6 @@
               "$ref": "#/components/schemas/Contact"
             }
           },
-          "friendRequests": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FriendRequest"
-            }
-          },
           "presence": {
             "type": "object",
             "propertyNames": {
@@ -19877,7 +19334,7 @@
             }
           }
         },
-        "required": ["profile", "contacts", "friendRequests", "presence"]
+        "required": ["profile", "contacts", "presence"]
       },
       "HolosState": {
         "type": "object",
@@ -19891,17 +19348,11 @@
           "readiness": {
             "$ref": "#/components/schemas/HolosReadinessState"
           },
-          "capability": {
-            "$ref": "#/components/schemas/HolosCapabilityState"
-          },
-          "entitlement": {
-            "$ref": "#/components/schemas/HolosEntitlementState"
-          },
           "social": {
             "$ref": "#/components/schemas/HolosSocialState"
           }
         },
-        "required": ["identity", "connection", "readiness", "capability", "entitlement", "social"]
+        "required": ["identity", "connection", "readiness", "social"]
       },
       "HolosVerifyResponse": {
         "type": "object",
@@ -19942,36 +19393,6 @@
         },
         "required": ["agentId", "profile"]
       },
-      "FriendRequestSendResponse": {
-        "type": "object",
-        "properties": {
-          "queued": {
-            "type": "boolean"
-          }
-        },
-        "required": ["queued"]
-      },
-      "HolosContactSessionResponse": {
-        "type": "object",
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          },
-          "directory": {
-            "type": "string"
-          }
-        },
-        "required": ["sessionID", "directory"]
-      },
-      "HolosSendMessageResponse": {
-        "type": "object",
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          }
-        },
-        "required": ["sessionID"]
-      },
       "HolosPresenceMap": {
         "type": "object",
         "propertyNames": {
@@ -19994,20 +19415,39 @@
         },
         "required": ["success", "count"]
       },
-      "FriendReplyMapping": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "triggerMessageId": {
-              "type": "string"
-            },
-            "subSessionId": {
-              "type": "string"
-            }
+      "HolosSendResponse": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string"
           },
-          "required": ["triggerMessageId", "subSessionId"]
-        }
+          "sent": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["messageId", "sent"]
+      },
+      "HolosRetryResponse": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["messageId", "sent"]
+      },
+      "MailboxMessageList": {
+        "type": "array",
+        "items": {}
       },
       "ExternalAgentInfo": {
         "type": "object",
@@ -21374,294 +20814,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.holos.contact.added": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.added"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.config_updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.config_updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.friend_request.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.friend_request.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "request": {
-                "$ref": "#/components/schemas/FriendRequest"
-              }
-            },
-            "required": ["request"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.friend_request.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.friend_request.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "request": {
-                "$ref": "#/components/schemas/FriendRequest"
-              }
-            },
-            "required": ["request"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.friend_request.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.friend_request.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.queue.enqueued": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.queue.enqueued"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "targetAgentId": {
-                    "type": "string"
-                  },
-                  "event": {
-                    "type": "string"
-                  },
-                  "payload": {},
-                  "status": {
-                    "default": "pending",
-                    "type": "string",
-                    "enum": ["pending", "sending", "delivered", "expired", "failed"]
-                  },
-                  "createdAt": {
-                    "type": "number"
-                  },
-                  "expiresAt": {
-                    "type": "number"
-                  },
-                  "retryCount": {
-                    "default": 0,
-                    "type": "number"
-                  },
-                  "lastRetryAt": {
-                    "type": "number"
-                  },
-                  "wsRequestId": {
-                    "type": "string"
-                  }
-                },
-                "required": ["id", "targetAgentId", "event", "payload", "createdAt", "expiresAt"]
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.queue.delivered": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.queue.delivered"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.queue.expired": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.queue.expired"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              }
-            },
-            "required": ["peerId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connection.status_changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connection.status_changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.presence": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.presence"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["online", "offline"]
-              }
-            },
-            "required": ["peerId", "status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -21988,6 +21140,127 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.holos.contact.added": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.added"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              }
+            },
+            "required": ["peerId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.presence": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.presence"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["online", "offline"]
+              }
+            },
+            "required": ["peerId", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -22145,45 +21418,6 @@
             "$ref": "#/components/schemas/Event.app.push"
           },
           {
-            "$ref": "#/components/schemas/Event.holos.contact.added"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.config_updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.friend_request.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.friend_request.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.friend_request.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.queue.enqueued"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.queue.delivered"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.queue.expired"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.presence"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
@@ -22227,6 +21461,24 @@
           },
           {
             "$ref": "#/components/schemas/Event.channel.message.received"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.added"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.presence"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

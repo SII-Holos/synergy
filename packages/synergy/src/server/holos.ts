@@ -588,39 +588,6 @@ export const HolosDataRoute = new Hono()
       return c.json(result)
     },
   )
-  .post(
-    "/refresh-presence",
-    describeRoute({
-      summary: "Refresh friend presence",
-      description: "Trigger a fresh presence probe for all unblocked Holos contacts.",
-      operationId: "holos.refreshPresence",
-      responses: {
-        200: {
-          description: "Presence refresh triggered",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    success: z.literal(true),
-                    count: z.number(),
-                  })
-                  .meta({ ref: "HolosPresenceRefreshResponse" }),
-              ),
-            },
-          },
-        },
-        ...errors(503),
-      },
-    }),
-    async (c) => {
-      const provider = await HolosRuntime.getProvider()
-      if (!provider) return c.json({ message: "Holos not connected" }, 503)
-
-      const result = await provider.refreshPresence()
-      return c.json({ success: true as const, count: result.count })
-    },
-  )
 
   // --- Agent discovery ---
 

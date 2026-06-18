@@ -41,7 +41,7 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
     const list = contacts() ?? []
     const q = search().toLowerCase().trim()
     if (!q) return list
-    return list.filter((c) => c.name.toLowerCase().includes(q) || c.bio?.toLowerCase().includes(q))
+    return list.filter((c) => c.name.toLowerCase().includes(q))
   })
 
   const handleRemoveContact = async (id: string) => {
@@ -51,15 +51,6 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
       await holos.refresh()
     } catch (e: any) {
       showToast({ type: "error", title: "Failed", description: e.message })
-    }
-  }
-
-  const handleUpdateConfig = async (id: string, config: Partial<NonNullable<Contact["config"]>>) => {
-    try {
-      await globalSDK.client.holos.contact.updateConfig({ id, ...config })
-      await holos.refresh()
-    } catch (e: any) {
-      showToast({ type: "error", title: "Failed to update config", description: e.message })
     }
   }
 
@@ -122,7 +113,6 @@ export function ContactsView(props: { onRefresh: () => void | Promise<void>; ref
           onSearch={setSearch}
           onRemove={handleRemoveContact}
           onNavigate={handleNavigateToContact}
-          onUpdateConfig={handleUpdateConfig}
           presence={() => presence() ?? {}}
         />
       </div>

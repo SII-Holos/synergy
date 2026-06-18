@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -27,10 +27,6 @@ export function HolosPanel() {
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
   const [refreshingContacts, setRefreshingContacts] = createSignal(false)
-
-  const pendingIncoming = createMemo(() =>
-    (holos.state.social.friendRequests ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),
-  )
 
   async function refetchAll() {
     if (refreshingContacts()) return
@@ -127,11 +123,6 @@ export function HolosPanel() {
             </ViewTab>
             <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
               Contacts
-              <Show when={pendingIncoming().length > 0}>
-                <span class="ml-1 flex inline-flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
-                  {pendingIncoming().length}
-                </span>
-              </Show>
             </ViewTab>
           </div>
         </Panel.HeaderRow>
@@ -147,8 +138,6 @@ export function HolosPanel() {
               isGuest={auth.status === "guest"}
               connecting={connecting()}
               reconnecting={reconnecting()}
-              capabilityItems={holos.state.capability.items}
-              entitlements={holos.state.entitlement}
               onEditProfile={handleEditProfile}
               onDisconnect={handleDisconnect}
               onReconnect={handleReconnect}

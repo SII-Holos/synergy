@@ -1658,10 +1658,6 @@ export type Config = {
    */
   creative_model?: string
   /**
-   * Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.
-   */
-  holos_friend_reply_model?: string
-  /**
    * Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.
    */
   vision_model?: string
@@ -3429,53 +3425,6 @@ export type HolosReadinessState = {
   reason?: "not_logged_in" | "not_connected"
 }
 
-export type HolosCapabilityKey = "agora" | "websearch" | "arxiv" | "remote_execution"
-
-export type HolosCapabilityStatus = "available" | "locked" | "degraded" | "unknown"
-
-export type HolosCapabilityReason =
-  | "not_logged_in"
-  | "not_connected"
-  | "quota_unavailable"
-  | "quota_exhausted"
-  | "temporarily_unavailable"
-  | "unknown"
-
-export type HolosCapabilityActionKind = "login_holos" | "reconnect_holos" | "open_settings" | "wait"
-
-export type HolosCapabilityAction = {
-  kind: HolosCapabilityActionKind
-  label: string
-}
-
-export type HolosCapabilityItem = {
-  key: HolosCapabilityKey
-  status: HolosCapabilityStatus
-  reason?: HolosCapabilityReason
-  title: string
-  description: string
-  action?: HolosCapabilityAction
-}
-
-export type HolosCapabilityState = {
-  items: Array<HolosCapabilityItem>
-}
-
-export type HolosQuotaStatus = "available" | "exhausted" | "unknown" | "unavailable"
-
-export type HolosQuotaInfo = {
-  status: HolosQuotaStatus
-  remaining: number | null
-  limit: number | null
-  reason?: string
-}
-
-export type HolosEntitlementState = {
-  quotas: {
-    dailyFreeUsage: HolosQuotaInfo
-  }
-}
-
 export type HolosProfile = {
   name: string
   bio: string
@@ -3485,82 +3434,26 @@ export type HolosProfile = {
 
 export type Contact = {
   /**
-   * Local contact identifier
+   * Holos Agent ID
    */
   id: string
-  /**
-   * Holos platform ID (when available)
-   */
-  holosId?: string
   /**
    * Display name
    */
   name: string
   /**
-   * Short bio
+   * Block messages from this contact
    */
-  bio?: string
-  status?: "active" | "blocked"
+  blocked?: boolean
   /**
    * Timestamp when contact was added
    */
   addedAt: number
-  config?: {
-    /**
-     * Allow the agent to automatically reply to messages from this contact
-     */
-    autoReply: boolean
-    /**
-     * Allow the agent to proactively send messages to this contact
-     */
-    autoInitiate: boolean
-    /**
-     * Block all messages from this contact
-     */
-    blocked: boolean
-    /**
-     * Maximum consecutive auto-replies without human intervention
-     */
-    maxAutoTurns?: number
-  }
-}
-
-export type FriendRequest = {
-  /**
-   * Request identifier
-   */
-  id: string
-  /**
-   * Whether this request was sent or received
-   */
-  direction: "incoming" | "outgoing"
-  /**
-   * Holos ID of the other party
-   */
-  peerId: string
-  /**
-   * Display name of the other party
-   */
-  peerName?: string
-  /**
-   * Short bio of the other party
-   */
-  peerBio?: string
-  status?: "pending" | "accepted" | "rejected" | "pending_delivery"
-  /**
-   * Timestamp when request was created
-   */
-  createdAt: number
-  /**
-   * Timestamp when request was accepted/rejected
-   */
-  respondedAt?: number
 }
 
 export type HolosSocialState = {
   profile: HolosProfile | null
   contacts: Array<Contact>
-  friendRequests: Array<FriendRequest>
   presence: {
     [key: string]: "online" | "offline" | "unknown"
   }
@@ -3570,8 +3463,6 @@ export type HolosState = {
   identity: HolosIdentityState
   connection: HolosConnectionState
   readiness: HolosReadinessState
-  capability: HolosCapabilityState
-  entitlement: HolosEntitlementState
   social: HolosSocialState
 }
 
@@ -3585,19 +3476,6 @@ export type HolosProfileResponse = {
   profile: HolosProfile | null
 }
 
-export type FriendRequestSendResponse = {
-  queued: boolean
-}
-
-export type HolosContactSessionResponse = {
-  sessionID: string
-  directory: string
-}
-
-export type HolosSendMessageResponse = {
-  sessionID: string
-}
-
 export type HolosPresenceMap = {
   [key: string]: string
 }
@@ -3607,10 +3485,19 @@ export type HolosPresenceRefreshResponse = {
   count: number
 }
 
-export type FriendReplyMapping = Array<{
-  triggerMessageId: string
-  subSessionId: string
-}>
+export type HolosSendResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
+}
+
+export type HolosRetryResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
+}
+
+export type MailboxMessageList = Array<unknown>
 
 export type ExternalAgentInfo = {
   adapter: string
@@ -4091,110 +3978,6 @@ export type EventAppPush = {
   }
 }
 
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactConfigUpdated = {
-  type: "holos.contact.config_updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosFriendRequestCreated = {
-  type: "holos.friend_request.created"
-  properties: {
-    request: FriendRequest
-  }
-}
-
-export type EventHolosFriendRequestUpdated = {
-  type: "holos.friend_request.updated"
-  properties: {
-    request: FriendRequest
-  }
-}
-
-export type EventHolosFriendRequestRemoved = {
-  type: "holos.friend_request.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosQueueEnqueued = {
-  type: "holos.queue.enqueued"
-  properties: {
-    item: {
-      id: string
-      targetAgentId: string
-      event: string
-      payload: unknown
-      status?: "pending" | "sending" | "delivered" | "expired" | "failed"
-      createdAt: number
-      expiresAt: number
-      retryCount?: number
-      lastRetryAt?: number
-      wsRequestId?: string
-    }
-  }
-}
-
-export type EventHolosQueueDelivered = {
-  type: "holos.queue.delivered"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosQueueExpired = {
-  type: "holos.queue.expired"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -4312,6 +4095,50 @@ export type EventChannelMessageReceived = {
   }
 }
 
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -4369,19 +4196,6 @@ export type Event =
   | EventTodoUpdated
   | EventHolosProfileUpdated
   | EventAppPush
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosContactConfigUpdated
-  | EventHolosFriendRequestCreated
-  | EventHolosFriendRequestUpdated
-  | EventHolosFriendRequestRemoved
-  | EventHolosQueueEnqueued
-  | EventHolosQueueDelivered
-  | EventHolosQueueExpired
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
   | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
@@ -4397,6 +4211,12 @@ export type Event =
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -9004,9 +8824,7 @@ export type HolosContactListResponse = HolosContactListResponses[keyof HolosCont
 export type HolosContactAddData = {
   body?: {
     id: string
-    holosId?: string
     name: string
-    bio?: string
   }
   path?: never
   query?: {
@@ -9082,111 +8900,9 @@ export type HolosContactGetResponses = {
 
 export type HolosContactGetResponse = HolosContactGetResponses[keyof HolosContactGetResponses]
 
-export type HolosFriendRequestListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request"
-}
-
-export type HolosFriendRequestListResponses = {
-  /**
-   * List of friend requests
-   */
-  200: Array<FriendRequest>
-}
-
-export type HolosFriendRequestListResponse = HolosFriendRequestListResponses[keyof HolosFriendRequestListResponses]
-
-export type HolosFriendRequestCreateData = {
+export type HolosContactToggleBlockData = {
   body?: {
-    id: string
-    peerId: string
-    peerName?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request"
-}
-
-export type HolosFriendRequestCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type HolosFriendRequestCreateError = HolosFriendRequestCreateErrors[keyof HolosFriendRequestCreateErrors]
-
-export type HolosFriendRequestCreateResponses = {
-  /**
-   * Created friend request
-   */
-  200: FriendRequest
-}
-
-export type HolosFriendRequestCreateResponse =
-  HolosFriendRequestCreateResponses[keyof HolosFriendRequestCreateResponses]
-
-export type HolosFriendRequestRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request/{id}"
-}
-
-export type HolosFriendRequestRemoveResponses = {
-  /**
-   * Removed
-   */
-  200: boolean
-}
-
-export type HolosFriendRequestRemoveResponse =
-  HolosFriendRequestRemoveResponses[keyof HolosFriendRequestRemoveResponses]
-
-export type HolosFriendRequestSendData = {
-  body?: {
-    peerId: string
-    peerName?: string
-    peerBio?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request/send"
-}
-
-export type HolosFriendRequestSendErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type HolosFriendRequestSendError = HolosFriendRequestSendErrors[keyof HolosFriendRequestSendErrors]
-
-export type HolosFriendRequestSendResponses = {
-  /**
-   * Friend request sent or queued
-   */
-  200: FriendRequestSendResponse
-}
-
-export type HolosFriendRequestSendResponse = HolosFriendRequestSendResponses[keyof HolosFriendRequestSendResponses]
-
-export type HolosFriendRequestRespondData = {
-  body?: {
-    status: "accepted" | "rejected"
+    blocked: boolean
   }
   path: {
     id: string
@@ -9194,135 +8910,26 @@ export type HolosFriendRequestRespondData = {
   query?: {
     directory?: string
   }
-  url: "/holos/friend-request/{id}/respond"
+  url: "/holos/contact/{id}/block"
 }
 
-export type HolosFriendRequestRespondErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
+export type HolosContactToggleBlockErrors = {
   /**
    * Not found
    */
   404: NotFoundError
 }
 
-export type HolosFriendRequestRespondError = HolosFriendRequestRespondErrors[keyof HolosFriendRequestRespondErrors]
+export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
 
-export type HolosFriendRequestRespondResponses = {
-  /**
-   * Updated friend request
-   */
-  200: FriendRequest
-}
-
-export type HolosFriendRequestRespondResponse =
-  HolosFriendRequestRespondResponses[keyof HolosFriendRequestRespondResponses]
-
-export type HolosContactUpdateConfigData = {
-  body?: {
-    autoReply?: boolean
-    autoInitiate?: boolean
-    blocked?: boolean
-    maxAutoTurns?: number
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/config"
-}
-
-export type HolosContactUpdateConfigErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactUpdateConfigError = HolosContactUpdateConfigErrors[keyof HolosContactUpdateConfigErrors]
-
-export type HolosContactUpdateConfigResponses = {
+export type HolosContactToggleBlockResponses = {
   /**
    * Updated contact
    */
   200: Contact
 }
 
-export type HolosContactUpdateConfigResponse =
-  HolosContactUpdateConfigResponses[keyof HolosContactUpdateConfigResponses]
-
-export type HolosContactSessionData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/session"
-}
-
-export type HolosContactSessionErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactSessionError = HolosContactSessionErrors[keyof HolosContactSessionErrors]
-
-export type HolosContactSessionResponses = {
-  /**
-   * Session info for navigation
-   */
-  200: HolosContactSessionResponse
-}
-
-export type HolosContactSessionResponse2 = HolosContactSessionResponses[keyof HolosContactSessionResponses]
-
-export type HolosContactSendMessageData = {
-  body?: {
-    text: string
-    replyToMessageId?: string
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/message"
-}
-
-export type HolosContactSendMessageErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactSendMessageError = HolosContactSendMessageErrors[keyof HolosContactSendMessageErrors]
-
-export type HolosContactSendMessageResponses = {
-  /**
-   * Message delivered to session
-   */
-  200: HolosSendMessageResponse
-}
-
-export type HolosContactSendMessageResponse = HolosContactSendMessageResponses[keyof HolosContactSendMessageResponses]
+export type HolosContactToggleBlockResponse = HolosContactToggleBlockResponses[keyof HolosContactToggleBlockResponses]
 
 export type HolosPresenceData = {
   body?: never
@@ -9439,54 +9046,118 @@ export type HolosAgentsGetResponses = {
 
 export type HolosAgentsGetResponse = HolosAgentsGetResponses[keyof HolosAgentsGetResponses]
 
-export type HolosQueueListData = {
+export type HolosSendData = {
+  body?: {
+    /**
+     * Recipient Holos agent ID
+     */
+    toId: string
+    /**
+     * Message text
+     */
+    text: string
+    replyToMessageId?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/send"
+}
+
+export type HolosSendResponses = {
+  /**
+   * Send result
+   */
+  200: HolosSendResponse
+}
+
+export type HolosSendResponse2 = HolosSendResponses[keyof HolosSendResponses]
+
+export type HolosSendRetryData = {
+  body?: never
+  path: {
+    messageId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/holos/send/{messageId}/retry"
+}
+
+export type HolosSendRetryErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
+
+export type HolosSendRetryResponses = {
+  /**
+   * Retry result
+   */
+  200: HolosRetryResponse
+}
+
+export type HolosSendRetryResponse = HolosSendRetryResponses[keyof HolosSendRetryResponses]
+
+export type HolosInboxListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/holos/queue"
+  url: "/holos/inbox"
 }
 
-export type HolosQueueListResponses = {
+export type HolosInboxListResponses = {
   /**
-   * Queue items
+   * Inbox messages
    */
-  200: Array<{
-    id: string
-    targetAgentId: string
-    event: string
-    payload: unknown
-    status?: "pending" | "sending" | "delivered" | "expired" | "failed"
-    createdAt: number
-    expiresAt: number
-    retryCount?: number
-    lastRetryAt?: number
-    wsRequestId?: string
-  }>
+  200: MailboxMessageList
 }
 
-export type HolosQueueListResponse = HolosQueueListResponses[keyof HolosQueueListResponses]
+export type HolosInboxListResponse = HolosInboxListResponses[keyof HolosInboxListResponses]
 
-export type HolosFriendReplyListData = {
+export type HolosOutboxListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/outbox"
+}
+
+export type HolosOutboxListResponses = {
+  /**
+   * Outbox messages
+   */
+  200: MailboxMessageList
+}
+
+export type HolosOutboxListResponse = HolosOutboxListResponses[keyof HolosOutboxListResponses]
+
+export type HolosThreadGetData = {
   body?: never
   path: {
-    sessionId: string
+    contactId: string
   }
   query?: {
     directory?: string
   }
-  url: "/holos/friend-reply/{sessionId}"
+  url: "/holos/thread/{contactId}"
 }
 
-export type HolosFriendReplyListResponses = {
+export type HolosThreadGetResponses = {
   /**
-   * Sub-session mappings
+   * Thread messages
    */
-  200: FriendReplyMapping
+  200: MailboxMessageList
 }
 
-export type HolosFriendReplyListResponse = HolosFriendReplyListResponses[keyof HolosFriendReplyListResponses]
+export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
 
 export type AppLogData = {
   body?: {
