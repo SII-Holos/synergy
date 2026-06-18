@@ -36,8 +36,9 @@ import { HolosConversation, HolosGreeting } from "@/components/session/holos-con
 import { HolosPromptInput } from "@/components/session/holos-prompt-input"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkspacePanel, WorkspacePanelMobile } from "@/components/session/workspace-panel"
-import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
+import { WorkspacePanelMobile } from "@/components/session/workspace-panel"
+import { WorkspaceRail } from "@/components/session/workspace-rail"
+import { WorkspaceDrawer } from "@/components/session/workspace-drawer"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
@@ -887,11 +888,11 @@ function SessionPageContent() {
           {/* Session panel */}
           <div
             classList={{
-              "@container relative shrink-0 flex flex-col min-h-0 min-w-0 h-full bg-background-stronger": true,
-              "flex-1 md:flex-none pt-3 pb-0 md:py-3": true,
+              "@container relative flex-1 min-w-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
+              "pt-3 pb-0 md:py-3": true,
             }}
             style={{
-              width: isDesktop() && (showTabs() || workspace().opened()) ? `${layout.session.width()}px` : "100%",
+              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
           >
@@ -1115,7 +1116,10 @@ function SessionPageContent() {
             />
           </Show>
           <Show when={isDesktop() && workspace().opened()}>
-            <WorkspacePanel />
+            <WorkspaceDrawer />
+          </Show>
+          <Show when={isDesktop() && !!params.id}>
+            <WorkspaceRail />
           </Show>
         </div>
 

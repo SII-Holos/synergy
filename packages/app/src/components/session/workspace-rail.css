@@ -1,0 +1,50 @@
+.workspace-rail {
+  width: 48px;
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-left: 1px solid var(--border-weaker-base);
+  background: var(--surface-raised-base);
+}
+
+.workspace-rail-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  color: var(--icon-weak);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.workspace-rail-btn:hover {
+  color: var(--icon-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.workspace-rail-btn--active {
+  color: var(--icon-interactive-base);
+  background: var(--surface-raised-base-active);
+}
+
+.workspace-rail-btn:focus-visible {
+  outline: 2px solid var(--border-selected);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-rail-btn {
+    transition: none;
+  }
+}
