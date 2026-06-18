@@ -522,14 +522,28 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const globalSync = useGlobalSync()
   const directory = () => props.directory
 
-  const [note] = createResource(
-    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+  const [note, { refetch }] = createResource(
+    () => ({ id: props.id, dir: directory() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await sdk.client.note.get({ id, directory: dir })
       return result.data as NoteInfo
     },
   )
+
+  // Re-fetch this note only when it was updated by another session/tab
+  createEffect(() => {
+    const update = globalSync.noteUpdate()
+    if (!update) return
+    if (update.id !== props.id) return
+    if (update.type === "deleted") return
+    const base = baseNote()
+    // No base note yet = initial load handled by the resource itself
+    if (!base) return
+    // Our own save already set baseNote to the latest version — skip echo
+    if (update.version <= base.version) return
+    void refetch()
+  })
 
   const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
   const [title, setTitle] = createSignal("")
