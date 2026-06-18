@@ -1,8 +1,5 @@
 import z from "zod"
 import { Contact } from "./contact"
-import { FriendRequest } from "./friend-request"
-import { HolosCapability } from "./capability"
-import { HolosEntitlement } from "./entitlement"
 import { HolosProfile } from "./profile"
 import { Presence } from "./presence"
 import { HolosReadiness } from "./readiness"
@@ -39,31 +36,24 @@ export namespace HolosState {
     .object({
       profile: HolosProfile.Info.nullable(),
       contacts: Contact.Info.array(),
-      friendRequests: FriendRequest.Info.array(),
       presence: z.record(z.string(), z.enum(["online", "offline", "unknown"])),
     })
     .meta({ ref: "HolosSocialState" })
-  export type Social = z.infer<typeof Social>
-
   export const Info = z
     .object({
       identity: Identity,
       connection: Connection,
       readiness: Readiness,
-      capability: HolosCapability.State,
-      entitlement: HolosEntitlement.State,
       social: Social,
     })
     .meta({ ref: "HolosState" })
   export type Info = z.infer<typeof Info>
 
   export async function get(): Promise<Info> {
-    const [{ credential, status, readiness }, entitlement, profile, contacts, friendRequests] = await Promise.all([
+    const [{ credential, status, readiness }, profile, contacts] = await Promise.all([
       HolosReadiness.snapshot(),
-      HolosEntitlement.get(),
       HolosProfile.get(),
       Contact.list(),
-      FriendRequest.list(),
     ])
 
     const presenceEntries = Presence.all()
@@ -82,12 +72,9 @@ export namespace HolosState {
         ...(status.status === "failed" ? { error: status.error } : {}),
       },
       readiness,
-      capability: await HolosCapability.get(readiness),
-      entitlement,
       social: {
         profile: profile ?? null,
         contacts,
-        friendRequests,
         presence,
       },
     }

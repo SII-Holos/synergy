@@ -18,7 +18,6 @@ export type ModelKey =
   | "thinking_model"
   | "long_context_model"
   | "creative_model"
-  | "holos_friend_reply_model"
 
 /** Resolved defaults returned by Config.get() (Phase 1 backend). These are the actual active defaults, never undefined. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
@@ -30,7 +29,6 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   thinking_model: "",
   long_context_model: "",
   creative_model: "",
-  holos_friend_reply_model: "",
 }
 
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
@@ -77,11 +75,6 @@ export const MODEL_ROLES: Array<{ key: ModelKey; label: string; description: str
     description: "Explore, scout, and quick-category task routing",
   },
   { key: "vision_model", label: "Vision Model", description: "Image, PDF, and file analysis" },
-  {
-    key: "holos_friend_reply_model",
-    label: "Holos Friend Reply Model",
-    description: "Used for Holos automatic friend replies. Falls back to the default model.",
-  },
   { key: "thinking_model", label: "Thinking Model", description: "Complex reasoning and architecture decisions" },
   {
     key: "long_context_model",
@@ -227,7 +220,6 @@ export type ModelsStore = {
   mini_model: string
   mid_model: string
   vision_model: string
-  holos_friend_reply_model: string
   thinking_model: string
   long_context_model: string
   creative_model: string

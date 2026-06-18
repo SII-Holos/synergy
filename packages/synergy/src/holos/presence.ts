@@ -12,7 +12,6 @@ export namespace Presence {
 
   const cache = new Map<string, Entry>()
   const MAX_AGE_MS = 24 * 60 * 60 * 1000
-  const DEFAULT_POLL_INTERVAL_MS = 10 * 60 * 1000
 
   export function get(agentId: string): Status {
     const entry = cache.get(agentId)
@@ -57,33 +56,5 @@ export namespace Presence {
       result.set(id, entry.status)
     }
     return result
-  }
-
-  export function startPolling(input: {
-    getFriendIds: () => Promise<string[]>
-    sendPing: (agentId: string) => void
-    intervalMs?: number
-  }): { stop: () => void } {
-    const intervalMs = input.intervalMs ?? DEFAULT_POLL_INTERVAL_MS
-
-    const tick = async () => {
-      try {
-        prune()
-        const friendIds = await input.getFriendIds()
-        for (const id of friendIds) {
-          input.sendPing(id)
-        }
-        log.info("presence poll sent", { count: friendIds.length })
-      } catch (err) {
-        log.warn("presence poll failed", { error: err })
-      }
-    }
-
-    const timer = setInterval(tick, intervalMs)
-    tick()
-
-    return {
-      stop: () => clearInterval(timer),
-    }
   }
 }

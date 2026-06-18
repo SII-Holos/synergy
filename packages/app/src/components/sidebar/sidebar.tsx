@@ -95,8 +95,6 @@ export function Sidebar(props: SidebarProps) {
   const scopes = createMemo(() => layout.scopes.list())
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
-  const holosEntries = createMemo(() => channelEntries().filter((e) => e.endpointKind === "holos"))
-  const feishuEntries = createMemo(() => channelEntries().filter((e) => e.endpointKind !== "holos"))
 
   const dir = createMemo(() => {
     if (params.dir) {
@@ -410,46 +408,24 @@ export function Sidebar(props: SidebarProps) {
             </div>
             <Show when={channelSectionOpen()}>
               <Show when={channelEntries().length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
-                <Show when={holosEntries().length > 0}>
-                  <div class="sb-session-group">
-                    <div class="sb-session-group-header">Holos</div>
-                    <For each={holosEntries()}>
-                      {(entry) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "sb-session-row": true,
-                            "sb-session-active": entry.id === params.id,
-                          }}
-                          onClick={() => handleNavEntryClick(entry)}
-                        >
-                          <SessionRowIcon entry={entry} isGlobal={true} />
-                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-                <Show when={feishuEntries().length > 0}>
-                  <div class="sb-session-group">
-                    <div class="sb-session-group-header">Feishu</div>
-                    <For each={feishuEntries()}>
-                      {(entry) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "sb-session-row": true,
-                            "sb-session-active": entry.id === params.id,
-                          }}
-                          onClick={() => handleNavEntryClick(entry)}
-                        >
-                          <SessionRowIcon entry={entry} isGlobal={true} />
-                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+                <div class="sb-session-group">
+                  <div class="sb-session-group-header">Feishu</div>
+                  <For each={channelEntries()}>
+                    {(entry) => (
+                      <button
+                        type="button"
+                        classList={{
+                          "sb-session-row": true,
+                          "sb-session-active": entry.id === params.id,
+                        }}
+                        onClick={() => handleNavEntryClick(entry)}
+                      >
+                        <SessionRowIcon entry={entry} isGlobal={true} />
+                        <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                      </button>
+                    )}
+                  </For>
+                </div>
                 <Show when={layout.nav.hasMoreRootNavSection("channel")}>
                   <button
                     type="button"
