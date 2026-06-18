@@ -3503,7 +3503,7 @@ export class ControlProfile extends HeyApiClient {
   /**
    * Get effective control profile
    *
-   * Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > default workspace.
+   * Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > guarded default.
    */
   public effective<ThrowOnError extends boolean = false>(
     parameters?: {

@@ -22,7 +22,6 @@ import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { getDraggableId } from "@/utils/solid-dnd"
-import { usePermission } from "@/context/permission"
 import { SessionReviewTab } from "@/components/session"
 
 import { navMark, navParams } from "@/utils/perf"
@@ -72,7 +71,6 @@ function SessionPageContent() {
   const location = useLocation()
   const sdk = useSDK()
   const prompt = usePrompt()
-  const permission = usePermission()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const workspace = () => layout.workspace(sessionKey())
@@ -510,7 +508,6 @@ function SessionPageContent() {
     terminal,
     layout,
     prompt,
-    permission,
     navigate,
     routeParams: params as unknown as { dir: string; id?: string },
     info,

@@ -608,6 +608,17 @@ When a command, script, notebook, renderer, or LaTeX build produces a user-facin
 
 Some operations require user approval. Attempt the operation — the system handles approval if required. If denied, ask for guidance or try an alternative.
 
+### Error Handling Guide
+
+When a tool call fails:
+
+- **"Policy Denied" / "Permission denied by profile"** — A config rule permanently blocks this action. Do NOT retry. Report the limitation or use an alternative approach.
+- **"Sandbox Denial Detected" / "Sandbox Blocked" / "Operation not permitted"** — The filesystem sandbox blocked this action. This is a system boundary. Do NOT blindly retry with different shell syntax or CWD changes. Either use workspace-relative paths and dedicated file tools (view_file, scan_files, glob), or ask the user for escalated permission.
+- **"Boundary Denied" / "outside the workspace"** — The path is outside the allowed workspace directory. Use workspace-relative paths or dedicated file inspection tools instead of raw shell commands. Do NOT retry with the same path.
+- **Environment issues** (missing tools, network failures, etc.) — these are transient and can be retried or worked around.
+
+The key rule: sandbox rejections and permission denials are NOT transient errors. They will NOT resolve by retrying the same thing. Stop, assess, and either find an alternative or ask the user.
+
 # Knowledge Management
 
 ## Memory
@@ -675,6 +686,21 @@ Suggest logical next steps briefly. Mention things you couldn't do that the user
 **Cascading failure**: Re-plan. Cancel affected downstream DAG nodes. Rework the branch.
 
 **Blocked on user**: State what you know, what you need, and offer options.
+
+## Sandbox-Aware Failure Handling
+
+Permissions and sandbox errors work differently from code or logic errors:
+
+**Sandbox denial (Operation not permitted, Permission denied, Not a directory)**: This is a filesystem boundary. Do NOT retry by changing CWD, using different shell syntax, or trying the same path with different tools. If `/path/to/X` is blocked, so are `cd /path/to/X`, `ls /path/to/X`, `realpath /path/to/X`, and `bun /path/to/X/script.ts`. Use workspace-relative paths or dedicated file inspection tools (view_file, scan_files, glob) instead.
+
+**Policy denial (Enforcement gate denied, Permission denied by profile)**: A config rule permanently blocks this action. Do NOT retry. Report the limitation. The refusal is by design, not by accident.
+
+**Boundary hit (outside workspace)**: The path is outside the sandbox boundary. Use workspace-relative paths. If the task genuinely requires that path, ask the user for guidance — do not assume escalation is possible.
+
+**Escalation decision**: Before asking the user for escalated permissions, verify:
+- The operation is essential to the task
+- There is no workspace-safe alternative
+- You understand exactly which permission is needed
 
 # Anti-Patterns
 

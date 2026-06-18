@@ -1959,7 +1959,7 @@
           }
         ],
         "summary": "Get effective control profile",
-        "description": "Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > default workspace.",
+        "description": "Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > guarded default.",
         "responses": {
           "200": {
             "description": "Effective profile resolution",
@@ -13118,7 +13118,7 @@
       "ControlProfileId": {
         "description": "Default control profile applied to all agents",
         "type": "string",
-        "enum": ["review", "workspace", "auto_review", "full_access"]
+        "enum": ["manual", "guarded", "autonomous", "full_access", "review", "workspace", "auto_review"]
       },
       "AgentConfig": {
         "type": "object",
@@ -15433,7 +15433,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "enum": ["review", "workspace", "auto_review", "full_access"]
+            "enum": ["manual", "guarded", "autonomous", "full_access"]
           },
           "label": {
             "type": "string"
@@ -19949,7 +19949,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["review", "workspace", "auto_review", "full_access"]
+            "enum": ["manual", "guarded", "autonomous", "full_access", "review", "workspace", "auto_review"]
           },
           "model": {
             "type": "object",

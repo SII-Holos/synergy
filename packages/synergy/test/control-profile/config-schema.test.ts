@@ -3,7 +3,14 @@ import { ControlProfileId } from "../../src/config/schema"
 
 describe("ControlProfileId schema", () => {
   test("valid profile ids parse successfully", () => {
-    for (const id of ["review", "workspace", "auto_review", "full_access"]) {
+    for (const id of ["manual", "guarded", "autonomous", "full_access"]) {
+      const result = ControlProfileId.safeParse(id)
+      expect(result.success).toBe(true)
+    }
+  })
+
+  test("legacy profile ids remain accepted for config compatibility", () => {
+    for (const id of ["review", "workspace", "auto_review"]) {
       const result = ControlProfileId.safeParse(id)
       expect(result.success).toBe(true)
     }
@@ -31,15 +38,15 @@ describe("Config schema accepts controlProfile", () => {
   test("top-level controlProfile accepts valid value", () => {
     const result = Info.safeParse({
       $schema: "file:///test/schema.json",
-      controlProfile: "review",
+      controlProfile: "manual",
     })
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.controlProfile).toBe("review")
+      expect(result.data.controlProfile).toBe("manual")
     }
   })
 
-  test("top-level controlProfile defaults to undefined (workspace at resolution time)", () => {
+  test("top-level controlProfile defaults to undefined (guarded at resolution time)", () => {
     const result = Info.safeParse({
       $schema: "file:///test/schema.json",
     })
@@ -54,7 +61,7 @@ describe("Config schema accepts controlProfile", () => {
       $schema: "file:///test/schema.json",
       agent: {
         "synergy-max": {
-          controlProfile: "auto_review",
+          controlProfile: "autonomous",
         },
       },
     })
@@ -77,7 +84,7 @@ describe("Config schema accepts controlProfile", () => {
   test("existing permission config coexists with controlProfile", () => {
     const result = Info.safeParse({
       $schema: "file:///test/schema.json",
-      controlProfile: "workspace",
+      controlProfile: "guarded",
       permission: {
         edit: "allow",
         bash: "ask",

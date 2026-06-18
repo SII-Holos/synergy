@@ -717,7 +717,14 @@ export type PermissionConfig =
 /**
  * Default control profile applied to all agents
  */
-export type ControlProfileId = "review" | "workspace" | "auto_review" | "full_access"
+export type ControlProfileId =
+  | "manual"
+  | "guarded"
+  | "autonomous"
+  | "full_access"
+  | "review"
+  | "workspace"
+  | "auto_review"
 
 export type AgentConfig = {
   model?: string
@@ -1996,7 +2003,7 @@ export type Provider = {
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type ControlProfileSummary = {
-  id: "review" | "workspace" | "auto_review" | "full_access"
+  id: "manual" | "guarded" | "autonomous" | "full_access"
   label: string
   description: string
 }
@@ -3591,7 +3598,7 @@ export type Agent = {
   temperature?: number
   color?: string
   permission: PermissionRuleset
-  controlProfile?: "review" | "workspace" | "auto_review" | "full_access"
+  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access" | "review" | "workspace" | "auto_review"
   model?: {
     modelID: string
     providerID: string

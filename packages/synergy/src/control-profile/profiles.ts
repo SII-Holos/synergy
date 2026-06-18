@@ -1,27 +1,60 @@
-import type { ControlProfile, ResolutionContext, ResolvedProfile } from "./types"
+import type {
+  ControlProfile,
+  ProfileApproval,
+  ProfileId,
+  ProfileIdInput,
+  ResolutionContext,
+  ResolvedProfile,
+} from "./types"
 
-const NONBYPASSABLE_PERMS = [
-  "file_external",
+export const PROFILE_IDS: readonly ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
+
+const LEGACY_PROFILE_ALIASES: Record<string, ProfileId> = {
+  review: "manual",
+  workspace: "guarded",
+  auto_review: "autonomous",
+}
+
+const CAPABILITY_PERMISSIONS = [
+  "file_read",
+  "file_write",
+  "shell",
   "shell_destructive",
+  "network_request",
+  "file_external",
+  "mcp_invoke",
+  "plugin_invoke",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
-  "mcp_invoke",
-  "plugin_invoke",
 ]
 
-function nonBypassableRule(permission: string, action: "allow" | "deny" | "ask") {
-  return {
-    permission,
-    pattern: "*",
-    action,
-    nonBypassable: true,
-  }
+const HIGH_RISK_PERMISSIONS = [
+  "shell_destructive",
+  "file_external",
+  "mcp_invoke",
+  "plugin_invoke",
+  "identity_act",
+  "communication_email",
+  "channel_outbound",
+  "platform_control",
+]
+
+function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
+  return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }
 }
 
-function rule(permission: string, action: "allow" | "deny" | "ask") {
-  return { permission, pattern: "*", action }
+function rulesFor(actions: {
+  low: "allow" | "deny" | "ask"
+  medium: "allow" | "deny" | "ask"
+  high: "allow" | "deny" | "ask"
+}) {
+  return CAPABILITY_PERMISSIONS.map((permission) => {
+    if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
+    if (permission === "file_read") return rule(permission, actions.low)
+    return rule(permission, actions.medium)
+  })
 }
 
 function workspaceFs(workspace: string) {
@@ -32,49 +65,11 @@ function workspaceFs(workspace: string) {
   }
 }
 
-function workspaceApply(workspace: string, extraRules: ReturnType<typeof rule>[]) {
-  return [
-    rule("file_read", "allow"),
-    rule("file_write", "allow"),
-    rule("shell", "ask"),
-    rule("network_request", "ask"),
-    ...NONBYPASSABLE_PERMS.map((p) => nonBypassableRule(p, "ask")),
-    ...extraRules,
-  ]
-}
-
-function reviewRules(): ReturnType<typeof rule>[] {
-  return [
-    rule("file_read", "allow"),
-    rule("file_write", "deny"),
-    rule("shell", "deny"),
-    rule("shell_destructive", "deny"),
-    rule("network_request", "deny"),
-    ...["mcp_invoke", "plugin_invoke", "channel_outbound", "communication_email", "identity_act"].map((p) =>
-      rule(p, "deny"),
-    ),
-    nonBypassableRule("file_external", "deny"),
-    nonBypassableRule("platform_control", "deny"),
-  ]
-}
-
 function workspacePolicy(workspace: string) {
   return {
     filesystem: workspaceFs(workspace),
     network: { mode: "restricted" as const },
     sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
-  }
-}
-
-function reviewPolicy(workspace: string) {
-  return {
-    filesystem: {
-      readRoots: [workspace],
-      writeRoots: [],
-      protectedPaths: [],
-    },
-    network: { mode: "disabled" as const },
-    sandbox: { mode: "read_only" as const, fallback: "deny" as const },
   }
 }
 
@@ -90,83 +85,86 @@ function fullAccessPolicy() {
   }
 }
 
-function fullAccessRules(): ReturnType<typeof rule>[] {
-  return [
-    rule("file_read", "allow"),
-    rule("file_write", "allow"),
-    rule("shell", "allow"),
-    rule("shell_destructive", "allow"),
-    rule("network_request", "allow"),
-    rule("file_external", "allow"),
-    rule("mcp_invoke", "ask"),
-    rule("plugin_invoke", "ask"),
-    nonBypassableRule("identity_act", "ask"),
-    nonBypassableRule("communication_email", "ask"),
-    nonBypassableRule("channel_outbound", "ask"),
-    nonBypassableRule("platform_control", "ask"),
-  ]
+function approval(mode: ProfileApproval["mode"]): ProfileApproval {
+  switch (mode) {
+    case "manual":
+      return { mode, lowRisk: "ask", mediumRisk: "ask", highRisk: "ask" }
+    case "guarded":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "ask" }
+    case "autonomous":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" }
+    case "full_access":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "allow" }
+  }
 }
 
-const workspaceApprovalPolicy = {
-  autoApprovePatterns: [],
-  requireApprovalCategories: NONBYPASSABLE_PERMS,
-  silentApproveNonBypassable: false,
+function summary(
+  id: ProfileId,
+  profile: Omit<ControlProfile, "ruleset" | "filesystem" | "network">,
+  deniedCapabilities: string[],
+  workspace: string,
+) {
+  return {
+    profileId: id,
+    sandbox: profile.sandbox,
+    label: profile.label,
+    brief: profile.description,
+    approval: profile.approval,
+    deniedCapabilities,
+    workspaceRoot: workspace,
+  }
 }
 
-const autoReviewApprovalPolicy = {
-  autoApprovePatterns: ["file_read"],
-  requireApprovalCategories: NONBYPASSABLE_PERMS,
-  silentApproveNonBypassable: false,
+export function normalizeProfileId(id: string | undefined): ProfileId {
+  if (!id) return "guarded"
+  if ((PROFILE_IDS as readonly string[]).includes(id)) return id as ProfileId
+  return LEGACY_PROFILE_ALIASES[id] ?? "guarded"
 }
 
-const fullAccessApprovalPolicy = {
-  autoApprovePatterns: ["file_read", "file_write", "file_external", "shell", "network_request"],
-  requireApprovalCategories: ["identity_act", "communication_email", "channel_outbound", "platform_control"],
-  silentApproveNonBypassable: false,
-}
-
-const reviewApprovalPolicy = {
-  autoApprovePatterns: [],
-  requireApprovalCategories: NONBYPASSABLE_PERMS,
-  silentApproveNonBypassable: false,
-}
-
-export function buildProfile(id: string, ctx: ResolutionContext): ResolvedProfile {
+export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): ResolvedProfile {
+  const id = normalizeProfileId(idInput)
   const { workspace, interactionMode } = ctx
 
   switch (id) {
-    case "review": {
-      const policy = reviewPolicy(workspace)
-      return {
+    case "manual": {
+      const policy = workspacePolicy(workspace)
+      const profile = {
         valid: true,
-        label: "审阅",
-        ruleset: reviewRules(),
+        label: "Manual Approval",
+        description: "Ask before every tool request. Best when you are present and want to review each action.",
+        ruleset: rulesFor({ low: "ask", medium: "ask", high: "ask" }),
         ...policy,
-        approvalPolicy: reviewApprovalPolicy,
+        approval: approval("manual"),
         allowAllBlocked: true,
       }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
     }
 
-    case "workspace": {
+    case "guarded": {
       const policy = workspacePolicy(workspace)
-      return {
+      const profile = {
         valid: true,
-        label: "工作区",
-        ruleset: workspaceApply(workspace, []),
+        label: "Guarded",
+        description: "Auto-allow ordinary workspace work and ask only for high-risk actions.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "ask" }),
         ...policy,
-        approvalPolicy: workspaceApprovalPolicy,
+        approval: approval("guarded"),
       }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
     }
 
-    case "auto_review": {
+    case "autonomous": {
       const policy = workspacePolicy(workspace)
-      return {
+      const profile = {
         valid: true,
-        label: "自动审查",
-        ruleset: workspaceApply(workspace, []),
+        label: "Autonomous",
+        description:
+          "Keep working unattended. High-risk actions are denied with semantic guidance instead of prompting.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
         ...policy,
-        approvalPolicy: autoReviewApprovalPolicy,
+        approval: approval("autonomous"),
       }
+      return { ...profile, summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace) }
     }
 
     case "full_access": {
@@ -174,41 +172,30 @@ export function buildProfile(id: string, ctx: ResolutionContext): ResolvedProfil
         return {
           valid: false,
           reason: "full_access profile is forbidden in unattended mode",
-          label: "完全访问权限",
+          label: "Full Access",
+          description: "Unrestricted local access. Disabled for unattended sessions.",
           ruleset: [],
           filesystem: { readRoots: [], writeRoots: [], protectedPaths: [] },
           network: { mode: "disabled" },
           sandbox: { mode: "read_only", fallback: "deny" },
-          approvalPolicy: fullAccessApprovalPolicy,
+          approval: approval("full_access"),
           allowAllBlocked: false,
         }
       }
       const policy = fullAccessPolicy()
-      return {
+      const profile = {
         valid: true,
-        label: "完全访问权限",
-        ruleset: fullAccessRules(),
+        label: "Full Access",
+        description: "Allow all tool requests without workspace, shell, or network approval prompts.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "allow" }),
         ...policy,
-        approvalPolicy: fullAccessApprovalPolicy,
+        approval: approval("full_access"),
       }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
     }
-
-    default:
-      throw new Error(`Unknown profile id: ${id}`)
   }
 }
 
 export function getProfileLabel(id: string): string {
-  switch (id) {
-    case "review":
-      return "审阅"
-    case "workspace":
-      return "工作区"
-    case "auto_review":
-      return "自动审查"
-    case "full_access":
-      return "完全访问权限"
-    default:
-      throw new Error(`Unknown profile id: ${id}`)
-  }
+  return buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" }).label
 }

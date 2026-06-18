@@ -20,13 +20,25 @@ export interface ProfileSandbox {
   fallback: "deny" | "warn" | "allow"
 }
 
+export type ApprovalMode = "manual" | "guarded" | "autonomous" | "full_access"
+export type ApprovalAction = "allow" | "ask" | "deny"
+export type RiskLevel = "low" | "medium" | "high"
+
+export interface ProfileApproval {
+  mode: ApprovalMode
+  lowRisk: ApprovalAction
+  mediumRisk: ApprovalAction
+  highRisk: ApprovalAction
+}
+
 export interface ControlProfile {
   label: string
+  description: string
   ruleset: ProfileRule[]
   filesystem: ProfileFilesystem
   network: ProfileNetwork
   sandbox: ProfileSandbox
-  approvalPolicy: Record<string, unknown>
+  approval: ProfileApproval
   allowAllBlocked?: boolean
 }
 
@@ -36,9 +48,22 @@ export interface ResolutionContext {
   interactionMode?: string
 }
 
+export interface ProfileSummary {
+  profileId: string
+  sandbox: ProfileSandbox
+  label: string
+  brief: string
+  approval: ProfileApproval
+  deniedCapabilities: string[]
+  workspaceRoot: string
+}
+
 export interface ResolvedProfile extends ControlProfile {
   valid: boolean
   reason?: string
+  summary?: ProfileSummary
 }
 
-export type ProfileId = "review" | "workspace" | "auto_review" | "full_access"
+export type ProfileId = "manual" | "guarded" | "autonomous" | "full_access"
+export type LegacyProfileId = "review" | "workspace" | "auto_review"
+export type ProfileIdInput = ProfileId | LegacyProfileId

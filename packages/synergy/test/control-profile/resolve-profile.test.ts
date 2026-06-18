@@ -1,46 +1,57 @@
 import { describe, expect, test } from "bun:test"
-import type { ProfileId } from "../../src/control-profile/types"
+import { ControlProfileCompiler } from "../../src/control-profile/compiler"
+import type { ProfileId, ProfileIdInput } from "../../src/control-profile/types"
 
 // Minimal inline mock of resolveEffectiveProfile for direct unit testing
 // This mirrors the logic in tool-resolver.ts
 function resolveEffectiveProfile(agentProfile: string | undefined, topLevelProfile: string | undefined): ProfileId {
-  const VALID: readonly string[] = ["review", "workspace", "auto_review", "full_access"]
-  // agentProfile comes from Zod-validated config, so it's already validated
-  // But topLevelProfile can be any string from config
-  const candidate = agentProfile ?? topLevelProfile ?? "workspace"
-  if (VALID.includes(candidate)) return candidate as ProfileId
-  return "workspace"
+  return ControlProfileCompiler.normalize(agentProfile ?? topLevelProfile)
 }
 
 describe("resolveEffectiveProfile", () => {
-  test("default is workspace when nothing is configured", () => {
-    expect(resolveEffectiveProfile(undefined, undefined)).toBe("workspace")
+  test("default is guarded when nothing is configured", () => {
+    expect(resolveEffectiveProfile(undefined, undefined)).toBe("guarded")
   })
 
   test("top-level config overrides default", () => {
-    expect(resolveEffectiveProfile(undefined, "review")).toBe("review")
+    expect(resolveEffectiveProfile(undefined, "manual")).toBe("manual")
   })
 
   test("agent config overrides top-level", () => {
-    expect(resolveEffectiveProfile("full_access", "workspace")).toBe("full_access")
+    expect(resolveEffectiveProfile("full_access", "guarded")).toBe("full_access")
   })
 
   test("agent config has highest precedence", () => {
-    expect(resolveEffectiveProfile("auto_review", "review")).toBe("auto_review")
+    expect(resolveEffectiveProfile("autonomous", "manual")).toBe("autonomous")
   })
 
-  test("invalid top-level falls back to workspace", () => {
-    expect(resolveEffectiveProfile(undefined, "bogus")).toBe("workspace")
+  test("invalid top-level falls back to guarded", () => {
+    expect(resolveEffectiveProfile(undefined, "bogus")).toBe("guarded")
   })
 
-  test("both absent falls back to workspace", () => {
-    expect(resolveEffectiveProfile(undefined, undefined)).toBe("workspace")
+  test("both absent falls back to guarded", () => {
+    expect(resolveEffectiveProfile(undefined, undefined)).toBe("guarded")
   })
 
   test("all four valid profiles are accepted", () => {
-    const ids: ProfileId[] = ["review", "workspace", "auto_review", "full_access"]
+    const ids: ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
     for (const id of ids) {
       expect(resolveEffectiveProfile(id, undefined)).toBe(id)
+    }
+  })
+
+  test("legacy profile ids map to the new four modes", () => {
+    const cases: Record<ProfileIdInput, ProfileId> = {
+      review: "manual",
+      workspace: "guarded",
+      auto_review: "autonomous",
+      manual: "manual",
+      guarded: "guarded",
+      autonomous: "autonomous",
+      full_access: "full_access",
+    }
+    for (const [input, expected] of Object.entries(cases)) {
+      expect(resolveEffectiveProfile(input, undefined)).toBe(expected)
     }
   })
 })

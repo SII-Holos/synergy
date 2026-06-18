@@ -32,6 +32,8 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -466,6 +468,29 @@ export namespace SessionInvoke {
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
+
+        // Layer 1.5: Semi-static — permission context (stable per session)
+        try {
+          const workspace = Instance.directory
+          const workspaceInfo = Instance.workspace
+          const interaction = session?.interaction
+          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+          const topLevelProfile = await Config.get()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const profileId = ControlProfileCompiler.normalize(agent.controlProfile ?? topLevelProfile)
+          const resolved = ControlProfileCompiler.resolve(profileId, {
+            workspace,
+            workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            interactionMode,
+          })
+          if (resolved.valid) {
+            const ctx = buildPermissionContext(resolved, workspace)
+            systemParts.push(ctx)
+          }
+        } catch {
+          // Profile resolution failure is non-fatal — skip permission context
+        }
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)

@@ -9,18 +9,11 @@ import { errors } from "./error"
 
 const ControlProfileSummary = z
   .object({
-    id: z.enum(["review", "workspace", "auto_review", "full_access"]),
+    id: z.enum(["manual", "guarded", "autonomous", "full_access"]),
     label: z.string(),
     description: z.string(),
   })
   .meta({ ref: "ControlProfileSummary" })
-
-const PROFILE_DESCRIPTIONS: Record<string, string> = {
-  review: "Read-only workspace access. Denies shell, network, and writes. All operations require manual review.",
-  workspace: "Full read/write within the workspace directory. Restricted network. Shell requires approval.",
-  auto_review: "Same workspace boundaries as workspace, but low-risk reads are auto-approved.",
-  full_access: "Unrestricted filesystem, shell, and network access. Only identity/communication ops require approval.",
-}
 
 const SandboxStatus = z
   .object({
@@ -64,7 +57,11 @@ export const ControlProfileRoute = new Hono()
       const profiles = ControlProfileCompiler.profileIds.map((id) => ({
         id,
         label: ControlProfileCompiler.getProfile(id).label,
-        description: PROFILE_DESCRIPTIONS[id] ?? "",
+        description: ControlProfileCompiler.resolve(id, {
+          workspace: "/",
+          workspaceType: "main",
+          interactionMode: "attended",
+        }).description,
       }))
       return c.json(profiles)
     },
@@ -74,7 +71,7 @@ export const ControlProfileRoute = new Hono()
     describeRoute({
       summary: "Get effective control profile",
       description:
-        "Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > default workspace.",
+        "Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > guarded default.",
       operationId: "controlProfile.effective",
       responses: {
         200: {
@@ -99,7 +96,7 @@ export const ControlProfileRoute = new Hono()
       const cfg = await Config.get()
       const topLevelProfile = cfg.controlProfile
       let agentProfile: string | undefined
-      let resolvedLabel = "工作区"
+      let resolvedLabel = "Guarded"
 
       if (agentName) {
         const agent = await Agent.get(agentName)
@@ -109,15 +106,14 @@ export const ControlProfileRoute = new Hono()
         agentProfile = agent.controlProfile
       }
 
-      const effectiveId = agentProfile ?? topLevelProfile ?? "workspace"
+      const effectiveId = ControlProfileCompiler.normalize(agentProfile ?? topLevelProfile)
       const source = agentProfile ? "agent" : topLevelProfile ? "config" : "default"
 
       try {
         const label = ControlProfileCompiler.getProfile(effectiveId)
         resolvedLabel = label.label
       } catch {
-        // Invalid profile id — fall back to workspace
-        resolvedLabel = "工作区"
+        resolvedLabel = "Guarded"
       }
 
       return c.json({

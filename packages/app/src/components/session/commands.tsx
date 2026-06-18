@@ -1,7 +1,6 @@
 import { DialogSelectFile, DialogSelectModel, DialogSelectMcp } from "@/components/dialog"
 import type { useCommand } from "@/context/command"
 import type { useLocal } from "@/context/local"
-import type { usePermission } from "@/context/permission"
 import type { usePrompt } from "@/context/prompt"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
@@ -24,7 +23,6 @@ export function useSessionCommands(params: {
   terminal: ReturnType<typeof useTerminal>
   layout: ReturnType<typeof useLayout>
   prompt: ReturnType<typeof usePrompt>
-  permission: ReturnType<typeof usePermission>
   navigate: ReturnType<typeof useNavigate>
   routeParams: { dir: string; id?: string }
   info: () => ReturnType<ReturnType<typeof useSync>["session"]["get"]>
@@ -47,7 +45,6 @@ export function useSessionCommands(params: {
     terminal,
     layout,
     prompt,
-    permission,
     navigate,
     routeParams,
     info,
@@ -207,27 +204,6 @@ export function useSessionCommands(params: {
         showToast({
           title: "Thinking effort changed",
           description: "The thinking effort has been changed to " + (local.model.variant.current() ?? "Default"),
-        })
-      },
-    },
-    {
-      id: "permissions.allowall",
-      title:
-        routeParams.id && permission.isAllowingAll(routeParams.id)
-          ? "Stop allowing all permissions"
-          : "Allow all permissions",
-      category: "Permissions",
-      keybind: "mod+shift+y",
-      disabled: !routeParams.id || !permission.permissionsEnabled(),
-      onSelect: () => {
-        const sessionID = routeParams.id
-        if (!sessionID) return
-        permission.toggleAllowAll(sessionID, sdk.directory)
-        showToast({
-          title: permission.isAllowingAll(sessionID) ? "Allowing all permissions" : "Stopped allowing all permissions",
-          description: permission.isAllowingAll(sessionID)
-            ? "All permission requests will be automatically approved"
-            : "Permission requests will require approval",
         })
       },
     },

@@ -37,13 +37,12 @@ import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
-import { usePermission } from "@/context/permission"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { List } from "@ericsanchezok/synergy-ui/list"
@@ -304,7 +303,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const params = useParams()
   const dialog = useDialog()
   const command = useCommand()
-  const permission = usePermission()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -2137,37 +2135,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Show>
                   <Show when={params.id}>
                     <ContextBar />
-                  </Show>
-                  <Show when={permission.permissionsEnabled() && params.id}>
-                    <TooltipKeybind
-                      placement="top"
-                      title={permission.isAllowingAll(params.id!) ? "Stop allowing all" : "Allow all permissions"}
-                      keybind={command.keybind("permissions.allowall")}
-                    >
-                      <button
-                        type="button"
-                        classList={{
-                          "flex items-center justify-center rounded-full transition-colors": true,
-                          "gap-1.5 px-2.5 h-7 border border-border-warning-base bg-surface-warning-base hover:bg-surface-warning-weak text-text-on-warning-base":
-                            permission.isAllowingAll(params.id!),
-                          "size-7 border border-border-success-base bg-surface-success-weak hover:bg-surface-success-base":
-                            !permission.isAllowingAll(params.id!),
-                        }}
-                        onClick={() => permission.toggleAllowAll(params.id!, sdk.directory)}
-                      >
-                        <Icon
-                          name={permission.isAllowingAll(params.id!) ? "shield-alert" : "shield-check"}
-                          size="small"
-                          classList={{
-                            "text-icon-warning-base": permission.isAllowingAll(params.id!),
-                            "text-icon-success-base": !permission.isAllowingAll(params.id!),
-                          }}
-                        />
-                        <Show when={permission.isAllowingAll(params.id!)}>
-                          <span class="text-12-medium">Allow All</span>
-                        </Show>
-                      </button>
-                    </TooltipKeybind>
                   </Show>
                 </Match>
               </Switch>

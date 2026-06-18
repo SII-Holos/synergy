@@ -16,11 +16,14 @@ import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
 import { Instance } from "@/scope/instance"
-import { EnforcementGate } from "@/enforcement/gate"
+import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 import type { ProfileId } from "@/control-profile/types"
+import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -46,13 +49,10 @@ export namespace ToolResolver {
    * Resolve the effective control profile id using precedence:
    *   1. agent config controlProfile
    *   2. top-level config controlProfile
-   *   3. default 'workspace'
+   *   3. default 'guarded'
    */
   function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string): ProfileId {
-    const VALID: readonly string[] = ["review", "workspace", "auto_review", "full_access"]
-    const candidate = agent.controlProfile ?? topLevelProfile ?? "workspace"
-    if (VALID.includes(candidate)) return candidate as ProfileId
-    return "workspace"
+    return ControlProfileCompiler.normalize(agent.controlProfile ?? topLevelProfile)
   }
 
   /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
@@ -90,36 +90,67 @@ export namespace ToolResolver {
     return className
   }
 
-  function patternsForGateCapability(toolName: string, className: string, args: Record<string, any>): string[] {
-    if (className === "file_external") return [externalPathFromArgs(toolName, args) || "*"]
-    if (className === "shell_destructive") return [String(args.command ?? "*")]
-    if (className === "network_request") return [String(args.url ?? args.query ?? "*")]
-    if (className === "communication_email") return [String(args.to ?? args.from ?? args.subject ?? "*")]
-    if (className === "identity_act") return [`${toolName} role=${args.role ?? "*"} to ${args.target ?? "*"}`]
+  function patternsForGateCapability(toolName: string, cap: Capability, args: Record<string, any>): string[] {
+    if (cap.class === "file_external")
+      return cap.paths?.length ? cap.paths : [externalPathFromArgs(toolName, args) || "*"]
+    if (cap.class === "shell_destructive") return [String(args.command ?? "*")]
+    if (cap.class === "network_request") return [String(args.url ?? args.query ?? "*")]
+    if (cap.class === "communication_email") return [String(args.to ?? args.from ?? args.subject ?? "*")]
+    if (cap.class === "identity_act") return [`${toolName} role=${args.role ?? "*"} to ${args.target ?? "*"}`]
     return ["*"]
   }
 
-  async function askGateNonBypassableCapabilities(
+  function approvedExternalRoots(ctx: Tool.Context): string[] {
+    return ((ctx.extra as any).approvedExternalRoots ?? []) as string[]
+  }
+
+  function rememberApprovedExternalRoots(ctx: Tool.Context, patterns: string[]) {
+    const roots = patterns.filter((pattern) => pattern.startsWith("/"))
+    if (roots.length === 0) return
+    ;(ctx.extra as any).approvedExternalRoots = [...new Set([...approvedExternalRoots(ctx), ...roots])]
+  }
+
+  async function applyGateApproval(
     ctx: Tool.Context,
     gate: ReturnType<typeof EnforcementGate.create>,
     envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
   ) {
-    if (envelope.decision !== "ask") return
-    for (const cap of envelope.capabilities) {
-      if (!cap.nonBypassable && !cap.opaque) continue
-      if (!gate.hasPendingCapability(cap.class)) continue
+    const profile = gate.getProfileInfo()
+    const approval = profile.approval
+    const decision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
+    if (envelope.decision === "deny" || decision.action === "deny") {
+      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
+      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
+    }
+
+    if (decision.action === "allow") {
+      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
+      return
+    }
+
+    const gateOwnedAsks = envelope.capabilities.filter((cap) => {
+      if (!cap.nonBypassable && !cap.opaque) return false
+      if (!gate.hasPendingCapability(cap.class)) return false
       // These tools already perform the exact same non-bypassable ask with
       // richer, tool-specific metadata before crossing the boundary.
-      if (toolName === "email_send" && cap.class === "communication_email") continue
-      if (toolName === "session_send" && cap.class === "identity_act") continue
-      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") continue
-      if (toolName === "email_read" && cap.class === "communication_email") continue
+      if (toolName === "email_send" && cap.class === "communication_email") return false
+      if (toolName === "session_send" && cap.class === "identity_act") return false
+      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") return false
+      if (toolName === "email_read" && cap.class === "communication_email") return false
+      return true
+    })
 
+    if (gateOwnedAsks.length === 0) return
+
+    await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "pending_user"))
+
+    for (const cap of gateOwnedAsks) {
+      const patterns = patternsForGateCapability(toolName, cap, args)
       await ctx.ask({
         permission: permissionForGateCapability(toolName, cap.class),
-        patterns: patternsForGateCapability(toolName, cap.class, args),
+        patterns,
         metadata: {
           nonBypassable: true,
           capability: cap.class,
@@ -127,12 +158,65 @@ export namespace ToolResolver {
           ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
         },
       })
+      if (cap.class === "file_external") rememberApprovedExternalRoots(ctx, patterns)
       gate.resolveCapability(cap.class)
     }
   }
 
+  function formatErrorForModel(error: unknown): string {
+    if (error instanceof EnforcementError.PolicyDenied) {
+      return [
+        `Permission denied by profile "${error.profileId}".`,
+        `Blocked capabilities: ${error.capabilities.join(", ")}`,
+        `This is a policy restriction. Do not retry the same approach.`,
+        error.message,
+      ].join("\n")
+    }
+
+    if (error instanceof EnforcementError.SandboxBlocked) {
+      return error.message
+    }
+
+    if (error instanceof EnforcementError.BoundaryHit) {
+      return [
+        `Path "${error.path}" is outside the workspace boundary.`,
+        `The current permission profile restricts access to workspace paths only.`,
+        `Use a workspace-relative path or the dedicated file tools (view_file, scan_files, etc.).`,
+        `Do not retry with this path.`,
+      ].join("\n")
+    }
+
+    return (error as any).toString()
+  }
+
+  async function setApprovalMetadata(ctx: Tool.Context, approval: ApprovalMetadata) {
+    ;(ctx.extra as any).approval = approval
+    await ctx.metadata({ metadata: { approval } })
+  }
+
+  function approvalFromContext(ctx: Tool.Context): ApprovalMetadata | undefined {
+    return (ctx.extra as any).approval
+  }
+
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
+      let profilePromise: Promise<ReturnType<typeof ControlProfileCompiler.resolve>> | undefined
+      const resolvedProfile = async () => {
+        if (!profilePromise) {
+          profilePromise = cachedTopLevelProfile().then((topLevelProfile) => {
+            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile)
+            const workspaceInfo = Instance.workspace
+            const interaction = input.session?.interaction
+            const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+            return ControlProfileCompiler.resolve(profileId, {
+              workspace: Instance.directory,
+              workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+              interactionMode,
+            })
+          })
+        }
+        return profilePromise
+      }
       const ctx: Tool.Context = {
         sessionID: input.sessionID,
         abort: options.abortSignal!,
@@ -143,11 +227,12 @@ export namespace ToolResolver {
         metadata: async (val: { title?: string; metadata?: any }) => {
           const match = input.processor.partFromToolCall(options.toolCallId)
           if (match && match.state.status === "running") {
+            const approval = approvalFromContext(ctx)
             await Session.updatePart({
               ...match,
               state: {
                 title: val.title,
-                metadata: val.metadata,
+                metadata: approval ? { approval, ...val.metadata } : val.metadata,
                 status: "running",
                 input: args,
                 time: {
@@ -158,17 +243,57 @@ export namespace ToolResolver {
           }
         },
         async ask(req) {
-          await PermissionNext.ask({
-            ...req,
-            sessionID: input.sessionID,
-            tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-            metadata: {
-              ...req.metadata,
-              ...PermissionNext.requestMetadata(input.session),
-            },
-            ruleset: PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
-            signal: ctx.abort,
-          })
+          const profile = await resolvedProfile()
+          const requestMetadata = {
+            ...req.metadata,
+            ...PermissionNext.requestMetadata(input.session),
+          }
+          const decision = ApprovalPolicy.decidePermission(profile.approval, req.permission, requestMetadata)
+          if (decision.action === "deny") {
+            const approval = ApprovalPolicy.metadata(profile.approval, decision, "auto_denied")
+            await setApprovalMetadata(ctx, approval)
+            throw new EnforcementError.PolicyDenied(
+              decision.reason,
+              decision.capabilities,
+              profile.summary?.profileId ?? "unknown",
+            )
+          }
+          if (decision.action === "allow") {
+            await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
+            return
+          }
+
+          await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "pending_user"))
+          const forcedAsk = [{ permission: req.permission, pattern: "*", action: "ask" as const }]
+          const permissionMetadata = profile.allowAllBlocked
+            ? { ...requestMetadata, nonBypassable: true }
+            : requestMetadata
+          try {
+            await PermissionNext.ask({
+              ...req,
+              sessionID: input.sessionID,
+              tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+              metadata: permissionMetadata,
+              ruleset: PermissionNext.merge(
+                input.agent.permission,
+                PermissionNext.sessionRuleset(input.session),
+                forcedAsk,
+              ),
+              signal: ctx.abort,
+            })
+            if (
+              (requestMetadata as Record<string, unknown>).workspaceBoundary ||
+              (requestMetadata as Record<string, unknown>).outsideWorkspace
+            ) {
+              rememberApprovedExternalRoots(ctx, req.patterns)
+            }
+            await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
+          } catch (error) {
+            if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
+              await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_denied"))
+            }
+            throw error
+          }
         },
       }
       return ctx
@@ -227,11 +352,7 @@ export namespace ToolResolver {
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
-                if (envelope.decision === "deny") {
-                  throw new Error(`Enforcement gate denied ${item.id}`)
-                }
-
-                await askGateNonBypassableCapabilities(ctx, gate, envelope, item.id, args as Record<string, any>)
+                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>)
 
                 // ── Sandbox wrapping for bash ──────────────────────────
                 let sandboxWrapper: SandboxExecutionWrapper | undefined
@@ -244,6 +365,8 @@ export namespace ToolResolver {
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
+                      extraReadRoots: approvedExternalRoots(ctx),
+                      extraWritableRoots: approvedExternalRoots(ctx),
                     })
                     if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
                       throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
@@ -282,12 +405,21 @@ export namespace ToolResolver {
                   result: {
                     output: result.output,
                     title: result.title ?? "",
-                    metadata: result.metadata ?? {},
+                    metadata: approvalFromContext(ctx)
+                      ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
+                      : (result.metadata ?? {}),
                     attachments: result.attachments,
                   },
                 })
                 return result
               } catch (error) {
+                if (error instanceof EnforcementError.SandboxBlocked) {
+                  await setApprovalMetadata(ctx, {
+                    status: "sandbox_blocked",
+                    source: "sandbox",
+                    reason: error.message,
+                  })
+                }
                 log.error("tool.execute.error", {
                   tool: item.id,
                   sessionID: ctx.sessionID,
@@ -297,7 +429,8 @@ export namespace ToolResolver {
                 resolveExecution({
                   status: "error",
                   input: args,
-                  error: (error as any).toString(),
+                  error: formatErrorForModel(error),
+                  metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                 })
                 throw error
               }
@@ -367,9 +500,7 @@ export namespace ToolResolver {
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
-                  if (envelope.decision === "deny") {
-                    throw new Error(`Enforcement gate denied ${key}`)
-                  }
+                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>)
 
                   await Plugin.trigger(
                     "tool.execute.before",
@@ -382,14 +513,6 @@ export namespace ToolResolver {
                       args,
                     },
                   )
-
-                  await askGateNonBypassableCapabilities(ctx, gate, envelope, key, args as Record<string, any>)
-
-                  await ctx.ask({
-                    permission: key,
-                    metadata: {},
-                    patterns: ["*"],
-                  })
 
                   const result = await execute(args, { ...opts, abortSignal: combinedAbort })
 
@@ -435,13 +558,22 @@ export namespace ToolResolver {
                     result: {
                       output: output.output,
                       title: output.title,
-                      metadata: output.metadata,
+                      metadata: approvalFromContext(ctx)
+                        ? { approval: approvalFromContext(ctx), ...output.metadata }
+                        : output.metadata,
                       attachments: output.attachments,
                     },
                   })
 
                   return output
                 } catch (error) {
+                  if (error instanceof EnforcementError.SandboxBlocked) {
+                    await setApprovalMetadata(ctx, {
+                      status: "sandbox_blocked",
+                      source: "sandbox",
+                      reason: error.message,
+                    })
+                  }
                   log.error("tool.execute.error", {
                     tool: key,
                     sessionID: ctx.sessionID,
@@ -451,7 +583,8 @@ export namespace ToolResolver {
                   resolveExecution({
                     status: "error",
                     input: args,
-                    error: (error as any).toString(),
+                    error: formatErrorForModel(error),
+                    metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                   })
                   throw error
                 }

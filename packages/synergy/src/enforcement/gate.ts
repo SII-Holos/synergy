@@ -1,11 +1,12 @@
 import { PathClassifier } from "./classify"
 import { ControlProfileCompiler } from "../control-profile/compiler"
-import type { ProfileId, ProfileRule, ProfileSandbox } from "../control-profile/types"
+import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 
 export interface Capability {
   class: string
   nonBypassable: boolean
   opaque?: boolean
+  paths?: string[]
 }
 
 export interface ClassifyResult {
@@ -24,12 +25,18 @@ export interface Envelope {
   opaque: boolean
   canAutoApprove(): boolean
   capabilities: Capability[]
+  /** Populated when decision is "deny" — explains why and whether retrying would help */
+  refusal?: {
+    reason: string
+    permanent: boolean
+    matchedPermission: string
+  }
 }
 
 export interface GateOptions {
   activeWorkspace: string
   workspaceType: string
-  profileId?: ProfileId
+  profileId?: ProfileIdInput
   interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
@@ -91,7 +98,11 @@ function extractAbsolutePaths(command: string): string[] {
 }
 
 function uniqueCapability(caps: Capability[], cap: Capability) {
-  if (caps.some((existing) => existing.class === cap.class && existing.nonBypassable === cap.nonBypassable)) return
+  const existing = caps.find((item) => item.class === cap.class && item.nonBypassable === cap.nonBypassable)
+  if (existing) {
+    if (cap.paths?.length) existing.paths = [...new Set([...(existing.paths ?? []), ...cap.paths])]
+    return
+  }
   caps.push(cap)
 }
 
@@ -105,9 +116,13 @@ function classifyPathCapability(
     originalCheckout: options.originalCheckout,
   })
   if (result.boundary === "inside") {
-    uniqueCapability(caps, { class: options.write ? "file_write" : "file_read", nonBypassable: false })
+    uniqueCapability(caps, {
+      class: options.write ? "file_write" : "file_read",
+      nonBypassable: false,
+      paths: [pathInput],
+    })
   } else {
-    uniqueCapability(caps, { class: "file_external", nonBypassable: true })
+    uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [pathInput] })
   }
 }
 
@@ -142,13 +157,13 @@ export namespace EnforcementGate {
     const {
       activeWorkspace,
       workspaceType,
-      profileId: rawProfileId = "workspace",
+      profileId: rawProfileId = "guarded",
       interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
       originalCheckout,
     } = options
-    const profileId: string = rawProfileId
+    const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
     const resolved = ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
@@ -251,8 +266,7 @@ export namespace EnforcementGate {
         for (const candidate of pathCandidates) {
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
-            uniqueCapability(caps, { class: "file_external", nonBypassable: true })
-            break
+            uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [candidate] })
           }
         }
 
@@ -313,11 +327,13 @@ export namespace EnforcementGate {
       let decision: "allow" | "ask" | "deny" = "allow"
       const rules = resolved.ruleset
 
+      let deniedCapClass: string | undefined
       for (const cap of capabilities) {
         const rule = matchRule(cap, rules)
 
         if (rule.action === "deny") {
           decision = "deny"
+          deniedCapClass = cap.class
           break // deny is final
         }
 
@@ -329,6 +345,16 @@ export namespace EnforcementGate {
         // NonBypassable/opaque only affect canAutoApprove() and allowAll bypass,
         // not the decision when the profile has an explicit allow rule.
         // Allow stands unless overridden
+      }
+
+      // Populate refusal info for deny decisions
+      let refusal: Envelope["refusal"]
+      if (decision === "deny") {
+        refusal = {
+          reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
+          permanent: true,
+          matchedPermission: deniedCapClass ?? "unknown",
+        }
       }
 
       // allowAll can auto-approve only non-nonBypassable, non-opaque capabilities
@@ -356,6 +382,7 @@ export namespace EnforcementGate {
         profileId,
         opaque,
         capabilities,
+        refusal,
         canAutoApprove() {
           if (resolved.allowAllBlocked) return false
           return !capabilities.some((c) => c.nonBypassable || c.opaque)
@@ -371,6 +398,15 @@ export namespace EnforcementGate {
       },
       getWorkspace(): string {
         return activeWorkspace
+      },
+      getProfileInfo() {
+        return {
+          profileId,
+          sandbox: resolved.sandbox,
+          ruleset: resolved.ruleset,
+          approval: resolved.approval,
+          summary: resolved.summary,
+        }
       },
       clearAudit() {
         auditRecords.length = 0

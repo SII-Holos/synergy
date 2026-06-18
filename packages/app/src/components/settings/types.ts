@@ -48,7 +48,7 @@ export const UI_DEFAULTS = {
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
-  controlProfile: "workspace" as string,
+  controlProfile: "guarded" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */

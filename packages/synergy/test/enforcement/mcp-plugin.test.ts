@@ -7,9 +7,7 @@ import { describe, expect, test } from "bun:test"
 // external tools must trigger ask/deny and never be bypassed by allowAll
 // or unattended mode.
 //
-// These tests encode the DESIGN CONTRACT before implementation exists.
-// They MUST fail (RED) with module-not-found or type errors until
-// packages/synergy/src/enforcement/gate.ts implements MCP/plugin handling.
+// These tests encode the MCP/plugin external I/O boundary contract.
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------
@@ -21,7 +19,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("mcp__unknown_server__unknown_tool", {
@@ -67,7 +65,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     // Simulating allowAll being active
@@ -87,7 +85,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
       interactionMode: "unattended",
     })
 
@@ -100,12 +98,12 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("review profile denies all MCP tool invocations", () => {
+  test("manual profile asks for MCP tool invocations", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "review",
+      profileId: "manual",
     })
 
     const envelope = gate.evaluate("mcp__github__list_repos", {
@@ -113,8 +111,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
       toolName: "list_repos",
     })
 
-    // review denies all external actions
-    expect(envelope.decision).toBe("deny")
+    expect(envelope.decision).toBe("ask")
   })
 })
 
@@ -127,7 +124,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("plugin__unknown_plugin__unknown_action", {
@@ -173,7 +170,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     gate.setAllowAll(true)
@@ -192,7 +189,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
       interactionMode: "unattended",
     })
 
@@ -215,7 +212,7 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
       registeredMcpTools: new Set(["mcp__github__list_repos"]),
     })
 
@@ -234,7 +231,7 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
       registeredPluginTools: new Set(["plugin__s3__upload"]),
     })
 

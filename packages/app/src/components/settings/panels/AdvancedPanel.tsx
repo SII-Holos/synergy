@@ -7,13 +7,25 @@ import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synerg
 
 const FALLBACK_PROFILES: ControlProfileSummary[] = [
   {
-    id: "review",
-    label: "审阅",
-    description: "只看和分析当前工作区。不能改文件、运行命令、访问网络、调用 MCP/插件或发起对外通信。",
+    id: "manual",
+    label: "Manual Approval",
+    description: "Ask before every tool request. Best when you are present and want full review.",
   },
-  { id: "workspace", label: "工作区", description: "默认模式。可以在当前工作区内读写和运行常规命令，越界时询问。" },
-  { id: "auto_review", label: "自动审查", description: "仍限制在当前工作区，由审查器先判断低风险请求。" },
-  { id: "full_access", label: "完全访问权限", description: "解除工作区边界，适合你明确信任的本机任务。" },
+  {
+    id: "guarded",
+    label: "Guarded",
+    description: "Auto-allow ordinary workspace work and ask only for high-risk actions.",
+  },
+  {
+    id: "autonomous",
+    label: "Autonomous",
+    description: "Keep working while you are away. High-risk actions are denied instead of prompting.",
+  },
+  {
+    id: "full_access",
+    label: "Full Access",
+    description: "Allow all local tool requests without approval prompts.",
+  },
 ]
 
 function profileDescription(profile: ControlProfileSummary) {

@@ -16,15 +16,7 @@ import { Instance } from "../scope/instance"
 import { Scope } from "../scope"
 import DESCRIPTION from "./session-control.txt"
 
-const Action = z.enum([
-  "status",
-  "compact",
-  "abort",
-  "question_reply",
-  "question_reject",
-  "permission_reply",
-  "set_allow_all",
-])
+const Action = z.enum(["status", "compact", "abort", "question_reply", "question_reject", "permission_reply"])
 
 const parameters = z.object({
   target: z
@@ -48,7 +40,6 @@ const parameters = z.object({
     .optional()
     .describe("Reply for permission_reply. 'once' approves this request; 'reject' denies it."),
   message: z.string().optional().describe("Optional feedback message when rejecting a permission request."),
-  enabled: z.boolean().optional().describe("Enable or disable allow-all mode. Required for set_allow_all."),
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
@@ -113,12 +104,6 @@ export const SessionControlTool = Tool.define("session_control", {
         }
         return withScope(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
       }
-      case "set_allow_all": {
-        if (params.enabled === undefined) {
-          throw new Error("enabled is required for set_allow_all")
-        }
-        return withScope(() => handleSetAllowAll(sessionID, params.enabled!))
-      }
     }
   },
 })
@@ -129,13 +114,11 @@ async function handleStatus(sessionID: string) {
   const sessionQuestions = pendingQuestions.filter((q) => q.sessionID === sessionID)
   const pendingPermissions = await PermissionNext.list()
   const sessionPermissions = pendingPermissions.filter((p) => p.sessionID === sessionID)
-  const allowAll = await PermissionNext.isAllowingAll(sessionID)
   const session = await Session.get(sessionID)
 
   const status = {
     sessionID,
     status: runtime?.status ?? { type: "idle" as const },
-    allowAll,
     interaction: session?.interaction ?? SessionInteraction.interactive(),
     pendingQuestions: sessionQuestions.map((q) => ({
       id: q.id,
@@ -151,7 +134,6 @@ async function handleStatus(sessionID: string) {
 
   const parts: string[] = []
   parts.push(`Session ${sessionID}: ${status.status.type}`)
-  if (status.allowAll) parts.push("Allow-all: enabled")
   if (status.interaction.mode === "unattended") parts.push(`Mode: unattended (${status.interaction.source ?? ""})`)
   if (status.pendingQuestions.length > 0) {
     parts.push(`Pending questions: ${status.pendingQuestions.length}`)
@@ -278,14 +260,5 @@ async function handlePermissionReply(requestID: string, reply: PermissionNext.Re
     title: `${reply === "once" ? "Approved" : "Rejected"} permission ${requestID}`,
     output: `Permission ${requestID} ${desc}.${message ? ` Feedback: ${message}` : ""}`,
     metadata: { action: "permission_reply", requestID, reply, message } as Record<string, any>,
-  }
-}
-
-async function handleSetAllowAll(sessionID: string, enabled: boolean) {
-  await PermissionNext.setAllowAll(sessionID, enabled)
-  return {
-    title: `Allow-all ${enabled ? "enabled" : "disabled"} for ${sessionID}`,
-    output: `Allow-all mode ${enabled ? "enabled" : "disabled"} for session ${sessionID}.`,
-    metadata: { sessionID, action: "set_allow_all", enabled } as Record<string, any>,
   }
 }

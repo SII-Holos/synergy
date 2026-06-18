@@ -28,7 +28,7 @@ export namespace SessionProcessor {
         input: any
         result: { output: string; title: string; metadata: Record<string, any>; attachments?: MessageV2.FilePart[] }
       }
-    | { status: "error"; input: any; error: string }
+    | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
@@ -476,6 +476,7 @@ export namespace SessionProcessor {
                     status: "error",
                     input: outcome.input,
                     error: outcome.error,
+                    metadata: outcome.metadata,
                     time: {
                       start: startTime,
                       end: Date.now(),

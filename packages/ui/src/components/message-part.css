@@ -630,6 +630,52 @@
   }
 }
 
+[data-component="tool-approval"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  width: fit-content;
+  margin: 0 0 6px 12px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised-base);
+  color: var(--text-weak);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+
+  &[data-status="auto_allowed"],
+  &[data-status="user_allowed"],
+  &[data-status="not_required"] {
+    color: var(--text-on-success-strong);
+    border-color: var(--border-success-base);
+  }
+
+  &[data-status="pending_user"] {
+    color: var(--text-on-warning-strong);
+    border-color: var(--border-warning-base);
+  }
+
+  &[data-status="auto_denied"],
+  &[data-status="policy_denied"],
+  &[data-status="sandbox_blocked"],
+  &[data-status="user_denied"] {
+    color: var(--text-on-critical-strong);
+    border-color: var(--border-critical-base);
+  }
+
+  [data-slot="tool-approval-label"],
+  [data-slot="tool-approval-risk"] {
+    white-space: nowrap;
+  }
+
+  [data-slot="tool-approval-risk"] {
+    color: var(--text-subtle);
+  }
+}
+
 @keyframes tool-card-enter {
   from {
     opacity: 0;

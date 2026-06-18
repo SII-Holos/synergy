@@ -34,7 +34,9 @@ export interface PrepareWrapperOpts {
   sandboxMode: "none" | "read_only" | "workspace_write"
   forcePlatform?: string
   runtimeReadRoots?: string[]
+  extraReadRoots?: string[]
   writableRoots?: string[]
+  extraWritableRoots?: string[]
   protectedPaths?: string[]
   dataDenyRoots?: string[]
 }
@@ -90,6 +92,10 @@ const DEFAULT_USER_RUNTIME_READ_ROOTS = (homedir: string): string[] => [
 
 function defaultRuntimeReadRoots(homedir: string): string[] {
   return [...DEFAULT_SYSTEM_RUNTIME_READ_ROOTS, ...DEFAULT_USER_RUNTIME_READ_ROOTS(homedir)]
+}
+
+function uniqueRoots(roots: string[]): string[] {
+  return [...new Set(roots.filter(Boolean))]
 }
 
 const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
@@ -232,8 +238,11 @@ export namespace SandboxBackend {
       }
     }
 
-    const runtimeReadRoots = opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())
-    const writableRoots = opts.writableRoots ?? [workspace]
+    const runtimeReadRoots = uniqueRoots([
+      ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
+      ...(opts.extraReadRoots ?? []),
+    ])
+    const writableRoots = uniqueRoots([...(opts.writableRoots ?? [workspace]), ...(opts.extraWritableRoots ?? [])])
     const protectedPaths = opts.protectedPaths ?? DEFAULT_PROTECTED_PATHS(os.homedir(), workspace)
     const dataDenyRoots = opts.dataDenyRoots ?? [os.homedir()]
 

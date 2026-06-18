@@ -157,7 +157,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   })
 
   const [advanced, setAdvanced] = createStore({
-    controlProfile: "workspace" as string,
+    controlProfile: "guarded" as string,
     compaction_auto: "" as string,
     compaction_overflow_threshold: "" as string,
     permission: "" as string,

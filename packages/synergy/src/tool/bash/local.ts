@@ -10,6 +10,8 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
+import { SandboxDetector } from "@/enforcement/sandbox-detector"
+import { EnforcementError } from "@/enforcement/errors"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -318,6 +320,23 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const output = regProc.output
+    // ── Sandbox denial detection ──────────────────────────────────
+    // When the sandbox is active and the command fails, scan output
+    // for OS-level permission denial patterns. If matched, throw a
+    // structured SandboxBlocked error that tells the model this is
+    // a boundary, not a transient technical failure.
+    const sandboxActive = sandboxWrapper?.sandboxed === true && !sandboxWrapper?.skipReason
+    if (sandboxActive && child.exitCode !== null && child.exitCode !== 0) {
+      const matches = SandboxDetector.scan(output)
+      if (matches.length > 0) {
+        throw new EnforcementError.SandboxBlocked(
+          SandboxDetector.explain(matches),
+          child.exitCode,
+          matches[0]?.label ?? null,
+          output,
+        )
+      }
+    }
 
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`

@@ -780,12 +780,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
             title: input.reply === "reject" ? "Deny Permission" : "Approve Permission",
             subtitle: input.target,
           }
-        case "set_allow_all":
-          return {
-            icon: input.enabled ? "shield-check" : "shield-alert",
-            title: input.enabled ? "Enable Allow All" : "Disable Allow All",
-            subtitle: input.target,
-          }
         default:
           return {
             icon: "radar",
@@ -1563,6 +1557,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   }
   // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
   const metadata = () => part().state?.metadata ?? {}
+  const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
 
   const render = createMemo(() => ToolRegistry.render(part().tool))
 
@@ -1591,6 +1586,45 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
+      <Show when={approval()}>
+        {(item) => (
+          <div data-component="tool-approval" data-status={item().status}>
+            <Icon
+              name={
+                item().status === "auto_denied" ||
+                item().status === "policy_denied" ||
+                item().status === "sandbox_blocked" ||
+                item().status === "user_denied"
+                  ? "shield-alert"
+                  : item().status === "pending_user"
+                    ? "shield-alert"
+                    : "shield-check"
+              }
+              size="small"
+            />
+            <span data-slot="tool-approval-label">
+              {item().status === "pending_user"
+                ? "Awaiting approval"
+                : item().status === "user_allowed"
+                  ? "User approved"
+                  : item().status === "user_denied"
+                    ? "User denied"
+                    : item().status === "auto_denied"
+                      ? "Auto denied"
+                      : item().status === "policy_denied"
+                        ? "Policy denied"
+                        : item().status === "sandbox_blocked"
+                          ? "Sandbox blocked"
+                          : item().status === "auto_allowed"
+                            ? "Auto approved"
+                            : "No approval needed"}
+            </span>
+            <Show when={item().risk}>
+              <span data-slot="tool-approval-risk">{item().risk} risk</span>
+            </Show>
+          </div>
+        )}
+      </Show>
       <Switch>
         <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
           {(error) => {

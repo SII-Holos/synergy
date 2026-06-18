@@ -168,6 +168,7 @@ describe("EnforcementGate shell classification", () => {
     const external = result.capabilities.find((c: any) => c.class === "file_external")
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
+    expect(external.paths).toContain("/etc/passwd")
   })
 })
 
@@ -230,20 +231,22 @@ describe("EnforcementGate network classification", () => {
     const join = gate.classify("agora_join", { directory: "/tmp/agora-workspace" }).capabilities
     expect(join).toContainEqual({ class: "network_request", nonBypassable: true })
     expect(join).toContainEqual({ class: "platform_control", nonBypassable: true })
-    expect(join).toContainEqual({ class: "file_external", nonBypassable: true })
+    expect(join).toContainEqual(
+      expect.objectContaining({ class: "file_external", nonBypassable: true, paths: ["/tmp/agora-workspace"] }),
+    )
   })
 
-  test("review profile denies external network and communication tools", () => {
+  test("manual profile asks for external network and communication tools", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "review",
+      profileId: "manual",
     })
 
-    expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("deny")
-    expect(gate.evaluate("email_read", {}).decision).toBe("deny")
-    expect(gate.evaluate("inspire_submit", {}).decision).toBe("deny")
+    expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("ask")
+    expect(gate.evaluate("email_read", {}).decision).toBe("ask")
+    expect(gate.evaluate("inspire_submit", {}).decision).toBe("ask")
   })
 })
 
@@ -256,7 +259,7 @@ describe("EnforcementGate execution envelope", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("read", {
@@ -275,7 +278,7 @@ describe("EnforcementGate execution envelope", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("read", {
@@ -291,7 +294,7 @@ describe("EnforcementGate execution envelope", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("bash", {
@@ -345,43 +348,42 @@ describe("EnforcementGate execution envelope", () => {
 // 5. Profile-driven gating
 // ------------------------------------------------------------------
 describe("EnforcementGate profile integration", () => {
-  test("gate with review profile denies write tool", () => {
+  test("gate with manual profile asks for write tool", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "review",
+      profileId: "manual",
     })
 
     const envelope = gate.evaluate("write", {
       filePath: "/Users/test/synergy-control-profile/src/index.ts",
     })
 
-    // In review profile, writes must be denied even inside workspace
-    expect(envelope.decision).toBe("deny")
+    expect(envelope.decision).toBe("ask")
   })
 
-  test("gate with review profile denies shell", () => {
+  test("gate with manual profile asks for shell", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "review",
+      profileId: "manual",
     })
 
     const envelope = gate.evaluate("bash", {
       command: "ls",
     })
 
-    expect(envelope.decision).toBe("deny")
+    expect(envelope.decision).toBe("ask")
   })
 
-  test("review profile blocks allowAll auto-approval", () => {
+  test("manual profile blocks allowAll auto-approval", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "review",
+      profileId: "manual",
     })
 
     gate.setAllowAll(true)
@@ -393,12 +395,12 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.canAutoApprove()).toBe(false)
   })
 
-  test("gate with workspace profile allows inside-workspace write", () => {
+  test("gate with guarded profile allows inside-workspace write", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("write", {
@@ -408,23 +410,25 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("gate with auto_review profile has same boundaries as workspace but different approval", () => {
+  test("gate with autonomous profile has same boundaries as guarded but denies high risk", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "auto_review",
+      profileId: "autonomous",
     })
 
     const envelope = gate.evaluate("read", {
       filePath: "/Users/test/synergy-control-profile/src/index.ts",
     })
 
-    // auto_review allows low-risk reads — still inside boundary
     expect(envelope.decision).toBe("allow")
+    expect(envelope.profileId).toBe("autonomous")
 
-    // But the envelope should reflect the auto_review approval context
-    expect(envelope.profileId).toBe("auto_review")
+    const external = gate.evaluate("read", {
+      filePath: "/etc/hosts",
+    })
+    expect(external.decision).toBe("deny")
   })
 
   test("gate with full_access allows external reads", () => {
@@ -468,7 +472,7 @@ describe("EnforcementGate duplicate capability guard", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     // First eval — produces envelope with pending capabilities
@@ -488,7 +492,7 @@ describe("EnforcementGate duplicate capability guard", () => {
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "workspace",
+      profileId: "guarded",
     })
 
     gate.evaluate("write", {

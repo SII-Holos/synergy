@@ -9,9 +9,7 @@ import * as path from "path"
 // Seatbelt profile generation, temp file lifecycle, and cross-platform
 // sandbox invocation.
 //
-// These tests encode the DESIGN CONTRACT before implementation exists.
-// They MUST fail (RED) with module-not-found or type errors until
-// packages/synergy/src/sandbox/backend.ts is created.
+// These tests encode the sandbox backend contract.
 //
 // Run with:
 //   cd packages/synergy && bun test test/sandbox/backend.test.ts
@@ -357,6 +355,32 @@ describe("SandboxBackend Seatbelt profile generation", () => {
 
     expect(denyHome).toBeGreaterThan(-1)
     expect(allowRuntime).toBeGreaterThan(denyHome)
+  })
+
+  test("prepareWrapper adds approved external roots as one-call sandbox exceptions", () => {
+    const { SandboxBackend } = require("../../src/sandbox/backend")
+    const fs = require("fs")
+
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cat",
+      args: ["/Users/test/Downloads/input.txt"],
+      workspace: "/Users/test/project",
+      sandboxMode: "workspace_write",
+      forcePlatform: "macos",
+      runtimeReadRoots: ["/usr/lib"],
+      writableRoots: ["/Users/test/project"],
+      extraReadRoots: ["/Users/test/Downloads/input.txt"],
+      extraWritableRoots: ["/Users/test/Downloads/input.txt"],
+    })
+
+    const profilePath = wrapper.args[1]
+    const profile = fs.readFileSync(profilePath, "utf8")
+    try {
+      expect(profile).toContain('(allow file-read* (subpath "/Users/test/Downloads/input.txt")')
+      expect(profile).toContain('(allow file-read* file-write* (subpath "/Users/test/Downloads/input.txt"))')
+    } finally {
+      SandboxBackend.cleanupTemp(profilePath)
+    }
   })
 
   test("profile allows exact runtime files as literals", () => {
