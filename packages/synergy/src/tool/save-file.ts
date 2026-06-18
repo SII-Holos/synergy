@@ -81,11 +81,15 @@ export const SaveFileTool = Tool.define("save_file", {
           : undefined
         const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
         const header = hashlineHeaderFor(ctx.sessionID, filePath, finalContent)
-        recordSeenSessionLines(
-          ctx.sessionID,
-          title,
-          splitContentLines(finalContent).map((_, index) => index + 1),
-        )
+        const tag = header.match(/#([0-9A-F]{4})\]$/)?.[1]
+        if (tag) {
+          recordSeenSessionLines(
+            ctx.sessionID,
+            filePath,
+            splitContentLines(finalContent).map((_, index) => index + 1),
+            tag,
+          )
+        }
         const finalDiff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, finalContent))
         const finalChangeSummary = diffStats(finalDiff)
         let output = header
@@ -99,7 +103,7 @@ export const SaveFileTool = Tool.define("save_file", {
           metadata: {
             filepath: filePath,
             path: title,
-            tag: header.match(/#([0-9A-F]{4})\]$/)?.[1],
+            tag,
             diff: finalDiff,
             filediff: { file: title, path: title, before: oldContent, after: finalContent, ...finalChangeSummary },
             changeSummary: finalChangeSummary,

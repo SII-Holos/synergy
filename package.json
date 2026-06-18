@@ -39,6 +39,7 @@
       "hono": "4.10.7",
       "hono-openapi": "1.1.2",
       "fuzzysort": "3.1.0",
+      "lru-cache": "11.2.4",
       "luxon": "3.6.1",
       "marked": "17.0.1",
       "marked-shiki": "1.2.1",

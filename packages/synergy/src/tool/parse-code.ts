@@ -176,7 +176,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
       tags[pathLabel] = tag
-      recordSeenSessionLines(ctx.sessionID, pathLabel, lines)
+      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 

@@ -172,13 +172,13 @@ export function PermissionDock(props: PermissionDockProps) {
             const part = toolPart()
             const toolName = part?.tool ?? item.permission.permission
             const render = ToolRegistry.render(toolName) ?? GenericTool
-            const input = part?.state?.input ?? {}
+            const state = part?.state
+            const input = state?.input ?? {}
             const permissionMetadata = item.permission.metadata ?? {}
-            // @ts-expect-error - metadata not present on all ToolState variants
-            const stateMetadata = part?.state?.metadata ?? {}
+            const stateMetadata = state && "metadata" in state ? (state.metadata ?? {}) : {}
             const metadata = { ...permissionMetadata, ...stateMetadata }
-            const output = part?.state?.output
-            const status = part?.state?.status ?? "running"
+            const output = state && "output" in state ? state.output : undefined
+            const status = state?.status ?? "running"
             return (
               <div class="border-t border-border-base px-4 py-3 overflow-y-auto min-h-0 [scrollbar-width:thin]">
                 <Dynamic

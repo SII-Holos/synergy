@@ -57,11 +57,17 @@ function cappedPreviewMessage(filePath: string): string {
   ].join("\n")
 }
 
-function recordDisplayLines(sessionID: string, display: string, startLine: number, endLine: number): void {
-  if (endLine < startLine) return
+function recordDisplayLines(
+  sessionID: string,
+  filePath: string,
+  tag: string | undefined,
+  startLine: number,
+  endLine: number,
+): void {
+  if (!tag || endLine < startLine) return
   const seenLines: number[] = []
   for (let i = startLine; i <= endLine; i++) seenLines.push(i)
-  recordSeenSessionLines(sessionID, display, seenLines)
+  recordSeenSessionLines(sessionID, filePath, seenLines, tag)
 }
 
 export const ViewFileTool = Tool.define("view_file", {
@@ -124,7 +130,7 @@ export const ViewFileTool = Tool.define("view_file", {
 
       // Record all displayed ranges as seen lines
       for (const rm of rangeMetadata) {
-        recordDisplayLines(ctx.sessionID, display, rm.startLine, rm.endLine)
+        recordDisplayLines(ctx.sessionID, filePath, tag, rm.startLine, rm.endLine)
       }
 
       const outputParts = [warning, header, ...blocks].filter(Boolean)
@@ -153,7 +159,7 @@ export const ViewFileTool = Tool.define("view_file", {
     const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
 
     // Record the displayed offset..offset+limit range as seen lines
-    recordDisplayLines(ctx.sessionID, display, offset + 1, formatted.endLine)
+    recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
 
     return {
       title: display,

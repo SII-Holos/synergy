@@ -138,6 +138,8 @@ import type {
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
   GlobalHealthResponses,
+  GlobalNavPinnedResponses,
+  GlobalNavRecentResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
   HolosAgentsGetErrors,
@@ -1799,6 +1801,65 @@ export class Session extends HeyApiClient {
   export = new Export({ client: this.client })
 }
 
+export class Nav extends HeyApiClient {
+  /**
+   * Recent sessions across all scopes
+   *
+   * Get a paginated list of recently active sessions across all scopes (global + projects).
+   */
+  public recent<ThrowOnError extends boolean = false>(
+    parameters?: {
+      parentOnly?: boolean
+      includeArchived?: boolean
+      search?: string
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "parentOnly" },
+            { in: "query", key: "includeArchived" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GlobalNavRecentResponses, unknown, ThrowOnError>({
+      url: "/global/recent",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Pinned sessions across all scopes
+   *
+   * Get a list of pinned sessions across all scopes (global + projects), sorted by recent activity.
+   */
+  public pinned<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "limit" }] }])
+    return (options?.client ?? this.client).get<GlobalNavPinnedResponses, unknown, ThrowOnError>({
+      url: "/global/pinned",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -1827,6 +1888,8 @@ export class Global extends HeyApiClient {
   agenda = new Agenda({ client: this.client })
 
   session = new Session({ client: this.client })
+
+  nav = new Nav({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {

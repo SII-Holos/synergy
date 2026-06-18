@@ -74,7 +74,15 @@ export interface ScopeNavEntry {
   icon?: { url?: string; color?: string }
 }
 
+const ROOT_NAV_SECTION_LIMIT = 50
+const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
+type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
+type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
+function emptyNavList(): NavListState {
+  return { items: [], nextCursor: null, total: 0 }
+}
 const NAV_FIRST_PAGE_LIMIT = 50
+const RECENT_LIMIT = 20
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
@@ -229,10 +237,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // --- Nav v2 store ---
 
     const [scopeIndex, setScopeIndex] = createSignal<ScopeNavEntry[]>([])
-    const [navEntries, setNavEntries] = createStore<
-      Record<string, { items: NavEntry[]; nextCursor: NavCursor | null; total: number }>
-    >({})
-
+    const [navEntries, setNavEntries] = createStore<Record<string, NavListState>>({})
+    const [rootNavStore, setRootNavStore] = createStore<Record<RootNavSectionKey, NavListState>>({
+      home: emptyNavList(),
+      channel: emptyNavList(),
+      background: emptyNavList(),
+    })
+    const [recentEntries, setRecentEntries] = createStore<NavListState>({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    })
     const navPending = new Set<string>()
 
     async function loadScopeIndex() {
@@ -275,32 +290,91 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
-    async function loadHomeNav(cursor?: NavCursor) {
-      const key = "global"
+    async function loadRootNavSection(category: RootNavSectionKey, cursor?: NavCursor) {
+      const key = `__root_${category}`
       if (navPending.has(key)) return
       navPending.add(key)
       try {
         const res = await globalSdk.client.session.index({
           scopeID: "global",
+          category,
           parentOnly: "true",
-          limit: NAV_FIRST_PAGE_LIMIT,
+          limit: ROOT_NAV_SECTION_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
         })
         if (!res.data) return
         const data = res.data
         if (cursor) {
-          const existing = navEntries[key]
+          const existing = rootNavStore[category]
           const merged = [
             ...(existing?.items ?? []),
             ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
           ]
-          setNavEntries(key, { items: merged, nextCursor: data.nextCursor, total: data.total })
+          setRootNavStore(category, { items: merged, nextCursor: data.nextCursor, total: data.total })
         } else {
-          setNavEntries(key, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+          setRootNavStore(category, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          })
         }
       } finally {
         navPending.delete(key)
       }
+    }
+
+    async function loadGlobalRecent(cursor?: NavCursor) {
+      const key = "__recent__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent({
+          parentOnly: true,
+          limit: RECENT_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = recentEntries.items
+          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))]
+          setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    function loadMoreNav(directory: string) {
+      if (directory === "__recent__") {
+        if (recentEntries.nextCursor) loadGlobalRecent(recentEntries.nextCursor)
+        return
+      }
+      const entry = navEntries[directory]
+      if (!entry?.nextCursor) return
+      loadScopeNav(directory, entry.nextCursor)
+    }
+
+    function loadMoreRootNavSection(category: RootNavSectionKey) {
+      const entry = rootNavStore[category]
+      if (entry?.nextCursor) loadRootNavSection(category, entry.nextCursor)
+    }
+
+    function rootNavEntriesFor(category: RootNavSectionKey): NavEntry[] {
+      const entry = rootNavStore[category]
+      if (!entry) return []
+      return entry.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+    }
+
+    function hasMoreRootNavSection(category: RootNavSectionKey): boolean {
+      return rootNavStore[category]?.nextCursor != null
     }
 
     // --- Nav event refresh ---
@@ -315,17 +389,29 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           ?.properties?.info
         const scope = info?.scope
         if (!scope) return
+        // Refresh recent entries on any session update (debounced)
+        const recentPending = navRefreshTimers.get("__recent__")
+        if (recentPending) clearTimeout(recentPending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            loadGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
         if (scope.id === "global") {
-          if (!navEntries["global"]) return
-          const pending = navRefreshTimers.get("global")
-          if (pending) clearTimeout(pending)
-          navRefreshTimers.set(
-            "global",
-            setTimeout(() => {
-              navRefreshTimers.delete("global")
-              loadHomeNav()
-            }, NAV_REFRESH_DEBOUNCE_MS),
-          )
+          for (const category of ROOT_NAV_SECTION_KEYS) {
+            if (!rootNavStore[category]) continue
+            const pending = navRefreshTimers.get(`__root_${category}`)
+            if (pending) clearTimeout(pending)
+            navRefreshTimers.set(
+              `__root_${category}`,
+              setTimeout(() => {
+                navRefreshTimers.delete(`__root_${category}`)
+                loadRootNavSection(category)
+              }, NAV_REFRESH_DEBOUNCE_MS),
+            )
+          }
           return
         }
         const dir = scope.directory
@@ -433,7 +519,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     onMount(() => {
       loadScopeIndex().then(() => {
-        loadHomeNav()
+        loadGlobalRecent()
+        for (const category of ROOT_NAV_SECTION_KEYS) {
+          loadRootNavSection(category)
+        }
         const projects = list()
         const loaded = new Set<string>()
         for (const project of projects) {
@@ -494,15 +583,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     }
 
-    function homeNavEntries(): NavEntry[] {
-      const entry = navEntries["global"]
-      if (!entry) return []
-      return entry.items.toSorted((a, b) => {
-        if (a.pinned && !b.pinned) return -1
-        if (!a.pinned && b.pinned) return 1
-        if (a.pinned && b.pinned) return b.pinned - a.pinned
-        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
-      })
+    function recentNavEntries(): NavEntry[] {
+      return recentEntries.items
+    }
+
+    function hasMoreRecent(): boolean {
+      return recentEntries.nextCursor != null
     }
 
     // Nav entries are now exclusively populated by loadScopeNav via /session/index.
@@ -676,7 +762,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nav: {
         projectSessions,
         projectNavEntries,
-        homeNavEntries,
+        rootNavEntries: rootNavEntriesFor,
+        hasMoreRootNavSection,
+        loadMoreRootNavSection,
+        recentEntries: recentNavEntries,
+        hasMoreRecent,
+        loadMoreNav,
         childStoreForScope,
         prefetchSession,
         resetPrefetch,

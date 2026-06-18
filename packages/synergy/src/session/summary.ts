@@ -183,7 +183,15 @@ export namespace SessionSummary {
 
     if (title) userMsg.summary.title = title
     if (body) userMsg.summary.body = body
-    await saveSummary(userMsg)
+
+    // Only persist when new content was produced. The processor path
+    // (finish-step) calls summarize() on every step; without this
+    // guard, saveSummary fires message.updated every time — even when
+    // title and body are unchanged — causing the frontend Typewriter to
+    // restart and producing a visible flicker.
+    if (title || body) {
+      await saveSummary(userMsg)
+    }
   }
 
   export const diff = fn(

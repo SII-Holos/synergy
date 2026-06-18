@@ -1,123 +1,106 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test"
-import { SnapshotStore } from "../../src/hashline/store"
-import path from "path"
-import fs from "fs/promises"
+/**
+ * Tests for InMemorySnapshotStore — the new OMP API.
+ * Covers equivalent behaviors as the old SnapshotStore tests.
+ */
+import { describe, expect, test } from "bun:test"
+import { InMemorySnapshotStore } from "../../src/hashline/snapshots"
+import { computeFileHash } from "../../src/hashline/format"
 
-describe("SnapshotStore", () => {
-  // SnapshotStore must be a session-scoped key-value store
-  // that maps path+TAG → full file content.
-  // It must survive across tool calls within a session.
-
+describe("InMemorySnapshotStore (new API)", () => {
   describe("store and retrieval", () => {
-    test("stores and retrieves content by path and tag", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "const x = 1\nexport default x\n")
+    test("records and retrieves content by path and hash", () => {
+      const store = new InMemorySnapshotStore()
+      const content = "const x = 1\nexport default x\n"
+      const hash = computeFileHash(content)
+      store.record("/app/src/a.ts", content)
 
-      const retrieved = store.get("/app/src/a.ts", "A1B2")
-      expect(retrieved).toBe("const x = 1\nexport default x\n")
+      const retrieved = store.byHash("/app/src/a.ts", hash)
+      expect(retrieved?.text).toBe(content)
     })
 
-    test("returns undefined for unknown path+tag", () => {
-      const store = new SnapshotStore()
-      expect(store.get("/app/src/a.ts", "FFFF")).toBeUndefined()
+    test("head returns latest version", () => {
+      const store = new InMemorySnapshotStore()
+      store.record("/app/src/a.ts", "v1\n")
+      store.record("/app/src/a.ts", "v2\n")
+      expect(store.head("/app/src/a.ts")?.text).toBe("v2\n")
     })
 
-    test("returns undefined for known path but unknown tag", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content v1")
-      expect(store.get("/app/src/a.ts", "0000")).toBeUndefined()
+    test("returns null for unknown path+hash", () => {
+      const store = new InMemorySnapshotStore()
+      expect(store.byHash("/app/src/a.ts", "FFFF")).toBeNull()
     })
 
-    test("returns undefined for unknown path with known tag", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content")
-      expect(store.get("/app/src/b.ts", "A1B2")).toBeUndefined()
+    test("returns null for known path but unknown hash", () => {
+      const store = new InMemorySnapshotStore()
+      store.record("/app/src/a.ts", "content v1\n")
+      expect(store.byHash("/app/src/a.ts", "0000")).toBeNull()
     })
 
-    test("overwrites content for same path+tag", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "v1")
-      store.set("/app/src/a.ts", "A1B2", "v2")
-      expect(store.get("/app/src/a.ts", "A1B2")).toBe("v2")
+    test("returns null for unknown path with known hash", () => {
+      const store = new InMemorySnapshotStore()
+      const hash = store.record("/app/src/a.ts", "content\n")
+      expect(store.byHash("/app/src/b.ts", hash)).toBeNull()
     })
 
-    test("keeps old tags when new tag is set for same path", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "v1")
-      store.set("/app/src/a.ts", "C3D4", "v2")
-      expect(store.get("/app/src/a.ts", "A1B2")).toBe("v1")
-      expect(store.get("/app/src/a.ts", "C3D4")).toBe("v2")
+    test("read fusion: re-recording same content returns the same hash", () => {
+      const store = new InMemorySnapshotStore()
+      const content = "v1\n"
+      const hash = store.record("/app/src/a.ts", content)
+      const hash2 = store.record("/app/src/a.ts", content)
+      expect(hash2).toBe(hash)
+    })
+
+    test("records new hash when content changes and retains old", () => {
+      const store = new InMemorySnapshotStore()
+      const hash1 = store.record("/app/src/a.ts", "v1\n")
+      const hash2 = store.record("/app/src/a.ts", "v2\n")
+      expect(hash2).not.toBe(hash1)
+      expect(store.byHash("/app/src/a.ts", hash1)?.text).toBe("v1\n")
+      expect(store.byHash("/app/src/a.ts", hash2)?.text).toBe("v2\n")
     })
 
     test("handles multiple independent paths", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content for a")
-      store.set("/app/src/b.ts", "C3D4", "content for b")
-      store.set("/app/src/c.ts", "E5F6", "content for c")
+      const store = new InMemorySnapshotStore()
+      store.record("/app/src/a.ts", "content a\n")
+      store.record("/app/src/b.ts", "content b\n")
+      store.record("/app/src/c.ts", "content c\n")
 
-      expect(store.get("/app/src/a.ts", "A1B2")).toBe("content for a")
-      expect(store.get("/app/src/b.ts", "C3D4")).toBe("content for b")
-      expect(store.get("/app/src/c.ts", "E5F6")).toBe("content for c")
+      expect(store.head("/app/src/a.ts")?.text).toBe("content a\n")
+      expect(store.head("/app/src/b.ts")?.text).toBe("content b\n")
+      expect(store.head("/app/src/c.ts")?.text).toBe("content c\n")
     })
   })
 
-  describe("tag validation", () => {
-    test("validates tag format — rejects non-4-char uppercase hex", () => {
-      const store = new SnapshotStore()
-      expect(() => store.set("/app/src/a.ts", "1234G", "content")).toThrow()
-      expect(() => store.set("/app/src/a.ts", "12345", "content")).toThrow()
-      expect(() => store.set("/app/src/a.ts", "123", "content")).toThrow()
-      expect(() => store.set("/app/src/a.ts", "abcd", "content")).toThrow()
+  describe("tag format", () => {
+    test("record returns a valid 4-hex uppercase hash", () => {
+      const store = new InMemorySnapshotStore()
+      const tag = store.record("/app/src/a.ts", "content\n")
+      expect(tag).toMatch(/^[0-9A-F]{4}$/)
     })
 
-    test("accepts valid 4-char uppercase hex tags", () => {
-      const store = new SnapshotStore()
-      expect(() => store.set("/app/src/a.ts", "A1B2", "content")).not.toThrow()
-      expect(() => store.set("/app/src/a.ts", "0000", "content")).not.toThrow()
-      expect(() => store.set("/app/src/a.ts", "FFFF", "content")).not.toThrow()
-      expect(() => store.set("/app/src/a.ts", "9D3E", "content")).not.toThrow()
-    })
-
-    test("validates tag on retrieval too", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content")
-      expect(() => store.get("/app/src/a.ts", "1234G")).toThrow()
+    test("record returns lowercase-hashed same tag uppercase", () => {
+      const store = new InMemorySnapshotStore()
+      const tag = store.record("/app/src/a.ts", "test\n")
+      // All tags from computeFileHash are uppercase
+      expect(tag).toBe(tag.toUpperCase())
     })
   })
 
-  describe("getContentByTag", () => {
-    test("returns content for a tag regardless of path", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content a")
-      store.set("/app/src/b.ts", "C3D4", "content b")
-
-      const content = store.getContentByTag("A1B2")
-      expect(content).toBe("content a")
+  describe("invalidate and clear", () => {
+    test("invalidate drops one path", () => {
+      const store = new InMemorySnapshotStore()
+      const hash = store.record("/app/src/a.ts", "content a\n")
+      store.record("/app/src/b.ts", "content b\n")
+      store.invalidate("/app/src/a.ts")
+      expect(store.byHash("/app/src/a.ts", hash)).toBeNull()
+      expect(store.head("/app/src/b.ts")).not.toBeNull()
     })
 
-    test("returns undefined when tag not found in any path", () => {
-      const store = new SnapshotStore()
-      expect(store.getContentByTag("FFFF")).toBeUndefined()
-    })
-  })
-
-  describe("bulk operations", () => {
-    test("setMultiple stores multiple entries atomically", () => {
-      const store = new SnapshotStore()
-      store.setMultiple([
-        { path: "/app/src/a.ts", tag: "A1B2", content: "content a" },
-        { path: "/app/src/b.ts", tag: "C3D4", content: "content b" },
-      ])
-
-      expect(store.get("/app/src/a.ts", "A1B2")).toBe("content a")
-      expect(store.get("/app/src/b.ts", "C3D4")).toBe("content b")
-    })
-
-    test("clear empties the store", () => {
-      const store = new SnapshotStore()
-      store.set("/app/src/a.ts", "A1B2", "content")
+    test("clear empties everything", () => {
+      const store = new InMemorySnapshotStore()
+      const hash = store.record("/app/src/a.ts", "content\n")
       store.clear()
-      expect(store.get("/app/src/a.ts", "A1B2")).toBeUndefined()
+      expect(store.byHash("/app/src/a.ts", hash)).toBeNull()
     })
   })
 })
