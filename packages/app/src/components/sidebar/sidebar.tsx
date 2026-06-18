@@ -80,6 +80,7 @@ export function Sidebar(props: SidebarProps) {
   const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
 
+  const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
@@ -315,32 +316,40 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
-      {/* Recent section: flat list of global recent sessions */}
       <Show when={isExpanded()}>
         <div class="sb-recent">
-          <div class="sb-section-header">Recent</div>
-          <Show when={recentEntries().length > 0} fallback={<div class="sb-recent-empty">No recent sessions</div>}>
-            <div class="sb-sessions">
-              <For each={recentEntries()}>
-                {(entry) => (
-                  <button
-                    type="button"
-                    classList={{
-                      "sb-session-row": true,
-                      "sb-session-active": entry.id === params.id,
-                    }}
-                    onClick={() => handleGlobalSessionClick(entry)}
-                  >
-                    <SessionRowIcon entry={entry} isGlobal={true} />
-                    <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={hasMoreRecent()}>
-              <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
-                Load more
-              </button>
+          <div class="sb-projects-header" onClick={() => setRecentSectionOpen((v) => !v)} role="button" tabindex="0">
+            <span class="sb-section-title">Recent</span>
+            <Icon
+              name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
+              size="small"
+              class="sb-section-chevron"
+            />
+          </div>
+          <Show when={recentSectionOpen()}>
+            <Show when={recentEntries().length > 0} fallback={<div class="sb-recent-empty">No recent sessions</div>}>
+              <div class="sb-sessions">
+                <For each={recentEntries()}>
+                  {(entry) => (
+                    <button
+                      type="button"
+                      classList={{
+                        "sb-session-row": true,
+                        "sb-session-active": entry.id === params.id,
+                      }}
+                      onClick={() => handleGlobalSessionClick(entry)}
+                    >
+                      <SessionRowIcon entry={entry} isGlobal={true} />
+                      <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                    </button>
+                  )}
+                </For>
+              </div>
+              <Show when={hasMoreRecent()}>
+                <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
+                  Load more
+                </button>
+              </Show>
             </Show>
           </Show>
         </div>
