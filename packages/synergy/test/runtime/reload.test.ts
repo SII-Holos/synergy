@@ -239,13 +239,13 @@ describe("runtime.reload", () => {
     const extAgentCascade = RuntimeReload.inferConfigCascades(["external_agent"])
     expect(extAgentCascade).toContain("agent")
 
-    // Verify model role changes cascade to provider + agent
+    // Verify model role changes cascade to agent only (not provider)
     const modelCascade = RuntimeReload.inferConfigCascades(["model"])
-    expect(modelCascade).toContain("provider")
+    expect(modelCascade).not.toContain("provider")
     expect(modelCascade).toContain("agent")
 
     const visionModelCascade = RuntimeReload.inferConfigCascades(["vision_model"])
-    expect(visionModelCascade).toContain("provider")
+    expect(visionModelCascade).not.toContain("provider")
     expect(visionModelCascade).toContain("agent")
 
     // Verify category changes cascade to provider + agent

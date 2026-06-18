@@ -173,6 +173,8 @@ export namespace Config {
     }
     return merged
   }
+  const wellKnownCache = new Map<string, { data: Info; timestamp: number }>()
+  const WELL_KNOWN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
@@ -180,39 +182,60 @@ export namespace Config {
     // Load remote/well-known config first as the base layer (lowest precedence)
     // This allows organizations to provide default configs that users can override
     let result: Info = {}
+
+    // Inject env vars synchronously (before any fetch/await)
     for (const [key, value] of Object.entries(auth)) {
       if (value.type !== "wellknown") continue
-
       process.env[value.key] = value.token
-      log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+    }
 
-      const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
-        signal: AbortSignal.timeout(5000),
-      })
-        .then(async (response) => {
-          if (!response.ok) {
+    // Fetch well-known configs in parallel with TTL caching
+    const wellKnownEntries = Object.entries(auth).filter(([, v]) => v.type === "wellknown")
+    const fetchedConfigs = await Promise.all(
+      wellKnownEntries.map(async ([key]) => {
+        const cached = wellKnownCache.get(key)
+        if (cached && Date.now() - cached.timestamp < WELL_KNOWN_TTL_MS) {
+          log.debug("using cached remote config", { url: key })
+          return cached.data
+        }
+
+        log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+
+        const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
+          signal: AbortSignal.timeout(5000),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              log.warn("failed to fetch remote config, skipping", {
+                url: `${key}/.well-known/synergy`,
+                status: response.status,
+              })
+              return null
+            }
+            const wellknown = (await response.json()) as any
+            return wellknown.config ?? {}
+          })
+          .catch((err) => {
             log.warn("failed to fetch remote config, skipping", {
               url: `${key}/.well-known/synergy`,
-              status: response.status,
+              error: err instanceof Error ? err.message : String(err),
             })
             return null
-          }
-          const wellknown = (await response.json()) as any
-          return wellknown.config ?? {}
-        })
-        .catch((err) => {
-          log.warn("failed to fetch remote config, skipping", {
-            url: `${key}/.well-known/synergy`,
-            error: err instanceof Error ? err.message : String(err),
           })
-          return null
-        })
 
-      if (!remoteConfig) continue
+        if (!remoteConfig) return null
 
-      if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
-      result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
-      log.debug("loaded remote config from well-known", { url: key })
+        if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
+        const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
+        wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
+        log.debug("loaded remote config from well-known", { url: key })
+        return loaded
+      }),
+    )
+
+    // Merge fetched configs as base layer (lowest precedence)
+    for (const cfg of fetchedConfigs) {
+      if (cfg) result = mergeConfigConcatArrays(result, cfg)
     }
 
     // Global user config overrides remote config
