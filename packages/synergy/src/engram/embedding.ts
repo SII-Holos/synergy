@@ -90,6 +90,18 @@ export namespace Embedding {
       })
   }
 
+
+  /**
+   * Release the local embedding model to free memory.
+   * No-op if the model was never loaded or was already disposed.
+   * Subsequent generate() calls will load the model again on demand.
+   */
+  export function dispose() {
+    localExtractor = undefined
+    localModelReady = false
+    localModelError = undefined
+  }
+
   async function resolveModel() {
     const config = await Config.get()
     const ec = config.embedding

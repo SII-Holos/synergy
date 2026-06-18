@@ -404,12 +404,19 @@ export namespace Plugin {
         void startForPlugin(id, m.contributes.mcp).catch((err) => log.error("plugin mcp start error", { id, err }))
       }
     }
-    Bus.subscribeAll(async (input) => {
-      const loaded = await state().then((x) => x.loaded)
-      for (const { hooks } of loaded) {
-        hooks["event"]?.({ event: input })
-      }
-    })
+    const pluginEventState = Instance.state(
+      () => {
+        const unsub = Bus.subscribeAll(async (input) => {
+          const loaded = await state().then((x) => x.loaded)
+          for (const { hooks } of loaded) {
+            hooks["event"]?.({ event: input })
+          }
+        })
+        return { unsub }
+      },
+      async (s) => s.unsub(),
+    )
+    void pluginEventState()
   }
 
   // ---------------------------------------------------------------------------

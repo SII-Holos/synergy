@@ -44,6 +44,9 @@ export namespace ExperienceRecall {
 
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
+    setTimeout(() => {
+      pendingRetrievals.delete(sessionID)
+    }, 10 * 60 * 1000)
   }
 
   export function consumeRetrieval(sessionID: string): string[] {

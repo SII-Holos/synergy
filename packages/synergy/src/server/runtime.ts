@@ -590,17 +590,31 @@ async function printConnectionStatusSurfaces() {
 
   await printHolosStatus()
 
-  Bus.subscribe(Channel.Event.Connected, (event) => {
-    const channel = event.properties.channelType + ":" + event.properties.accountId
-    Bun.stderr.write(DIM + "    " + GREEN + "●" + RESET + " " + channel + " " + DIM + "reconnected" + RESET + EOL)
-  })
-  Bus.subscribe(Channel.Event.Disconnected, (event) => {
-    const channel = event.properties.channelType + ":" + event.properties.accountId
-    const reason = event.properties.reason ? ": " + event.properties.reason : ""
-    Bun.stderr.write(
-      DIM + "    " + WARN + "●" + RESET + " " + channel + " " + DIM + "disconnected" + reason + RESET + EOL,
-    )
-  })
+  const channelState = Instance.state(
+    () => {
+      const unsubs: Array<() => void> = []
+      unsubs.push(
+        Bus.subscribe(Channel.Event.Connected, (event) => {
+          const channel = event.properties.channelType + ":" + event.properties.accountId
+          Bun.stderr.write(DIM + "    " + GREEN + "●" + RESET + " " + channel + " " + DIM + "reconnected" + RESET + EOL)
+        }),
+      )
+      unsubs.push(
+        Bus.subscribe(Channel.Event.Disconnected, (event) => {
+          const channel = event.properties.channelType + ":" + event.properties.accountId
+          const reason = event.properties.reason ? ": " + event.properties.reason : ""
+          Bun.stderr.write(
+            DIM + "    " + WARN + "●" + RESET + " " + channel + " " + DIM + "disconnected" + reason + RESET + EOL,
+          )
+        }),
+      )
+      return { unsubs }
+    },
+    async (s) => {
+      for (const unsub of s.unsubs) unsub()
+    },
+  )
+  void channelState()
 }
 
 function registerShutdown(server: { stop: (closeActiveConnections?: boolean) => Promise<void> }) {
