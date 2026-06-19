@@ -57,6 +57,7 @@ import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import "../engram/chronicler"
 import { ExperienceEncoder } from "../engram/experience-encoder"
+import { GitHealth } from "../project/git-health"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -517,6 +518,10 @@ export namespace SessionInvoke {
 
         // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
         systemParts.push(...envParts)
+
+        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        const gitHealthBlock = await GitHealth.inject()
+        if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
         if (agendaReminder) systemParts.push(agendaReminder)
