@@ -12,10 +12,10 @@ a:active,
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-v2) {
-  width: min(900px, 90vw);
-  height: min(720px, 90vh);
-  max-width: 1100px;
-  max-height: 800px;
+  width: min(calc(100vw - 48px), 1180px);
+  height: min(calc(100vh - 56px), 820px);
+  max-width: 1180px;
+  max-height: 820px;
 }
 
 [data-slot="dialog-container"]:has(.dialog-settings-v2) [data-slot="dialog-body"] {

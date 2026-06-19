@@ -7,20 +7,31 @@
 
 /* Override dialog container to Settings panel size */
 [data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-container"] {
-  width: min(calc(100vw - 16px), 980px);
-  height: min(calc(100vh - 16px), 680px);
-  max-height: min(calc(100vh - 16px), 680px);
+  width: min(calc(100vw - 48px), 1180px);
+  height: min(calc(100vh - 56px), 820px);
+  max-height: min(calc(100vh - 56px), 820px);
+}
+
+[data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-content"] {
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
+  border-color: color-mix(in srgb, var(--border-base) 62%, transparent);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.48),
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.055) inset;
 }
 
 /* Make content area fill the container */
 .dialog-settings-v2 {
   height: 100%;
   min-height: 0;
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
 }
 
 /* Body fills remaining space with no scroll — AppPanel handles its own scroll */
 .dialog-settings-v2 [data-slot="dialog-body"] {
   overflow: hidden;
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
 }
 
 /* Hide the built-in Dialog header (title + close) — AppPanel provides its own chrome */

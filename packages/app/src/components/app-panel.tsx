@@ -3,12 +3,16 @@ import { Show, For } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 
 function Root(props: ParentProps<{ class?: string }>) {
-  return <div class={`flex h-full min-h-0 ${props.class ?? ""}`}>{props.children}</div>
+  return (
+    <div class={`flex h-full min-h-0 bg-surface-raised-stronger-non-alpha text-text-base ${props.class ?? ""}`}>
+      {props.children}
+    </div>
+  )
 }
 
 function Nav(props: ParentProps) {
   return (
-    <div class="shrink-0 w-[212px] border-r border-border-weaker-base/60 flex flex-col overflow-hidden bg-surface-inset-base/40">
+    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-surface-inset-base">
       {props.children}
     </div>
   )
@@ -29,7 +33,7 @@ function NavItem(props: { icon: IconName; label: string; active?: boolean; badge
       type="button"
       classList={{
         "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium transition-colors w-full text-left": true,
-        "bg-surface-raised-base text-text-strong": props.active,
+        "bg-surface-raised-base text-text-strong shadow-sm": props.active,
         "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
       }}
       onClick={props.onClick}
@@ -187,7 +191,7 @@ function SegmentedNav(props: {
   onChange: (id: string) => void
 }) {
   return (
-    <div class="flex items-center gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5 self-start">
+    <div class="flex items-center gap-0.5 rounded-lg bg-surface-inset-base p-0.5 self-start ring-1 ring-inset ring-border-weaker-base/55">
       <For each={props.items}>
         {(item) => (
           <button
