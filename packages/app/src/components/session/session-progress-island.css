@@ -113,7 +113,7 @@
 .session-progress-island-panel {
   display: flex;
   max-height: min(68vh, 720px);
-  min-height: 420px;
+  min-height: min(280px, 50vh);
   flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
   animation: session-progress-island-panel-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
@@ -125,7 +125,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px 16px 6px;
+  padding: 7px 12px 5px;
   color: var(--color-text-subtle);
   font-size: 12px;
 }
@@ -134,7 +134,7 @@
   display: flex;
   flex: 0 0 auto;
   gap: 4px;
-  padding: 0 16px 8px;
+  padding: 0 12px 6px;
 }
 
 .session-progress-island-tab {
@@ -161,7 +161,7 @@
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  padding: 0 10px 10px;
+  padding: 0 6px 8px;
 }
 
 @keyframes session-progress-island-enter {
