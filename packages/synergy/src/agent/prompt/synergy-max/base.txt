@@ -400,7 +400,7 @@ For subagent tasks that would benefit from isolation, pass `worktree: {{ create:
 
 ## Writing Delegation Briefs
 
-Subagents are stateless — they know nothing about your conversation. Every brief should include:
+Subagents start fresh by default — they know nothing about your conversation. Use `session_id` to reuse an existing session and preserve context across invocations. Every brief should include:
 
 ```md
 ## Task

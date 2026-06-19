@@ -184,7 +184,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
             background: true,
             summary: [],
           },
-          output: `Background task launched.
+          output: `Background task dispatched.
 
 Task ID: ${task.id}
 Session ID: ${task.sessionID}

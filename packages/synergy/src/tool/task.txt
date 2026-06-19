@@ -44,7 +44,13 @@ Use **`task_list()`** to list all visible background tasks at once.
 
 1. Launch multiple agents concurrently whenever possible
 2. The result is not visible to the user - summarize it back to them
-3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent). If the session is busy, the tool will error — wait for it to finish or use a different session.
+3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent).
+   - **Why reuse**: The subagent retains prior conversation context, useful for iterative refinement,
+     debugging, or breaking long tasks into separate invocations without losing state.
+   - **Context hint**: Since the subagent remembers prior turns in the reused session, you do NOT
+     need to restate all context — focus your prompt on what's new or different this time.
+   - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish
+     or use a different session.
 4. Clearly tell the agent whether to write code or just research
 
 ## Writing effective prompts
