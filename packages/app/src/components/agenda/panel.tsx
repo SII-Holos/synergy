@@ -1,18 +1,18 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { Portal } from "solid-js/web"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
 import { MiniCalendar } from "./mini-calendar"
 import { AgendaForm } from "./form"
 import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
-import { ViewTab } from "../engram/shared"
 import { ActivityView } from "./activity-view"
 import {
   defaultAgendaActivityState,
@@ -62,6 +62,7 @@ export function AgendaPanel() {
   const [tab, setTab] = createSignal<PanelTab>("schedule")
   const [editingItem, setEditingItem] = createSignal<AgendaItem | undefined>()
   const [popoverItem, setPopoverItem] = createSignal<AgendaItem | undefined>()
+  const [popoverRect, setPopoverRect] = createSignal<DOMRect | undefined>()
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
   const [actionLoading, setActionLoading] = createSignal<Set<string>>(new Set())
   const [actionDone, setActionDone] = createSignal<Set<string>>(new Set())
@@ -186,14 +187,16 @@ export function AgendaPanel() {
     setView("form")
   }
 
-  function openDetail(item: AgendaItem) {
+  function openDetail(item: AgendaItem, rect?: DOMRect) {
+    setPopoverRect(rect)
     setPopoverItem(item)
     loadRuns(item.id)
   }
 
-  function handleEventClick(event: CalendarEvent) {
+  function handleEventClick(event: CalendarEvent, e?: MouseEvent) {
+    const rect = e ? (e.target as HTMLElement).getBoundingClientRect() : undefined
     const item = itemById(event.itemId)
-    if (item) openDetail(item)
+    if (item) openDetail(item, rect)
   }
 
   function handleDateClick(ts: number) {
@@ -243,117 +246,131 @@ export function AgendaPanel() {
   }
 
   return (
-    <Panel.Root>
+    <AppPanel.Root>
       <Show when={view() === "form"}>
-        <AgendaForm directory={formDirectory()} item={editingItem()} onBack={() => setView("main")} />
+        <AppPanel.Content>
+          <AgendaForm directory={formDirectory()} item={editingItem()} onBack={() => setView("main")} />
+        </AppPanel.Content>
       </Show>
-
       <Show when={view() === "main"}>
-        <Panel.Header>
-          <Panel.HeaderRow>
-            <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-[1rem] bg-surface-inset-base/42 p-0.75 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-              <ViewTab active={tab() === "schedule"} onClick={() => setTab("schedule")}>
-                Schedule
-              </ViewTab>
-              <ViewTab active={tab() === "activity"} onClick={() => setTab("activity")}>
-                Activity
-              </ViewTab>
-            </div>
-            <Panel.Actions>
-              <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refresh} />
-              <Panel.Action icon="plus" title="New item" onClick={openCreate} />
-            </Panel.Actions>
-          </Panel.HeaderRow>
-        </Panel.Header>
-
-        <Show when={tab() === "schedule"}>
-          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-3 py-2.5 border-b border-border-weaker-base/45 shrink-0">
-            <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
-              <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
-            </div>
-            <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-              <Show
-                when={todoItems().length > 0}
-                fallback={
-                  <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                    <span class="text-10-medium text-text-weaker/60">No todo items</span>
-                  </div>
-                }
-              >
-                <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                  <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                    <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-                      {todoItems().length}
-                    </span>
-                  </div>
-                </div>
-                <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                  <For each={todoItems()}>{(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}</For>
-                </div>
-              </Show>
-            </div>
-          </div>
-
-          <div class="flex flex-col flex-1 min-h-0 relative px-3 pb-3 pt-2.5">
-            <CalendarGrid
-              viewMode={viewMode()}
-              anchor={anchor()}
-              events={calendarEvents()}
-              onViewModeChange={setViewMode}
-              onAnchorChange={setAnchor}
-              onEventClick={handleEventClick}
-              onRangeChange={(start, end) => setCalendarRange({ start, end })}
+        <AppPanel.Content>
+          <AppPanel.Header>
+            <AppPanel.HeaderRow>
+              <AppPanel.Title>Agenda</AppPanel.Title>
+              <AppPanel.Actions>
+                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refresh} />
+                <AppPanel.Action icon="plus" title="New item" onClick={openCreate} />
+              </AppPanel.Actions>
+            </AppPanel.HeaderRow>
+            <AppPanel.SegmentedNav
+              items={[
+                { id: "schedule", label: "Schedule" },
+                { id: "activity", label: "Activity" },
+              ]}
+              active={tab()}
+              onChange={(id) => setTab(id as PanelTab)}
             />
+          </AppPanel.Header>
 
-            <Show when={popoverItem()}>
-              {(pi) => {
-                const liveItem = createMemo(() => itemById(pi().id) ?? pi())
-                return (
-                  <DetailPopover
-                    item={liveItem()}
-                    runs={runsCache()[liveItem().id]}
-                    isLoading={isLoading}
-                    isDone={isDone}
-                    onClose={() => setPopoverItem(undefined)}
-                    onAction={(action) => performAction(liveItem().id, action)}
-                    onEdit={() => {
-                      setPopoverItem(undefined)
-                      openEdit(liveItem())
-                    }}
-                  />
-                )
-              }}
-            </Show>
-          </div>
-        </Show>
+          <Show when={tab() === "schedule"}>
+            <AppPanel.Body padding={false} class="!px-4">
+              <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 pb-3">
+                <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
+                  <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
+                </div>
+                <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                  <Show
+                    when={todoItems().length > 0}
+                    fallback={
+                      <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                        <span class="text-10-medium text-text-weaker/60">No todo items</span>
+                      </div>
+                    }
+                  >
+                    <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                        <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
+                          {todoItems().length}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                      <For each={todoItems()}>
+                        {(item) => (
+                          <TodoCard
+                            item={item}
+                            onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </div>
 
-        <Show when={tab() === "activity"}>
-          <ActivityView
-            items={activity().items}
-            total={activity().total}
-            hasMore={activity().hasMore}
-            loading={activityLoading()}
-            query={activityQuery()}
-            error={activityError()}
-            onQueryChange={(value: string) => {
-              setActivityQuery(value)
-              void loadActivity({ reset: true, query: value })
-            }}
-            onLoadMore={() => void loadActivity({ append: true })}
-            onNavigate={navigateToSession}
-            onItemClick={(itemId) => {
-              const item = itemById(itemId)
-              if (item) openDetail(item)
-            }}
-          />
-        </Show>
+              <div class="flex flex-col flex-1 min-h-0 relative">
+                <CalendarGrid
+                  viewMode={viewMode()}
+                  anchor={anchor()}
+                  events={calendarEvents()}
+                  onViewModeChange={setViewMode}
+                  onAnchorChange={setAnchor}
+                  onEventClick={handleEventClick}
+                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
+                />
+
+                <Show when={popoverItem()}>
+                  <Portal>
+                    <DetailPopover
+                      anchor={popoverRect()}
+                      item={popoverItem()!}
+                      runs={runsCache()[popoverItem()!.id]}
+                      isLoading={isLoading}
+                      isDone={isDone}
+                      onClose={() => setPopoverItem(undefined)}
+                      onAction={(action) => performAction(popoverItem()!.id, action)}
+                      onEdit={() => {
+                        const pi = popoverItem()!
+                        setPopoverItem(undefined)
+                        openEdit(pi)
+                      }}
+                    />
+                  </Portal>
+                </Show>
+              </div>
+            </AppPanel.Body>
+          </Show>
+
+          <Show when={tab() === "activity"}>
+            <AppPanel.Body padding={false}>
+              <ActivityView
+                items={activity().items}
+                total={activity().total}
+                hasMore={activity().hasMore}
+                loading={activityLoading()}
+                query={activityQuery()}
+                error={activityError()}
+                onQueryChange={(value: string) => {
+                  setActivityQuery(value)
+                  void loadActivity({ reset: true, query: value })
+                }}
+                onLoadMore={() => void loadActivity({ append: true })}
+                onNavigate={navigateToSession}
+                onItemClick={(itemId) => {
+                  const item = itemById(itemId)
+                  if (item) openDetail(item)
+                }}
+              />
+            </AppPanel.Body>
+          </Show>
+        </AppPanel.Content>
       </Show>
-    </Panel.Root>
+    </AppPanel.Root>
   )
 }
 
-function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
+function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void }) {
   return (
     <div
       class="flex items-center gap-2.5 rounded-[0.9rem] bg-surface-raised-base/92 px-2.5 py-2 ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base transition-colors cursor-pointer shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]"
@@ -371,6 +388,7 @@ function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
 }
 
 function DetailPopover(props: {
+  anchor?: DOMRect
   item: AgendaItem
   runs: AgendaRunLog[] | undefined
   isLoading: (id: string, action: string) => boolean
@@ -379,6 +397,21 @@ function DetailPopover(props: {
   onAction: (action: "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove") => void
   onEdit: () => void
 }) {
+  const pos = () => {
+    const a = props.anchor
+    if (!a) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+    const cardW = 360
+    const cardH = 480
+    let left = a.left + a.width / 2 - cardW / 2
+    const vw = window.innerWidth
+    if (left < 12) left = 12
+    if (left + cardW > vw - 12) left = vw - cardW - 12
+    let top = a.bottom + 8
+    const vh = window.innerHeight
+    if (top + cardH > vh - 16) top = a.top - cardH - 8
+    if (top < 8) top = 8
+    return { top: `${top}px`, left: `${left}px` }
+  }
   let cardRef: HTMLDivElement | undefined
   const state = () => props.item.state
 
@@ -396,150 +429,148 @@ function DetailPopover(props: {
       document.removeEventListener("keydown", onKeyDown)
     })
   })
-
   return (
-    <div class="absolute inset-0 z-20 flex items-start justify-center pt-8 px-4 pointer-events-none">
-      <div
-        ref={cardRef}
-        class="pointer-events-auto w-full max-w-sm max-h-[calc(100%-16px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
-      >
-        <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
-          <button
-            type="button"
-            class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={props.onEdit}
-            title="Edit"
-          >
-            <Icon name="pen-line" size="small" />
-          </button>
-          <ActionIconBtn
-            icon="trash-2"
-            title="Delete"
-            loading={props.isLoading(props.item.id, "remove")}
-            onClick={() => props.onAction("remove")}
-            danger
-          />
-          <div class="flex-1" />
-          <button
-            type="button"
-            class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={props.onClose}
-            title="Close"
-          >
-            <Icon name="x" size="small" />
-          </button>
-        </div>
+    <div
+      ref={cardRef}
+      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+      style={pos()}
+    >
+      <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
+        <button
+          type="button"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          onClick={props.onEdit}
+          title="Edit"
+        >
+          <Icon name="pen-line" size="small" />
+        </button>
+        <ActionIconBtn
+          icon="trash-2"
+          title="Delete"
+          loading={props.isLoading(props.item.id, "remove")}
+          onClick={() => props.onAction("remove")}
+          danger
+        />
+        <div class="flex-1" />
+        <button
+          type="button"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          onClick={props.onClose}
+          title="Close"
+        >
+          <Icon name="x" size="small" />
+        </button>
+      </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-            <div class="flex items-start gap-2">
-              <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
-              <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
-                {props.item.status}
-              </span>
-            </div>
+      <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="flex items-start gap-2">
+            <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
+            <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
+              {props.item.status}
+            </span>
+          </div>
 
-            <Show when={props.item.description}>
-              <p class="text-12-regular text-text-weak leading-relaxed">{props.item.description}</p>
-            </Show>
+          <Show when={props.item.description}>
+            <p class="text-12-regular text-text-weak leading-relaxed">{props.item.description}</p>
+          </Show>
 
-            <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+              {triggerSummary(props.item.triggers)}
+            </span>
+            <Show when={state()?.runCount}>
               <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                {triggerSummary(props.item.triggers)}
+                {state()!.runCount} runs
               </span>
-              <Show when={state()?.runCount}>
-                <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  {state()!.runCount} runs
-                </span>
+            </Show>
+            <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
+              <span class="px-2 py-0.5 rounded-full bg-text-diff-delete-base/12 text-10-medium text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12">
+                {state()!.consecutiveErrors} errors
+              </span>
+            </Show>
+            <Show when={props.item.createdBy === "agent"}>
+              <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
+                agent
+              </span>
+            </Show>
+          </div>
+
+          <Show when={state()?.nextRunAt}>
+            <div class="text-11-regular text-text-weaker">Next: {relativeTime(state()!.nextRunAt!)}</div>
+          </Show>
+
+          <Show when={state()?.lastRunAt}>
+            <div class="text-11-regular text-text-weaker">
+              Last run: {absoluteDate(state()!.lastRunAt!)}
+              <Show when={state()?.lastRunStatus}>
+                {" · "}
+                <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
               </Show>
-              <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-                <span class="px-2 py-0.5 rounded-full bg-text-diff-delete-base/12 text-10-medium text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12">
-                  {state()!.consecutiveErrors} errors
-                </span>
-              </Show>
-              <Show when={props.item.createdBy === "agent"}>
-                <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
-                  agent
-                </span>
+              <Show when={state()?.lastRunDuration}>
+                {" · "}
+                {formatAgendaDuration(state()!.lastRunDuration!)}
               </Show>
             </div>
+          </Show>
 
-            <Show when={state()?.nextRunAt}>
-              <div class="text-11-regular text-text-weaker">Next: {relativeTime(state()!.nextRunAt!)}</div>
-            </Show>
+          <Show when={state()?.lastRunError}>
+            <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
+              {state()!.lastRunError}
+            </div>
+          </Show>
 
-            <Show when={state()?.lastRunAt}>
-              <div class="text-11-regular text-text-weaker">
-                Last run: {absoluteDate(state()!.lastRunAt!)}
-                <Show when={state()?.lastRunStatus}>
-                  {" · "}
-                  <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
+          <Show when={props.item.tags && props.item.tags.length > 0}>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <For each={props.item.tags}>
+                {(tag) => (
+                  <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                    #{tag}
+                  </span>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          <Show when={props.item.prompt}>
+            <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+              <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
+                Task
+              </div>
+              <div class="px-3 py-2.5">
+                <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
+                  {props.item.prompt}
+                </p>
+                <Show when={props.item.agent}>
+                  <span class="text-10-medium text-text-weaker mt-1.5 block">Agent: {props.item.agent}</span>
                 </Show>
-                <Show when={state()?.lastRunDuration}>
-                  {" · "}
-                  {formatAgendaDuration(state()!.lastRunDuration!)}
-                </Show>
               </div>
-            </Show>
+            </div>
+          </Show>
 
-            <Show when={state()?.lastRunError}>
-              <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
-                {state()!.lastRunError}
-              </div>
-            </Show>
+          <ActionBar item={props.item} isLoading={props.isLoading} isDone={props.isDone} onAction={props.onAction} />
 
-            <Show when={props.item.tags && props.item.tags.length > 0}>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <For each={props.item.tags}>
-                  {(tag) => (
-                    <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                      #{tag}
-                    </span>
-                  )}
-                </For>
-              </div>
-            </Show>
-
-            <Show when={props.item.prompt}>
-              <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
-                  Task
-                </div>
-                <div class="px-3 py-2.5">
-                  <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
-                    {props.item.prompt}
-                  </p>
-                  <Show when={props.item.agent}>
-                    <span class="text-10-medium text-text-weaker mt-1.5 block">Agent: {props.item.agent}</span>
-                  </Show>
-                </div>
-              </div>
-            </Show>
-
-            <ActionBar item={props.item} isLoading={props.isLoading} isDone={props.isDone} onAction={props.onAction} />
-
-            <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
-              {(runs) => (
-                <Show when={runs().length > 0}>
-                  <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                    <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
-                      Recent runs
-                    </div>
-                    <div>
-                      <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
-                    </div>
+          <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
+            {(runs) => (
+              <Show when={runs().length > 0}>
+                <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                  <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
+                    Recent runs
                   </div>
-                </Show>
-              )}
-            </Show>
-
-            <div class="text-10-regular text-text-weaker">
-              Created {absoluteDate(props.item.time.created)}
-              <Show when={props.item.time.updated !== props.item.time.created}>
-                {" · updated "}
-                {absoluteDate(props.item.time.updated)}
+                  <div>
+                    <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
+                  </div>
+                </div>
               </Show>
-            </div>
+            )}
+          </Show>
+
+          <div class="text-10-regular text-text-weaker">
+            Created {absoluteDate(props.item.time.created)}
+            <Show when={props.item.time.updated !== props.item.time.created}>
+              {" · updated "}
+              {absoluteDate(props.item.time.updated)}
+            </Show>
           </div>
         </div>
       </div>

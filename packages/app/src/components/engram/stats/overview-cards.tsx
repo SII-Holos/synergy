@@ -33,36 +33,29 @@ function buildMetrics(overview: {
     },
     {
       id: "eval-rate",
-      label: "Eval Rate",
+      label: "Eval rate",
       value: ratePct,
       sub: overview.experiencesFailed > 0 ? `${overview.experiencesFailed} failed` : undefined,
     },
     {
       id: "active",
-      label: "Active Days",
+      label: "Active days",
       value: overview.activeDays.toString(),
     },
   ]
 }
 
-const ANIMATION_STYLE = `
-@keyframes overviewCardEnter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-`
-
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]"
-      style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}
+      class="rounded-xl bg-surface-inset-base/38 px-3 py-2.5 ring-1 ring-inset ring-border-base/25"
+      style={{ animation: `overviewCardEnter 0.28s ease-out ${props.delay}ms both` }}
     >
-      <div class="flex min-h-[3.5rem] flex-col justify-between gap-1.5">
-        <span class="text-22-semibold text-text-strong tracking-tight tabular-nums">{props.metric.value}</span>
-        <span class="text-10-medium uppercase tracking-[0.16em] text-text-weaker">{props.metric.label}</span>
-        {props.metric.sub ? <span class="text-10-regular text-text-weak">{props.metric.sub}</span> : null}
+      <div class="flex items-baseline gap-2">
+        <span class="text-18-semibold text-text-strong tabular-nums">{props.metric.value}</span>
+        <span class="text-11-regular text-text-weak">{props.metric.label}</span>
       </div>
+      {props.metric.sub ? <div class="mt-0.5 text-10-regular text-text-weaker">{props.metric.sub}</div> : null}
     </div>
   )
 }
@@ -83,12 +76,10 @@ export function EngramOverviewCards(props: {
 
   return (
     <>
-      <style>{ANIMATION_STYLE}</style>
-      <section class="rounded-2xl bg-surface-raised-base p-2.5">
-        <div class="grid grid-cols-4 gap-2.5">
-          <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
-        </div>
-      </section>
+      <style>{`@keyframes overviewCardEnter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div class="grid grid-cols-4 gap-2">
+        <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
+      </div>
     </>
   )
 }

@@ -7,6 +7,7 @@ import "./global-panel-overlay.css"
 
 interface GlobalPanelOverlayProps {
   panelContent: () => JSX.Element
+  bare?: boolean
 }
 
 export function GlobalPanelOverlay(props: GlobalPanelOverlayProps) {
@@ -33,11 +34,13 @@ export function GlobalPanelOverlay(props: GlobalPanelOverlayProps) {
           "gpo-mobile": !isDesktop(),
         }}
       >
-        <div class="gpo-header">
-          <button type="button" class="gpo-close" onClick={() => panel.close()}>
-            <Icon name="x" size="normal" />
-          </button>
-        </div>
+        <Show when={!props.bare}>
+          <div class="gpo-header">
+            <button type="button" class="gpo-close" onClick={() => panel.close()}>
+              <Icon name="x" size="normal" />
+            </button>
+          </div>
+        </Show>
         <div class="gpo-body">{props.panelContent()}</div>
       </div>
     </Show>

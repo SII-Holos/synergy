@@ -181,8 +181,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
   return (
     <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base/95 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
       <div class="pb-2">
-        <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Learning</div>
-        <h3 class="mt-1 text-15-semibold text-text-strong tracking-tight">Reward Dimensions</h3>
+        <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
       </div>
 
       <Show

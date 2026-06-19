@@ -1,1 +1,0 @@
-export { HolosPanel } from "./panel"

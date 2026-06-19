@@ -292,21 +292,6 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Global feature buttons */}
       <div class="sb-globals">
-        <Tooltip value="Holos" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": panel.active() === "holos",
-            }}
-            onClick={() => panel.toggle("holos")}
-          >
-            <Icon name="users" size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Holos</span>
-            </Show>
-          </button>
-        </Tooltip>
         <Tooltip value="Agenda" placement="right">
           <button
             type="button"
@@ -322,7 +307,7 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
-        <Tooltip value="Engram" placement="right">
+        <Tooltip value="Library" placement="right">
           <button
             type="button"
             classList={{
@@ -333,7 +318,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
-              <span class="sb-action-label">Engram</span>
+              <span class="sb-action-label">Library</span>
             </Show>
           </button>
         </Tooltip>
@@ -612,7 +597,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
-      {/* Bottom: Settings, Connect Provider, Theme */}
+      {/* Bottom: Settings, Connect Provider */}
       <div class="sb-bottom">
         <Tooltip value="Settings" placement="right">
           <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <SettingsDialog />)}>
@@ -624,12 +609,6 @@ export function Sidebar(props: SidebarProps) {
           <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSelectProvider />)}>
             <Icon name="cable" size="normal" />
             <span class="sb-bottom-label">Connect Provider</span>
-          </button>
-        </Tooltip>
-        <Tooltip value={isDark() ? "Switch to light mode" : "Switch to dark mode"} placement="right">
-          <button type="button" class="sb-bottom-btn" onClick={() => theme.setColorScheme(isDark() ? "light" : "dark")}>
-            <Icon name={isDark() ? "sun" : "moon"} size="normal" />
-            <span class="sb-bottom-label">{isDark() ? "Light" : "Dark"}</span>
           </button>
         </Tooltip>
       </div>
