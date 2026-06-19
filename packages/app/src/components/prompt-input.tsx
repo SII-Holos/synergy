@@ -51,6 +51,7 @@ import { getAgentVisual } from "@/components/agent-visual"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { ContextBar } from "@/components/context-bar"
 import { QuickActions } from "@/components/quick-actions"
@@ -452,7 +453,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       close?.()
       return
     }
-
+    setStore("switchingProfile", true)
     try {
       await sdk.client.session.update({ sessionID: params.id, controlProfile: profile })
       close?.()
@@ -462,6 +463,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         title: "Permission mode unchanged",
         description: err instanceof Error ? err.message : "Failed to update the session permission mode.",
       })
+    } finally {
+      setStore("switchingProfile", false)
     }
   }
   const imageAttachments = createMemo(
@@ -492,6 +495,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     dragging: boolean
     mode: "normal" | "shell"
     applyingHistory: boolean
+    switchingProfile: boolean
     promptBursts: PromptStatusBurstItem[]
   }>({
     popover: null,
@@ -501,6 +505,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     dragging: false,
     mode: "normal",
     applyingHistory: false,
+    switchingProfile: false,
     promptBursts: [],
   })
 
@@ -2286,29 +2291,42 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     trigger={
                       <button
                         type="button"
-                        aria-disabled={working()}
+                        aria-disabled={working() || store.switchingProfile}
                         onClick={(event) => {
-                          if (!working()) return
+                          if (!working() && !store.switchingProfile) return
                           event.preventDefault()
                           event.stopPropagation()
+                          if (store.switchingProfile) return
                           showToast({
                             type: "warning",
                             title: "Session is running",
                             description: "Stop the session before changing its permission mode.",
                           })
                         }}
-                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                        classList={{ "opacity-60 cursor-not-allowed": working() }}
+                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base transition-colors"
+                        classList={{
+                          "opacity-60 cursor-not-allowed": working() || store.switchingProfile,
+                          "hover:bg-surface-raised-base-hover": !store.switchingProfile,
+                        }}
                       >
-                        <Icon
-                          name={activePermissionMode().icon}
-                          size="small"
-                          class={`shrink-0 ${activePermissionMode().iconClass}`}
-                        />
-                        <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
-                          {activePermissionMode().shortLabel}
-                        </span>
-                        <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
+                        <Show
+                          when={store.switchingProfile}
+                          fallback={
+                            <>
+                              <Icon
+                                name={activePermissionMode().icon}
+                                size="small"
+                                class={`shrink-0 ${activePermissionMode().iconClass}`}
+                              />
+                              <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
+                                {activePermissionMode().shortLabel}
+                              </span>
+                              <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
+                            </>
+                          }
+                        >
+                          <Spinner class="text-icon-base" />
+                        </Show>
                       </button>
                     }
                     title="Permission mode"

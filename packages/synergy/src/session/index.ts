@@ -304,10 +304,17 @@ export namespace Session {
       editor?.(draft)
     })
 
-    for (const child of childSessions) {
-      await update(child.id, (draft) => {
-        draft.controlProfile = controlProfile
-      })
+    const childResults = await Promise.allSettled(
+      childSessions.map((child) =>
+        update(child.id, (draft) => {
+          draft.controlProfile = controlProfile
+        }),
+      ),
+    )
+    for (const result of childResults) {
+      if (result.status === "rejected") {
+        log.warn("failed to update child session control profile", { error: result.reason })
+      }
     }
 
     return updatedParent

@@ -11,6 +11,15 @@ export namespace SandboxDetector {
     { pattern: /[Ss]andbox/i, label: "sandbox" },
     { pattern: /error loading current directory/i, label: "cwd_broken" },
     { pattern: /\bEACCES\b|\bEPERM\b/, label: "unix_perm" },
+    // Linux-specific denials
+    { pattern: /[Mm]ount.*denied/i, label: "mount_denied" },
+    { pattern: /bwrap.*[Ee]rror/i, label: "bwrap_error" },
+    { pattern: /[Ss]eccomp/i, label: "seccomp" },
+    // Windows-specific denials
+    { pattern: /[Aa]ccess is denied/i, label: "access_denied_win" },
+    { pattern: /ERROR_ACCESS_DENIED/i, label: "error_access_denied" },
+    { pattern: /[Aa] required privilege is not held/i, label: "privilege_not_held" },
+    { pattern: /[Tt]he system cannot find the path specified/i, label: "path_not_found_win" },
   ]
 
   export interface Match {

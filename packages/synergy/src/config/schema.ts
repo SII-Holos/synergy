@@ -204,6 +204,22 @@ export const SandboxConfig = z
       .enum(["warn", "allow", "deny"])
       .optional()
       .describe("How to proceed when the requested sandbox runtime is unavailable"),
+    backend: z
+      .enum(["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"])
+      .optional()
+      .describe(
+        "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. " +
+          "Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), " +
+          "'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+      ),
+    windows: z
+      .object({
+        level: z.enum(["disabled", "restricted-token", "elevated"]).optional(),
+        helperPath: z.string().optional(),
+        verifyHelperHash: z.boolean().optional(),
+      })
+      .optional()
+      .describe("Windows-specific sandbox settings"),
   })
   .strict()
   .meta({ ref: "SandboxConfig" })
