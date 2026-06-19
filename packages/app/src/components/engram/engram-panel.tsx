@@ -13,10 +13,10 @@ import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
 
 const viewLabel: Record<View, string> = {
-  stats: "Usage overview and analytics",
-  memory: "Browse, search, and manage knowledge memories",
-  experience: "Browse, search, and manage behavioral experiences",
-  skill: "Manage installed skills and import new ones",
+  stats: "Health, collection, and learning signals",
+  memory: "Browse, search, and manage knowledge",
+  experience: "Browse, search, and manage behavioral records",
+  skill: "Installed capabilities and imports",
 }
 
 export function EngramPanel() {
@@ -79,16 +79,16 @@ export function EngramPanel() {
   return (
     <AppPanel.Root>
       <AppPanel.Nav>
-        <AppPanel.NavSection label="Engram">
+        <AppPanel.NavSection label="Library">
           <AppPanel.NavItem
             icon="activity"
-            label="Stats"
+            label="Overview"
             active={view() === "stats"}
             onClick={() => setView("stats")}
           />
           <AppPanel.NavItem
-            icon="brain"
-            label="Memory"
+            icon="book-open"
+            label="Memories"
             active={view() === "memory"}
             onClick={() => setView("memory")}
             badge={
@@ -99,7 +99,7 @@ export function EngramPanel() {
           />
           <AppPanel.NavItem
             icon="zap"
-            label="Experience"
+            label="Experiences"
             active={view() === "experience"}
             onClick={() => setView("experience")}
             badge={
@@ -110,7 +110,7 @@ export function EngramPanel() {
           />
           <AppPanel.NavItem
             icon="sparkles"
-            label="Skill"
+            label="Skills"
             active={view() === "skill"}
             onClick={() => setView("skill")}
           />
@@ -118,12 +118,12 @@ export function EngramPanel() {
       </AppPanel.Nav>
 
       <AppPanel.Content>
-        <AppPanel.Header>
+        <AppPanel.Header class="pt-3 pb-2 gap-2">
           <AppPanel.HeaderRow>
-            <AppPanel.Title>Engram</AppPanel.Title>
+            <AppPanel.Title>Library</AppPanel.Title>
             <AppPanel.Actions>
               <Show when={stats()}>
-                <span class="text-11-regular text-text-weaker">{formatBytes(stats()!.dbSizeBytes)}</span>
+                <span class="text-11-regular text-text-weaker tabular-nums">{formatBytes(stats()!.dbSizeBytes)}</span>
               </Show>
               <Show when={view() !== "stats"}>
                 <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
@@ -131,8 +131,10 @@ export function EngramPanel() {
             </AppPanel.Actions>
           </AppPanel.HeaderRow>
           <AppPanel.Subtitle>{viewLabel[view()]}</AppPanel.Subtitle>
-          <Show when={showSearch()}>
-            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5">
+        </AppPanel.Header>
+        <Show when={showSearch()}>
+          <div class="shrink-0 px-6 pt-1 pb-2">
+            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2">
               <Icon name="search" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
@@ -150,6 +152,7 @@ export function EngramPanel() {
               <Show when={search()}>
                 <button
                   type="button"
+                  aria-label="Clear search"
                   class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
                   onClick={() => onSearchInput("")}
                 >
@@ -157,14 +160,15 @@ export function EngramPanel() {
                 </button>
               </Show>
             </div>
-          </Show>
-          <Show when={searchError()}>
+          </div>
+        </Show>
+        <Show when={searchError()}>
+          <div class="shrink-0 px-6 pb-1">
             <span class="text-11-regular text-text-diff-delete-base">
               Search unavailable — embedding API may not be configured
             </span>
-          </Show>
-        </AppPanel.Header>
-
+          </div>
+        </Show>
         <AppPanel.Body>
           <Show when={view() === "stats"}>
             <StatsView />

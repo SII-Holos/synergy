@@ -323,7 +323,7 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
-        <Tooltip value="Engram" placement="right">
+        <Tooltip value="Library" placement="right">
           <button
             type="button"
             classList={{
@@ -334,7 +334,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
-              <span class="sb-action-label">Engram</span>
+              <span class="sb-action-label">Library</span>
             </Show>
           </button>
         </Tooltip>
