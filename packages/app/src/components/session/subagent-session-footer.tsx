@@ -4,6 +4,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
 import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
 
+const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
+
 function formatDuration(startedAt: number, completedAt?: number): string {
   const end = completedAt ?? Date.now()
   const seconds = Math.max(0, Math.floor((end - startedAt) / 1000))
@@ -47,6 +49,7 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? props.cortex.result))
   const duration = createMemo(() => formatDuration(props.cortex.startedAt, props.cortex.completedAt))
   const modelLabel = createMemo(() => {
+    if (HIDE_MODEL_LABEL_AGENTS.has(props.cortex.agent)) return undefined
     const m = props.cortex.model
     if (!m) return undefined
     // If provider name is redundant with model prefix, show just modelID
