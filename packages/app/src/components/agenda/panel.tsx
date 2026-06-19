@@ -319,7 +319,7 @@ export function AgendaPanel() {
                   onRangeChange={(start, end) => setCalendarRange({ start, end })}
                 />
 
-                <Show when={popoverItem() && popoverRect()}>
+                <Show when={popoverItem()}>
                   <DetailPopover
                     anchor={popoverRect()}
                     item={popoverItem()!}
