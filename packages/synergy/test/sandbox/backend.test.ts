@@ -73,7 +73,7 @@ describe("SandboxBackend command wrapping (macOS)", () => {
     // Position 1 (after -f) must be a .sb temp file path
     expect(wrapper.args[1]).toMatch(/\.sb$/)
     // Should be in a temp directory
-    expect(wrapper.args[1]).toMatch(/tmp|TEMP/)
+    expect(wrapper.args[1]).toContain("synergy-sandbox-")
   })
 })
 
@@ -603,11 +603,11 @@ describe("SandboxBackend cross-platform support", () => {
     expect(wrapper.args).toContain(workspace)
   })
 
-  test("Windows platform reports no sandbox available", () => {
+  test("Windows platform reports as sandbox-capable", () => {
     const { SandboxBackend } = require("../../src/sandbox/backend")
 
     const supported = SandboxBackend.isPlatformSupported("win32")
-    expect(supported).toBe(false)
+    expect(supported).toBe(true)
   })
 })
 
