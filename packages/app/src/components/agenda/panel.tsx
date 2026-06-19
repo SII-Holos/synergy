@@ -432,7 +432,7 @@ function DetailPopover(props: {
   return (
     <div
       ref={cardRef}
-      class="pointer-events-auto fixed z-50 w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
       style={pos()}
     >
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
