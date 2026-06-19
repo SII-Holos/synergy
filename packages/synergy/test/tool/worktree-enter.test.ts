@@ -9,16 +9,17 @@ import { tmpdir } from "../fixture/fixture"
 // ---------------------------------------------------------------------------
 // worktree-enter.test.ts
 //
-// Tests for WorktreeEnterTool — create or enter a git worktree.
+// Tests for WorktreeEnterTool — create, enter, or switch git worktrees.
 //
 // Scenarios:
 //   1. Schema validation (accepts valid, rejects invalid baseRef)
-//   2. Noop when session already in a git_worktree
-//   3. Permission denied returns semantic denial output
-//   4. Target matches existing worktree by name/ID
-//   5. No target or no match creates new worktree
-//   6. NOT_GIT error returns semantic denial
-//   7. Setup failure returns semantic denial
+//   2. Already in a worktree: noop on self-match, switch on different target
+//   3. Dirty guard: refuse switch without force, allow with force
+//   4. Permission denied returns semantic denial output
+//   5. Target matches existing worktree by name/ID
+//   6. No target or no match creates new worktree
+//   7. NOT_GIT error returns semantic denial
+//   8. Setup failure returns semantic denial
 // ---------------------------------------------------------------------------
 
 const baseCtx = {
@@ -40,12 +41,16 @@ const _origWorktree = {
   list: Worktree.list,
   create: Worktree.create,
   enter: Worktree.enter,
+  leave: (Worktree as any).leave as typeof Worktree.leave,
+  status: (Worktree as any).status as typeof Worktree.status,
 }
 
 afterEach(() => {
   ;(Worktree as any).list = _origWorktree.list
   ;(Worktree as any).create = _origWorktree.create
   ;(Worktree as any).enter = _origWorktree.enter
+  ;(Worktree as any).leave = _origWorktree.leave
+  ;(Worktree as any).status = _origWorktree.status
 })
 
 describe("tool.worktree_enter", () => {
@@ -119,9 +124,9 @@ describe("tool.worktree_enter", () => {
     })
   })
 
-  // ---- Noop: already in worktree ----
-  describe("noop: already in worktree", () => {
-    test("returns action 'entered' when session is already in a git_worktree", async () => {
+  // ---- Already in a worktree: noop / switch ----
+  describe("already in a worktree", () => {
+    test("noop when target matches current worktree by name", async () => {
       await using tmp = await tmpdir({ git: true })
       await Instance.provide({
         scope: await tmp.scope(),
@@ -135,9 +140,10 @@ describe("tool.worktree_enter", () => {
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
           const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
-          const result = await initialized.execute(params({ target: "anything" }), ctx)
+          const result = await initialized.execute(params({ target: "brave-cactus" }), ctx)
 
           expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.reason).toBe("already_in_this_worktree")
           expect(result.metadata.created).toBe(false)
           expect(result.metadata.workspace).toBeDefined()
           expect(result.metadata.message).toContain("already in worktree")
@@ -147,29 +153,258 @@ describe("tool.worktree_enter", () => {
       })
     })
 
-    test("noop does not call Worktree.list or create", async () => {
+    test("noop when target matches current worktree by ID", async () => {
       await using tmp = await tmpdir({ git: true })
-      const listSpy = mock(async () => [] as any[])
-      const createSpy = mock(async () => ({}) as any)
-      ;(Worktree as any).list = listSpy
-      ;(Worktree as any).create = createSpy
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/worktrees/wt",
+          scopeID: "scope_123",
+          worktreeID: "wt_abc",
+          name: "some-name",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "wt_abc" }), ctx)
 
+          expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.reason).toBe("already_in_this_worktree")
+        },
+      })
+    })
+
+    test("noop when target matches current worktree by path", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/worktrees/brave-cactus",
+          scopeID: "scope_123",
+          worktreeID: "wt_x",
+          name: "brave-cactus",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "/tmp/worktrees/brave-cactus" }), ctx)
+
+          expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.reason).toBe("already_in_this_worktree")
+        },
+      })
+    })
+
+    test("noop when target matches current worktree by branch", async () => {
+      await using tmp = await tmpdir({ git: true })
       await Instance.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
           path: "/tmp/wt",
           scopeID: "scope_123",
-          worktreeID: "wt_abc",
-          name: "existing",
+          worktreeID: "wt_br",
+          name: "some-name",
+          branch: "feature/experiment",
         },
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
           const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
-          await initialized.execute(params({ target: "anything" }), ctx)
+          const result = await initialized.execute(params({ target: "feature/experiment" }), ctx)
 
-          expect(listSpy).not.toHaveBeenCalled()
-          expect(createSpy).not.toHaveBeenCalled()
+          expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.reason).toBe("already_in_this_worktree")
+        },
+      })
+    })
+
+    test("switches to different existing worktree", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const leaveSpy = mock(async () => {})
+      const enterSpy = mock(async () => ({
+        id: "wt_other",
+        name: "other-wt",
+        branch: "synergy/other-wt",
+        path: "/tmp/wt/other",
+        scopeID: "scope_123",
+      }))
+      const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
+      ;(Worktree as any).list = mock(async () => [
+        { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+      ])
+      ;(Worktree as any).leave = leaveSpy
+      ;(Worktree as any).enter = enterSpy
+      ;(Worktree as any).status = statusSpy
+
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/wt/current",
+          scopeID: "scope_123",
+          worktreeID: "wt_current",
+          name: "current-wt",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "other-wt" }), ctx)
+
+          expect(leaveSpy).toHaveBeenCalledTimes(1)
+          expect(enterSpy).toHaveBeenCalledTimes(1)
+          expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.created).toBe(false)
+          expect(result.output).toContain("Entered existing worktree")
+          expect(result.output).toContain("other-wt")
+        },
+      })
+    })
+
+    test("switches to new worktree when no target given", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const leaveSpy = mock(async () => {})
+      const createSpy = mock(async () => ({
+        id: "wt_new",
+        name: "brave-cactus-abc",
+        branch: "synergy/brave-cactus-abc",
+        path: "/tmp/wt/new",
+        scopeID: "scope_123",
+      }))
+      const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
+      ;(Worktree as any).leave = leaveSpy
+      ;(Worktree as any).create = createSpy
+      ;(Worktree as any).status = statusSpy
+
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/wt/current",
+          scopeID: "scope_123",
+          worktreeID: "wt_current",
+          name: "current-wt",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({}), ctx)
+
+          expect(leaveSpy).toHaveBeenCalledTimes(1)
+          expect(createSpy).toHaveBeenCalledTimes(1)
+          expect(result.metadata.action).toBe("entered")
+          expect(result.metadata.created).toBe(true)
+          expect(result.output).toContain("Created and entered worktree")
+        },
+      })
+    })
+
+    test("denies switch when current worktree is dirty and force is false", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const leaveSpy = mock(async () => {})
+      const statusSpy = mock(async () => ({ dirty: true, workspace: undefined }))
+      ;(Worktree as any).list = mock(async () => [])
+      ;(Worktree as any).leave = leaveSpy
+      ;(Worktree as any).status = statusSpy
+
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/wt/dirty-one",
+          scopeID: "scope_123",
+          worktreeID: "wt_dirty",
+          name: "dirty-wt",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "other" }), ctx)
+
+          expect(result.metadata.action).toBe("denied")
+          expect(result.metadata.reason).toBe("current_dirty")
+          expect(result.output).toContain("uncommitted changes")
+          expect(leaveSpy).not.toHaveBeenCalled()
+        },
+      })
+    })
+
+    test("allows switch with force when current worktree is dirty", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const leaveSpy = mock(async () => {})
+      const statusSpy = mock(async () => ({ dirty: true, workspace: undefined }))
+      const enterSpy = mock(async () => ({
+        id: "wt_other",
+        name: "other-wt",
+        branch: "synergy/other-wt",
+        path: "/tmp/wt/other",
+        scopeID: "scope_123",
+      }))
+      ;(Worktree as any).list = mock(async () => [
+        { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+      ])
+      ;(Worktree as any).leave = leaveSpy
+      ;(Worktree as any).enter = enterSpy
+      ;(Worktree as any).status = statusSpy
+
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/wt/dirty-one",
+          scopeID: "scope_123",
+          worktreeID: "wt_dirty",
+          name: "dirty-wt",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "other-wt", force: true }), ctx)
+
+          expect(leaveSpy).toHaveBeenCalledTimes(1)
+          expect(enterSpy).toHaveBeenCalledTimes(1)
+          expect(result.metadata.action).toBe("entered")
+          expect(result.output).toContain("Entered existing worktree")
+        },
+      })
+    })
+
+    test("allows switch when current worktree is clean (dirty = false)", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const leaveSpy = mock(async () => {})
+      const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
+      const enterSpy = mock(async () => ({
+        id: "wt_other",
+        name: "other-wt",
+        branch: "synergy/other-wt",
+        path: "/tmp/wt/other",
+        scopeID: "scope_123",
+      }))
+      ;(Worktree as any).list = mock(async () => [
+        { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+      ])
+      ;(Worktree as any).leave = leaveSpy
+      ;(Worktree as any).enter = enterSpy
+      ;(Worktree as any).status = statusSpy
+
+      await Instance.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: "/tmp/wt/clean-wt",
+          scopeID: "scope_123",
+          worktreeID: "wt_clean",
+          name: "clean-wt",
+        },
+        fn: async () => {
+          const initialized = await WorktreeEnterTool.init()
+          const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
+          const result = await initialized.execute(params({ target: "other-wt" }), ctx)
+
+          expect(leaveSpy).toHaveBeenCalledTimes(1)
+          expect(enterSpy).toHaveBeenCalledTimes(1)
+          expect(result.metadata.action).toBe("entered")
         },
       })
     })

@@ -13,7 +13,11 @@ const parameters = z.object({
     .default("current")
     .describe("Base reference for new worktree: current HEAD or fresh from origin"),
   reason: z.string().optional().describe("Optional short note about why the worktree is being entered"),
-  force: z.boolean().optional().default(false).describe("Force enter even if the worktree has uncommitted changes"),
+  force: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Force enter even if the current or target worktree has uncommitted changes"),
 })
 
 interface WorktreeEnterMetadata {
@@ -55,6 +59,8 @@ function denialMetadata(
 export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMetadata>("worktree_enter", {
   description:
     "Create or enter a git worktree for the current session. " +
+    "When already in a worktree, calling with a different 'target' switches to that worktree " +
+    "(leaving the current one). Calling with no 'target' switches to a new worktree. " +
     "When 'target' matches an existing worktree (by name, ID, branch, or path), enter that worktree. " +
     "When no match is found, create a new worktree using 'target' as the name. " +
     "Omit 'target' to create a new worktree with an auto-generated unique name.",
@@ -62,18 +68,42 @@ export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMet
   async execute(params, ctx) {
     const currentWorkspace = Instance.workspace
     if (currentWorkspace?.type === "git_worktree") {
-      const name = currentWorkspace.name ?? currentWorkspace.worktreeID ?? "unknown"
-      return {
-        title: "worktree_enter",
-        output: `Already in worktree "${name}" at ${currentWorkspace.path}.`,
-        metadata: {
-          action: "entered",
-          created: false,
-          message: `Session is already in worktree "${name}".`,
-          worktree: undefined,
-          workspace: currentWorkspace,
-        },
+      const cw = currentWorkspace as Record<string, unknown>
+      const currentName = (cw.name ?? cw.worktreeID ?? cw.path ?? "unknown") as string
+      const currentPath = cw.path as string
+      const currentID = cw.worktreeID as string | undefined
+      const currentBranch = cw.branch as string | undefined
+
+      // Noop: target matches current worktree
+      if (params.target) {
+        const t = params.target
+        if (t === currentID || t === currentName || t === currentPath || (currentBranch && t === currentBranch)) {
+          return {
+            title: "worktree_enter",
+            output: `Already in worktree "${currentName}" at ${currentPath}.`,
+            metadata: {
+              action: "entered",
+              reason: "already_in_this_worktree",
+              created: false,
+              message: `Session is already in worktree "${currentName}".`,
+              worktree: undefined,
+              workspace: currentWorkspace,
+            },
+          }
+        }
       }
+
+      // Switching: refuse if current worktree is dirty and force not set
+      const st = await Worktree.status(ctx.sessionID)
+      if (st.dirty !== false && !params.force) {
+        return denialMetadata(
+          "denied",
+          "current_dirty",
+          `Current worktree "${currentName}" has uncommitted changes. Use 'force' to switch without saving.`,
+        )
+      }
+
+      await Worktree.leave(ctx.sessionID)
     }
 
     try {
