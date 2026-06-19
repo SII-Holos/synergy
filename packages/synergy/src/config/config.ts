@@ -419,16 +419,17 @@ export namespace Config {
       dot: true,
       cwd: dir,
     })) {
+      const normalized = item.replaceAll("\\", "/")
       const md = await ConfigMarkdown.parse(item)
       if (!md.data) continue
 
       const name = (() => {
         const patterns = ["/.synergy/command/", "/command/"]
-        const pattern = patterns.find((p) => item.includes(p))
+        const pattern = patterns.find((p) => normalized.includes(p))
 
         if (pattern) {
-          const index = item.indexOf(pattern)
-          return item.slice(index + pattern.length, -3)
+          const index = normalized.indexOf(pattern)
+          return normalized.slice(index + pattern.length, -3)
         }
         return path.basename(item, ".md")
       })()
@@ -459,15 +460,16 @@ export namespace Config {
       dot: true,
       cwd: dir,
     })) {
+      const normalized = item.replaceAll("\\", "/")
       const md = await ConfigMarkdown.parse(item)
       if (!md.data) continue
 
       // Extract relative path from agent folder for nested agents
       let agentName = path.basename(item, ".md")
-      const agentFolderPath = item.includes("/.synergy/agent/")
-        ? item.split("/.synergy/agent/")[1]
-        : item.includes("/agent/")
-          ? item.split("/agent/")[1]
+      const agentFolderPath = normalized.includes("/.synergy/agent/")
+        ? normalized.split("/.synergy/agent/")[1]
+        : normalized.includes("/agent/")
+          ? normalized.split("/agent/")[1]
           : agentName + ".md"
 
       // If agent is in a subfolder, include folder path in name

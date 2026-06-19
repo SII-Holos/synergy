@@ -1,6 +1,7 @@
 import { Log } from "@/util/log"
 import { ExternalAgent } from "../bridge"
 
+import path from "node:path"
 const log = Log.create({ service: "external-agent.openclaw" })
 
 /**
@@ -70,8 +71,8 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
     // to temp files bypasses Bun's pipe layer entirely.
     const tmpDir = (await import("node:os")).tmpdir()
     const tag = `openclaw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const stderrPath = `${tmpDir}/${tag}.err`
-    const stdoutPath = `${tmpDir}/${tag}.out`
+    const stderrPath = path.join(tmpDir, `${tag}.err`)
+    const stdoutPath = path.join(tmpDir, `${tag}.out`)
 
     const shellCmd = ["openclaw", ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")
     const fullCmd = `${shellCmd} >"${stdoutPath}" 2>"${stderrPath}"`
