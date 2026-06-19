@@ -36,7 +36,14 @@ export namespace HolosAccounts {
   async function writeStore(store: Store): Promise<void> {
     const file = filepath()
     const parent = file.substring(0, file.lastIndexOf("/"))
-    await fs.mkdir(parent, { recursive: true })
+    try {
+      await fs.mkdir(parent, { recursive: true })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Unable to create data directory at ${parent}: ENOENT: no such file or directory`)
+      }
+      throw err
+    }
     await Bun.write(file, JSON.stringify(store, null, 2))
     await fs.chmod(file, 0o600)
   }

@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test"
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import fs from "node:fs/promises"
@@ -224,5 +224,50 @@ describe("HolosAccounts multi-account store", () => {
     const keys = await apiKeyFile()
     expect(keys).toBeDefined()
     expect(keys!["anthropic"]).toBeDefined()
+  })
+})
+// ── writeStore error handling ───────────────────────────────────────────
+
+describe("writeStore error handling", () => {
+  let mkdirOriginal: typeof fs.mkdir
+
+  beforeEach(() => {
+    mkdirOriginal = fs.mkdir
+  })
+
+  afterEach(() => {
+    fs.mkdir = mkdirOriginal
+  })
+
+  test("ENOENT from mkdir throws domain-clear error with path", async () => {
+    const enoentErr = Object.assign(new Error("ENOENT: no such file or directory, mkdir '/nonexistent'"), {
+      code: "ENOENT",
+    })
+    fs.mkdir = (async () => {
+      throw enoentErr
+    }) as any
+
+    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret", "Test")).rejects.toThrow(
+      /Unable to create data directory at .+: ENOENT: no such file or directory/,
+    )
+  })
+
+  test("non-ENOENT error from mkdir is re-thrown unchanged", async () => {
+    const eaccesErr = Object.assign(new Error("EACCES: permission denied, mkdir '/protected'"), { code: "EACCES" })
+    fs.mkdir = (async () => {
+      throw eaccesErr
+    }) as any
+
+    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(eaccesErr)
+  })
+
+  test("successful mkdir proceeds to write store", async () => {
+    fs.mkdir = (async () => undefined) as any
+
+    await HolosAccounts.saveAndActivateAccount("ok_agent", "secret_ok", "OK")
+
+    const active = await HolosAccounts.getActiveAccount()
+    expect(active!.agentId).toBe("ok_agent")
+    expect(active!.agentSecret).toBe("secret_ok")
   })
 })
