@@ -74,19 +74,21 @@ export namespace Embedding {
   }
 
   /**
-   * Start async warmup of the local embedding model.
-   * Call this on server startup. Does not block — failures are silent.
-   * While warmup is in progress, embedding calls that need the local model
-   * will block until ready, so callers should use .catch() fallbacks.
+   * Start the local embedding model download. Returns a Promise that resolves
+   * when the model is ready or rejects if loading fails.
+   * Call this on server startup or from the CLI. While loading is in progress,
+   * embedding calls that need the local model will block until ready.
    */
-  export function warmup() {
-    if (localModelReady || localModelError) return
-    getLocalExtractor()
+  export function warmup(): Promise<void> {
+    if (localModelReady) return Promise.resolve()
+    if (localModelError) return Promise.reject(localModelError)
+    return getLocalExtractor()
       .then(() => {
         log.info("local embedding model ready")
       })
       .catch((err) => {
         log.warn("local embedding model warmup failed", { error: err instanceof Error ? err.message : String(err) })
+        throw err
       })
   }
 
