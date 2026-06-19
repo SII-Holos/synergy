@@ -48,6 +48,9 @@ export namespace Global {
     get authApiKey() {
       return path.join(root(), "data", "auth", "api-key.json")
     },
+    get authHolosAccounts() {
+      return path.join(root(), "data", "auth", "holos-accounts.json")
+    },
     get authMcp() {
       return path.join(root(), "data", "auth", "mcp.json")
     },

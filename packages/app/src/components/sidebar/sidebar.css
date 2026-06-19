@@ -615,6 +615,228 @@
   display: none;
 }
 
+/* ===== Account hub ===== */
+
+.sidebar-account-hub {
+  position: relative;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 6px 8px 8px;
+}
+
+.sidebar-account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--text-base);
+  text-align: left;
+  transition:
+    background-color 150ms,
+    box-shadow 150ms,
+    color 150ms;
+  overflow: hidden;
+}
+
+.sidebar-account-trigger:hover,
+.sidebar-account-trigger--expanded {
+  background: rgba(255, 214, 165, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 165, 0.14);
+}
+
+.sidebar-account-trigger:focus-visible {
+  outline: 2px solid rgba(255, 190, 120, 0.55);
+  outline-offset: 2px;
+}
+
+.sidebar-account-avatarWrap {
+  position: relative;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.sidebar-account-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(255, 214, 165, 0.28),
+    0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.sidebar-account-avatarStatus {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 2px solid var(--surface-inset-base);
+  background: #8a8d95;
+}
+
+.sidebar-account-avatarWrap[data-tone="success"] .sidebar-account-avatarStatus {
+  background: #7ecf8b;
+}
+
+.sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
+  background: #f4b65d;
+  animation: sidebar-account-pulse 1.6s ease-in-out infinite;
+}
+
+.sidebar-account-avatarWrap[data-tone="danger"] .sidebar-account-avatarStatus {
+  background: #ef7a6b;
+}
+
+.sidebar-account-identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+}
+
+.sidebar-account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-chevron {
+  color: var(--icon-weak);
+  flex-shrink: 0;
+}
+
+.sidebar-account-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.sidebar-account-menu {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 90;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface-raised-stronger-non-alpha);
+  border: 1px solid var(--border-base);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-account-menuItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+
+.sidebar-account-menuItem:hover:not(:disabled),
+.sidebar-account-menuItem:focus-visible:not(:disabled) {
+  background: var(--sb-hover-bg);
+}
+
+.sidebar-account-menuItem:focus-visible {
+  outline: 2px solid rgba(255, 190, 120, 0.42);
+  outline-offset: 1px;
+}
+
+.sidebar-account-menuItem:disabled {
+  color: var(--text-subtle);
+  cursor: default;
+}
+
+.sidebar-account-menuStatus {
+  max-width: 98px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-menuItem--account.sidebar-account-menuItem--active {
+  background: rgba(255, 214, 165, 0.12);
+  color: var(--text-base);
+}
+
+.sidebar-account-menuItem--active:hover {
+  background: rgba(255, 214, 165, 0.16);
+}
+
+.sidebar-account-section-label {
+  padding: 6px 9px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weak);
+}
+
+.sidebar-account-menuItem--add {
+  color: var(--text-weak);
+}
+.sb-collapsed .sidebar-account-hub {
+  padding: 6px 7px 8px;
+}
+
+.sb-collapsed .sidebar-account-trigger {
+  justify-content: center;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  margin: 0 auto;
+  border-radius: 999px;
+}
+
+.sb-collapsed .sidebar-account-menu {
+  left: calc(100% + 8px);
+  right: auto;
+  bottom: 8px;
+  width: 252px;
+}
+
+@keyframes sidebar-account-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 182, 93, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(244, 182, 93, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
+    animation: none;
+  }
+}
+
 /* ===== Projects flyout (collapsed mode) ===== */
 
 .sb-projects-flyout-backdrop {
