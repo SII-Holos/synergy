@@ -2,8 +2,10 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.4);
-  animation: gpoFadeIn 150ms ease-out both;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: gpoFadeIn 180ms ease-out both;
 }
 
 .gpo-container {
@@ -14,20 +16,38 @@
   background: var(--bg-surface-stronger);
   border: 1px solid var(--border-weaker-base);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.08);
+    0 12px 48px rgba(0, 0, 0, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
   border-radius: 16px;
   overflow: hidden;
-  animation: gpoSlideIn 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: gpoSlideIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.gpo-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08) 20%,
+    rgba(255, 255, 255, 0.08) 80%,
+    transparent
+  );
+  z-index: 1;
+  pointer-events: none;
 }
 
 .gpo-desktop {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 70vw;
-  max-width: 900px;
-  height: 80vh;
+  width: min(82vw, 1120px);
+  height: min(84vh, 760px);
 }
 
 .gpo-mobile {
@@ -40,8 +60,10 @@
 .gpo-header {
   display: flex;
   justify-content: flex-end;
-  padding: 8px;
+  padding: 6px 8px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .gpo-close {
@@ -80,7 +102,7 @@
 @keyframes gpoSlideIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(0.97);
+    transform: translate(-50%, -48%) scale(0.98);
   }
   to {
     opacity: 1;
