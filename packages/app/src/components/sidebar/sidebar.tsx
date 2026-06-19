@@ -253,7 +253,7 @@ export function Sidebar(props: SidebarProps) {
               <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
                 <img
                   src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-                  alt="Synergy"
+                  alt="HOLOS"
                   class="sb-collapsed-logo"
                 />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
@@ -264,10 +264,10 @@ export function Sidebar(props: SidebarProps) {
           <A href={`/${base64Encode("global")}/session`} class="sb-logo" onClick={() => panel.close()}>
             <img
               src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-              alt="Synergy"
+              alt="HOLOS"
               class="sb-logo-img"
             />
-            <span class="sb-logo-text">Synergy</span>
+            <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
             <Tooltip value="Search sessions" placement="right">
@@ -827,10 +827,10 @@ function SidebarAgentHub(props: {
   const callbackOrigin = () => new URL(props.globalSDK.url).origin
 
   const displayName = () => {
-    if (!holos.loaded) return "Synergy"
+    if (!holos.loaded) return "HOLOS"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
-    return "Synergy"
+    return "HOLOS"
   }
 
   const connectionTone = () => {
