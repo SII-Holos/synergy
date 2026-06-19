@@ -26,7 +26,6 @@ import { MobileDrawer } from "@/components/mobile-drawer"
 import { EngramPanel } from "@/components/engram"
 import { AgendaPanel } from "@/components/agenda"
 
-import { HolosPanel } from "@/components/contacts"
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
 
@@ -464,10 +463,6 @@ function GlobalPanelSwitch() {
       </Match>
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
-      </Match>
-
-      <Match when={panel.active() === "holos"}>
-        <HolosPanel />
       </Match>
       <Match when={panel.active() === "lucid"}>
         <LucidPanel />

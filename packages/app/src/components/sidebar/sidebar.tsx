@@ -293,21 +293,6 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Global feature buttons */}
       <div class="sb-globals">
-        <Tooltip value="Holos" placement="right">
-          <button
-            type="button"
-            classList={{
-              "sb-global-btn": true,
-              "sb-global-active": panel.active() === "holos",
-            }}
-            onClick={() => panel.toggle("holos")}
-          >
-            <Icon name="users" size="normal" />
-            <Show when={isExpanded()}>
-              <span class="sb-action-label">Holos</span>
-            </Show>
-          </button>
-        </Tooltip>
         <Tooltip value="Agenda" placement="right">
           <button
             type="button"

@@ -8,6 +8,7 @@ import { AppPanel } from "@/components/app-panel"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, formatBytes } from "./shared"
 import { StatsView } from "./stats/stats-view"
+import { StatsSection } from "@/components/stats/stats-section"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
@@ -172,6 +173,13 @@ export function EngramPanel() {
         <AppPanel.Body>
           <Show when={view() === "stats"}>
             <StatsView />
+            <div class="mt-6 pt-5 border-t border-border-base/20">
+              <div class="flex items-baseline gap-2 mb-3 px-0.5">
+                <span class="text-12-medium text-text-strong">Workspace usage</span>
+                <span class="text-11-regular text-text-weaker">Activity analytics across all projects</span>
+              </div>
+              <StatsSection />
+            </div>
           </Show>
           <Show when={view() === "memory"}>
             <MemoryView

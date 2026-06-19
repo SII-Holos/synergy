@@ -58,12 +58,10 @@
 }
 
 .gpo-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 8px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
 }
 
 .gpo-close {
@@ -74,6 +72,8 @@
   height: 32px;
   border-radius: 8px;
   color: var(--icon-weak);
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   transition:
     color 150ms,
     background-color 150ms;
