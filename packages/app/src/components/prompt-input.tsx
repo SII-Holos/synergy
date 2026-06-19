@@ -1517,13 +1517,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     let session = info()
     if (!session && isNewSession) {
-      if (isGlobalScope(sessionDirectory)) {
-        session = await client.channel.app.session().then((x) => x.data ?? undefined)
-      } else {
-        session = await client.session
-          .create({ controlProfile: selectedControlProfile() })
-          .then((x) => x.data ?? undefined)
-      }
+      session = await client.session
+        .create({ controlProfile: selectedControlProfile() })
+        .then((x) => x.data ?? undefined)
       if (session) {
         createdSessionForSubmit = true
         navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)

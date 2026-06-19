@@ -67,8 +67,7 @@ export function useSessionCommands(params: {
       category: "Session",
       keybind: "mod+shift+s",
       slash: "new",
-      onSelect: async () => {
-        await sdk.client.channel.app.reset()
+      onSelect: () => {
         navigate(`/${routeParams.dir}/session`)
       },
     },
