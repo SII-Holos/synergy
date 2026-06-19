@@ -183,6 +183,7 @@
     stroke: color-mix(in srgb, var(--border-base) 82%, transparent);
     stroke-width: 1.35;
     stroke-linecap: round;
+    transition: stroke 0.18s ease;
 
     &[data-status="completed"] {
       stroke: color-mix(in srgb, var(--dag-done) 74%, var(--border-base));
@@ -216,8 +217,9 @@
     overflow: hidden;
     opacity: 1;
     transition:
-      border-color 0.14s ease,
-      box-shadow 0.14s ease,
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      box-shadow 0.18s ease,
       transform 0.14s ease;
 
     &:hover {
@@ -269,6 +271,9 @@
     flex-shrink: 0;
     background: var(--text-weaker);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 18%, transparent);
+    transition:
+      background-color 0.18s ease,
+      box-shadow 0.18s ease;
 
     [data-status="completed"] & {
       background: var(--border-success-base);
@@ -297,6 +302,7 @@
     font-weight: var(--font-weight-medium);
     letter-spacing: 0.065em;
     color: var(--text-weak);
+    transition: color 0.18s ease;
 
     [data-status="completed"] & {
       color: var(--text-on-success-base);
