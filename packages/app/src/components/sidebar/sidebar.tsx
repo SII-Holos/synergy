@@ -827,10 +827,10 @@ function SidebarAgentHub(props: {
   const callbackOrigin = () => new URL(props.globalSDK.url).origin
 
   const displayName = () => {
-    if (!holos.loaded) return "HOLOS"
+    if (!holos.loaded) return "Synergy"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
-    return "HOLOS"
+    return "Synergy"
   }
 
   const connectionTone = () => {
