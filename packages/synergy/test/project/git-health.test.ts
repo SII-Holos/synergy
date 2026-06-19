@@ -14,6 +14,8 @@
 //     }
 //     export async function check(cwd?: string): Promise<Issue[]>
 //     export async function inject(cwd?: string): Promise<string | undefined>
+//     export function refresh(cwd?: string): Promise<Issue[]>
+//     export function injectCached(cwd?: string): string | undefined
 //     export function lastReport(): Issue[] | undefined
 //     export function invalidate(): void
 //   }
@@ -568,6 +570,87 @@ describe("GitHealth.inject()", () => {
       expect(last!.length).toBeGreaterThan(0)
     } finally {
       repo.cleanup()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe("GitHealth.injectCached()", () => {
+  test("returns undefined immediately before a refresh has populated the cache", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+      await $`git checkout --detach`.cwd(repo.path).quiet()
+
+      GitHealth.invalidate()
+      const output = GitHealth.injectCached(repo.path)
+      expect(output).toBeUndefined()
+    } finally {
+      repo.cleanup()
+      GitHealth.invalidate()
+    }
+  })
+
+  test("returns the last completed refresh without rescanning synchronously", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+
+      for (let i = 1; i <= 50; i++) {
+        writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+      }
+
+      await GitHealth.refresh(repo.path)
+      const output = GitHealth.injectCached(repo.path)
+      expect(output).toBeString()
+      expect(output).toMatch(/untracked/i)
+    } finally {
+      repo.cleanup()
+      GitHealth.invalidate()
+    }
+  })
+
+  test("refresh de-duplicates concurrent scans for the same directory", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+
+      GitHealth.invalidate()
+      const first = GitHealth.refresh(repo.path)
+      const second = GitHealth.refresh(repo.path)
+      expect(second).toBe(first)
+      await first
+    } finally {
+      repo.cleanup()
+      GitHealth.invalidate()
+    }
+  })
+
+  test("after invalidate, cached injection skips stale diagnostics until refresh completes", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+
+      for (let i = 1; i <= 50; i++) {
+        writeFileSync(join(repo.path, `untracked-${i}.tmp`), `temp ${i}`)
+      }
+
+      await GitHealth.refresh(repo.path)
+      expect(GitHealth.injectCached(repo.path)).toMatch(/untracked/i)
+
+      GitHealth.invalidate()
+      const stale = GitHealth.injectCached(repo.path)
+      expect(stale).toBeUndefined()
+
+      await GitHealth.refresh(repo.path)
+      expect(GitHealth.injectCached(repo.path)).toMatch(/untracked/i)
+    } finally {
+      repo.cleanup()
+      GitHealth.invalidate()
     }
   })
 })

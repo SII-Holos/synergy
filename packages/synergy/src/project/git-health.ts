@@ -1,4 +1,3 @@
-import { $ } from "bun"
 import path from "path"
 import fs from "fs"
 
@@ -17,19 +16,92 @@ export namespace GitHealth {
     detail: Record<string, unknown>
   }
 
+  interface CacheEntry {
+    issues: Issue[]
+    ts: number
+  }
+
+  interface RepoInfo {
+    root: string
+    gitDir: string
+  }
+
   // ---------------------------------------------------------------------------
   // Cache — per-directory with 5-minute TTL
   // ---------------------------------------------------------------------------
-  const _cache = new Map<string, { issues: Issue[]; ts: number }>()
+  const _cache = new Map<string, CacheEntry>()
+  const _refreshing = new Map<string, Promise<Issue[]>>()
+  const _aliases = new Map<string, string>()
   let _lastDir: string | undefined
+  let _generation = 0
   const CACHE_TTL_MS = 5 * 60 * 1000
+  const GIT_COMMAND_TIMEOUT_MS = 2_000
+  const LARGE_FILE_STAT_BATCH_SIZE = 64
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
-  function isGitRepo(cwd: string): boolean {
-    return fs.existsSync(path.join(cwd, ".git"))
+  function normalizeDir(cwd: string): string {
+    return path.resolve(cwd)
+  }
+
+  function cacheKey(cwd: string): string {
+    const dir = normalizeDir(cwd)
+    return _aliases.get(dir) ?? dir
+  }
+
+  async function gitText(cwd: string, args: string[]): Promise<string | undefined> {
+    try {
+      const proc = Bun.spawn(["git", ...args], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        signal: AbortSignal.timeout(GIT_COMMAND_TIMEOUT_MS),
+      })
+      const stdout = new Response(proc.stdout).text()
+      const stderr = new Response(proc.stderr).text().catch(() => "")
+      const [output, exitCode] = await Promise.all([stdout, proc.exited])
+      await stderr
+      if (exitCode !== 0) return undefined
+      return output
+    } catch {
+      return undefined
+    }
+  }
+
+  async function resolveRepo(cwd: string): Promise<RepoInfo | undefined> {
+    const dir = normalizeDir(cwd)
+    const inside = await gitText(dir, ["rev-parse", "--is-inside-work-tree"])
+    if (inside?.trim() !== "true") return undefined
+
+    const [rootText, gitDirText] = await Promise.all([
+      gitText(dir, ["rev-parse", "--show-toplevel"]),
+      gitText(dir, ["rev-parse", "--git-dir"]),
+    ])
+    const root = rootText?.trim()
+    const gitDir = gitDirText?.trim()
+    if (!root || !gitDir) return undefined
+
+    const resolvedRoot = normalizeDir(root)
+    _aliases.set(dir, resolvedRoot)
+    return {
+      root: resolvedRoot,
+      gitDir: path.isAbsolute(gitDir) ? gitDir : path.resolve(dir, gitDir),
+    }
+  }
+
+  function render(issues: Issue[]): string | undefined {
+    const active = issues.filter((i) => i.level === "warn" || i.level === "critical")
+    if (active.length === 0) return undefined
+
+    const lines = ["<git-health>"]
+    for (const issue of active) {
+      const label = issue.level === "critical" ? "Critical" : "Warning"
+      lines.push(`${label}: ${issue.message}`)
+    }
+    lines.push("</git-health>")
+    return lines.join("\n")
   }
 
   function parseNumstat(text: string): { additions: number; deletions: number; files: Set<string> } {
@@ -51,8 +123,8 @@ export namespace GitHealth {
     return { additions, deletions, files }
   }
 
-  function countLooseObjectsOnDisk(cwd: string): number {
-    const objectsDir = path.join(cwd, ".git", "objects")
+  function countLooseObjectsOnDisk(gitDir: string): number {
+    const objectsDir = path.join(gitDir, "objects")
     let count = 0
     try {
       for (const entry of fs.readdirSync(objectsDir)) {
@@ -74,18 +146,8 @@ export namespace GitHealth {
   // ---------------------------------------------------------------------------
   async function checkDiff(cwd: string): Promise<Issue[]> {
     const [unstaged, staged] = await Promise.all([
-      $`git diff --numstat HEAD`
-        .quiet()
-        .nothrow()
-        .cwd(cwd)
-        .text()
-        .catch(() => ""),
-      $`git diff --cached --numstat HEAD`
-        .quiet()
-        .nothrow()
-        .cwd(cwd)
-        .text()
-        .catch(() => ""),
+      gitText(cwd, ["diff", "--numstat", "HEAD"]).then((x) => x ?? ""),
+      gitText(cwd, ["diff", "--cached", "--numstat", "HEAD"]).then((x) => x ?? ""),
     ])
 
     const unstagedParsed = parseNumstat(unstaged)
@@ -128,12 +190,7 @@ export namespace GitHealth {
   // Thresholds: 15→warn, 80→critical
   // ---------------------------------------------------------------------------
   async function checkUntracked(cwd: string): Promise<Issue | undefined> {
-    const result = await $`git ls-files --others --exclude-standard`
-      .quiet()
-      .nothrow()
-      .cwd(cwd)
-      .text()
-      .catch(() => "")
+    const result = (await gitText(cwd, ["ls-files", "--others", "--exclude-standard"])) ?? ""
 
     const trimmed = result.trim()
     const count = trimmed ? trimmed.split("\n").length : 0
@@ -155,12 +212,7 @@ export namespace GitHealth {
   // Thresholds: >10MB→warn, >50MB→critical
   // ---------------------------------------------------------------------------
   async function checkLargeFiles(cwd: string): Promise<Issue | undefined> {
-    const result = await $`git ls-files -z`
-      .quiet()
-      .nothrow()
-      .cwd(cwd)
-      .text()
-      .catch(() => "")
+    const result = (await gitText(cwd, ["ls-files", "-z"])) ?? ""
 
     const fileNames = result.split("\0").filter(Boolean)
     if (fileNames.length === 0) return undefined
@@ -170,13 +222,21 @@ export namespace GitHealth {
 
     const large: { path: string; size: number }[] = []
 
-    for (const fileName of cappedNames) {
-      const filePath = path.join(cwd, fileName)
-      const stat = await Bun.file(filePath)
-        .stat()
-        .catch(() => undefined)
-      if (stat && stat.size > 10 * 1024 * 1024) {
-        large.push({ path: fileName, size: stat.size })
+    for (let i = 0; i < cappedNames.length; i += LARGE_FILE_STAT_BATCH_SIZE) {
+      const batch = cappedNames.slice(i, i + LARGE_FILE_STAT_BATCH_SIZE)
+      const stats = await Promise.all(
+        batch.map(async (fileName) => {
+          const filePath = path.join(cwd, fileName)
+          const stat = await Bun.file(filePath)
+            .stat()
+            .catch(() => undefined)
+          return stat ? { fileName, stat } : undefined
+        }),
+      )
+      for (const result of stats) {
+        if (result && result.stat.size > 10 * 1024 * 1024) {
+          large.push({ path: result.fileName, size: result.stat.size })
+        }
       }
     }
 
@@ -206,19 +266,8 @@ export namespace GitHealth {
   // ---------------------------------------------------------------------------
   async function checkExtraBranches(cwd: string): Promise<Issue | undefined> {
     const [headBranch, branchesText] = await Promise.all([
-      $`git rev-parse --abbrev-ref HEAD`
-        .quiet()
-        .nothrow()
-        .cwd(cwd)
-        .text()
-        .then((x) => x.trim())
-        .catch(() => ""),
-      $`git for-each-ref --format='%(refname:short)' refs/heads/`
-        .quiet()
-        .nothrow()
-        .cwd(cwd)
-        .text()
-        .catch(() => ""),
+      gitText(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]).then((x) => x?.trim() ?? ""),
+      gitText(cwd, ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]).then((x) => x ?? ""),
     ])
 
     const branches = branchesText.trim().split("\n").filter(Boolean)
@@ -241,16 +290,10 @@ export namespace GitHealth {
   // Dimension 6: detached_head
   // ---------------------------------------------------------------------------
   async function checkDetachedHead(cwd: string): Promise<Issue | undefined> {
-    const symRef = await $`git symbolic-ref HEAD`.quiet().nothrow().cwd(cwd)
-    if (symRef.exitCode === 0) return undefined
+    const symRef = await gitText(cwd, ["symbolic-ref", "HEAD"])
+    if (symRef !== undefined) return undefined
 
-    const headCommit = await $`git rev-parse HEAD`
-      .quiet()
-      .nothrow()
-      .cwd(cwd)
-      .text()
-      .then((x) => x.trim())
-      .catch(() => "")
+    const headCommit = (await gitText(cwd, ["rev-parse", "HEAD"]))?.trim() ?? ""
     if (!headCommit) return undefined
 
     return {
@@ -268,19 +311,14 @@ export namespace GitHealth {
   // catches hand-crafted test fixture objects.
   // Thresholds: 50→warn, 200→critical
   // ---------------------------------------------------------------------------
-  async function checkGcNeeded(cwd: string): Promise<Issue | undefined> {
-    const output = await $`git count-objects -v`
-      .quiet()
-      .nothrow()
-      .cwd(cwd)
-      .text()
-      .catch(() => "")
+  async function checkGcNeeded(cwd: string, gitDir: string): Promise<Issue | undefined> {
+    const output = (await gitText(cwd, ["count-objects", "-v"])) ?? ""
 
     const countMatch = output.match(/count:\s*(\d+)/)
     const sizeMatch = output.match(/size:\s*(\d+)/)
 
     const gitCount = countMatch ? parseInt(countMatch[1]) : 0
-    const diskCount = countLooseObjectsOnDisk(cwd)
+    const diskCount = countLooseObjectsOnDisk(gitDir)
     const looseObjects = Math.max(gitCount, diskCount)
     const size = sizeMatch ? parseInt(sizeMatch[1]) : 0
 
@@ -300,48 +338,77 @@ export namespace GitHealth {
   // Public API
   // ---------------------------------------------------------------------------
 
-  export async function check(cwd?: string): Promise<Issue[]> {
-    const dir = cwd ?? process.cwd()
-
-    const cached = _cache.get(dir)
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-      _lastDir = dir
-      return cached.issues
-    }
-
-    if (!isGitRepo(dir)) {
-      _cache.set(dir, { issues: [], ts: Date.now() })
-      _lastDir = dir
-      return []
-    }
+  async function scan(cwd: string): Promise<{ dir: string; issues: Issue[] }> {
+    const fallbackDir = normalizeDir(cwd)
+    const repo = await resolveRepo(fallbackDir)
+    if (!repo) return { dir: fallbackDir, issues: [] }
 
     const results = await Promise.all([
-      checkDiff(dir),
-      checkUntracked(dir),
-      checkLargeFiles(dir),
-      checkExtraBranches(dir),
-      checkDetachedHead(dir),
-      checkGcNeeded(dir),
+      checkDiff(repo.root),
+      checkUntracked(repo.root),
+      checkLargeFiles(repo.root),
+      checkExtraBranches(repo.root),
+      checkDetachedHead(repo.root),
+      checkGcNeeded(repo.root, repo.gitDir),
     ])
 
     const issues = results.flat().filter((i): i is Issue => i !== undefined)
-    _cache.set(dir, { issues, ts: Date.now() })
-    _lastDir = dir
-    return issues
+    return { dir: repo.root, issues }
+  }
+
+  export function refresh(cwd?: string): Promise<Issue[]> {
+    const inputDir = normalizeDir(cwd ?? process.cwd())
+    const key = cacheKey(inputDir)
+    const existing = _refreshing.get(key) ?? _refreshing.get(inputDir)
+    if (existing) return existing
+
+    const generation = _generation
+    let promise!: Promise<Issue[]>
+    promise = scan(inputDir)
+      .then((result) => {
+        _aliases.set(inputDir, result.dir)
+        if (generation === _generation) {
+          _cache.set(result.dir, { issues: result.issues, ts: Date.now() })
+          _lastDir = result.dir
+        }
+        return result.issues
+      })
+      .catch(() => [])
+      .finally(() => {
+        if (_refreshing.get(key) === promise) _refreshing.delete(key)
+        if (_refreshing.get(inputDir) === promise) _refreshing.delete(inputDir)
+      })
+
+    _refreshing.set(key, promise)
+    if (key !== inputDir) _refreshing.set(inputDir, promise)
+    return promise
+  }
+
+  export async function check(cwd?: string): Promise<Issue[]> {
+    const dir = normalizeDir(cwd ?? process.cwd())
+    const key = cacheKey(dir)
+    const cached = _cache.get(key)
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      _lastDir = key
+      return cached.issues
+    }
+    return refresh(dir)
   }
 
   export async function inject(cwd?: string): Promise<string | undefined> {
-    const issues = await check(cwd)
-    const active = issues.filter((i) => i.level === "warn" || i.level === "critical")
-    if (active.length === 0) return undefined
+    return render(await check(cwd))
+  }
 
-    const lines = ["<git-health>"]
-    for (const issue of active) {
-      const label = issue.level === "critical" ? "Critical" : "Warning"
-      lines.push(`${label}: ${issue.message}`)
+  export function injectCached(cwd?: string): string | undefined {
+    const dir = normalizeDir(cwd ?? process.cwd())
+    const key = cacheKey(dir)
+    const cached = _cache.get(key)
+    if (!cached || Date.now() - cached.ts >= CACHE_TTL_MS) {
+      refresh(dir).catch(() => {})
     }
-    lines.push("</git-health>")
-    return lines.join("\n")
+    if (!cached) return undefined
+    _lastDir = key
+    return render(cached.issues)
   }
 
   export function lastReport(): Issue[] | undefined {
@@ -350,8 +417,21 @@ export namespace GitHealth {
     return cached?.issues.length ? cached.issues : undefined
   }
 
-  export function invalidate(): void {
-    _cache.clear()
-    _lastDir = undefined
+  export function invalidate(cwd?: string): void {
+    _generation++
+    _refreshing.clear()
+    if (cwd === undefined) {
+      _cache.clear()
+      _aliases.clear()
+      _lastDir = undefined
+      return
+    }
+
+    const dir = normalizeDir(cwd)
+    const key = cacheKey(dir)
+    _cache.delete(dir)
+    _cache.delete(key)
+    _aliases.delete(dir)
+    if (_lastDir === dir || _lastDir === key) _lastDir = undefined
   }
 }

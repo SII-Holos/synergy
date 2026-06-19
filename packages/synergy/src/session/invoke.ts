@@ -520,7 +520,7 @@ export namespace SessionInvoke {
         systemParts.push(...envParts)
 
         // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
-        const gitHealthBlock = await GitHealth.inject(Instance.directory)
+        const gitHealthBlock = GitHealth.injectCached(Instance.directory)
         if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
@@ -627,9 +627,21 @@ export namespace SessionInvoke {
         processTimer.stop()
 
         // post-LLM jobs
-        const postJobs = LoopJob.collect("post", jobCtx)
+        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+        const postCtx: LoopJob.Context = {
+          ...jobCtx,
+          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+          lastAssistant: processor.message,
+          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+            ? processor.message
+            : jobCtx.lastFinished,
+          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+            ? postParts
+            : jobCtx.lastFinishedParts,
+        }
+        const postJobs = LoopJob.collect("post", postCtx)
         if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, jobCtx)
+          const postResult = await LoopJob.execute(postJobs, postCtx)
           if (postResult === "stop") break
         }
 
