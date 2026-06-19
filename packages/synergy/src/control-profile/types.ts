@@ -20,7 +20,7 @@ export interface ProfileSandbox {
   fallback: "deny" | "warn" | "allow"
 }
 
-export type ApprovalMode = "manual" | "guarded" | "autonomous" | "full_access"
+export type ApprovalMode = "guarded" | "autonomous" | "full_access"
 export type ApprovalAction = "allow" | "ask" | "deny"
 export type RiskLevel = "low" | "medium" | "high"
 
@@ -63,5 +63,5 @@ export interface ResolvedProfile extends ControlProfile {
   summary?: ProfileSummary
 }
 
-export type ProfileId = "manual" | "guarded" | "autonomous" | "full_access"
+export type ProfileId = "guarded" | "autonomous" | "full_access"
 export type ProfileIdInput = ProfileId

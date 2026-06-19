@@ -18,7 +18,7 @@ describe("resolveEffectiveProfile", () => {
   })
 
   test("top-level config overrides default", () => {
-    expect(resolveEffectiveProfile(undefined, undefined, "manual")).toBe("manual")
+    expect(resolveEffectiveProfile(undefined, undefined, "full_access")).toBe("full_access")
   })
 
   test("agent config overrides top-level", () => {
@@ -26,7 +26,7 @@ describe("resolveEffectiveProfile", () => {
   })
 
   test("session config has highest precedence", () => {
-    expect(resolveEffectiveProfile("autonomous", "manual", "guarded")).toBe("autonomous")
+    expect(resolveEffectiveProfile("autonomous", "full_access", "guarded")).toBe("autonomous")
   })
 
   test("invalid top-level falls back to guarded", () => {
@@ -37,8 +37,8 @@ describe("resolveEffectiveProfile", () => {
     expect(resolveEffectiveProfile(undefined, undefined, undefined)).toBe("guarded")
   })
 
-  test("all four valid profiles are accepted", () => {
-    const ids: ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
+  test("all valid profiles are accepted", () => {
+    const ids: ProfileId[] = ["guarded", "autonomous", "full_access"]
     for (const id of ids) {
       expect(resolveEffectiveProfile(id, undefined, undefined)).toBe(id)
     }

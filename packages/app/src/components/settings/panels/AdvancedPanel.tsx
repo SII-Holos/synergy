@@ -7,14 +7,10 @@ import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synerg
 
 const FALLBACK_PROFILES: ControlProfileSummary[] = [
   {
-    id: "manual",
-    label: "Manual Approval",
-    description: "Ask before every tool request. Best when you are present and want full review.",
-  },
-  {
     id: "guarded",
     label: "Guarded",
-    description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
+    description:
+      "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
   },
   {
     id: "autonomous",

@@ -503,6 +503,85 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // Read-only orchestration tools — internal agent coordination, no side effects
+      if (toolName === "dagread" || toolName === "todoread" || toolName === "task_list" || toolName === "task_output") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Stateful orchestration tools — create/mutate internal state
+      if (
+        toolName === "dagwrite" ||
+        toolName === "dagpatch" ||
+        toolName === "todowrite" ||
+        toolName === "task" ||
+        toolName === "task_cancel" ||
+        toolName === "batch"
+      ) {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Internal communication / knowledge tools — read-only user/model interactions
+      if (toolName === "question" || toolName === "skill" || toolName === "render" || toolName === "diagram") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Agenda read tools
+      if (toolName === "agenda_list" || toolName === "agenda_logs") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Filesystem listing / AST-aware search — file_read with path classification
+      if (toolName === "list" || toolName === "ast_grep" || toolName === "lsp") {
+        if (toolName === "ast_grep") {
+          const paths: string[] = Array.isArray(args.paths) ? args.paths : []
+          for (const p of paths) {
+            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, readRoots })
+          }
+          if (paths.length === 0) {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        } else {
+          const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
+          if (filePath) {
+            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          } else {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        }
+        return { capabilities: caps }
+      }
+
+      // Process management — action-based classification
+      if (toolName === "process") {
+        const action = args.action ?? ""
+        if (
+          action === "write" ||
+          action === "send-keys" ||
+          action === "kill" ||
+          action === "clear" ||
+          action === "remove"
+        ) {
+          caps.push({ class: "shell", nonBypassable: false })
+        } else {
+          caps.push({ class: "file_read", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
+
+      // Remote connection — action-based classification
+      if (toolName === "connect") {
+        const action = args.action ?? ""
+        if (action === "open" || action === "close") {
+          caps.push({ class: "network_request", nonBypassable: true })
+        } else {
+          caps.push({ class: "file_read", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

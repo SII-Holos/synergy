@@ -95,9 +95,8 @@ function actionForRisk(approval: ProfileApproval, risk: RiskLevel) {
 }
 
 function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: string[]) {
-  if (approval.mode === "manual") return "Manual approval mode asks before every tool request."
   if (approval.mode === "guarded" && risk !== "low") {
-    return "Guarded mode requires user approval before shell, write, network, external, or high-risk actions."
+    return "Guarded mode applies capability-specific approval rules before shell, external, identity, platform, or extension actions."
   }
   if (approval.mode === "autonomous" && risk === "high") {
     return "Autonomous mode blocks high-risk capabilities instead of prompting while the user is away."

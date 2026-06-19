@@ -4,7 +4,7 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { Persist, persisted } from "@/utils/persist"
 
 export type SendShortcut = "enter" | "mod-enter"
-export type ControlProfileId = "manual" | "guarded" | "autonomous" | "full_access"
+export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export const { use: useInput, provider: InputProvider } = createSimpleContext({
   name: "Input",

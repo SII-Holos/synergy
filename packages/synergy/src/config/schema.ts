@@ -261,9 +261,7 @@ export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
 })
 export type PermissionAction = z.infer<typeof PermissionAction>
 
-export const ControlProfileId = z
-  .enum(["manual", "guarded", "autonomous", "full_access"])
-  .meta({ ref: "ControlProfileId" })
+export const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"]).meta({ ref: "ControlProfileId" })
 export type ControlProfileId = z.infer<typeof ControlProfileId>
 
 export const PermissionObject = z.record(z.string(), PermissionAction).meta({

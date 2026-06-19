@@ -2679,7 +2679,7 @@
                   },
                   "controlProfile": {
                     "type": "string",
-                    "enum": ["manual", "guarded", "autonomous", "full_access"]
+                    "enum": ["guarded", "autonomous", "full_access"]
                   }
                 }
               }
@@ -2935,7 +2935,7 @@
                   },
                   "controlProfile": {
                     "type": "string",
-                    "enum": ["manual", "guarded", "autonomous", "full_access"]
+                    "enum": ["guarded", "autonomous", "full_access"]
                   },
                   "time": {
                     "type": "object",
@@ -9237,168 +9237,6 @@
         ]
       }
     },
-    "/holos/profile": {
-      "get": {
-        "operationId": "holos.profile.get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get profile",
-        "description": "Retrieve the current agent profile.",
-        "responses": {
-          "200": {
-            "description": "Agent profile",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosProfileResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.get({\n  ...\n})"
-          }
-        ]
-      },
-      "put": {
-        "operationId": "holos.profile.update",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Update profile",
-        "description": "Update the current agent profile.",
-        "responses": {
-          "200": {
-            "description": "Updated profile",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosProfile"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "bio": {
-                    "type": "string"
-                  }
-                },
-                "required": ["name", "bio"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.update({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/profile/reset": {
-      "post": {
-        "operationId": "holos.profile.reset",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Reset profile initialization",
-        "description": "Set the profile initialized flag to false, allowing the user to re-run the onboarding setup flow.",
-        "responses": {
-          "200": {
-            "description": "Profile reset",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.reset({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/profile/skip-genesis": {
-      "post": {
-        "operationId": "holos.profile.skipGenesis",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Skip genesis and create default profile",
-        "description": "Creates a default profile, skipping the onboarding chat. No-ops if profile is already initialized.",
-        "responses": {
-          "200": {
-            "description": "Profile",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosProfile"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.skipGenesis({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/holos/contact": {
       "get": {
         "operationId": "holos.contact.list",
@@ -11279,81 +11117,6 @@
         ]
       }
     },
-    "/channel/genesis/session": {
-      "get": {
-        "operationId": "channel.genesis.session",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get or create genesis channel session",
-        "description": "Returns the active Genesis setup session, creating one if none exists.",
-        "responses": {
-          "200": {
-            "description": "Genesis channel session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.session({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/channel/genesis/reset": {
-      "post": {
-        "operationId": "channel.genesis.reset",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Reset genesis channel session",
-        "description": "Archives the current Genesis session. The next call to get session will create a fresh one.",
-        "responses": {
-          "200": {
-            "description": "Session archived",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["success"]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.reset({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/experimental/resource": {
       "get": {
         "operationId": "experimental.resource.list",
@@ -11830,7 +11593,8 @@
         },
         "required": ["type", "chatId"]
       },
-      "SessionChannelEndpoint": {
+      "SessionEndpoint": {
+        "description": "Endpoint context if created from a session endpoint",
         "type": "object",
         "properties": {
           "kind": {
@@ -11842,30 +11606,6 @@
           }
         },
         "required": ["kind", "channel"]
-      },
-      "SessionHolosEndpoint": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "holos"
-          },
-          "agentId": {
-            "type": "string"
-          }
-        },
-        "required": ["kind", "agentId"]
-      },
-      "SessionEndpoint": {
-        "description": "Endpoint context if created from a session endpoint",
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/SessionChannelEndpoint"
-          },
-          {
-            "$ref": "#/components/schemas/SessionHolosEndpoint"
-          }
-        ]
       },
       "AgendaOrigin": {
         "description": "Context captured at creation time",
@@ -12852,7 +12592,7 @@
       "ControlProfileId": {
         "description": "Default control profile applied to all agents",
         "type": "string",
-        "enum": ["manual", "guarded", "autonomous", "full_access"]
+        "enum": ["guarded", "autonomous", "full_access"]
       },
       "AgentConfig": {
         "type": "object",
@@ -15191,7 +14931,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "label": {
             "type": "string"
@@ -15743,7 +15483,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "pendingReply": {
             "type": "boolean"
@@ -19229,24 +18969,6 @@
         },
         "required": ["ready"]
       },
-      "HolosProfile": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "bio": {
-            "type": "string"
-          },
-          "initialized": {
-            "type": "boolean"
-          },
-          "initializedAt": {
-            "type": "number"
-          }
-        },
-        "required": ["name", "bio", "initialized"]
-      },
       "Contact": {
         "type": "object",
         "properties": {
@@ -19276,7 +18998,19 @@
           "profile": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/HolosProfile"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "bio": {
+                    "type": "string"
+                  },
+                  "initialized": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["name", "bio", "initialized"]
               },
               {
                 "type": "null"
@@ -19332,32 +19066,6 @@
           }
         },
         "required": ["valid", "agentId"]
-      },
-      "HolosProfileResponse": {
-        "type": "object",
-        "properties": {
-          "agentId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "profile": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HolosProfile"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["agentId", "profile"]
       },
       "HolosPresenceMap": {
         "type": "object",
@@ -19463,7 +19171,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "model": {
             "type": "object",
@@ -20716,25 +20424,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.holos.profile.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.profile.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "profile": {
-                "$ref": "#/components/schemas/HolosProfile"
-              }
-            },
-            "required": ["profile"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.app.push": {
         "type": "object",
         "properties": {
@@ -21363,9 +21052,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.profile.updated"
           },
           {
             "$ref": "#/components/schemas/Event.app.push"

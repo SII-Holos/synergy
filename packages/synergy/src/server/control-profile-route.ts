@@ -9,7 +9,7 @@ import { errors } from "./error"
 
 const ControlProfileSummary = z
   .object({
-    id: z.enum(["manual", "guarded", "autonomous", "full_access"]),
+    id: z.enum(["guarded", "autonomous", "full_access"]),
     label: z.string(),
     description: z.string(),
   })

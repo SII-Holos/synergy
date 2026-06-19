@@ -11,13 +11,13 @@ function rule(profile: ReturnType<typeof ControlProfileCompiler.resolve>, permis
 }
 
 describe("ControlProfile identity", () => {
-  test("exposes exactly four built-in profile ids", () => {
-    expect(ControlProfileCompiler.profileIds).toEqual(["manual", "guarded", "autonomous", "full_access"])
+  test("exposes exactly three built-in profile ids", () => {
+    expect(ControlProfileCompiler.profileIds).toEqual(["guarded", "autonomous", "full_access"])
   })
 
   test("each profile has an English label", () => {
     const labels = ControlProfileCompiler.profileIds.map((id) => ControlProfileCompiler.getProfile(id).label)
-    expect(labels).toEqual(["Manual Approval", "Guarded", "Autonomous", "Full Access"])
+    expect(labels).toEqual(["Guarded", "Autonomous", "Full Access"])
   })
 
   test("unknown profile ids normalize to guarded", () => {
@@ -25,30 +25,17 @@ describe("ControlProfile identity", () => {
   })
 })
 
-describe("manual profile policy", () => {
-  test("asks for low, medium, and high risk capabilities", () => {
-    const profile = ControlProfileCompiler.resolve("manual", context)
-    expect(profile.approval).toMatchObject({ lowRisk: "ask", mediumRisk: "ask", highRisk: "ask" })
-    expect(rule(profile, "file_read")?.action).toBe("ask")
-    expect(rule(profile, "file_write")?.action).toBe("ask")
-    expect(rule(profile, "shell_destructive")?.action).toBe("ask")
-  })
-
-  test("uses workspace sandbox", () => {
-    const profile = ControlProfileCompiler.resolve("manual", context)
-    expect(profile.sandbox.mode).toBe("workspace_write")
-  })
-})
-
 describe("guarded profile policy", () => {
-  test("auto-allows safe read-only work and asks for approval-required capabilities", () => {
+  test("auto-allows safe reads, workspace writes, and network while asking for riskier capabilities", () => {
     const profile = ControlProfileCompiler.resolve("guarded", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
     expect(rule(profile, "shell_read")?.action).toBe("allow")
-    expect(rule(profile, "file_write")?.action).toBe("ask")
+    expect(rule(profile, "file_write")?.action).toBe("allow")
+    expect(rule(profile, "network_request")?.action).toBe("allow")
     expect(rule(profile, "shell")?.action).toBe("ask")
     expect(rule(profile, "file_external")?.action).toBe("ask")
+    expect(rule(profile, "shell_hardline")?.action).toBe("deny")
     expect(rule(profile, "shell_destructive")?.nonBypassable).toBe(true)
   })
 

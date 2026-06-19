@@ -50,8 +50,6 @@ import type {
   ChannelAppResetResponses,
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
-  ChannelGenesisResetResponses,
-  ChannelGenesisSessionResponses,
   ChannelStartOneResponses,
   ChannelStartResponses,
   ChannelStatusResponses,
@@ -162,11 +160,6 @@ import type {
   HolosLogoutResponses,
   HolosOutboxListResponses,
   HolosPresenceResponses,
-  HolosProfileGetResponses,
-  HolosProfileResetResponses,
-  HolosProfileSkipGenesisResponses,
-  HolosProfileUpdateErrors,
-  HolosProfileUpdateResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
   HolosSendResponses,
@@ -1001,7 +994,7 @@ export class Session extends HeyApiClient {
       parentID?: string
       title?: string
       id?: string
-      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+      controlProfile?: "guarded" | "autonomous" | "full_access"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1121,7 +1114,7 @@ export class Session extends HeyApiClient {
       directory?: string
       title?: string
       pinned?: number
-      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+      controlProfile?: "guarded" | "autonomous" | "full_access"
       time?: {
         archived?: number
       }
@@ -1904,102 +1897,6 @@ export class Credentials extends HeyApiClient {
   }
 }
 
-export class Profile extends HeyApiClient {
-  /**
-   * Get profile
-   *
-   * Retrieve the current agent profile.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<HolosProfileGetResponses, unknown, ThrowOnError>({
-      url: "/holos/profile",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update profile
-   *
-   * Update the current agent profile.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      name?: string
-      bio?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "name" },
-            { in: "body", key: "bio" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<HolosProfileUpdateResponses, HolosProfileUpdateErrors, ThrowOnError>({
-      url: "/holos/profile",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Reset profile initialization
-   *
-   * Set the profile initialized flag to false, allowing the user to re-run the onboarding setup flow.
-   */
-  public reset<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<HolosProfileResetResponses, unknown, ThrowOnError>({
-      url: "/holos/profile/reset",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Skip genesis and create default profile
-   *
-   * Creates a default profile, skipping the onboarding chat. No-ops if profile is already initialized.
-   */
-  public skipGenesis<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<HolosProfileSkipGenesisResponses, unknown, ThrowOnError>({
-      url: "/holos/profile/skip-genesis",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Contact extends HeyApiClient {
   /**
    * List contacts
@@ -2524,8 +2421,6 @@ export class Holos extends HeyApiClient {
   }
 
   credentials2 = new Credentials({ client: this.client })
-
-  profile = new Profile({ client: this.client })
 
   contact = new Contact({ client: this.client })
 
@@ -5771,46 +5666,6 @@ export class Mcp extends HeyApiClient {
   auth = new Auth({ client: this.client })
 }
 
-export class Genesis extends HeyApiClient {
-  /**
-   * Get or create genesis channel session
-   *
-   * Returns the active Genesis setup session, creating one if none exists.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ChannelGenesisSessionResponses, unknown, ThrowOnError>({
-      url: "/channel/genesis/session",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Reset genesis channel session
-   *
-   * Archives the current Genesis session. The next call to get session will create a fresh one.
-   */
-  public reset<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<ChannelGenesisResetResponses, unknown, ThrowOnError>({
-      url: "/channel/genesis/reset",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Channel extends HeyApiClient {
   /**
    * Get channel status
@@ -5966,8 +5821,6 @@ export class Channel extends HeyApiClient {
   }
 
   app = new App({ client: this.client })
-
-  genesis = new Genesis({ client: this.client })
 }
 
 export class Resource extends HeyApiClient {

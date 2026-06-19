@@ -19,7 +19,7 @@ import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
-const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
+const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
 export const SessionRoute = new Hono()
   .get(

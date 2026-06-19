@@ -7,7 +7,7 @@ import type {
   ResolvedProfile,
 } from "./types"
 
-export const PROFILE_IDS: readonly ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
+export const PROFILE_IDS: readonly ProfileId[] = ["guarded", "autonomous", "full_access"]
 
 const CAPABILITY_PERMISSIONS = [
   "file_read",
@@ -55,6 +55,16 @@ function rulesFor(actions: {
   })
 }
 
+function guardedRules() {
+  return CAPABILITY_PERMISSIONS.map((permission) => {
+    if (permission === "shell_hardline") return rule(permission, "deny", true)
+    if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, "ask", true)
+    if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
+    if (permission === "file_write" || permission === "network_request") return rule(permission, "allow")
+    return rule(permission, "ask")
+  })
+}
+
 function workspaceFs(workspace: string) {
   return {
     readRoots: [workspace],
@@ -85,8 +95,6 @@ function fullAccessPolicy() {
 
 function approval(mode: ProfileApproval["mode"]): ProfileApproval {
   switch (mode) {
-    case "manual":
-      return { mode, lowRisk: "ask", mediumRisk: "ask", highRisk: "ask" }
     case "guarded":
       return { mode, lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" }
     case "autonomous":
@@ -124,26 +132,14 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
   const { workspace, interactionMode } = ctx
 
   switch (id) {
-    case "manual": {
-      const policy = workspacePolicy(workspace)
-      const profile = {
-        valid: true,
-        label: "Manual Approval",
-        description: "Ask before every tool request. Best when you are present and want to review each action.",
-        ruleset: rulesFor({ low: "ask", medium: "ask", high: "ask" }),
-        ...policy,
-        approval: approval("manual"),
-      }
-      return { ...profile, summary: summary(id, profile, [], workspace) }
-    }
-
     case "guarded": {
       const policy = workspacePolicy(workspace)
       const profile = {
         valid: true,
         label: "Guarded",
-        description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
-        ruleset: rulesFor({ low: "allow", medium: "ask", high: "ask" }),
+        description:
+          "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
+        ruleset: guardedRules(),
         ...policy,
         approval: approval("guarded"),
       }

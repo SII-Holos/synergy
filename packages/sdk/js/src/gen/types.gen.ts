@@ -133,20 +133,13 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
-export type SessionChannelEndpoint = {
-  kind: "channel"
-  channel: ChannelInfo
-}
-
-export type SessionHolosEndpoint = {
-  kind: "holos"
-  agentId: string
-}
-
 /**
  * Endpoint context if created from a session endpoint
  */
-export type SessionEndpoint = SessionChannelEndpoint | SessionHolosEndpoint
+export type SessionEndpoint = {
+  kind: "channel"
+  channel: ChannelInfo
+}
 
 /**
  * Context captured at creation time
@@ -746,7 +739,7 @@ export type PermissionConfig =
 /**
  * Default control profile applied to all agents
  */
-export type ControlProfileId = "manual" | "guarded" | "autonomous" | "full_access"
+export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
@@ -2036,7 +2029,7 @@ export type Provider = {
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type ControlProfileSummary = {
-  id: "manual" | "guarded" | "autonomous" | "full_access"
+  id: "guarded" | "autonomous" | "full_access"
   label: string
   description: string
 }
@@ -2228,7 +2221,7 @@ export type Session = {
   }
   pinned?: number
   permission?: PermissionRuleset
-  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+  controlProfile?: "guarded" | "autonomous" | "full_access"
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -3425,13 +3418,6 @@ export type HolosReadinessState = {
   reason?: "not_logged_in" | "not_connected"
 }
 
-export type HolosProfile = {
-  name: string
-  bio: string
-  initialized: boolean
-  initializedAt?: number
-}
-
 export type Contact = {
   /**
    * Holos Agent ID
@@ -3452,7 +3438,11 @@ export type Contact = {
 }
 
 export type HolosSocialState = {
-  profile: HolosProfile | null
+  profile: {
+    name: string
+    bio: string
+    initialized: boolean
+  } | null
   contacts: Array<Contact>
   presence: {
     [key: string]: "online" | "offline" | "unknown"
@@ -3469,11 +3459,6 @@ export type HolosState = {
 export type HolosVerifyResponse = {
   valid: true
   agentId: string
-}
-
-export type HolosProfileResponse = {
-  agentId: string | null
-  profile: HolosProfile | null
 }
 
 export type HolosPresenceMap = {
@@ -3514,7 +3499,7 @@ export type Agent = {
   temperature?: number
   color?: string
   permission: PermissionRuleset
-  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+  controlProfile?: "guarded" | "autonomous" | "full_access"
   model?: {
     modelID: string
     providerID: string
@@ -3955,13 +3940,6 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventHolosProfileUpdated = {
-  type: "holos.profile.updated"
-  properties: {
-    profile: HolosProfile
-  }
-}
-
 export type EventAppPush = {
   type: "app.push"
   properties: {
@@ -4189,7 +4167,6 @@ export type Event =
   | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
-  | EventHolosProfileUpdated
   | EventAppPush
   | EventSessionCompacted
   | EventAgendaItemCreated
@@ -5534,7 +5511,7 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     id?: string
-    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+    controlProfile?: "guarded" | "autonomous" | "full_access"
   }
   path?: never
   query?: {
@@ -5660,7 +5637,7 @@ export type SessionUpdateData = {
   body?: {
     title?: string
     pinned?: number
-    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
+    controlProfile?: "guarded" | "autonomous" | "full_access"
     time?: {
       archived?: number
     }
@@ -8714,90 +8691,6 @@ export type HolosVerifyResponses = {
 
 export type HolosVerifyResponse2 = HolosVerifyResponses[keyof HolosVerifyResponses]
 
-export type HolosProfileGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileGetResponses = {
-  /**
-   * Agent profile
-   */
-  200: HolosProfileResponse
-}
-
-export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
-
-export type HolosProfileUpdateData = {
-  body?: {
-    name: string
-    bio: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
-
-export type HolosProfileUpdateResponses = {
-  /**
-   * Updated profile
-   */
-  200: HolosProfile
-}
-
-export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
-
-export type HolosProfileResetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/profile/reset"
-}
-
-export type HolosProfileResetResponses = {
-  /**
-   * Profile reset
-   */
-  200: boolean
-}
-
-export type HolosProfileResetResponse = HolosProfileResetResponses[keyof HolosProfileResetResponses]
-
-export type HolosProfileSkipGenesisData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/profile/skip-genesis"
-}
-
-export type HolosProfileSkipGenesisResponses = {
-  /**
-   * Profile
-   */
-  200: HolosProfile
-}
-
-export type HolosProfileSkipGenesisResponse = HolosProfileSkipGenesisResponses[keyof HolosProfileSkipGenesisResponses]
-
 export type HolosContactListData = {
   body?: never
   path?: never
@@ -9719,44 +9612,6 @@ export type ChannelAppResetResponses = {
 }
 
 export type ChannelAppResetResponse = ChannelAppResetResponses[keyof ChannelAppResetResponses]
-
-export type ChannelGenesisSessionData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/channel/genesis/session"
-}
-
-export type ChannelGenesisSessionResponses = {
-  /**
-   * Genesis channel session
-   */
-  200: Session
-}
-
-export type ChannelGenesisSessionResponse = ChannelGenesisSessionResponses[keyof ChannelGenesisSessionResponses]
-
-export type ChannelGenesisResetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/channel/genesis/reset"
-}
-
-export type ChannelGenesisResetResponses = {
-  /**
-   * Session archived
-   */
-  200: {
-    success: true
-  }
-}
-
-export type ChannelGenesisResetResponse = ChannelGenesisResetResponses[keyof ChannelGenesisResetResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

@@ -275,8 +275,9 @@ export namespace ToolResolver {
   ) {
     const profile = gate.getProfileInfo()
     const approval = profile.approval
-    const decision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
-    if (envelope.decision === "deny" || decision.action === "deny") {
+    const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
+    const decision = { ...policyDecision, action: envelope.decision }
+    if (decision.action === "deny") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
       throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
     }

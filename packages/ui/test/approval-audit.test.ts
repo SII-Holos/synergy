@@ -16,9 +16,10 @@ describe("getApprovalAudit", () => {
     expect(r.icon).toBe("orbit")
   })
 
-  test("auto_allowed full_access mode uses shield-alert icon", () => {
+  test("auto_allowed full_access mode hides icon (always empty in full_access)", () => {
     const r = getApprovalAudit({ status: "auto_allowed", mode: "full_access", risk: "high" })
-    expect(r.icon).toBe("shield-alert")
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
   })
 
   test("auto_allowed unknown mode falls back to badge-check", () => {
@@ -42,10 +43,9 @@ describe("getApprovalAudit", () => {
     const r = getApprovalAudit({ status: "auto_allowed", mode: "autonomous", risk: "high" })
     expect(r.iconClass).toBe("text-icon-interactive-base")
   })
-
-  test("auto_allowed full_access + high risk → warning orange", () => {
+  test("auto_allowed full_access + high risk hides icon (always empty)", () => {
     const r = getApprovalAudit({ status: "auto_allowed", mode: "full_access", risk: "high" })
-    expect(r.iconClass).toBe("text-icon-warning-base")
+    expect(r.iconClass).toBe("")
   })
 
   test("auto_allowed unknown mode + high risk → neutral base", () => {
@@ -147,15 +147,99 @@ describe("getApprovalAudit", () => {
     const r = getApprovalAudit({
       status: "auto_allowed",
       mode: "guarded",
-      risk: "low",
+      risk: "medium",
       reason: "Custom explanation here",
     })
     expect(r.tooltip).toContain("\nCustom explanation here")
   })
 
   test("tooltip is present for auto_allowed", () => {
-    const r = getApprovalAudit({ status: "auto_allowed", mode: "guarded", risk: "low" })
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "guarded", risk: "medium" })
     expect(r.tooltip.length).toBeGreaterThan(0)
     expect(r.tooltip).toContain("\n")
+  })
+})
+
+// ─── icon hiding rules ─────────────────────────────────────────
+describe("getApprovalAudit icon hiding", () => {
+  test("auto_allowed + low risk hides icon (returns empty)", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "guarded", risk: "low" })
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
+    expect(r.tooltip).toBe("")
+  })
+
+  test("auto_allowed + low risk hides icon in autonomous mode", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "autonomous", risk: "low" })
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
+    expect(r.tooltip).toBe("")
+  })
+
+  test("auto_allowed + low risk hides icon in full_access mode", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "full_access", risk: "low" })
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
+    expect(r.tooltip).toBe("")
+  })
+
+  test("auto_allowed + medium risk still shows icon (guarded)", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "guarded", risk: "medium" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  test("auto_allowed + high risk still shows icon (guarded)", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "guarded", risk: "high" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  test("auto_allowed + medium risk still shows icon (autonomous)", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "autonomous", risk: "medium" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  // ─── full_access hides ALL auto_allowed icons ─────────────────
+
+  test("full_access hides auto_allowed + medium risk icon", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "full_access", risk: "medium" })
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
+    expect(r.tooltip).toBe("")
+  })
+
+  test("full_access hides auto_allowed + high risk icon", () => {
+    const r = getApprovalAudit({ status: "auto_allowed", mode: "full_access", risk: "high" })
+    expect(r.icon).toBeNull()
+    expect(r.iconClass).toBe("")
+    expect(r.tooltip).toBe("")
+  })
+
+  // ─── non-auto_allowed statuses are NOT hidden ────────────────
+
+  test("pending_user is NOT hidden (always shows icon)", () => {
+    const r = getApprovalAudit({ status: "pending_user", risk: "low" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  test("user_allowed is NOT hidden (always shows icon)", () => {
+    const r = getApprovalAudit({ status: "user_allowed", risk: "low", mode: "guarded" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  test("user_denied is NOT hidden (always shows icon)", () => {
+    const r = getApprovalAudit({ status: "user_denied", risk: "low" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
+  })
+
+  test("auto_denied is NOT hidden (always shows icon)", () => {
+    const r = getApprovalAudit({ status: "auto_denied", risk: "low" })
+    expect(r.icon).not.toBeNull()
+    expect(r.iconClass).not.toBe("")
   })
 })

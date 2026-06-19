@@ -235,24 +235,17 @@ type PermissionModeVisual = {
   label: string
   shortLabel: string
   description: string
-  icon: "hand" | "shield-check" | "orbit" | "shield-alert"
+  icon: "shield-check" | "orbit" | "shield-alert"
   iconClass: string
 }
 
 const PERMISSION_MODES: PermissionModeVisual[] = [
   {
-    id: "manual",
-    label: "Manual Approval",
-    shortLabel: "Manual",
-    description: "Ask before every tool request. Best when you want to review each action.",
-    icon: "hand",
-    iconClass: "text-icon-base",
-  },
-  {
     id: "guarded",
     label: "Guarded",
     shortLabel: "Guarded",
-    description: "Auto-approve safe read-only work. Ask before shell, write, network, or external actions.",
+    description:
+      "Auto-approve safe edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
     icon: "shield-check",
     iconClass: "text-icon-success-base",
   },
@@ -274,7 +267,7 @@ const PERMISSION_MODES: PermissionModeVisual[] = [
   },
 ]
 function permissionModeVisual(id: string | undefined): PermissionModeVisual {
-  return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[1]
+  return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[0]
 }
 
 interface PromptInputProps {
