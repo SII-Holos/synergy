@@ -11,6 +11,7 @@ import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
+import { WORKSPACE_DEFAULT_WIDTH } from "./workspace-layout"
 import { reconcile } from "solid-js/store"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -92,7 +93,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const [store, setStore, _, ready] = persisted(
-      Persist.global("layout", ["layout.v6"]),
+      Persist.global("layout", ["layout.v8"]),
       createStore({
         sidebar: {
           opened: false,
@@ -928,7 +929,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       workspace(sessionKey: string) {
         touch(sessionKey)
-        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null, width: 400 })
+        const ws = createMemo(
+          () => store.workspaceSessions[sessionKey] ?? { opened: false, active: null, width: WORKSPACE_DEFAULT_WIDTH },
+        )
         return {
           opened: createMemo(() => ws().opened),
           active: createMemo(() => ws().active),
@@ -937,7 +940,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             setStore("workspaceSessions", sessionKey, {
               opened: true,
               active: ws().active ?? null,
-              width: ws().width ?? 400,
+              width: ws().width ?? WORKSPACE_DEFAULT_WIDTH,
             })
           },
           close() {
@@ -948,7 +951,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           setActive(tool: string | null) {
             if (!store.workspaceSessions[sessionKey]) {
-              setStore("workspaceSessions", sessionKey, { opened: false, active: tool, width: 400 })
+              setStore("workspaceSessions", sessionKey, { opened: false, active: tool, width: WORKSPACE_DEFAULT_WIDTH })
             } else {
               setStore("workspaceSessions", sessionKey, "active", tool)
             }

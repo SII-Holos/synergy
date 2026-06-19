@@ -1,5 +1,5 @@
+import { createMemo, Show } from "solid-js"
 import type { Accessor } from "solid-js"
-import { Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -21,6 +21,7 @@ export function PromptDock(props: {
   inputRef: (el: HTMLDivElement) => void
   isNewSession: Accessor<boolean>
   showTabs: Accessor<boolean>
+  workspaceOpen?: Accessor<boolean>
   isGlobal: boolean
   sessionID: string | undefined
   prompt: ReturnType<typeof usePrompt>
@@ -38,6 +39,7 @@ export function PromptDock(props: {
   lastModified: Accessor<string | null | undefined>
 }) {
   const nav = useNavigate()
+  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <div
       ref={props.ref}
@@ -53,7 +55,8 @@ export function PromptDock(props: {
       <div
         classList={{
           "w-full min-w-0 md:px-6 pointer-events-auto": true,
-          "md:max-w-200": !props.showTabs(),
+          "md:max-w-[50rem]": !props.showTabs() && !workspaceOpen(),
+          "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
         }}
       >
         <Show when={props.isNewSession()}>

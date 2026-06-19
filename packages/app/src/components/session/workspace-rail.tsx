@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useWorkspace } from "@/context/workspace"
+import { computeWorkspaceRailRight } from "@/context/workspace-layout"
 import "./workspace-rail.css"
 
 export function WorkspaceRail() {
@@ -17,7 +18,9 @@ export function WorkspaceRail() {
         role="toolbar"
         aria-label="Workspace tools"
         style={{
-          right: workspace.opened() ? `${workspace.width() + 8}px` : undefined,
+          right: workspace.opened()
+            ? `${computeWorkspaceRailRight(workspace.width(), window.innerWidth)}px`
+            : undefined,
         }}
       >
         <For each={workspace.tools()}>

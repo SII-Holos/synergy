@@ -2,6 +2,7 @@ import { splitProps, type JSX } from "solid-js"
 
 export interface ResizeHandleProps extends Omit<JSX.HTMLAttributes<HTMLDivElement>, "onResize"> {
   direction: "horizontal" | "vertical"
+  edge?: "start" | "end"
   size: number
   min: number
   max: number
@@ -14,6 +15,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
   const [local, rest] = splitProps(props, [
     "direction",
     "size",
+    "edge",
     "min",
     "max",
     "onResize",
@@ -32,9 +34,10 @@ export function ResizeHandle(props: ResizeHandleProps) {
     document.body.style.userSelect = "none"
     document.body.style.overflow = "hidden"
 
+    const edge = local.edge ?? "end"
     const onMouseMove = (moveEvent: MouseEvent) => {
       const pos = local.direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY
-      const delta = local.direction === "vertical" ? start - pos : pos - start
+      const delta = edge === "start" ? start - pos : pos - start
       current = startSize + delta
       const clamped = Math.min(local.max, Math.max(local.min, current))
       local.onResize(clamped)
@@ -61,6 +64,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
       {...rest}
       data-component="resize-handle"
       data-direction={local.direction}
+      data-edge={local.edge ?? "end"}
       classList={{
         ...(local.classList ?? {}),
         [local.class ?? ""]: !!local.class,
