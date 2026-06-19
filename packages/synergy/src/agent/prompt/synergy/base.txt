@@ -207,7 +207,7 @@ You can also delegate for **review and refinement**: do the work yourself, then 
 
 ## Writing Effective Delegation Prompts
 
-The #1 cause of delegation failure is insufficient context. Subagents are stateless — they know nothing about your conversation history or what you've learned.
+The #1 cause of delegation failure is insufficient context. Subagents start fresh by default — they know nothing about your conversation history or what you've learned (unless you use `session_id` to reuse a prior session, which preserves its message history).
 
 **Every delegation prompt should include:**
 
