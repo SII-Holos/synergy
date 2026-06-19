@@ -520,7 +520,7 @@ export namespace SessionInvoke {
         systemParts.push(...envParts)
 
         // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
-        const gitHealthBlock = await GitHealth.inject()
+        const gitHealthBlock = await GitHealth.inject(Instance.directory)
         if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)

@@ -1,3 +1,4 @@
+import { GitHealth } from "../project/git-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
 import { Identifier } from "../id/id"
@@ -190,6 +191,30 @@ LoopJob.register({
       synthetic: true,
     })
 
+    return "pass"
+  },
+})
+
+// ─── git health cache invalidation ─────────────────────────────────
+
+// When the agent runs a bash command, the repo state may have changed
+// (uncommitted edits added/removed, branches created/deleted, etc.).
+// Invalidate the GitHealth cache so the next system prompt assembly
+// picks up the current state instead of returning stale diagnostics.
+LoopJob.register({
+  type: "git_health_cache_invalidator",
+  phase: "post",
+  blocking: false,
+  collect(ctx) {
+    const assistant = lastAssistant(ctx)
+    if (!assistant) return []
+    const ranBash = assistant.parts.some(
+      (p): p is MessageV2.ToolPart => p.type === "tool" && p.tool === "bash" && p.state.status !== "pending",
+    )
+    return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
+  },
+  async execute() {
+    GitHealth.invalidate()
     return "pass"
   },
 })
