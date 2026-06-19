@@ -144,8 +144,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       let sessionID: string | undefined
       if (params.session_id) {
-        const found = await Session.get(params.session_id).catch(() => undefined)
-        if (found) sessionID = found.id
+        sessionID = params.session_id
       }
 
       const { Cortex } = await import("../cortex")
