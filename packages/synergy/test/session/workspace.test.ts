@@ -3,9 +3,10 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { Instance } from "../../src/scope/instance"
+import { EnforcementGate } from "../../src/enforcement/gate"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
-import { Info as InfoSchema } from "../../src/session/types"
+import { Info as InfoSchema, type Workspace } from "../../src/session/types"
 import path from "path"
 
 Log.init({ print: false })
@@ -325,6 +326,121 @@ describe("session workspace binding", () => {
             expect(childWs).toEqual(parentWsFromSession)
 
             await Session.remove(parent.id)
+          })(),
+      })
+    })
+  })
+
+  describe("mid-turn workspace refresh", () => {
+    test("refreshes Instance.directory after a worktree-style workspace switch", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const session = await Session.create({})
+            const worktreeWs: SessionWorkspace = {
+              type: "git_worktree",
+              path: path.join(scope.directory, ".synergy-test-worktree"),
+              scopeID: scope.id,
+              worktreeID: "wt_test",
+              name: "test-worktree",
+            }
+
+            await SessionManager.run(session.id, async () => {
+              expect(Instance.directory).toBe(scope.directory)
+
+              await Session.updateWorkspace(session.id, worktreeWs)
+              Instance.refreshWorkspace(worktreeWs as Workspace)
+
+              expect(Instance.directory).toBe(worktreeWs.path)
+              expect((Instance.workspace as SessionWorkspace | undefined)?.type).toBe("git_worktree")
+            })
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+
+    test("refreshes Instance.directory after leaving a worktree-style workspace", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const worktreeWs: SessionWorkspace = {
+              type: "git_worktree",
+              path: path.join(scope.directory, ".synergy-test-worktree"),
+              scopeID: scope.id,
+              worktreeID: "wt_test",
+              name: "test-worktree",
+            }
+            const session = await Session.create({})
+            const mainWs: SessionWorkspace = {
+              type: "main",
+              path: scope.directory,
+              scopeID: scope.id,
+            }
+
+            await Instance.provide({
+              scope,
+              workspace: worktreeWs as Workspace,
+              fn: async () => {
+                expect(Instance.directory).toBe(worktreeWs.path)
+
+                await Session.updateWorkspace(session.id, mainWs)
+                Instance.refreshWorkspace(mainWs as Workspace)
+
+                expect(Instance.directory).toBe(scope.directory)
+                expect((Instance.workspace as SessionWorkspace | undefined)?.type).toBe("main")
+              },
+            })
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+
+    test("enforcement gates created after refresh use the new workspace", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await Instance.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const session = await Session.create({})
+            const worktreeWs: SessionWorkspace = {
+              type: "git_worktree",
+              path: path.join(scope.directory, ".synergy-test-worktree"),
+              scopeID: scope.id,
+              worktreeID: "wt_test",
+              name: "test-worktree",
+            }
+
+            await SessionManager.run(session.id, async () => {
+              await Session.updateWorkspace(session.id, worktreeWs)
+              Instance.refreshWorkspace(worktreeWs as Workspace)
+
+              const gate = EnforcementGate.create({
+                activeWorkspace: Instance.directory,
+                workspaceType: Instance.workspace?.type === "git_worktree" ? "worktree" : "main",
+                profileId: "autonomous",
+              })
+
+              expect(gate.getWorkspace()).toBe(worktreeWs.path)
+              expect(gate.evaluate("write", { filePath: path.join(worktreeWs.path, "src/file.ts") }).decision).toBe(
+                "allow",
+              )
+              expect(gate.evaluate("write", { filePath: path.join(scope.directory, "src/file.ts") }).decision).toBe(
+                "deny",
+              )
+            })
+
+            await Session.remove(session.id)
           })(),
       })
     })
