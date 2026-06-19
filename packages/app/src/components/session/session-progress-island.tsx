@@ -51,6 +51,8 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
 
     const clickHandler = (event: MouseEvent) => {
       if (!props.expanded || !rootRef) return
+      const target = event.target as HTMLElement | undefined
+      if (target?.closest('[data-slot="dag-node-preview"]')) return
       if (!rootRef.contains(event.target as Node)) setExpanded(false)
     }
 

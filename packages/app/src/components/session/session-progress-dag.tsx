@@ -1,6 +1,7 @@
 import { createMemo, createEffect, createSignal, Show, on, onCleanup } from "solid-js"
 import { useSync } from "@/context/sync"
 import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
+import { useNavigate, useParams } from "@solidjs/router"
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
 import type { DagSummary } from "./session-progress-summary"
 
@@ -12,6 +13,8 @@ interface SessionProgressDagProps {
 
 export function SessionProgressDag(props: SessionProgressDagProps) {
   const sync = useSync()
+  const navigate = useNavigate()
+  const params = useParams()
 
   const nodes = createMemo<DagNode[]>(() => sync.data.dag[props.sessionID] ?? [])
 
@@ -78,6 +81,10 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
     }
   }
 
+  const openSession = (sessionID: string) => {
+    navigate(`/${params.dir}/session/${sessionID}`)
+  }
+
   return (
     <Show when={nodes().length > 0} fallback={<div class="text-text-weaker text-xs px-3 py-2">No active plan</div>}>
       <div class={props.class}>
@@ -89,6 +96,7 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
           onSelectNode={handleSelectNode}
           focusNodeId={focusNodeId()}
           onViewportInteraction={() => setUserInteracted(true)}
+          onOpenSession={openSession}
         />
       </div>
     </Show>
