@@ -29,7 +29,7 @@
 }
 
 .sb-expanded {
-  width: 260px;
+  width: 300px;
 }
 
 .sb-header {
@@ -64,7 +64,7 @@
 }
 
 .sb-logo-text {
-  font-size: 15px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-strong);
   white-space: nowrap;
@@ -161,7 +161,7 @@
 }
 
 .sb-action-label {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 500;
   color: var(--text-base);
   white-space: nowrap;
@@ -253,7 +253,7 @@
 }
 
 .sb-section-title {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 500;
   color: var(--text-weak);
   letter-spacing: 0;
@@ -370,7 +370,7 @@
 }
 
 .sb-project-name {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -492,7 +492,7 @@
 }
 
 .sb-session-title {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 400;
   color: var(--text-base);
   white-space: nowrap;
@@ -533,7 +533,7 @@
   width: 100%;
   padding: 6px 10px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--font-size-x-small);
   font-weight: 500;
   color: var(--text-base);
   transition: background-color 100ms;
@@ -597,7 +597,7 @@
 }
 
 .sb-bottom-label {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 500;
   color: var(--text-base);
   white-space: nowrap;
@@ -701,7 +701,7 @@
 }
 
 .sidebar-account-name {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 600;
   color: var(--text-strong);
   white-space: nowrap;
@@ -747,7 +747,7 @@
   padding: 7px 9px;
   border-radius: 9px;
   color: var(--text-base);
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 500;
   text-align: left;
   transition:
@@ -773,7 +773,7 @@
 .sidebar-account-menuStatus {
   max-width: 98px;
   color: var(--text-subtle);
-  font-size: 11px;
+  font-size: var(--font-size-x-small);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -791,7 +791,7 @@
 
 .sidebar-account-section-label {
   padding: 6px 9px 2px;
-  font-size: 11px;
+  font-size: var(--font-size-x-small);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -839,14 +839,14 @@
   display: block;
   margin-bottom: 3px;
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 650;
 }
 
 .sidebar-agent-import-heading p {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 12px;
+  font-size: var(--font-size-x-small);
   line-height: 1.45;
 }
 
@@ -868,7 +868,7 @@
 
 .sidebar-agent-import-fields [data-slot="input-label"] {
   color: var(--text-subtle);
-  font-size: 11px;
+  font-size: var(--font-size-x-small);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -894,7 +894,7 @@
   height: 36px;
   padding: 0 10px;
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-size-small);
 }
 
 .sidebar-agent-import-input::placeholder {
@@ -903,7 +903,7 @@
 
 .sidebar-agent-import-fields [data-slot="input-error"] {
   color: var(--text-critical);
-  font-size: 11px;
+  font-size: var(--font-size-x-small);
 }
 
 .sidebar-agent-import-note {
@@ -915,7 +915,7 @@
   color: var(--text-subtle);
   background: rgba(126, 207, 139, 0.08);
   border: 1px solid rgba(126, 207, 139, 0.14);
-  font-size: 12px;
+  font-size: var(--font-size-x-small);
   line-height: 1.4;
 }
 
@@ -994,7 +994,7 @@
 }
 
 .sb-flyout-header {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 500;
   color: var(--text-weak);
   padding: 4px 10px 6px;
@@ -1025,7 +1025,7 @@
 }
 
 .sb-flyout-project-name {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-base);
   white-space: nowrap;
@@ -1055,7 +1055,7 @@
 }
 
 .sb-flyout-session-title {
-  font-size: 13px;
+  font-size: var(--font-size-small);
   font-weight: 400;
   color: var(--text-base);
   white-space: nowrap;
@@ -1088,7 +1088,7 @@
 
 .sb-session-group-header {
   padding: 6px 12px 2px;
-  font-size: 11px;
+  font-size: var(--font-size-x-small);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1099,7 +1099,7 @@
 
 .sb-section-empty {
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-x-small);
   color: var(--text-subtle);
 }
 
@@ -1113,7 +1113,7 @@
   height: 28px;
   padding: 0 8px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--font-size-x-small);
   font-weight: 400;
   color: var(--text-weak);
   transition:
