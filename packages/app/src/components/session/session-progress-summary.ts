@@ -195,7 +195,24 @@ export function computeProgressIslandSnapshot(
   const failed = includeDag ? dag!.failed : 0
   const progressRatio = clampRatio(completed / total)
 
-  if (lifecycle === "paused" && !dagHasAttention && active === 0) {
+  if (completed >= total) {
+    return {
+      status: "complete",
+      tone: "complete",
+      completed,
+      total,
+      active,
+      pending,
+      blocked,
+      failed,
+      progressRatio: 1,
+    }
+  }
+
+  // When the DAG is settled or paused with no active work and no attention
+  // items, the panel is no longer making progress — hide it so orphaned
+  // frames (agent forgot to mark final nodes) don't linger.
+  if ((lifecycle === "paused" || lifecycle === "settled") && !dagHasAttention && active === 0) {
     return {
       status: "hidden",
       tone: "neutral",
@@ -214,19 +231,6 @@ export function computeProgressIslandSnapshot(
   }
   if (blocked > 0) {
     return { status: "attention", tone: "blocked", completed, total, active, pending, blocked, failed, progressRatio }
-  }
-  if (completed >= total) {
-    return {
-      status: "complete",
-      tone: "complete",
-      completed,
-      total,
-      active,
-      pending,
-      blocked,
-      failed,
-      progressRatio: 1,
-    }
   }
   if (active > 0) {
     return { status: "active", tone: "running", completed, total, active, pending, blocked, failed, progressRatio }

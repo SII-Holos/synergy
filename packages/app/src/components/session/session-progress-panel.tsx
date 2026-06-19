@@ -53,17 +53,22 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     const summary = dagSummary()
     if (!summary) return "active"
     if (summary.total === 0) return "settled"
-    if (summary.failed > 0 || summary.blocked > 0) return "active"
-    if (summary.running > 0) return "active"
     if (summary.completed >= summary.total) return "settled"
 
+    // If the session is idle with no active background tasks, the DAG is no
+    // longer making progress — treat it as settled so the panel can dismiss
+    // even when the agent forgot to mark every node terminal.
     const sessionStatus = sync.data.session_status[props.sessionID]?.type ?? "idle"
-    if (sessionStatus !== "idle") return "active"
+    if (sessionStatus === "idle") {
+      const hasActiveTask = sync.data.cortex.some(
+        (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
+      )
+      if (!hasActiveTask) return "settled"
+    }
 
-    const hasActiveTask = sync.data.cortex.some(
-      (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
-    )
-    return hasActiveTask ? "active" : "paused"
+    if (summary.failed > 0 || summary.blocked > 0) return "active"
+    if (summary.running > 0) return "active"
+    return "active"
   })
   const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary(), dagLifecycle()))
 

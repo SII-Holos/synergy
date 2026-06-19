@@ -88,6 +88,7 @@ Use `dagpatch` for self-executed nodes, blocked work, or `memo` updates.
 Mark `blocked` when progress requires a user decision, missing environment, or missing evidence.
 
 Graft new nodes when evidence reveals missing work. Cancel downstream nodes when upstream assumptions collapse.
+Before delivering your final response, ensure every DAG node is in a terminal state (`completed`, `cancelled`, or `failed`). Use `dagpatch` to mark any self-executed nodes that are still `running`. If you abandoned an approach, cancel the leftover nodes. A clean DAG lets the progress panel dismiss itself — an orphaned `running` node leaves a stale progress frame stuck on the user's screen.
 
 ## Progressive Planning
 
