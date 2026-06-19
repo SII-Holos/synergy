@@ -6,6 +6,7 @@ import {
   computeDagSummary,
   computeProgressIslandSnapshot,
   computeTodoSummary,
+  type ProgressLifecycle,
   type ProgressMode,
 } from "./session-progress-summary"
 import { SessionProgressDag } from "./session-progress-dag"
@@ -48,7 +49,23 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
   const mode = createMemo<ProgressMode>(() => computeProgressMode(hasDag(), hasTodo()))
   const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagNodes()) : undefined))
   const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todos()) : undefined))
-  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary()))
+  const dagLifecycle = createMemo<ProgressLifecycle>(() => {
+    const summary = dagSummary()
+    if (!summary) return "active"
+    if (summary.total === 0) return "settled"
+    if (summary.failed > 0 || summary.blocked > 0) return "active"
+    if (summary.running > 0) return "active"
+    if (summary.completed >= summary.total) return "settled"
+
+    const sessionStatus = sync.data.session_status[props.sessionID]?.type ?? "idle"
+    if (sessionStatus !== "idle") return "active"
+
+    const hasActiveTask = sync.data.cortex.some(
+      (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
+    )
+    return hasActiveTask ? "active" : "paused"
+  })
+  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary(), dagLifecycle()))
 
   const activeLabel = createMemo(() => {
     const runningNode = dagNodes().find((node) => node.status === "running")

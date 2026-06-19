@@ -28,6 +28,7 @@ export interface TodoSummary {
 }
 
 export type ProgressMode = "none" | "dag" | "todo" | "both"
+export type ProgressLifecycle = "active" | "paused" | "settled"
 
 export type ProgressIslandStatus = "hidden" | "active" | "attention" | "complete"
 export type ProgressIslandTone = "neutral" | "ready" | "running" | "blocked" | "failed" | "complete"
@@ -166,8 +167,10 @@ export function computeProgressIslandSnapshot(
   mode: ProgressMode,
   dag?: DagSummary,
   todo?: TodoSummary,
+  lifecycle: ProgressLifecycle = "active",
 ): ProgressIslandSnapshot {
-  const includeDag = mode !== "todo" && dag != null && dag.total > 0
+  const dagHasAttention = dag != null && (dag.failed > 0 || dag.blocked > 0)
+  const includeDag = mode !== "todo" && dag != null && dag.total > 0 && (lifecycle !== "paused" || dagHasAttention)
   const includeTodo = mode !== "dag" && todo != null && todo.total > 0
 
   const total = (includeDag ? dag!.total : 0) + (includeTodo ? todo!.total : 0)
@@ -191,6 +194,20 @@ export function computeProgressIslandSnapshot(
   const blocked = includeDag ? dag!.blocked : 0
   const failed = includeDag ? dag!.failed : 0
   const progressRatio = clampRatio(completed / total)
+
+  if (lifecycle === "paused" && !dagHasAttention && active === 0) {
+    return {
+      status: "hidden",
+      tone: "neutral",
+      completed: 0,
+      total: 0,
+      active: 0,
+      pending: 0,
+      blocked: 0,
+      failed: 0,
+      progressRatio: 0,
+    }
+  }
 
   if (failed > 0) {
     return { status: "attention", tone: "failed", completed, total, active, pending, blocked, failed, progressRatio }
