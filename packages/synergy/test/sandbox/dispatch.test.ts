@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { SandboxBackend } from "../../src/sandbox/backend"
+import * as fs from "fs"
 import * as os from "os"
 
 // ---------------------------------------------------------------------------
@@ -23,37 +24,30 @@ import * as os from "os"
 // ------------------------------------------------------------------
 describe("isPlatformSupported", () => {
   test("win32 → true (Phase 2: Windows platform recognized)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("win32")).toBe(true)
   })
 
   test("windows → true (Phase 2: Windows platform recognized)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("windows")).toBe(true)
   })
 
   test("darwin → true", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("darwin")).toBe(true)
   })
 
   test("macos → true", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("macos")).toBe(true)
   })
 
   test("linux → true", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("linux")).toBe(true)
   })
 
   test("freebsd → false", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("freebsd")).toBe(false)
   })
 
   test("sunos → false", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
     expect(SandboxBackend.isPlatformSupported("sunos")).toBe(false)
   })
 })
@@ -63,8 +57,6 @@ describe("isPlatformSupported", () => {
 // ------------------------------------------------------------------
 describe("platformInfo on macOS", () => {
   test("returns platform=macos with sandbox-exec backend when running on darwin", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     if (os.platform() !== "darwin") {
       return // Skip on non-macOS
     }
@@ -81,8 +73,6 @@ describe("platformInfo on macOS", () => {
 // ------------------------------------------------------------------
 describe("prepareWrapper dispatch routing", () => {
   test("sandboxMode none returns unwrapped command with sandboxed=false", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
@@ -98,9 +88,6 @@ describe("prepareWrapper dispatch routing", () => {
   })
 
   test("forcePlatform macos dispatches to sandbox-exec with temp profile", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["dispatch-test"],
@@ -129,9 +116,7 @@ describe("prepareWrapper dispatch routing", () => {
     SandboxBackend.cleanupTemp(tempPath)
   })
 
-  test("forcePlatform windows returns skipReason (Phase 1 not yet implemented)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
+  test("forcePlatform windows returns skipReason when helper not installed (Phase 3)", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["test"],
@@ -140,15 +125,17 @@ describe("prepareWrapper dispatch routing", () => {
       forcePlatform: "windows",
     })
 
+    // Phase 3: Windows backend attempts to find the helper binary.
+    // On non-Windows machines, it will not be found, so skipReason
+    // describes the helper not being installed.
     expect(wrapper.sandboxed).toBe(false)
-    expect(wrapper.skipReason).toBe("Windows sandbox not yet implemented")
+    expect(wrapper.skipReason).toBeDefined()
+    expect(wrapper.skipReason).toMatch(/helper/i)
     expect(wrapper.command).toBe("echo")
     expect(wrapper.args).toEqual(["test"])
   })
 
   test("forcePlatform freebsd returns skipReason for unsupported platform", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["test"],
@@ -170,8 +157,6 @@ describe("prepareWrapper dispatch routing", () => {
 // ------------------------------------------------------------------
 describe("prepareLinuxWrapper backward compat", () => {
   test("forcePlatform linux produces bwrap command with correct args structure", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/home/user/project"
     const runtimeReadRoots = ["/usr/lib", "/lib"]
 
@@ -218,8 +203,6 @@ describe("prepareLinuxWrapper backward compat", () => {
 // ------------------------------------------------------------------
 describe("execute fallback", () => {
   test("skipReason with fallbackPolicy deny throws", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = {
       command: "echo",
       args: ["hello"],
@@ -232,8 +215,6 @@ describe("execute fallback", () => {
   })
 
   test("skipReason with fallbackPolicy warn spawns directly (unsandboxed)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = {
       command: "echo",
       args: ["warn-fallback-test"],
@@ -247,8 +228,6 @@ describe("execute fallback", () => {
   })
 
   test("skipReason with fallbackPolicy allow spawns directly (unsandboxed)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = {
       command: "echo",
       args: ["allow-fallback-test"],
@@ -262,8 +241,6 @@ describe("execute fallback", () => {
   })
 
   test("default fallback policy is warn (unsandboxed)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = {
       command: "echo",
       args: ["default-warn-test"],
@@ -283,9 +260,6 @@ describe("execute fallback", () => {
 // ------------------------------------------------------------------
 describe("execute sandboxed temp cleanup", () => {
   test("sandboxed=true runs wrapper and cleans up temp on success", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
       args: [],
@@ -313,9 +287,6 @@ describe("execute sandboxed temp cleanup", () => {
   })
 
   test("sandboxed=true cleans up temp even on command failure", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "nonexistent_command_xyz_dispatch_123",
       args: [],
@@ -345,8 +316,6 @@ describe("execute sandboxed temp cleanup", () => {
   })
 
   test("sandboxed=false with skipReason does not create temp profile", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["test"],
@@ -365,8 +334,6 @@ describe("execute sandboxed temp cleanup", () => {
 // ------------------------------------------------------------------
 describe("prepareWrapper Linux dispatch", () => {
   test("forcePlatform linux dispatches to LinuxBackend and returns bwrap wrapper", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/home/user/project"
     const runtimeReadRoots = ["/usr/lib", "/lib64"]
 
@@ -412,8 +379,6 @@ describe("prepareWrapper Linux dispatch", () => {
   })
 
   test("prepareWrapper Linux matches prepareLinuxWrapper output shape", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/home/user/project"
     const runtimeReadRoots = ["/usr/lib"]
 

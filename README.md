@@ -306,7 +306,35 @@ Built-in profiles:
 
 `full_access` is blocked in unattended execution mode. It is only available in attended sessions.
 
-Sandbox behavior is driven by the active control profile. The older `sandbox.enabled` and `sandbox.fallbackPolicy` config fields are currently reserved for compatibility and do not override profile behavior.
+### Sandbox
+
+Synergy sandboxes shell command execution at the OS level for security. Sandbox support per platform:
+
+| Platform | Backend                        | Status         |
+| -------- | ------------------------------ | -------------- |
+| macOS    | `sandbox-exec` (Seatbelt)      | Production     |
+| Linux    | `bwrap` (Bubblewrap)           | Available      |
+| Windows  | Restricted Token (Rust helper) | In development |
+
+Sandbox mode is driven by the active control profile (`guarded`, `autonomous`, `full_access`), not by global config. The built-in profiles resolve sandbox as follows:
+
+| Profile       | Sandbox mode      | Fallback |
+| ------------- | ----------------- | -------- |
+| `guarded`     | `workspace_write` | `deny`   |
+| `autonomous`  | `workspace_write` | `deny`   |
+| `full_access` | `none`            | `allow`  |
+
+The global `sandbox` config fields control backend selection and fallback behavior. Current supported fields:
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": true, // Enable/disable sandbox globally
+    "fallbackPolicy": "deny", // "deny" | "warn" | "allow" — when backend is unavailable
+    // "backend": "auto",   // Planned: force a specific backend
+  },
+}
+```
 
 #### Where Synergy stores worktrees
 

@@ -1,6 +1,7 @@
 import * as os from "os"
 
 import type { PlatformInfo } from "./types"
+import { isWindowsHelperAvailable } from "./windows"
 
 // ------------------------------------------------------------------
 // Platform detection — extracted from backend.ts (Phase 1)
@@ -23,22 +24,18 @@ export function isPlatformSupported(rawPlatform: string): boolean {
 
 export function platformInfo(): PlatformInfo {
   const platform = detectPlatform()
-  let available = false
-  let backend: string | null = null
-
   if (platform === "macos") {
-    available = true
-    backend = "sandbox-exec"
-  } else if (platform === "linux") {
-    available = isBwrapAvailable()
-    backend = available ? "bwrap" : null
-  } else if (platform === "windows") {
-    // Phase 3: detect Windows helper
-    available = false
-    backend = null
+    return { platform, available: true, backend: "sandbox-exec" }
   }
-
-  return { platform, available, backend }
+  if (platform === "linux") {
+    const available = isBwrapAvailable()
+    return { platform, available, backend: available ? "bwrap" : null }
+  }
+  if (platform === "windows") {
+    const available = isWindowsHelperAvailable()
+    return { platform, available, backend: available ? "windows-restricted-token" : null }
+  }
+  return { platform, available: false, backend: null }
 }
 
 function isBwrapAvailable(): boolean {

@@ -84,7 +84,7 @@ export namespace SandboxBackend {
    *
    * macOS   → sandbox-exec -f <tmpProfile> <command> <args...>
    * linux   → bwrap <mounts> -- <command> <args...>
-   * windows → Phase 1: skipReason (not yet implemented)
+   * windows → Phase 3: synergy-sandbox.exe --config <tmpConfig> -- <command> <args...>
    * none    → returns unwrapped, sandboxed=false
    */
   export function prepareWrapper(opts: PrepareWrapperOpts): SandboxExecutionWrapper {

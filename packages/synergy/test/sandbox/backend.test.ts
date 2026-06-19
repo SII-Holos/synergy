@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { SandboxBackend } from "../../src/sandbox/backend"
+import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
 
@@ -20,8 +21,6 @@ import * as path from "path"
 // ------------------------------------------------------------------
 describe("SandboxBackend command wrapping (macOS)", () => {
   test("wraps command using argv array, not shell string", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello", "world"],
@@ -43,8 +42,6 @@ describe("SandboxBackend command wrapping (macOS)", () => {
   })
 
   test("wraps command with no extra args correctly", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "ls",
       args: [],
@@ -60,8 +57,6 @@ describe("SandboxBackend command wrapping (macOS)", () => {
   })
 
   test("profile temp file path is embedded in args at position 1", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "git",
       args: ["status"],
@@ -82,8 +77,6 @@ describe("SandboxBackend command wrapping (macOS)", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend temp profile lifecycle", () => {
   test("profile file is written to a temp location", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "node",
       args: ["-e", "console.log(1)"],
@@ -97,14 +90,10 @@ describe("SandboxBackend temp profile lifecycle", () => {
 
     // The temp file must be writable by the current process
     // (We can check this on supported platforms)
-    const fs = require("fs")
     expect(() => fs.accessSync(tempPath, fs.constants.W_OK)).not.toThrow()
   })
 
   test("temp profile is cleaned up after execution", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
       args: [],
@@ -134,9 +123,6 @@ describe("SandboxBackend temp profile lifecycle", () => {
   })
 
   test("temp profile is cleaned up even if sandbox command fails", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "nonexistent_command_xyz_123",
       args: [],
@@ -171,8 +157,6 @@ describe("SandboxBackend temp profile lifecycle", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend Seatbelt profile generation", () => {
   test("generated profile does NOT contain global (allow file-read*)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
@@ -196,8 +180,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile explicitly allows runtime read roots", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const runtimeReadRoots = ["/usr/lib", "/System/Library/Frameworks"]
 
     const profile = SandboxBackend.generateSeatbeltProfile({
@@ -217,8 +199,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile explicitly allows active workspace data read/write", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/Users/test/synergy-control-profile"
     const writableRoots = [workspace, path.join(workspace, ".synergy", "tmp")]
 
@@ -243,8 +223,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("workspace_write profile includes controlled tmp write access", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
@@ -261,8 +239,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("read_only profile only grants read access, no write", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "read_only",
@@ -278,8 +254,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile includes (version 1) header", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
@@ -292,8 +266,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile uses (allow default) as the base policy", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
@@ -311,8 +283,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile denies broad user data roots before re-allowing active workspace", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/Users/test/synergy-control-profile"
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace,
@@ -338,8 +308,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile re-allows user runtime roots after broad home deny", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const runtimeRoot = "/Users/test/.gitconfig"
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
@@ -362,9 +330,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("prepareWrapper adds approved external roots as one-call sandbox exceptions", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-    const fs = require("fs")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "cat",
       args: ["/Users/test/Downloads/input.txt"],
@@ -388,8 +353,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile allows exact runtime files as literals", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const runtimeFile = "/Users/test/.gitconfig"
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
@@ -404,8 +367,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
   })
 
   test("profile allows literal parent directories for cwd traversal", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "pwd",
       args: [],
@@ -418,7 +379,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
       dataDenyRoots: ["/Users/test"],
     })
 
-    const fs = require("fs")
     const profilePath = wrapper.args[1]
     const profile = fs.readFileSync(profilePath, "utf8")
     try {
@@ -439,8 +399,6 @@ describe("SandboxBackend Seatbelt profile generation", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend protected path deny rules", () => {
   test("protected .git directory is denied writes", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
@@ -455,8 +413,6 @@ describe("SandboxBackend protected path deny rules", () => {
   })
 
   test("protected .synergy config is denied writes", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const protectedPath = os.homedir() + "/.synergy/config"
 
     const profile = SandboxBackend.generateSeatbeltProfile({
@@ -474,8 +430,6 @@ describe("SandboxBackend protected path deny rules", () => {
   })
 
   test("protected auth secrets path is denied writes", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const authPath = os.homedir() + "/.synergy/data/auth/api-key.json"
 
     const profile = SandboxBackend.generateSeatbeltProfile({
@@ -493,8 +447,6 @@ describe("SandboxBackend protected path deny rules", () => {
   })
 
   test("protected paths take precedence over writable roots", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const workspace = "/Users/test/project"
 
     // .git is both under the writable root AND in protected paths
@@ -525,8 +477,6 @@ describe("SandboxBackend protected path deny rules", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend cross-platform support", () => {
   test("reports availability correctly on macOS", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const info = SandboxBackend.platformInfo()
 
     expect(info).toBeDefined()
@@ -541,8 +491,6 @@ describe("SandboxBackend cross-platform support", () => {
   })
 
   test("Linux backend uses bwrap, not sandbox-exec", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     // The backend must have a method to generate a bwrap wrapper for Linux
     const wrapper = SandboxBackend.prepareLinuxWrapper({
       command: "echo",
@@ -559,8 +507,6 @@ describe("SandboxBackend cross-platform support", () => {
   })
 
   test("bwrap does NOT --ro-bind / / (whole root filesystem)", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareLinuxWrapper({
       command: "echo",
       args: ["hello"],
@@ -581,8 +527,6 @@ describe("SandboxBackend cross-platform support", () => {
   })
 
   test("bwrap only mounts runtime roots and active workspace", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const runtimeReadRoots = ["/usr/lib", "/lib"]
     const workspace = "/home/user/project"
 
@@ -604,8 +548,6 @@ describe("SandboxBackend cross-platform support", () => {
   })
 
   test("Windows platform reports as sandbox-capable", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const supported = SandboxBackend.isPlatformSupported("win32")
     expect(supported).toBe(true)
   })
@@ -616,8 +558,6 @@ describe("SandboxBackend cross-platform support", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend unavailable fallback", () => {
   test("when unavailable, prepareWrapper returns skipReason", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     // Force unavailable
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
@@ -633,8 +573,6 @@ describe("SandboxBackend unavailable fallback", () => {
   })
 
   test("when fallback is deny, execute rejects with clear error", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["test"],
@@ -648,8 +586,6 @@ describe("SandboxBackend unavailable fallback", () => {
   })
 
   test("when fallback is warn, execute runs without sandbox", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
@@ -664,8 +600,6 @@ describe("SandboxBackend unavailable fallback", () => {
   })
 
   test("when fallback is allow, execute runs without sandbox silently", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
@@ -684,8 +618,6 @@ describe("SandboxBackend unavailable fallback", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend mode to seatbelt policy mapping", () => {
   test("none mode produces no sandbox wrapper", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
@@ -700,8 +632,6 @@ describe("SandboxBackend mode to seatbelt policy mapping", () => {
   })
 
   test("workspace_write mode produces sandbox wrapper", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
@@ -716,8 +646,6 @@ describe("SandboxBackend mode to seatbelt policy mapping", () => {
   })
 
   test("read_only mode produces sandbox wrapper without write permissions", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace: "/Users/test/project",
       sandboxMode: "read_only",
@@ -737,8 +665,6 @@ describe("SandboxBackend mode to seatbelt policy mapping", () => {
 // ------------------------------------------------------------------
 describe("SandboxBackend OS execution (skipped unless available)", () => {
   test("execute succeeds with simple command in sandbox", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
       args: [],
@@ -756,8 +682,6 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
   })
 
   test("execute captures stdout in sandbox", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["sandbox-test-output"],
@@ -772,8 +696,6 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
   })
 
   test("sandbox prevents writes to protected system path", () => {
-    const { SandboxBackend } = require("../../src/sandbox/backend")
-
     const wrapper = SandboxBackend.prepareWrapper({
       command: "touch",
       args: ["/etc/should-fail"],
