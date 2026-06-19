@@ -25,7 +25,7 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
-import { Card } from "./card"
+import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
 import { Spinner } from "./spinner"
@@ -681,9 +681,7 @@ export function SessionTurn(
                           )}
                         </For>
                         <Show when={error()}>
-                          <Card variant="error" class="error-card">
-                            {error()?.data?.message as string}
-                          </Card>
+                          <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                         </Show>
                       </div>
                     </Show>
@@ -773,9 +771,7 @@ export function SessionTurn(
                     </Show>
                     {/* Error (when expanded steps section is not showing it) */}
                     <Show when={error() && !(working() || (props.stepsExpanded && hasSteps()))}>
-                      <Card variant="error" class="error-card">
-                        {error()?.data?.message as string}
-                      </Card>
+                      <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                     </Show>
                   </Match>
                 </Switch>
