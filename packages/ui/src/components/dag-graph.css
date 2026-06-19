@@ -152,9 +152,22 @@
       opacity: 0.7;
     }
 
-    &[data-dragging="true"] {
+    &[data-dragging="true"],
+    &[data-zooming="true"] {
       cursor: grabbing;
     }
+  }
+
+  /* Disable layout transitions during direct user interaction (drag/zoom) so
+     the viewport stays locked to the pointer instead of lagging behind. */
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-stage"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-stage"] {
+    transition: none;
+  }
+
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-card"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-card"] {
+    transition: none;
   }
 
   [data-slot="dag-graph-stage"] {
@@ -164,6 +177,7 @@
     transform-origin: 0 0;
     will-change: transform;
     z-index: 1;
+    transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
   }
 
   [data-slot="dag-graph-edges"] {
@@ -215,8 +229,9 @@
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
-    opacity: 1;
     transition:
+      left 0.28s cubic-bezier(0.2, 0, 0, 1),
+      top 0.28s cubic-bezier(0.2, 0, 0, 1),
       border-color 0.18s ease,
       background-color 0.18s ease,
       box-shadow 0.18s ease,
