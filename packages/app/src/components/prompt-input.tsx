@@ -68,6 +68,7 @@ import {
   computePromptWorkingSummary,
 } from "@/components/session/session-status-shared"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
+import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 
 type InlinePart = TextPart | FileAttachmentPart
 
@@ -1904,6 +1905,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">
       <Show when={params.id}>
         <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
+          <SessionAgendaWakeIndicator sessionID={params.id!} />
           <Tooltip placement="top" value={layout.terminal.opened() ? "Hide terminal" : "Open terminal"}>
             <button
               type="button"

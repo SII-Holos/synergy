@@ -3157,6 +3157,89 @@
         ]
       }
     },
+    "/session/{sessionID}/agenda": {
+      "get": {
+        "operationId": "session.agenda",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 6,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "summary": "Get session agenda wakeups",
+        "description": "Retrieve agenda items that can wake the specified session.",
+        "responses": {
+          "200": {
+            "description": "Session agenda wakeups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAgendaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.agenda({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -15648,6 +15731,113 @@
           }
         },
         "required": ["id", "content", "status", "deps"]
+      },
+      "SessionAgendaTrigger": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+          },
+          "interval": {
+            "description": "Interval for every triggers, e.g. '30m'",
+            "type": "string"
+          },
+          "delay": {
+            "description": "Delay for delay triggers, e.g. '2h'",
+            "type": "string"
+          }
+        },
+        "required": ["type"]
+      },
+      "SessionAgendaItem": {
+        "type": "object",
+        "properties": {
+          "itemID": {
+            "description": "Agenda item ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "Agenda item title",
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "pending"]
+          },
+          "nextRunAt": {
+            "description": "Next scheduled activation time, or null for open-ended triggers",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "triggerTypes": {
+            "description": "Trigger types that can activate this agenda item",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+            }
+          },
+          "triggers": {
+            "description": "Display-safe trigger details for client-side formatting",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionAgendaTrigger"
+            }
+          },
+          "global": {
+            "description": "Whether this agenda item is globally visible",
+            "type": "boolean"
+          }
+        },
+        "required": ["itemID", "title", "status", "nextRunAt", "triggerTypes", "triggers", "global"]
+      },
+      "SessionAgendaResponse": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hasActiveAgenda": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionAgendaItem"
+            }
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
       },
       "UserMessage": {
         "type": "object",

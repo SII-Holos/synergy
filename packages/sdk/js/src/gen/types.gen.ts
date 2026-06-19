@@ -2302,6 +2302,57 @@ export type DagNode = {
   result?: string
 }
 
+export type SessionAgendaTrigger = {
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook"
+  /**
+   * Interval for every triggers, e.g. '30m'
+   */
+  interval?: string
+  /**
+   * Delay for delay triggers, e.g. '2h'
+   */
+  delay?: string
+}
+
+export type SessionAgendaItem = {
+  /**
+   * Agenda item ID
+   */
+  itemID: string
+  /**
+   * Agenda item title
+   */
+  title: string
+  status: "active" | "pending"
+  /**
+   * Next scheduled activation time, or null for open-ended triggers
+   */
+  nextRunAt: number | null
+  /**
+   * Trigger types that can activate this agenda item
+   */
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook">
+  /**
+   * Display-safe trigger details for client-side formatting
+   */
+  triggers: Array<SessionAgendaTrigger>
+  /**
+   * Whether this agenda item is globally visible
+   */
+  global: boolean
+}
+
+export type SessionAgendaResponse = {
+  sessionID: string
+  count: number
+  hasActiveAgenda: boolean
+  items: Array<SessionAgendaItem>
+  offset: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -5749,6 +5800,44 @@ export type SessionDagResponses = {
 }
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
+
+export type SessionAgendaData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    limit?: number
+    offset?: number
+  }
+  url: "/session/{sessionID}/agenda"
+}
+
+export type SessionAgendaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAgendaError = SessionAgendaErrors[keyof SessionAgendaErrors]
+
+export type SessionAgendaResponses = {
+  /**
+   * Session agenda wakeups
+   */
+  200: SessionAgendaResponse
+}
+
+export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
 export type SessionInitData = {
   body?: {

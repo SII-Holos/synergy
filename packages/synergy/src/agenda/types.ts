@@ -304,6 +304,45 @@ export namespace AgendaTypes {
     .meta({ ref: "AgendaActivityPage" })
   export type ActivityPage = z.infer<typeof ActivityPage>
 
+  export const SessionAgendaTriggerType = z.enum(["cron", "every", "at", "delay", "watch", "webhook"])
+  export type SessionAgendaTriggerType = z.infer<typeof SessionAgendaTriggerType>
+
+  export const SessionAgendaTrigger = z
+    .object({
+      type: SessionAgendaTriggerType,
+      interval: z.string().optional().describe("Interval for every triggers, e.g. '30m'"),
+      delay: z.string().optional().describe("Delay for delay triggers, e.g. '2h'"),
+    })
+    .meta({ ref: "SessionAgendaTrigger" })
+  export type SessionAgendaTrigger = z.infer<typeof SessionAgendaTrigger>
+
+  export const SessionAgendaItem = z
+    .object({
+      itemID: z.string().describe("Agenda item ID"),
+      title: z.string().describe("Agenda item title"),
+      status: z.enum(["active", "pending"]),
+      nextRunAt: z.number().nullable().describe("Next scheduled activation time, or null for open-ended triggers"),
+      triggerTypes: z.array(SessionAgendaTriggerType).describe("Trigger types that can activate this agenda item"),
+      triggers: z.array(SessionAgendaTrigger).describe("Display-safe trigger details for client-side formatting"),
+      global: z.boolean().describe("Whether this agenda item is globally visible"),
+    })
+    .meta({ ref: "SessionAgendaItem" })
+  export type SessionAgendaItem = z.infer<typeof SessionAgendaItem>
+
+  export const SessionAgendaResponse = z
+    .object({
+      sessionID: z.string(),
+      count: z.number().int().min(0),
+      hasActiveAgenda: z.boolean(),
+      items: z.array(SessionAgendaItem),
+      offset: z.number().int().min(0),
+      limit: z.number().int().min(0),
+      total: z.number().int().min(0),
+      hasMore: z.boolean(),
+    })
+    .meta({ ref: "SessionAgendaResponse" })
+  export type SessionAgendaResponse = z.infer<typeof SessionAgendaResponse>
+
   // ---------------------------------------------------------------------------
   // Fired signal — runtime representation of a trigger activation
   // ---------------------------------------------------------------------------

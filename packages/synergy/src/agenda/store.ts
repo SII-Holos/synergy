@@ -540,6 +540,67 @@ export namespace AgendaStore {
     return result
   }
 
+  function toSessionAgendaTrigger(trigger: AgendaTypes.Trigger): AgendaTypes.SessionAgendaTrigger {
+    switch (trigger.type) {
+      case "every":
+        return { type: trigger.type, interval: trigger.interval }
+      case "delay":
+        return { type: trigger.type, delay: trigger.delay }
+      default:
+        return { type: trigger.type }
+    }
+  }
+
+  function toSessionAgendaItem(item: AgendaTypes.Item): AgendaTypes.SessionAgendaItem {
+    if (item.status !== "active" && item.status !== "pending") {
+      throw new Error(`Cannot project non-wakeup agenda item '${item.id}' with status '${item.status}'`)
+    }
+
+    return {
+      itemID: item.id,
+      title: item.title,
+      status: item.status,
+      nextRunAt: item.state.nextRunAt ?? null,
+      triggerTypes: item.triggers.map((trigger) => trigger.type),
+      triggers: item.triggers.map(toSessionAgendaTrigger),
+      global: item.global,
+    }
+  }
+
+  export async function listForSessionWakeups(input: {
+    sessionID: string
+    scopeID: string
+    limit: number
+    offset: number
+    now?: number
+  }): Promise<AgendaTypes.SessionAgendaResponse> {
+    const now = input.now ?? Date.now()
+    const items = await listForScope(input.scopeID)
+    const matching = items
+      .filter((item) => item.status === "active" || item.status === "pending")
+      .filter((item) => item.wake !== false && item.silent !== true)
+      .filter((item) => item.origin.sessionID === input.sessionID)
+      .filter((item) => item.state.nextRunAt === undefined || item.state.nextRunAt > now)
+      .sort((a, b) => {
+        const aNext = a.state.nextRunAt ?? Number.POSITIVE_INFINITY
+        const bNext = b.state.nextRunAt ?? Number.POSITIVE_INFINITY
+        return aNext - bNext
+      })
+
+    const total = matching.length
+    const paged = input.limit === 0 ? [] : matching.slice(input.offset, input.offset + input.limit)
+    return {
+      sessionID: input.sessionID,
+      count: total,
+      hasActiveAgenda: total > 0,
+      items: paged.map(toSessionAgendaItem),
+      offset: input.offset,
+      limit: input.limit,
+      total,
+      hasMore: input.offset + paged.length < total,
+    }
+  }
+
   export async function loadActive(): Promise<AgendaTypes.Item[]> {
     const scopeIDs = await Storage.scan(["agenda", "items"])
     const batches = await Promise.all(scopeIDs.map((scopeID) => list(scopeID)))
