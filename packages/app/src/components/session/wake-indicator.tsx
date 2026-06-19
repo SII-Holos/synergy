@@ -147,7 +147,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
 
   return (
     <Show when={visible()}>
-      <div class="session-agenda-wake-group">
+      <div>
         <Popover
           open={open()}
           onOpenChange={handleOpenChange}
@@ -163,10 +163,9 @@ export function SessionAgendaWakeIndicator(props: Props) {
                 aria-label={`定时唤醒，${agenda()?.count ?? 0} 项待唤醒，点击查看详情`}
               >
                 <Icon name="clock" size="small" />
-                <span class="session-agenda-wake-text">
-                  {agenda()?.count ?? 0}
-                  <span data-full-label> 次唤醒</span>
-                </span>
+                <Show when={(agenda()?.count ?? 0) > 0}>
+                  <span class="session-agenda-wake-badge">{agenda()?.count}</span>
+                </Show>
               </button>
             </Tooltip>
           }
@@ -208,7 +207,6 @@ export function SessionAgendaWakeIndicator(props: Props) {
             </Show>
           </div>
         </Popover>
-        <div class="session-agenda-wake-divider" />
       </div>
     </Show>
   )

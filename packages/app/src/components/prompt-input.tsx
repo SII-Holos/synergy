@@ -1854,20 +1854,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Show when={params.id}>
         <div class="absolute -top-3 right-5 z-20 flex items-center gap-1.5">
           <SessionAgendaWakeIndicator sessionID={params.id!} />
-          <Tooltip placement="top" value={layout.terminal.opened() ? "Hide terminal" : "Open terminal"}>
-            <button
-              type="button"
-              classList={{
-                "flex items-center justify-center size-6 rounded-full border active:scale-90 transition-all shadow-xs": true,
-                "bg-surface-raised-stronger-non-alpha border-border-base text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover":
-                  !layout.terminal.opened(),
-                "bg-surface-raised-base-hover border-border-weak-base text-icon-base": layout.terminal.opened(),
-              }}
-              onClick={() => layout.terminal.toggle()}
-            >
-              <Icon name={layout.terminal.opened() ? "panel-bottom" : "terminal"} size="small" />
-            </button>
-          </Tooltip>
           <QuickActions
             class="relative"
             onSend={sendQuickAction}

@@ -1,16 +1,11 @@
-.session-agenda-wake-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
 .session-agenda-wake-trigger {
   --wake-accent: oklch(0.7 0.13 65);
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  width: 1.5rem;
   height: 1.5rem;
-  padding: 0 0.6rem;
   border: 1px solid color-mix(in oklch, var(--border-base) 72%, var(--wake-accent) 28%);
   border-radius: 999px;
   background: color-mix(in oklch, var(--surface-raised-stronger-non-alpha) 84%, var(--wake-accent) 16%);
@@ -43,18 +38,24 @@
   color: color-mix(in oklch, var(--text-base) 72%, var(--wake-accent) 28%);
 }
 
-.session-agenda-wake-text {
-  font-size: 0.75rem;
-  font-weight: 500;
+.session-agenda-wake-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--wake-accent) 90%, white 10%);
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
   line-height: 1;
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.session-agenda-wake-divider {
-  width: 1px;
-  height: 1rem;
-  background: var(--border-weak);
+  pointer-events: none;
 }
 
 .session-agenda-wake-panel {
@@ -175,14 +176,4 @@
 
 .session-agenda-wake-footer-button:hover {
   color: var(--text-strong);
-}
-
-@media (max-width: 640px) {
-  .session-agenda-wake-trigger {
-    padding: 0 0.5rem;
-  }
-
-  .session-agenda-wake-text span[data-full-label] {
-    display: none;
-  }
 }
