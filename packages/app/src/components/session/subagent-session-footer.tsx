@@ -1,4 +1,4 @@
-import { Show, createMemo } from "solid-js"
+import { Show, createMemo, createEffect, createSignal, onCleanup } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
@@ -45,7 +45,18 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? props.cortex.result))
-  const duration = createMemo(() => formatDuration(props.cortex.startedAt, props.cortex.completedAt))
+  const [tick, setTick] = createSignal(0)
+
+  createEffect(() => {
+    if (props.cortex.status !== "running") return
+    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    onCleanup(() => clearInterval(id))
+  })
+
+  const duration = createMemo(() => {
+    tick()
+    return formatDuration(props.cortex.startedAt, props.cortex.completedAt)
+  })
   const modelLabel = createMemo(() => {
     const m = props.cortex.model
     if (!m) return undefined

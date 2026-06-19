@@ -141,6 +141,9 @@ export function PromptDock(props: {
             <Show when={props.sessionID}>
               <PermissionDock sessionID={props.sessionID!} />
             </Show>
+            <Show when={props.sessionID}>
+              <SessionProgressPanel sessionID={props.sessionID!} />
+            </Show>
             <SubagentSessionFooter cortex={props.meta().cortex!} parentSessionID={props.meta().parentID ?? undefined} />
           </Show>
         </Show>
