@@ -98,9 +98,17 @@ export namespace SandboxBackend {
       case "macos":
         return MacBackend.prepare(opts)
       case "linux": {
+        // Check bwrap availability before dispatching
+        const info = platformInfo()
+        if (!info.available) {
+          return {
+            command: opts.command,
+            args: opts.args,
+            sandboxed: false,
+            skipReason: "bwrap not found — install bubblewrap for Linux sandbox support",
+          }
+        }
         // Convert PrepareWrapperOpts → PrepareLinuxWrapperOpts for bwrap dispatch.
-        // Note: executionCwd, extraReadRoots, extraWritableRoots, writableRoots,
-        // protectedPaths, and dataDenyRoots are not yet wired to the bwrap backend.
         const linuxOpts: PrepareLinuxWrapperOpts = {
           command: opts.command,
           args: opts.args,

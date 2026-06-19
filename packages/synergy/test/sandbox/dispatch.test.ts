@@ -260,6 +260,8 @@ describe("execute fallback", () => {
 // ------------------------------------------------------------------
 describe("execute sandboxed temp cleanup", () => {
   test("sandboxed=true runs wrapper and cleans up temp on success", () => {
+    // This test spawns sandbox-exec — only valid on macOS
+    if (os.platform() !== "darwin") return
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
       args: [],

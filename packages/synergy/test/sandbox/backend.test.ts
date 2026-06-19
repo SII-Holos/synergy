@@ -632,6 +632,8 @@ describe("SandboxBackend mode to seatbelt policy mapping", () => {
   })
 
   test("workspace_write mode produces sandbox wrapper", () => {
+    // This test only asserts command shape on platforms where sandbox is available
+    if (os.platform() !== "darwin") return
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["hello"],
