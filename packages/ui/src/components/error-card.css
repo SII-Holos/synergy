@@ -1,0 +1,63 @@
+[data-component="error-card"] {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 4px 0;
+
+  [data-slot="icon-svg"] {
+    color: var(--icon-critical-base);
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  [data-slot="error-card-content"] {
+    flex: 1;
+    min-width: 0;
+  }
+
+  [data-slot="error-card-title"] {
+    font-weight: var(--font-weight-medium);
+    color: var(--text-on-critical-base);
+    white-space: nowrap;
+  }
+
+  [data-slot="error-card-message"] {
+    color: var(--text-on-critical-weak);
+    max-height: 240px;
+    overflow-y: auto;
+    word-break: break-word;
+    display: block;
+  }
+
+  [data-slot="error-card-copy"] {
+    flex-shrink: 0;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    color: var(--icon-weak);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 150ms ease,
+      background-color 150ms ease;
+
+    &:hover {
+      background: var(--surface-raised-base-hover);
+      color: var(--icon-base);
+    }
+  }
+
+  &:hover [data-slot="error-card-copy"] {
+    opacity: 1;
+  }
+
+  &[data-compact] {
+    [data-slot="error-card-message"] {
+      max-height: 120px;
+    }
+  }
+}
