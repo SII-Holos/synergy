@@ -1,5 +1,9 @@
+interface HolosProfile {
+  name: string
+  bio?: string
+}
+
 import { Show } from "solid-js"
-import type { HolosProfile } from "@ericsanchezok/synergy-sdk"
 import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"

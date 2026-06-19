@@ -1,5 +1,9 @@
+interface HolosProfile {
+  name: string
+  bio?: string
+}
+
 import { Show } from "solid-js"
-import type { HolosProfile } from "@ericsanchezok/synergy-sdk"
 import { AgentCard } from "./agent-card"
 import { StatsSection } from "@/components/stats/stats-section"
 
