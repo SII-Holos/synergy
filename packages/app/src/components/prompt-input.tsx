@@ -62,12 +62,6 @@ import {
   PromptAttachmentError,
   uploadPromptAttachment,
 } from "@/utils/prompt-attachment"
-import { PromptStatusBurst, type PromptStatusBurstItem } from "@/components/session/prompt-status-burst"
-import {
-  createStatusBurstGate,
-  computePromptRawStatus,
-  computePromptWorkingSummary,
-} from "@/components/session/session-status-shared"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 
@@ -423,20 +417,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       seed: params.id ?? sessionKey(),
     }),
   )
-  const promptRawStatus = createMemo(() =>
-    computePromptRawStatus({
-      assistantMessages: assistantMessages(),
-      getParts: (messageID: string) => sync.data.part[messageID] ?? [],
-    }),
-  )
-  const promptWorkingSummary = createMemo(() =>
-    computePromptWorkingSummary({
-      status: status(),
-      working: working(),
-      rawStatus: promptRawStatus(),
-      fallbackWorkingPhrase: fallbackWorkingPhrase(),
-    }),
-  )
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
     if (working()) {
@@ -496,7 +476,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     mode: "normal" | "shell"
     applyingHistory: boolean
     switchingProfile: boolean
-    promptBursts: PromptStatusBurstItem[]
   }>({
     popover: null,
     historyIndex: -1,
@@ -506,7 +485,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     mode: "normal",
     applyingHistory: false,
     switchingProfile: false,
-    promptBursts: [],
   })
 
   const MAX_HISTORY = 100
@@ -756,41 +734,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
     }
   }
-
-  const statusBurstGate = createStatusBurstGate(2500)
-  createEffect(() => {
-    const summary = promptWorkingSummary()
-    statusBurstGate.next(summary, (text) => {
-      const id = createPromptPartID()
-      const durationMs = 2600 + Math.round(Math.random() * 700)
-      const delayMs = Math.round(Math.random() * 180)
-      const startY = 18 + Math.round(Math.random() * 8)
-      const vx = Math.round(Math.random() * 16 - 8)
-      const vy = -(78 + Math.round(Math.random() * 16))
-      const ax = Math.round(Math.random() * 10 - 5)
-      const ay = -(14 + Math.round(Math.random() * 8))
-      const startScale = 0.92 + Math.random() * 0.03
-      const peakScale = 0.99 + Math.random() * 0.03
-      const endScale = 0.95 + Math.random() * 0.03
-      setStore("promptBursts", (items) => [
-        ...items.slice(-1),
-        { id, text, startY, vx, vy, ax, ay, startScale, peakScale, endScale, delayMs, durationMs },
-      ])
-      window.setTimeout(
-        () => {
-          setStore("promptBursts", (items) => items.filter((item) => item.id !== id))
-        },
-        durationMs + delayMs + 160,
-      )
-    })
-  })
-
-  createEffect(() => {
-    if (!working()) {
-      statusBurstGate.reset()
-      setStore("promptBursts", [])
-    }
-  })
 
   createEffect(() => {
     if (!isFocused()) setStore("popover", null)
@@ -2008,415 +1951,410 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </Switch>
         </div>
       </Show>
-      <div class="relative">
-        <Show when={store.promptBursts.length > 0}>
-          <PromptStatusBurst items={store.promptBursts} />
-        </Show>
-        <form
-          onSubmit={handleSubmit}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          classList={{
-            "bg-surface-raised-stronger-non-alpha relative": true,
-            "overflow-hidden": true,
-            "focus-within:ring-1 focus-within:ring-border-weak-base": true,
-            "border border-border-base": !store.dragging,
-            "border border-icon-info-active border-dashed": store.dragging,
-            "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,
-            [props.class ?? ""]: !!props.class,
-          }}
-          style={{ "border-radius": layout.isDesktop() ? "24px" : "0px", "z-index": 1 }}
-        >
-          <Show when={store.dragging}>
-            <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
-              <div class="flex flex-col items-center gap-2 text-text-weak">
-                <Icon name="paperclip" class="size-8" />
-                <span class="text-14-regular">Drop files, notes, or sessions here</span>
-              </div>
+      <form
+        onSubmit={handleSubmit}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        classList={{
+          "bg-surface-raised-stronger-non-alpha relative": true,
+          "overflow-hidden": true,
+          "focus-within:ring-1 focus-within:ring-border-weak-base": true,
+          "border border-border-base": !store.dragging,
+          "border border-icon-info-active border-dashed": store.dragging,
+          "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,
+          [props.class ?? ""]: !!props.class,
+        }}
+        style={{ "border-radius": layout.isDesktop() ? "24px" : "0px", "z-index": 1 }}
+      >
+        <Show when={store.dragging}>
+          <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
+            <div class="flex flex-col items-center gap-2 text-text-weak">
+              <Icon name="paperclip" class="size-8" />
+              <span class="text-14-regular">Drop files, notes, or sessions here</span>
             </div>
-          </Show>
-          <Show when={false && (prompt.context.items().length > 0 || !!activeFile())}>
-            <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
-              <Show when={prompt.context.activeTab() ? activeFile() : undefined}>
-                {(path) => (
-                  <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
-                    <FileIcon node={{ path: path(), type: "file" }} class="shrink-0 size-4" />
-                    <div class="flex items-center text-12-regular min-w-0">
-                      <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(path())}</span>
-                      <span class="text-text-strong whitespace-nowrap">{getFilename(path())}</span>
-                      <span class="text-text-weak whitespace-nowrap ml-1">active</span>
-                    </div>
-                    <IconButton
-                      type="button"
-                      icon="x"
-                      variant="ghost"
-                      class="h-6 w-6"
-                      onClick={() => prompt.context.removeActive()}
-                    />
-                  </div>
-                )}
-              </Show>
-              <Show when={!prompt.context.activeTab() && !!activeFile()}>
-                <button
-                  type="button"
-                  class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base text-12-regular text-text-weak hover:bg-surface-raised-base-hover"
-                  onClick={() => prompt.context.addActive()}
-                >
-                  <Icon name="plus" size="small" />
-                  <span>Include active file</span>
-                </button>
-              </Show>
-              <For each={prompt.context.items()}>
-                {(item) => (
-                  <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
-                    <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-4" />
-                    <div class="flex items-center text-12-regular min-w-0">
-                      <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(item.path)}</span>
-                      <span class="text-text-strong whitespace-nowrap">{getFilename(item.path)}</span>
-                      <Show when={item.selection}>
-                        {(sel) => (
-                          <span class="text-text-weak whitespace-nowrap ml-1">
-                            {sel().startLine === sel().endLine
-                              ? `:${sel().startLine}`
-                              : `:${sel().startLine}-${sel().endLine}`}
-                          </span>
-                        )}
-                      </Show>
-                    </div>
-                    <IconButton
-                      type="button"
-                      icon="x"
-                      variant="ghost"
-                      class="h-6 w-6"
-                      onClick={() => prompt.context.remove(item.key)}
-                    />
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Show when={hasAttachments()}>
-            <div class="flex flex-wrap gap-2 px-3 pt-3">
-              <For each={imageAttachments()}>
-                {(attachment) => (
-                  <div class="relative group">
-                    <img
-                      src={attachment.dataUrl}
-                      alt={attachment.filename}
-                      class="size-16 rounded-md object-cover border border-border-base"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                    >
-                      <Icon name="x" class="size-3 text-text-weak" />
-                    </button>
-                    <div class="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/50 rounded-b-md">
-                      <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
-                    </div>
-                  </div>
-                )}
-              </For>
-              <For each={uploadedAttachments()}>
-                {(attachment) => (
-                  <div class="relative group">
-                    <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                      <FileIcon node={{ path: attachment.filename, type: "file" }} class="shrink-0 size-5" />
-                      <span class="text-12-medium text-text-base max-w-[160px] truncate">{attachment.filename}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                    >
-                      <Icon name="x" class="size-3 text-text-weak" />
-                    </button>
-                  </div>
-                )}
-              </For>
-              <For each={noteAttachments()}>
-                {(attachment) => (
-                  <div class="relative group">
-                    <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                      <Icon name="notebook-pen" size="small" class="shrink-0 text-text-interactive-base" />
-                      <span class="text-12-medium text-text-base max-w-[160px] truncate">
-                        {attachment.title || "Untitled"}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                    >
-                      <Icon name="x" class="size-3 text-text-weak" />
-                    </button>
-                  </div>
-                )}
-              </For>
-              <For each={sessionAttachments()}>
-                {(attachment) => (
-                  <div class="relative group">
-                    <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                      <Icon name="message-square" size="small" class="shrink-0 text-text-interactive-base" />
-                      <span class="text-12-medium text-text-base max-w-[180px] truncate">
-                        {attachment.title || "Untitled"}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                    >
-                      <Icon name="x" class="size-3 text-text-weak" />
-                    </button>
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
-          <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
-            <div
-              data-component="prompt-input"
-              ref={(el) => {
-                editorRef = el
-                props.ref?.(el)
-              }}
-              contenteditable="true"
-              onInput={handleInput}
-              onPaste={handlePaste}
-              onCompositionStart={() => setComposing(true)}
-              onCompositionEnd={() => setComposing(false)}
-              onKeyDown={handleKeyDown}
-              classList={{
-                "select-text": true,
-                "w-full px-5 py-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
-                "[&_[data-type=file]]:text-syntax-property": true,
-                "font-mono!": store.mode === "shell",
-              }}
-            />
-            <Show when={!prompt.dirty()}>
-              <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
-                {store.mode === "shell"
-                  ? "Enter shell command..."
-                  : isGlobalScope(sdk.directory)
-                    ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
-                    : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
-              </div>
-            </Show>
           </div>
-          <div class="px-4 py-2.5 flex items-center justify-between gap-2">
-            <div class="flex items-center gap-1.5">
-              <Switch>
-                <Match when={store.mode === "shell"}>
-                  <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
-                    <Icon name="terminal" size="small" class="text-icon-primary" />
-                    <span class="text-12-medium text-text-primary">Shell</span>
-                    <span class="text-11-regular text-text-subtle">esc to exit</span>
+        </Show>
+        <Show when={false && (prompt.context.items().length > 0 || !!activeFile())}>
+          <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
+            <Show when={prompt.context.activeTab() ? activeFile() : undefined}>
+              {(path) => (
+                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
+                  <FileIcon node={{ path: path(), type: "file" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-12-regular min-w-0">
+                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(path())}</span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(path())}</span>
+                    <span class="text-text-weak whitespace-nowrap ml-1">active</span>
                   </div>
-                </Match>
-                <Match when={store.mode === "normal"}>
-                  <Show when={!props.hideAgentSelector}>
-                    <ToolbarSelectorPopover
-                      trigger={
-                        <button
-                          type="button"
-                          class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                        >
-                          <span class="text-12-medium text-text-base whitespace-nowrap">
-                            {getAgentVisual(local.agent.current()).label}
-                          </span>
-                          <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
-                        </button>
-                      }
-                      title="Select agent"
-                      contentClass="w-52 max-h-80"
-                      placement="top-start"
-                    >
-                      {(close) => (
-                        <List
-                          class="p-1"
-                          items={local.agent.list().filter((a) => !a.hidden)}
-                          key={(x) => x.name}
-                          filterKeys={["name"]}
-                          onSelect={(x) => {
-                            if (!x) return
-                            if (sessionHasMessages() && x.external) return
-                            local.agent.set(x.name)
-                            close()
-                          }}
-                        >
-                          {(agent) => {
-                            const visual = getAgentVisual(agent)
-                            return (
-                              <Tooltip
-                                placement="right"
-                                value={
-                                  sessionHasMessages() && agent.external
-                                    ? "Create a new session to use this external agent"
-                                    : undefined
-                                }
-                              >
-                                <div
-                                  classList={{
-                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                                    "opacity-45": sessionHasMessages() && !!agent.external,
-                                  }}
-                                >
-                                  <div class="min-w-0">
-                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
-                                  </div>
-                                </div>
-                              </Tooltip>
-                            )
-                          }}
-                        </List>
+                  <IconButton
+                    type="button"
+                    icon="x"
+                    variant="ghost"
+                    class="h-6 w-6"
+                    onClick={() => prompt.context.removeActive()}
+                  />
+                </div>
+              )}
+            </Show>
+            <Show when={!prompt.context.activeTab() && !!activeFile()}>
+              <button
+                type="button"
+                class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base text-12-regular text-text-weak hover:bg-surface-raised-base-hover"
+                onClick={() => prompt.context.addActive()}
+              >
+                <Icon name="plus" size="small" />
+                <span>Include active file</span>
+              </button>
+            </Show>
+            <For each={prompt.context.items()}>
+              {(item) => (
+                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
+                  <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-12-regular min-w-0">
+                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(item.path)}</span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(item.path)}</span>
+                    <Show when={item.selection}>
+                      {(sel) => (
+                        <span class="text-text-weak whitespace-nowrap ml-1">
+                          {sel().startLine === sel().endLine
+                            ? `:${sel().startLine}`
+                            : `:${sel().startLine}-${sel().endLine}`}
+                        </span>
                       )}
-                    </ToolbarSelectorPopover>
-                  </Show>
-                  <Tooltip placement="top" value="Attach file">
-                    <button
-                      type="button"
-                      class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                      onClick={() => fileInputRef.click()}
-                    >
-                      <Icon name="paperclip" size="small" class="text-icon-base" />
-                    </button>
-                  </Tooltip>
-                  <Show when={params.id}>
-                    <ContextBar />
-                  </Show>
+                    </Show>
+                  </div>
+                  <IconButton
+                    type="button"
+                    icon="x"
+                    variant="ghost"
+                    class="h-6 w-6"
+                    onClick={() => prompt.context.remove(item.key)}
+                  />
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+        <Show when={hasAttachments()}>
+          <div class="flex flex-wrap gap-2 px-3 pt-3">
+            <For each={imageAttachments()}>
+              {(attachment) => (
+                <div class="relative group">
+                  <img
+                    src={attachment.dataUrl}
+                    alt={attachment.filename}
+                    class="size-16 rounded-md object-cover border border-border-base"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                  >
+                    <Icon name="x" class="size-3 text-text-weak" />
+                  </button>
+                  <div class="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/50 rounded-b-md">
+                    <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
+                  </div>
+                </div>
+              )}
+            </For>
+            <For each={uploadedAttachments()}>
+              {(attachment) => (
+                <div class="relative group">
+                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
+                    <FileIcon node={{ path: attachment.filename, type: "file" }} class="shrink-0 size-5" />
+                    <span class="text-12-medium text-text-base max-w-[160px] truncate">{attachment.filename}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                  >
+                    <Icon name="x" class="size-3 text-text-weak" />
+                  </button>
+                </div>
+              )}
+            </For>
+            <For each={noteAttachments()}>
+              {(attachment) => (
+                <div class="relative group">
+                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
+                    <Icon name="notebook-pen" size="small" class="shrink-0 text-text-interactive-base" />
+                    <span class="text-12-medium text-text-base max-w-[160px] truncate">
+                      {attachment.title || "Untitled"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                  >
+                    <Icon name="x" class="size-3 text-text-weak" />
+                  </button>
+                </div>
+              )}
+            </For>
+            <For each={sessionAttachments()}>
+              {(attachment) => (
+                <div class="relative group">
+                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
+                    <Icon name="message-square" size="small" class="shrink-0 text-text-interactive-base" />
+                    <span class="text-12-medium text-text-base max-w-[180px] truncate">
+                      {attachment.title || "Untitled"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                  >
+                    <Icon name="x" class="size-3 text-text-weak" />
+                  </button>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+        <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
+          <div
+            data-component="prompt-input"
+            ref={(el) => {
+              editorRef = el
+              props.ref?.(el)
+            }}
+            contenteditable="true"
+            onInput={handleInput}
+            onPaste={handlePaste}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+            onKeyDown={handleKeyDown}
+            classList={{
+              "select-text": true,
+              "w-full px-5 py-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "[&_[data-type=file]]:text-syntax-property": true,
+              "font-mono!": store.mode === "shell",
+            }}
+          />
+          <Show when={!prompt.dirty()}>
+            <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
+              {store.mode === "shell"
+                ? "Enter shell command..."
+                : isGlobalScope(sdk.directory)
+                  ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
+                  : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
+            </div>
+          </Show>
+        </div>
+        <div class="px-4 py-2.5 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <Switch>
+              <Match when={store.mode === "shell"}>
+                <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
+                  <Icon name="terminal" size="small" class="text-icon-primary" />
+                  <span class="text-12-medium text-text-primary">Shell</span>
+                  <span class="text-11-regular text-text-subtle">esc to exit</span>
+                </div>
+              </Match>
+              <Match when={store.mode === "normal"}>
+                <Show when={!props.hideAgentSelector}>
                   <ToolbarSelectorPopover
                     trigger={
                       <button
                         type="button"
-                        aria-disabled={working() || store.switchingProfile}
-                        onClick={(event) => {
-                          if (!working() && !store.switchingProfile) return
-                          event.preventDefault()
-                          event.stopPropagation()
-                          if (store.switchingProfile) return
-                          showToast({
-                            type: "warning",
-                            title: "Session is running",
-                            description: "Stop the session before changing its permission mode.",
-                          })
-                        }}
-                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base transition-colors"
-                        classList={{
-                          "opacity-60 cursor-not-allowed": working() || store.switchingProfile,
-                          "hover:bg-surface-raised-base-hover": !store.switchingProfile,
-                        }}
+                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
                       >
-                        <Show
-                          when={store.switchingProfile}
-                          fallback={
-                            <>
-                              <Icon
-                                name={activePermissionMode().icon}
-                                size="small"
-                                class={`shrink-0 ${activePermissionMode().iconClass}`}
-                              />
-                              <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
-                                {activePermissionMode().shortLabel}
-                              </span>
-                              <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
-                            </>
-                          }
-                        >
-                          <Spinner class="text-icon-base" />
-                        </Show>
+                        <span class="text-12-medium text-text-base whitespace-nowrap">
+                          {getAgentVisual(local.agent.current()).label}
+                        </span>
+                        <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
                       </button>
                     }
-                    title="Permission mode"
-                    contentClass="w-80"
+                    title="Select agent"
+                    contentClass="w-52 max-h-80"
                     placement="top-start"
                   >
                     {(close) => (
-                      <>
-                        <List
-                          class="p-1"
-                          items={PERMISSION_MODES}
-                          key={(mode) => mode.id}
-                          current={PERMISSION_MODES.find((m) => m.id === selectedControlProfile())}
-                          onSelect={(mode) => {
-                            if (!mode) return
-                            updateControlProfile(mode.id, close)
-                          }}
-                        >
-                          {(mode) => (
-                            <div class="flex items-start gap-3 min-w-0 text-left">
-                              <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
-                              <div class="min-w-0 flex-1">
-                                <div class="text-13-medium text-text-base">{mode.label}</div>
-                                <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
+                      <List
+                        class="p-1"
+                        items={local.agent.list().filter((a) => !a.hidden)}
+                        key={(x) => x.name}
+                        filterKeys={["name"]}
+                        onSelect={(x) => {
+                          if (!x) return
+                          if (sessionHasMessages() && x.external) return
+                          local.agent.set(x.name)
+                          close()
+                        }}
+                      >
+                        {(agent) => {
+                          const visual = getAgentVisual(agent)
+                          return (
+                            <Tooltip
+                              placement="right"
+                              value={
+                                sessionHasMessages() && agent.external
+                                  ? "Create a new session to use this external agent"
+                                  : undefined
+                              }
+                            >
+                              <div
+                                classList={{
+                                  "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                  "opacity-45": sessionHasMessages() && !!agent.external,
+                                }}
+                              >
+                                <div class="min-w-0">
+                                  <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </List>
-                        <Show when={working()}>
-                          <div class="px-3 pb-2 text-11-regular text-text-warning">
-                            Stop the session before changing permission mode.
-                          </div>
-                        </Show>
-                      </>
+                            </Tooltip>
+                          )
+                        }}
+                      </List>
                     )}
                   </ToolbarSelectorPopover>
-                </Match>
-              </Switch>
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={FILE_INPUT_ACCEPT}
-                class="hidden"
-                onChange={(e) => {
-                  const file = e.currentTarget.files?.[0]
-                  if (file) addAttachment(file)
-                  e.currentTarget.value = ""
-                }}
-              />
-              <Show when={!sdk.connected()}>
-                <Tooltip placement="top" value="Connection lost — responses may be delayed">
-                  <div class="flex items-center justify-center size-5">
-                    <Icon name="signal" size="small" class="text-icon-warning-base animate-pulse" />
-                  </div>
+                </Show>
+                <Tooltip placement="top" value="Attach file">
+                  <button
+                    type="button"
+                    class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                    onClick={() => fileInputRef.click()}
+                  >
+                    <Icon name="paperclip" size="small" class="text-icon-base" />
+                  </button>
                 </Tooltip>
-              </Show>
-              <Tooltip
-                placement="top"
-                inactive={!prompt.dirty() && !working()}
-                value={
-                  <Switch>
-                    <Match when={working() && !prompt.dirty()}>
-                      <div class="flex items-center gap-2">
-                        <span>Stop</span>
-                        <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
-                      </div>
-                    </Match>
-                    <Match when={true}>
-                      <div class="flex items-center gap-2">
-                        <span>Send</span>
-                        <Icon name="corner-down-left" size="small" class="text-icon-base" />
-                      </div>
-                    </Match>
-                  </Switch>
-                }
-              >
-                <IconButton
-                  type="submit"
-                  disabled={!prompt.dirty() && !working()}
-                  icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
-                  variant="primary"
-                  class="size-9 rounded-full!"
-                />
-              </Tooltip>
-            </div>
+                <Show when={params.id}>
+                  <ContextBar />
+                </Show>
+                <ToolbarSelectorPopover
+                  trigger={
+                    <button
+                      type="button"
+                      aria-disabled={working() || store.switchingProfile}
+                      onClick={(event) => {
+                        if (!working() && !store.switchingProfile) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        if (store.switchingProfile) return
+                        showToast({
+                          type: "warning",
+                          title: "Session is running",
+                          description: "Stop the session before changing its permission mode.",
+                        })
+                      }}
+                      class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base transition-colors"
+                      classList={{
+                        "opacity-60 cursor-not-allowed": working() || store.switchingProfile,
+                        "hover:bg-surface-raised-base-hover": !store.switchingProfile,
+                      }}
+                    >
+                      <Show
+                        when={store.switchingProfile}
+                        fallback={
+                          <>
+                            <Icon
+                              name={activePermissionMode().icon}
+                              size="small"
+                              class={`shrink-0 ${activePermissionMode().iconClass}`}
+                            />
+                            <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
+                              {activePermissionMode().shortLabel}
+                            </span>
+                            <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
+                          </>
+                        }
+                      >
+                        <Spinner class="text-icon-base" />
+                      </Show>
+                    </button>
+                  }
+                  title="Permission mode"
+                  contentClass="w-80"
+                  placement="top-start"
+                >
+                  {(close) => (
+                    <>
+                      <List
+                        class="p-1"
+                        items={PERMISSION_MODES}
+                        key={(mode) => mode.id}
+                        current={PERMISSION_MODES.find((m) => m.id === selectedControlProfile())}
+                        onSelect={(mode) => {
+                          if (!mode) return
+                          updateControlProfile(mode.id, close)
+                        }}
+                      >
+                        {(mode) => (
+                          <div class="flex items-start gap-3 min-w-0 text-left">
+                            <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
+                            <div class="min-w-0 flex-1">
+                              <div class="text-13-medium text-text-base">{mode.label}</div>
+                              <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
+                            </div>
+                          </div>
+                        )}
+                      </List>
+                      <Show when={working()}>
+                        <div class="px-3 pb-2 text-11-regular text-text-warning">
+                          Stop the session before changing permission mode.
+                        </div>
+                      </Show>
+                    </>
+                  )}
+                </ToolbarSelectorPopover>
+              </Match>
+            </Switch>
           </div>
-        </form>
-      </div>
+          <div class="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={FILE_INPUT_ACCEPT}
+              class="hidden"
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0]
+                if (file) addAttachment(file)
+                e.currentTarget.value = ""
+              }}
+            />
+            <Show when={!sdk.connected()}>
+              <Tooltip placement="top" value="Connection lost — responses may be delayed">
+                <div class="flex items-center justify-center size-5">
+                  <Icon name="signal" size="small" class="text-icon-warning-base animate-pulse" />
+                </div>
+              </Tooltip>
+            </Show>
+            <Tooltip
+              placement="top"
+              inactive={!prompt.dirty() && !working()}
+              value={
+                <Switch>
+                  <Match when={working() && !prompt.dirty()}>
+                    <div class="flex items-center gap-2">
+                      <span>Stop</span>
+                      <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                    </div>
+                  </Match>
+                  <Match when={true}>
+                    <div class="flex items-center gap-2">
+                      <span>Send</span>
+                      <Icon name="corner-down-left" size="small" class="text-icon-base" />
+                    </div>
+                  </Match>
+                </Switch>
+              }
+            >
+              <IconButton
+                type="submit"
+                disabled={!prompt.dirty() && !working()}
+                icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
+                variant="primary"
+                class="size-9 rounded-full!"
+              />
+            </Tooltip>
+          </div>
+        </div>
+      </form>
     </div>
   )
 }
