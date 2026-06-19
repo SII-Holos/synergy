@@ -1143,18 +1143,17 @@ export const Info = z
         url: z.string().optional().describe("Enterprise URL"),
       })
       .optional(),
-    agora: z
-      .object({
-        url: z.string().optional().describe("Agora API base URL (defaults to https://agora.holosai.io)"),
-        tokenUrl: z
-          .string()
-          .optional()
-          .describe("Holos API URL for Agora token exchange (defaults to https://www.holosai.io)"),
-        giteaSSHHost: z.string().optional().describe("Override SSH hostname used for Agora's Gitea remote"),
-      })
-
-      .optional()
-      .describe("Agora Q&A platform configuration"),
+    //     agora: z
+    //       .object({
+    //         url: z.string().optional().describe("Agora API base URL (defaults to https://agora.holosai.io)"),
+    //         tokenUrl: z
+    //           .string()
+    //           .optional()
+    //           .describe("Holos API URL for Agora token exchange (defaults to https://www.holosai.io)"),
+    //         giteaSSHHost: z.string().optional().describe("Override SSH hostname used for Agora's Gitea remote"),
+    //       })
+    //       .optional()
+    //       .describe("Agora Q&A platform configuration"),
     question: z
       .object({
         timeout: z

@@ -112,16 +112,16 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "agenda_trigger":
       case "agenda_logs":
         return "Managing schedule"
-      case "agora_search":
-      case "agora_read":
-        return "Browsing projects"
-      case "agora_post":
-      case "agora_join":
-      case "agora_sync":
-      case "agora_submit":
-      case "agora_accept":
-      case "agora_comment":
-        return "Collaborating on Agora"
+      //      case "agora_search":
+      //      case "agora_read":
+      //        return "Browsing projects"
+      //      case "agora_post":
+      //      case "agora_join":
+      //      case "agora_sync":
+      //      case "agora_submit":
+      //      case "agora_accept":
+      //      case "agora_comment":
+      //        return "Collaborating on Agora"
       case "profile_get":
       case "profile_update":
         return "Updating profile"
