@@ -1,3 +1,4 @@
+import { describe, test, expect } from "bun:test"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import * as fs from "fs"
 import * as os from "os"
