@@ -553,7 +553,7 @@ export namespace Worktree {
 
   async function bindSession(sessionID: string, info: Info) {
     const { repoRoot } = ensureGitScope()
-    await Session.updateWorkspace(sessionID, {
+    const workspace = {
       type: "git_worktree",
       path: info.path,
       scopeID: info.scopeID,
@@ -562,7 +562,9 @@ export namespace Worktree {
       branch: info.branch,
       baseRef: info.baseRef,
       originalCheckout: path.resolve(repoRoot),
-    })
+    }
+    await Session.updateWorkspace(sessionID, workspace)
+    Instance.refreshWorkspace(workspace as import("../session/types").Workspace)
     await updateBinding(info, sessionID, "add")
   }
 
@@ -589,7 +591,10 @@ export namespace Worktree {
       )
     }
     const scope = session.scope as Scope
-    return Session.updateWorkspace(sessionID, { type: "main", path: scope.directory, scopeID: scope.id })
+    const mainWorkspace = { type: "main" as const, path: scope.directory, scopeID: scope.id }
+    const result = await Session.updateWorkspace(sessionID, mainWorkspace)
+    Instance.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
+    return result
   }
 
   export async function status(sessionID: string) {

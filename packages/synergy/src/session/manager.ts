@@ -161,9 +161,14 @@ export namespace SessionManager {
     registerRuntime(session.id)
     try {
       const scope = session.scope as Scope
+      const workspace = (session as Info).workspace ?? {
+        type: "main" as const,
+        path: scope.directory,
+        scopeID: scope.id,
+      }
       return await Instance.provide({
         scope,
-        workspace: (session as Info).workspace,
+        workspace,
         fn: async () => {
           const workspace = (session as Info).workspace
           if (workspace?.type !== "git_worktree") return fn()
