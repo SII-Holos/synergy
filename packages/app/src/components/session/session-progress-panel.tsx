@@ -1,14 +1,15 @@
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js"
+import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useSync } from "@/context/sync"
 import {
   computeProgressMode,
   computeDagSummary,
+  computeProgressIslandSnapshot,
   computeTodoSummary,
   type ProgressMode,
 } from "./session-progress-summary"
-import { SessionProgressRail } from "./session-progress-rail"
-import { SessionProgressDrawer } from "./session-progress-drawer"
 import { SessionProgressDag } from "./session-progress-dag"
+import { SessionProgressIsland } from "./session-progress-island"
 import { SessionProgressTodo } from "./session-progress-todo"
 
 interface SessionProgressPanelProps {
@@ -16,57 +17,80 @@ interface SessionProgressPanelProps {
   class?: string
 }
 
+interface SessionProgressPanelState {
+  activeTab: "dag" | "todo"
+  expanded: boolean
+  visible: boolean
+}
+
 export function SessionProgressPanel(props: SessionProgressPanelProps) {
   const sync = useSync()
 
-  const hasDag = createMemo(() => (sync.data.dag[props.sessionID]?.length ?? 0) > 0)
-  const hasTodo = createMemo(() => (sync.data.todo[props.sessionID]?.length ?? 0) > 0)
+  const [state, setState] = createStore<SessionProgressPanelState>({
+    activeTab: "dag",
+    expanded: false,
+    visible: false,
+  })
+
+  let completionTimer: ReturnType<typeof setTimeout> | undefined
+
+  const clearCompletionTimer = () => {
+    clearTimeout(completionTimer)
+    completionTimer = undefined
+  }
+
+  const dagNodes = createMemo(() => sync.data.dag[props.sessionID] ?? [])
+  const todos = createMemo(() => sync.data.todo[props.sessionID] ?? [])
+
+  const hasDag = createMemo(() => dagNodes().length > 0)
+  const hasTodo = createMemo(() => todos().length > 0)
 
   const mode = createMemo<ProgressMode>(() => computeProgressMode(hasDag(), hasTodo()))
+  const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagNodes()) : undefined))
+  const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todos()) : undefined))
+  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary()))
 
-  const dagSummary = createMemo(() => {
-    const nodes = sync.data.dag[props.sessionID]
-    if (!nodes) return undefined
-    return computeDagSummary(nodes)
+  const activeLabel = createMemo(() => {
+    const runningNode = dagNodes().find((node) => node.status === "running")
+    if (runningNode?.content) return runningNode.content
+
+    const activeTodo = todos().find((todo) => todo.status === "in_progress")
+    return activeTodo?.content
   })
 
-  const todoSummary = createMemo(() => {
-    const todos = sync.data.todo[props.sessionID]
-    if (!todos) return undefined
-    return computeTodoSummary(todos)
-  })
-
-  const [expanded, setExpanded] = createSignal(false)
-  const [activeTab, setActiveTab] = createSignal<"dag" | "todo">("dag")
-
-  // Auto-close and reset on sessionID change
   createEffect(
     on(
       () => props.sessionID,
       (_next: string, prev: string | undefined) => {
-        if (prev) {
-          setExpanded(false)
-          setActiveTab("dag")
-        }
+        if (!prev) return
+        clearCompletionTimer()
+        setState({ activeTab: "dag", expanded: false, visible: false })
       },
     ),
   )
 
-  // Auto-close when all data disappears while expanded
   createEffect(() => {
-    if (expanded() && mode() === "none") {
-      setExpanded(false)
+    const current = snapshot()
+    clearCompletionTimer()
+
+    if (current.status === "hidden") {
+      setState({ expanded: false, visible: false })
+      return
+    }
+
+    setState("visible", true)
+
+    if (current.status === "complete" && !state.expanded) {
+      completionTimer = setTimeout(() => setState("visible", false), 1600)
     }
   })
 
-  // Default tab to the active mode when data appears
   createEffect(() => {
-    const m = mode()
-    if (m === "dag") setActiveTab("dag")
-    else if (m === "todo") setActiveTab("todo")
+    const currentMode = mode()
+    if (currentMode === "dag") setState("activeTab", "dag")
+    else if (currentMode === "todo") setState("activeTab", "todo")
   })
 
-  // Lazy data fetch (idempotent)
   createEffect(() => {
     if (props.sessionID) {
       sync.session.dag(props.sessionID)
@@ -74,42 +98,43 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     }
   })
 
-  const renderChild = () => {
-    const m = mode()
-    if (m === "dag") return <SessionProgressDag sessionID={props.sessionID} />
-    if (m === "todo") return <SessionProgressTodo sessionID={props.sessionID} />
-    return activeTab() === "dag" ? (
-      <SessionProgressDag sessionID={props.sessionID} />
-    ) : (
-      <SessionProgressTodo sessionID={props.sessionID} />
-    )
+  onCleanup(clearCompletionTimer)
+
+  const setExpanded = (expanded: boolean) => {
+    clearCompletionTimer()
+    setState("expanded", expanded)
+    if (!expanded && snapshot().status === "complete") {
+      completionTimer = setTimeout(() => setState("visible", false), 1600)
+    }
   }
 
-  const railMode = createMemo(() => mode() as "dag" | "todo" | "both")
+  const renderChild = () => {
+    const currentMode = mode()
+    if (currentMode === "dag")
+      return dagSummary() ? <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} /> : null
+    if (currentMode === "todo")
+      return todoSummary() ? <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} /> : null
+    return state.activeTab === "dag" && dagSummary() ? (
+      <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} />
+    ) : todoSummary() ? (
+      <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} />
+    ) : null
+  }
 
   return (
-    <Show when={mode() !== "none"}>
-      <div class={`relative flex flex-col ${props.class ?? ""}`}>
-        <SessionProgressRail
-          mode={railMode()}
-          dagSummary={dagSummary()}
-          todoSummary={todoSummary()}
-          expanded={expanded()}
-          onClick={() => setExpanded((v) => !v)}
-        />
-        <Show when={expanded()}>
-          <SessionProgressDrawer
-            mode={railMode()}
-            activeTab={activeTab()}
-            onTabChange={setActiveTab}
-            onClose={() => setExpanded(false)}
-            dagSummary={dagSummary()}
-            todoSummary={todoSummary()}
-          >
-            {renderChild()}
-          </SessionProgressDrawer>
-        </Show>
-      </div>
+    <Show when={state.visible && mode() !== "none"}>
+      <SessionProgressIsland
+        mode={mode() as Exclude<ProgressMode, "none">}
+        snapshot={snapshot()}
+        activeLabel={activeLabel()}
+        activeTab={state.activeTab}
+        expanded={state.expanded}
+        onExpandedChange={setExpanded}
+        onTabChange={(tab) => setState("activeTab", tab)}
+        class={props.class}
+      >
+        {renderChild()}
+      </SessionProgressIsland>
     </Show>
   )
 }

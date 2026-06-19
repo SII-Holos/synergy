@@ -1,9 +1,10 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { useSync } from "@/context/sync"
-import { computeTodoSummary, type TodoItem } from "./session-progress-summary"
+import type { TodoItem, TodoSummary } from "./session-progress-summary"
 
 interface SessionProgressTodoProps {
   sessionID: string
+  summary: TodoSummary
   class?: string
 }
 
@@ -75,10 +76,8 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
 
   const todos = createMemo<TodoItem[]>(() => sync.data.todo[props.sessionID] ?? [])
 
-  const summary = createMemo(() => computeTodoSummary(todos()))
-
   const summaryParts = createMemo(() => {
-    const s = summary()
+    const s = props.summary
     const parts: string[] = []
     if (s.completed > 0) parts.push(`${s.completed} completed`)
     if (s.inProgress > 0) parts.push(`${s.inProgress} active`)

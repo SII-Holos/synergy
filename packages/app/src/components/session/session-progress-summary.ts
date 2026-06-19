@@ -7,10 +7,7 @@ export interface DagSummary {
   pending: number
   blocked: number
   failed: number
-  cancelled: number
   ready: string[]
-  activeNodeIds: string[]
-  attentionLevel: "none" | "running" | "blocked" | "failed"
   progressRatio: number
 }
 
@@ -27,11 +24,29 @@ export interface TodoSummary {
   inProgress: number
   pending: number
   cancelled: number
-  activeTodoIds: string[]
   progressRatio: number
 }
 
 export type ProgressMode = "none" | "dag" | "todo" | "both"
+
+export type ProgressIslandStatus = "hidden" | "active" | "attention" | "complete"
+export type ProgressIslandTone = "neutral" | "ready" | "running" | "blocked" | "failed" | "complete"
+
+export interface ProgressIslandSnapshot {
+  status: ProgressIslandStatus
+  tone: ProgressIslandTone
+  completed: number
+  total: number
+  active: number
+  pending: number
+  blocked: number
+  failed: number
+  progressRatio: number
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
 
 function clampRatio(value: number): number {
   return Math.min(1, Math.max(0, Math.round(value * 100) / 100))
@@ -44,37 +59,36 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
   let pending = 0
   let blocked = 0
   let failed = 0
-  let cancelled = 0
-
-  const activeNodeIds: string[] = []
   const pendingNodeIds: string[] = []
   const completedNodeIds: string[] = []
+  const nodeById = new Map<string, DagNode>()
 
   for (const node of nodes) {
-    total++
+    nodeById.set(node.id, node)
     switch (node.status) {
       case "completed":
+        total++
         completed++
         completedNodeIds.push(node.id)
         break
       case "running":
+        total++
         running++
-        activeNodeIds.push(node.id)
         break
       case "pending":
+        total++
         pending++
         pendingNodeIds.push(node.id)
         break
       case "blocked":
+        total++
         blocked++
-        activeNodeIds.push(node.id)
         break
       case "failed":
+        total++
         failed++
-        activeNodeIds.push(node.id)
         break
       case "cancelled":
-        cancelled++
         break
     }
   }
@@ -82,16 +96,11 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
   const readySatisfied = new Set(completedNodeIds)
   const ready: string[] = []
   for (const nodeId of pendingNodeIds) {
-    const node = nodes.find((n) => n.id === nodeId)!
+    const node = nodeById.get(nodeId)!
     if (node.deps.every((dep) => readySatisfied.has(dep))) {
       ready.push(nodeId)
     }
   }
-
-  let attentionLevel: DagSummary["attentionLevel"] = "none"
-  if (failed > 0) attentionLevel = "failed"
-  else if (blocked > 0) attentionLevel = "blocked"
-  else if (running > 0) attentionLevel = "running"
 
   const progressRatio = total === 0 ? 0 : clampRatio(completed / total)
 
@@ -102,10 +111,7 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
     pending,
     blocked,
     failed,
-    cancelled,
     ready,
-    activeNodeIds,
-    attentionLevel,
     progressRatio,
   }
 }
@@ -116,7 +122,6 @@ export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
   let inProgress = 0
   let pending = 0
   let cancelled = 0
-  const activeTodoIds: string[] = []
 
   for (const todo of todos) {
     total++
@@ -126,7 +131,6 @@ export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
         break
       case "in_progress":
         inProgress++
-        activeTodoIds.push(todo.id)
         break
       case "pending":
         pending++
@@ -147,7 +151,6 @@ export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
     inProgress,
     pending,
     cancelled,
-    activeTodoIds,
     progressRatio,
   }
 }
@@ -159,39 +162,72 @@ export function computeProgressMode(hasDag: boolean, hasTodo: boolean): Progress
   return "none"
 }
 
-export function formatProgressText(completed: number, total: number): string {
-  if (completed >= total && total > 0) return "complete"
-  return `${completed}/${total}`
+export function computeProgressIslandSnapshot(
+  mode: ProgressMode,
+  dag?: DagSummary,
+  todo?: TodoSummary,
+): ProgressIslandSnapshot {
+  const includeDag = mode !== "todo" && dag != null && dag.total > 0
+  const includeTodo = mode !== "dag" && todo != null && todo.total > 0
+
+  const total = (includeDag ? dag!.total : 0) + (includeTodo ? todo!.total : 0)
+  if (total === 0) {
+    return {
+      status: "hidden",
+      tone: "neutral",
+      completed: 0,
+      total: 0,
+      active: 0,
+      pending: 0,
+      blocked: 0,
+      failed: 0,
+      progressRatio: 0,
+    }
+  }
+
+  const completed = (includeDag ? dag!.completed : 0) + (includeTodo ? todo!.completed : 0)
+  const active = (includeDag ? dag!.running : 0) + (includeTodo ? todo!.inProgress : 0)
+  const pending = (includeDag ? dag!.pending : 0) + (includeTodo ? todo!.pending : 0)
+  const blocked = includeDag ? dag!.blocked : 0
+  const failed = includeDag ? dag!.failed : 0
+  const progressRatio = clampRatio(completed / total)
+
+  if (failed > 0) {
+    return { status: "attention", tone: "failed", completed, total, active, pending, blocked, failed, progressRatio }
+  }
+  if (blocked > 0) {
+    return { status: "attention", tone: "blocked", completed, total, active, pending, blocked, failed, progressRatio }
+  }
+  if (completed >= total) {
+    return {
+      status: "complete",
+      tone: "complete",
+      completed,
+      total,
+      active,
+      pending,
+      blocked,
+      failed,
+      progressRatio: 1,
+    }
+  }
+  if (active > 0) {
+    return { status: "active", tone: "running", completed, total, active, pending, blocked, failed, progressRatio }
+  }
+
+  return { status: "active", tone: "ready", completed, total, active, pending, blocked, failed, progressRatio }
 }
 
-export function formatRailText(mode: ProgressMode, dag?: DagSummary, todo?: TodoSummary): string {
-  function dagLine(d: DagSummary): string {
-    const progress = formatProgressText(d.completed, d.total)
-    const indicator = d.attentionLevel !== "none" ? ` · ${d.attentionLevel}` : ""
-    return `DAG ${progress}${indicator}`
-  }
+export function formatProgressIslandLabel(snapshot: ProgressIslandSnapshot, activeLabel?: string): string {
+  if (snapshot.status === "hidden") return ""
+  if (snapshot.status === "complete") return `Done · ${pluralize(snapshot.total, "task")}`
+  if (snapshot.tone === "failed") return `Needs attention · ${pluralize(snapshot.failed, "failed")}`
+  if (snapshot.tone === "blocked") return `Needs attention · ${pluralize(snapshot.blocked, "blocked")}`
 
-  function todoLine(t: TodoSummary): string {
-    return `Todo ${formatProgressText(t.completed, t.total)}`
-  }
-
-  const hasDag = dag && dag.total > 0
-  const hasTodo = todo && todo.total > 0
-
-  if (mode === "none") return ""
-
-  if (mode === "dag") {
-    return hasDag ? dagLine(dag!) : ""
-  }
-  if (mode === "todo") {
-    return hasTodo ? todoLine(todo!) : ""
-  }
-  if (mode === "both") {
-    if (hasDag && hasTodo) return `${dagLine(dag!)} · ${todoLine(todo!)}`
-    if (hasDag) return dagLine(dag!)
-    if (hasTodo) return todoLine(todo!)
-    return ""
-  }
-
-  return ""
+  const progress = `${snapshot.completed}/${snapshot.total}`
+  const label = activeLabel?.trim()
+  if (label) return `${label} · ${progress}`
+  if (snapshot.tone === "ready") return `Ready · ${progress}`
+  if (snapshot.active > 1) return `Working ${pluralize(snapshot.active, "task")} · ${progress}`
+  return `Working · ${progress}`
 }

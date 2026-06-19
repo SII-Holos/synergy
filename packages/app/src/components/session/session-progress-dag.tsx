@@ -2,10 +2,11 @@ import { createMemo, createEffect, createSignal, Show, on, onCleanup } from "sol
 import { useSync } from "@/context/sync"
 import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
-import { computeDagSummary, type DagSummary } from "./session-progress-summary"
+import type { DagSummary } from "./session-progress-summary"
 
 interface SessionProgressDagProps {
   sessionID: string
+  summary: DagSummary
   class?: string
 }
 
@@ -23,7 +24,6 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
 
   const nodes = createMemo<DagNode[]>(() => sync.data.dag[props.sessionID] ?? [])
 
-  const summary = createMemo<DagSummary>(() => computeDagSummary(nodes()))
   const [userInteracted, setUserInteracted] = createSignal(false)
   let previousNodes = new Map<string, string>()
 
@@ -104,7 +104,7 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
       <div class={props.class}>
         <DagGraph
           nodes={nodes()}
-          ready={summary().ready}
+          ready={props.summary.ready}
           variant="panel"
           selectedNodeId={selectedNodeId()}
           onSelectNode={handleSelectNode}
