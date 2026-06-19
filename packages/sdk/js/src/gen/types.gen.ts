@@ -1759,23 +1759,6 @@ export type Config = {
      */
     url?: string
   }
-  /**
-   * Agora Q&A platform configuration
-   */
-  agora?: {
-    /**
-     * Agora API base URL (defaults to https://agora.holosai.io)
-     */
-    url?: string
-    /**
-     * Holos API URL for Agora token exchange (defaults to https://www.holosai.io)
-     */
-    tokenUrl?: string
-    /**
-     * Override SSH hostname used for Agora's Gitea remote
-     */
-    giteaSSHHost?: string
-  }
   question?: {
     /**
      * Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)
@@ -3941,17 +3924,6 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventAppPush = {
-  type: "app.push"
-  properties: {
-    type: "agenda.result" | "notification"
-    title?: string
-    body?: string
-    sessionID?: string
-    itemID?: string
-  }
-}
-
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -4168,7 +4140,6 @@ export type Event =
   | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
-  | EventAppPush
   | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated

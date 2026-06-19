@@ -14281,24 +14281,6 @@
               }
             }
           },
-          "agora": {
-            "description": "Agora Q&A platform configuration",
-            "type": "object",
-            "properties": {
-              "url": {
-                "description": "Agora API base URL (defaults to https://agora.holosai.io)",
-                "type": "string"
-              },
-              "tokenUrl": {
-                "description": "Holos API URL for Agora token exchange (defaults to https://www.holosai.io)",
-                "type": "string"
-              },
-              "giteaSSHHost": {
-                "description": "Override SSH hostname used for Agora's Gitea remote",
-                "type": "string"
-              }
-            }
-          },
           "question": {
             "type": "object",
             "properties": {
@@ -20427,38 +20409,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.app.push": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "app.push"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["agenda.result", "notification"]
-              },
-              "title": {
-                "type": "string"
-              },
-              "body": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string"
-              },
-              "itemID": {
-                "type": "string"
-              }
-            },
-            "required": ["type"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -21055,9 +21005,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.app.push"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"
