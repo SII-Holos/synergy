@@ -1,6 +1,7 @@
 import z from "zod"
-import fs from "fs/promises"
 import { Global } from "@/global"
+import path from "path"
+import fs from "fs/promises"
 import { Auth } from "@/provider/api-key"
 
 export namespace HolosAccounts {
@@ -35,7 +36,7 @@ export namespace HolosAccounts {
 
   async function writeStore(store: Store): Promise<void> {
     const file = filepath()
-    const parent = file.substring(0, file.lastIndexOf("/"))
+    const parent = path.dirname(file)
     try {
       await fs.mkdir(parent, { recursive: true })
     } catch (err) {
