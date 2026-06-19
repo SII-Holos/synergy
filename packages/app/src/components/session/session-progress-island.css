@@ -15,19 +15,19 @@
   border-radius: 999px;
   color: var(--color-text-base);
   background: color-mix(in srgb, var(--color-surface-raised-stronger) 74%, transparent);
+  transform-origin: bottom center;
   transition:
-    width 260ms cubic-bezier(0.2, 0, 0, 1),
-    max-width 260ms cubic-bezier(0.2, 0, 0, 1),
-    border-radius 260ms cubic-bezier(0.2, 0, 0, 1),
-    transform 220ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 180ms ease-out;
-  animation: session-progress-island-enter 220ms cubic-bezier(0.2, 0, 0, 1) both;
+    max-width 190ms cubic-bezier(0.2, 0, 0, 1),
+    border-radius 190ms cubic-bezier(0.2, 0, 0, 1),
+    transform 190ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 160ms ease-out;
+  animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .session-progress-island[data-expanded="true"] .session-progress-island-surface {
   width: 100%;
-  max-width: min(760px, calc(100vw - 24px));
-  border-radius: 24px;
+  max-width: min(900px, calc(100vw - 24px));
+  border-radius: 22px;
 }
 
 .session-progress-island-header {
@@ -112,8 +112,8 @@
 
 .session-progress-island-panel {
   display: flex;
-  max-height: min(52vh, 560px);
-  min-height: 280px;
+  max-height: min(68vh, 720px);
+  min-height: 420px;
   flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
   animation: session-progress-island-panel-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
@@ -178,11 +178,13 @@
 @keyframes session-progress-island-panel-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px) scaleY(0.985);
+    clip-path: inset(0 0 10px 0 round 22px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scaleY(1);
+    clip-path: inset(0 0 0 0 round 22px);
   }
 }
 

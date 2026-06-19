@@ -115,12 +115,15 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
         <Show when={props.expanded}>
           <div id="session-progress-island-panel" class="session-progress-island-panel">
             <div class="session-progress-island-panel-topline">
-              <span>{label()}</span>
-              <Show when={props.snapshot.status !== "complete"}>
-                <span class="text-text-weaker">
-                  {props.snapshot.active > 0 ? `${props.snapshot.active} active` : `${props.snapshot.pending} waiting`}
-                </span>
-              </Show>
+              <span>Current work</span>
+              <span class="text-text-weaker">
+                {props.snapshot.completed}/{props.snapshot.total} complete
+                <Show when={props.snapshot.status !== "complete"}>
+                  {props.snapshot.active > 0
+                    ? ` · ${props.snapshot.active} active`
+                    : ` · ${props.snapshot.pending} waiting`}
+                </Show>
+              </span>
             </div>
 
             <Show when={props.mode === "both"}>

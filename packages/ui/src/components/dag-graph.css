@@ -1,3 +1,9 @@
+@property --dag-hover-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 [data-component="dag-graph"] {
   --dag-accent-border: var(--border-warning-base);
   --dag-done: var(--border-success-base);
@@ -160,10 +166,6 @@
     z-index: 1;
   }
 
-  .dag-graph[data-variant="panel"] [data-slot="dag-graph-stage"] {
-    transition: transform 500ms cubic-bezier(0.2, 0, 0, 1);
-  }
-
   [data-slot="dag-graph-edges"] {
     position: absolute;
     top: 0;
@@ -313,65 +315,111 @@
     }
   }
 
-  [data-slot="dag-graph-assign"] {
+  [data-slot="dag-graph-node-badges"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     min-width: 0;
     margin-left: auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  [data-slot="dag-graph-node-badge"] {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 72%, transparent);
+    border-radius: 999px;
     color: var(--text-weaker);
+    background: color-mix(in srgb, var(--surface-base) 64%, transparent);
+  }
+
+  [data-slot="dag-graph-hover-hold"] {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-left: 2px;
+    border-radius: 999px;
+    background: conic-gradient(var(--border-warning-base) var(--dag-hover-angle), transparent 0deg);
+    animation: dag-hover-hold 650ms linear forwards;
+    mask: radial-gradient(circle, transparent 49%, #000 52%);
+  }
+
+  [data-slot="dag-node-preview"] {
+    position: fixed;
+    z-index: 80;
+    width: min(360px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 32px));
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--border-base) 74%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--surface-raised-stronger-non-alpha) 92%, transparent);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(22px) saturate(1.18);
+    color: var(--text-base);
+    pointer-events: none;
+    animation: dag-node-preview-in 140ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  [data-slot="dag-node-preview-header"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  [data-slot="dag-node-preview-status"] {
+    color: var(--text-weak);
     font-family: var(--font-family-sans);
     font-size: 10px;
     font-weight: var(--font-weight-medium);
+    letter-spacing: 0.065em;
   }
 
-  [data-slot="dag-graph-card-content"] {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-    padding-right: 3px;
-    color: var(--text-strong);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
-    line-height: 1.48;
-    word-break: normal;
-    overflow-wrap: anywhere;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-weak-base) transparent;
-  }
-
-  [data-slot="dag-graph-card-footer"] {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    flex-shrink: 0;
-    padding-top: 2px;
-  }
-
-  [data-slot="dag-graph-task"] {
-    flex-shrink: 0;
-    max-width: 96px;
+  [data-slot="dag-node-preview-agent"] {
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: 1px solid var(--border-weaker-base);
-    border-radius: 999px;
-    padding: 1px 5px;
-    color: var(--text-weak);
-    background: var(--surface-inset-base);
-    font-family: var(--font-family-mono);
-    font-size: 10px;
-  }
-
-  [data-slot="dag-graph-memo"] {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--text-weaker);
     font-family: var(--font-family-sans);
     font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-slot="dag-node-preview-title"] {
+    color: var(--text-strong);
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.45;
+  }
+
+  [data-slot="dag-node-preview-meta"] {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 9px;
+    color: var(--text-weaker);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  [data-slot="dag-node-preview-note"],
+  [data-slot="dag-node-preview-result"] {
+    margin-top: 9px;
+    padding: 8px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-inset-base) 76%, transparent);
+    color: var(--text-base);
+    font-family: var(--font-family-sans);
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   [data-slot="dag-graph-hint"] {
@@ -393,7 +441,11 @@
 /* Panel variant — compact enough for embedded session progress surfaces */
 .dag-graph[data-variant="panel"] {
   [data-slot="dag-graph-viewport"] {
-    height: clamp(200px, 32vh, 380px);
+    height: clamp(360px, 52vh, 620px);
+  }
+
+  [data-slot="dag-graph-stage"] {
+    transition: transform 500ms cubic-bezier(0.2, 0, 0, 1);
   }
 }
 
@@ -410,17 +462,37 @@
   [data-slot="dag-graph-status-label"] {
     font-size: 10px;
   }
+}
 
-  [data-slot="dag-graph-assign"] {
-    font-size: 9px;
+@keyframes dag-hover-hold {
+  to {
+    --dag-hover-angle: 360deg;
   }
+}
 
-  [data-slot="dag-graph-task"] {
-    font-size: 9px;
+@keyframes dag-node-preview-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 
-  [data-slot="dag-graph-memo"] {
-    font-size: 10px;
+@media (prefers-reduced-motion: reduce) {
+  [data-component="dag-graph"] {
+    [data-slot="dag-graph-stage"],
+    [data-slot="dag-graph-card"],
+    [data-slot="dag-graph-controls"] button {
+      transition: none;
+    }
+
+    [data-slot="dag-graph-hover-hold"],
+    [data-slot="dag-node-preview"] {
+      animation: none;
+    }
   }
 }
 

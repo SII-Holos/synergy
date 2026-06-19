@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, onCleanup, onMount } from "solid-js"
+import { Icon, type IconName } from "./icon"
 import "./dag-graph.css"
 
 export interface DagNode {
@@ -11,6 +12,7 @@ export interface DagNode {
   session_id?: string
   memo?: string
   result?: string
+  worktree?: string
 }
 
 interface LayoutNode {
@@ -190,6 +192,32 @@ function statusCounts(nodes: DagNode[]) {
     pending: nodes.filter((n) => n.status === "pending").length,
   }
 }
+
+interface NodeBadge {
+  icon: IconName
+  label: string
+  value: string
+}
+
+function nodeBadges(node: DagNode): NodeBadge[] {
+  const badges: NodeBadge[] = []
+  if (node.worktree) badges.push({ icon: "git-branch", label: "Worktree", value: node.worktree })
+  if (node.session_id) badges.push({ icon: "message-circle", label: "Session", value: node.session_id })
+  if (node.task_id) badges.push({ icon: "activity", label: "Task", value: node.task_id })
+  if (node.assign && node.assign !== "self") badges.push({ icon: "bot", label: "Agent", value: node.assign })
+  if (node.memo) badges.push({ icon: "file-text", label: "Memo", value: node.memo })
+  if (node.result) badges.push({ icon: "clipboard-check", label: "Result", value: node.result })
+  return badges
+}
+
+function displayIdentifier(value: string): string {
+  if (value.length <= 18) return value
+  return `${value.slice(0, 10)}…${value.slice(-4)}`
+}
+
+function previewResult(result: string): string {
+  return result.length > 700 ? `${result.slice(0, 700)}…` : result
+}
 export function DagGraph(props: {
   nodes?: DagNode[]
   ready?: string[]
@@ -211,6 +239,17 @@ export function DagGraph(props: {
   let viewport: HTMLDivElement | undefined
   let dragStart: { pointer: { x: number; y: number }; pan: { x: number; y: number } } | undefined
   let clickNodeId: string | undefined
+  const [hoveredNodeId, setHoveredNodeId] = createSignal<string | undefined>(undefined)
+  const [previewNode, setPreviewNode] = createSignal<DagNode | undefined>(undefined)
+  const [previewPosition, setPreviewPosition] = createSignal({ x: 0, y: 0 })
+  let previewTimer: ReturnType<typeof setTimeout> | undefined
+
+  const clearNodePreview = () => {
+    clearTimeout(previewTimer)
+    previewTimer = undefined
+    setHoveredNodeId(undefined)
+    setPreviewNode(undefined)
+  }
 
   onMount(() => {
     if (!ref) return
@@ -218,6 +257,7 @@ export function DagGraph(props: {
     const observer = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width))
     observer.observe(ref)
     onCleanup(() => observer.disconnect())
+    onCleanup(clearNodePreview)
   })
 
   const nodes = createMemo(() => props.nodes ?? [])
@@ -301,10 +341,38 @@ export function DagGraph(props: {
     zoomAt(scale() * factor, event.clientX, event.clientY)
   }
 
+  function updatePreviewPosition(event: PointerEvent) {
+    const previewWidth = 380
+    const previewHeight = 440
+    const maxX = window.innerWidth - previewWidth
+    const maxY = window.innerHeight - previewHeight
+    setPreviewPosition({
+      x: Math.max(16, Math.min(event.clientX + 18, maxX)),
+      y: Math.max(16, Math.min(event.clientY + 18, maxY)),
+    })
+  }
+
+  function handleNodePointerEnter(node: DagNode, event: PointerEvent) {
+    clearNodePreview()
+    setHoveredNodeId(node.id)
+    updatePreviewPosition(event)
+    previewTimer = setTimeout(() => {
+      setPreviewNode(node)
+    }, 650)
+  }
+
+  function handleNodePointerMove(event: PointerEvent) {
+    if (hoveredNodeId() || previewNode()) updatePreviewPosition(event)
+  }
+
+  function handleNodePointerLeave() {
+    clearNodePreview()
+  }
   function handlePointerDown(event: PointerEvent) {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | undefined
     if (target?.closest("button")) return
+    clearNodePreview()
     setDragging(true)
     setHasUserMoved(true)
     props.onViewportInteraction?.()
@@ -445,9 +513,13 @@ export function DagGraph(props: {
                   data-status={ln.node.status}
                   data-ready={readySet().has(ln.node.id)}
                   data-selected={props.selectedNodeId && props.selectedNodeId === ln.node.id ? "true" : undefined}
+                  data-hovering={hoveredNodeId() === ln.node.id ? "true" : undefined}
                   tabIndex={0}
                   role="button"
                   aria-label={`DAG node: ${ln.node.content}`}
+                  onPointerEnter={(event) => handleNodePointerEnter(ln.node, event)}
+                  onPointerMove={handleNodePointerMove}
+                  onPointerLeave={handleNodePointerLeave}
                   onKeyDown={(e: KeyboardEvent) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault()
@@ -464,30 +536,66 @@ export function DagGraph(props: {
                   <div data-slot="dag-graph-card-header">
                     <span data-slot="dag-graph-status-dot" />
                     <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status)}</span>
-                    <Show when={ln.node.assign && ln.node.assign !== "self"}>
-                      <span data-slot="dag-graph-assign">@{ln.node.assign}</span>
+                    <Show when={nodeBadges(ln.node).length > 0}>
+                      <div data-slot="dag-graph-node-badges" aria-label="Node metadata">
+                        <For each={nodeBadges(ln.node)}>
+                          {(badge) => (
+                            <span data-slot="dag-graph-node-badge" title={`${badge.label}: ${badge.value}`}>
+                              <Icon name={badge.icon} size="small" />
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                    <Show when={hoveredNodeId() === ln.node.id && previewNode()?.id !== ln.node.id}>
+                      <span data-slot="dag-graph-hover-hold" aria-hidden="true" />
                     </Show>
                   </div>
                   <div data-slot="dag-graph-card-content" title={ln.node.content}>
                     {ln.node.content}
                   </div>
-                  <Show when={ln.node.task_id || ln.node.memo}>
-                    <div data-slot="dag-graph-card-footer">
-                      <Show when={ln.node.task_id}>
-                        <span data-slot="dag-graph-task">{ln.node.task_id}</span>
-                      </Show>
-                      <Show when={ln.node.memo}>
-                        <span data-slot="dag-graph-memo" title={ln.node.memo}>
-                          {ln.node.memo}
-                        </span>
-                      </Show>
-                    </div>
-                  </Show>
                 </div>
               )}
             </For>
           </div>
         </div>
+        <Show when={previewNode()}>
+          {(node) => (
+            <div
+              data-slot="dag-node-preview"
+              style={{
+                left: `${previewPosition().x}px`,
+                top: `${previewPosition().y}px`,
+              }}
+            >
+              <div data-slot="dag-node-preview-header">
+                <span data-slot="dag-node-preview-status" data-status={node().status}>
+                  {statusLabel(node().status)}
+                </span>
+                <Show when={node().assign}>
+                  {(assign) => <span data-slot="dag-node-preview-agent">@{assign()}</span>}
+                </Show>
+              </div>
+              <div data-slot="dag-node-preview-title">{node().content}</div>
+              <div data-slot="dag-node-preview-meta">
+                <Show when={node().task_id}>
+                  {(taskID) => <span title={taskID()}>Task: {displayIdentifier(taskID())}</span>}
+                </Show>
+                <Show when={node().session_id}>
+                  {(sessionID) => <span title={sessionID()}>Session: {displayIdentifier(sessionID())}</span>}
+                </Show>
+                <Show when={node().worktree}>{(worktree) => <span>Worktree: {worktree()}</span>}</Show>
+                <Show when={node().deps.length > 0}>
+                  <span>Deps: {node().deps.join(", ")}</span>
+                </Show>
+              </div>
+              <Show when={node().memo}>{(memo) => <div data-slot="dag-node-preview-note">{memo()}</div>}</Show>
+              <Show when={node().result}>
+                {(result) => <div data-slot="dag-node-preview-result">{previewResult(result())}</div>}
+              </Show>
+            </div>
+          )}
+        </Show>
         <div data-slot="dag-graph-hint">Drag to pan · Ctrl/⌘ + wheel to zoom · Double-click to focus</div>
       </Show>
     </div>
