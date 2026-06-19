@@ -49,7 +49,6 @@ export async function ensureTitle(input: {
   modelID: string
 }) {
   if (input.session.parentID) return
-  if (input.session.endpoint) return
   if (!isDefaultTitle(input.session.title)) return
 
   const promptVisibleUsers = input.history.filter((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))

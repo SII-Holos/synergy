@@ -76,7 +76,7 @@ export interface ScopeNavEntry {
   icon?: { url?: string; color?: string }
 }
 
-const ROOT_NAV_SECTION_LIMIT = 10
+const ROOT_NAV_SECTION_LIMIT = 100
 const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
 type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
 type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }

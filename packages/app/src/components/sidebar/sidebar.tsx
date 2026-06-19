@@ -122,8 +122,7 @@ export function Sidebar(props: SidebarProps) {
     return undefined
   })
   const currentDirectory = createMemo(() => (dir() === "global" ? undefined : dir()))
-  const handleNewSession = async () => {
-    await globalSDK.client.channel.app.reset()
+  const handleNewSession = () => {
     navigate(`/${base64Encode("global")}/session`)
   }
 

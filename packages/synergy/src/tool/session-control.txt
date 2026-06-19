@@ -2,7 +2,6 @@ Control a target session remotely — inspect its state and perform actions as i
 
 The `target` parameter identifies which session to control:
 - A session ID (e.g. "ses_xxx") to target a specific session
-- "home" to target the app home session
 - A Holos contact/agent ID
 
 ## Actions

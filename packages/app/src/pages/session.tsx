@@ -184,9 +184,7 @@ function SessionPageContent() {
   const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
-  const [resolvingHome, setResolvingHome] = createSignal(false)
   const isNewSession = createMemo(() => {
-    if (resolvingHome()) return false
     if (!params.id) return true
     if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
     return false
@@ -362,19 +360,6 @@ function SessionPageContent() {
     if (!sdk.connected()) return
     const id = params.id
     if (id) sync.session.sync(id)
-  })
-
-  createEffect(() => {
-    if (params.id) return
-    if (!isGlobalScope(sdk.directory)) return
-    setResolvingHome(true)
-    sdk.client.channel.app.session().then((res) => {
-      const session = res.data
-      if (session) {
-        navigate(`/${params.dir}/session/${session.id}`, { replace: true })
-      }
-      setResolvingHome(false)
-    })
   })
 
   createEffect(() => {
