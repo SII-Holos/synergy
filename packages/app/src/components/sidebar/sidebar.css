@@ -93,9 +93,12 @@
   background: var(--sb-hover-bg);
 }
 
+/* Center the logo/toggle icons inside the collapsed toggle */
 .sb-collapsed-logo,
 .sb-collapsed-toggle-icon {
   position: absolute;
+  inset: 0;
+  margin: auto;
   width: 24px;
   height: 24px;
   transition: opacity 120ms;
@@ -949,6 +952,29 @@
   right: auto;
   bottom: 8px;
   width: 252px;
+}
+
+/* ===== Collapsed layout: keep every icon inside the 48px rail ===== */
+
+.sb-collapsed .sb-header {
+  justify-content: center;
+  padding: 10px 8px;
+}
+
+.sb-collapsed .sb-globals {
+  padding: 4px 8px;
+  gap: 4px;
+}
+
+.sb-collapsed .sb-global-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.sb-collapsed .sb-projects-collapsed {
+  padding: 4px 0;
 }
 
 @keyframes sidebar-account-pulse {
