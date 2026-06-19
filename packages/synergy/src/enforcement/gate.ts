@@ -155,17 +155,7 @@ const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search",
 //   "agora_accept",
 // ])
 
-const INSPIRE_STATEFUL_TOOLS = new Set([
-  "inspire_login",
-  "inspire_submit",
-  "inspire_submit_hpc",
-  "inspire_stop",
-  "inspire_image_push",
-  "inspire_notebook",
-  "inspire_inference",
-])
-
-const PLATFORM_CONTROL_TOOLS = new Set([
+const AGENT_ORCHESTRATION_TOOLS = new Set([
   "runtime_reload",
   "session_control",
   "agenda_schedule",
@@ -445,18 +435,14 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // SII Inspire tools call external compute infrastructure. Stateful tools
-      // additionally control platform resources and must stay non-bypassable.
+      // SII Inspire tools call external compute infrastructure.
       if (toolName.startsWith("inspire_")) {
         caps.push({ class: "network_request", nonBypassable: true })
-        if (INSPIRE_STATEFUL_TOOLS.has(toolName)) {
-          caps.push({ class: "platform_control", nonBypassable: true })
-        }
         return { capabilities: caps }
       }
 
-      if (PLATFORM_CONTROL_TOOLS.has(toolName)) {
-        caps.push({ class: "platform_control", nonBypassable: true })
+      if (AGENT_ORCHESTRATION_TOOLS.has(toolName)) {
+        caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }
 

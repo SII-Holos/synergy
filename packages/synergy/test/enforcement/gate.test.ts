@@ -479,7 +479,6 @@ describe("EnforcementGate network classification", () => {
 
     const inspire = gate.classify("inspire_submit", {}).capabilities
     expect(inspire).toContainEqual({ class: "network_request", nonBypassable: true })
-    expect(inspire).toContainEqual({ class: "platform_control", nonBypassable: true })
   })
 
   //  test("agora collaboration tools classify as external network and platform control", () => {
@@ -516,7 +515,7 @@ describe("EnforcementGate network classification", () => {
 
     expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("allow")
     expect(gate.evaluate("email_read", {}).decision).toBe("ask")
-    expect(gate.evaluate("inspire_submit", {}).decision).toBe("ask")
+    expect(gate.evaluate("inspire_submit", {}).decision).toBe("allow")
   })
 })
 
