@@ -1420,6 +1420,18 @@ export type SandboxConfig = {
    * How to proceed when the requested sandbox runtime is unavailable
    */
   fallbackPolicy?: "warn" | "allow" | "deny"
+  /**
+   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
+   */
+  backend?: "auto" | "sandbox-exec" | "bwrap" | "windows-restricted-token" | "windows-elevated"
+  /**
+   * Windows-specific sandbox settings
+   */
+  windows?: {
+    level?: "disabled" | "restricted-token" | "elevated"
+    helperPath?: string
+    verifyHelperHash?: boolean
+  }
 }
 
 /**
@@ -3438,9 +3450,18 @@ export type HolosCredentialsStatusResponse = {
   maskedSecret?: string
 }
 
+export type HolosAccountMeta = {
+  agentId: string
+  label: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 export type HolosIdentityState = {
   loggedIn: boolean
   agentId: string | null
+  activeAccount: HolosAccountMeta | null
+  accounts: Array<HolosAccountMeta>
 }
 
 export type HolosConnectionState = {
@@ -3494,6 +3515,30 @@ export type HolosState = {
 export type HolosVerifyResponse = {
   valid: true
   agentId: string
+}
+
+export type HolosAccountsListResponse = {
+  activeAccountId: string | null
+  accounts: Array<HolosAccountMeta>
+}
+
+export type HolosAccountsSwitchResponse = {
+  success: true
+  activeAccountId: string
+  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
+}
+
+export type HolosAccountsRemoveResponse = {
+  success: true
+  activeAccountId: string | null
+  wasActive: boolean
+}
+
+export type HolosStatusResponse = {
+  agentId: string | null
+  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
+  error?: string
+  peerId: string | null
 }
 
 export type HolosPresenceMap = {
@@ -8751,6 +8796,104 @@ export type HolosVerifyResponses = {
 }
 
 export type HolosVerifyResponse2 = HolosVerifyResponses[keyof HolosVerifyResponses]
+
+export type HolosAccountsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/accounts"
+}
+
+export type HolosAccountsListResponses = {
+  /**
+   * Account list
+   */
+  200: HolosAccountsListResponse
+}
+
+export type HolosAccountsListResponse2 = HolosAccountsListResponses[keyof HolosAccountsListResponses]
+
+export type HolosAccountsSwitchData = {
+  body?: {
+    agentId: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/accounts/switch"
+}
+
+export type HolosAccountsSwitchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type HolosAccountsSwitchError = HolosAccountsSwitchErrors[keyof HolosAccountsSwitchErrors]
+
+export type HolosAccountsSwitchResponses = {
+  /**
+   * Account switched
+   */
+  200: HolosAccountsSwitchResponse
+}
+
+export type HolosAccountsSwitchResponse2 = HolosAccountsSwitchResponses[keyof HolosAccountsSwitchResponses]
+
+export type HolosAccountsRemoveData = {
+  body?: never
+  path: {
+    agentId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/holos/accounts/{agentId}"
+}
+
+export type HolosAccountsRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type HolosAccountsRemoveError = HolosAccountsRemoveErrors[keyof HolosAccountsRemoveErrors]
+
+export type HolosAccountsRemoveResponses = {
+  /**
+   * Account removed
+   */
+  200: HolosAccountsRemoveResponse
+}
+
+export type HolosAccountsRemoveResponse2 = HolosAccountsRemoveResponses[keyof HolosAccountsRemoveResponses]
+
+export type HolosStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/status"
+}
+
+export type HolosStatusResponses = {
+  /**
+   * Connection status
+   */
+  200: HolosStatusResponse
+}
+
+export type HolosStatusResponse2 = HolosStatusResponses[keyof HolosStatusResponses]
 
 export type HolosContactListData = {
   body?: never

@@ -1,3 +1,4 @@
+export { HolosAccounts } from "./accounts"
 export { HolosAuth } from "./auth"
 export { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 export { Contact } from "./contact"

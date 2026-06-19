@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
@@ -14,6 +14,8 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { SettingsDialog } from "@/components/settings"
 import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
+import { useHolos } from "@/context/holos"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
@@ -597,21 +599,8 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
-      {/* Bottom: Settings, Connect Provider */}
-      <div class="sb-bottom">
-        <Tooltip value="Settings" placement="right">
-          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <SettingsDialog />)}>
-            <Icon name="settings" size="normal" />
-            <span class="sb-bottom-label">Settings</span>
-          </button>
-        </Tooltip>
-        <Tooltip value="Connect Provider" placement="right">
-          <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSelectProvider />)}>
-            <Icon name="cable" size="normal" />
-            <span class="sb-bottom-label">Connect Provider</span>
-          </button>
-        </Tooltip>
-      </div>
+      {/* Bottom: Account Hub */}
+      <SidebarAccountHub isExpanded={isExpanded()} globalSDK={globalSDK} dialog={dialog} />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
@@ -813,5 +802,297 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
     >
       <Icon name={visual().icon} size="small" class="sb-session-icon" />
     </span>
+  )
+}
+
+// --- SidebarAccountHub: bottom avatar/identity trigger + dropdown menu ---
+
+function SidebarAccountHub(props: {
+  isExpanded: boolean
+  globalSDK: ReturnType<typeof useGlobalSDK>
+  dialog: ReturnType<typeof useDialog>
+}) {
+  const holos = useHolos()
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  let loginMessageHandler: ((event: MessageEvent) => void) | undefined
+  let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
+
+  const avatarSrc = () => assetPath("/agent-avatars/synergy-companion.svg")
+
+  const callbackUrl = () => new URL("/holos/callback", props.globalSDK.url).toString()
+  const callbackOrigin = () => new URL(props.globalSDK.url).origin
+
+  const displayName = () => {
+    if (!holos.loaded) return "Synergy"
+    const profileName = holos.state.social.profile?.name
+    if (holos.state.identity.loggedIn && profileName) return profileName
+    return "Synergy"
+  }
+
+  const connectionTone = () => {
+    if (!holos.loaded || !holos.state.identity.loggedIn) return "muted" as const
+    if (holos.state.connection.status === "connected") return "success" as const
+    if (holos.state.connection.status === "connecting") return "active" as const
+    if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
+      return "danger" as const
+    return "muted" as const
+  }
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") setMenuOpen(false)
+  }
+
+  onCleanup(() => {
+    document.removeEventListener("keydown", handleEscape)
+    if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
+    if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
+  })
+
+  const openMenu = () => {
+    setMenuOpen(true)
+    document.addEventListener("keydown", handleEscape)
+  }
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+    document.removeEventListener("keydown", handleEscape)
+  }
+
+  const toggleMenu = () => {
+    if (menuOpen()) {
+      closeMenu()
+    } else {
+      openMenu()
+    }
+  }
+  const holosMenuLabel = () => {
+    if (!holos.loaded) return "Loading…"
+    if (!holos.state.identity.loggedIn) return "Sign in"
+    return "Holos"
+  }
+
+  const holosMenuRightLabel = () => {
+    if (!holos.loaded) return "Loading…"
+    if (!holos.state.identity.loggedIn) return "Sign in"
+    if (holos.state.connection.status === "connected") return "Connected"
+    if (holos.state.connection.status === "connecting") return "Connecting…"
+    if (holos.state.connection.status === "failed") return "Connection failed"
+    if (holos.state.connection.status === "disconnected") return "Disconnected"
+    if (holos.state.connection.status === "disabled") return "Disabled"
+    return "Not available"
+  }
+
+  const holosMenuDisabled = () => {
+    if (!holos.loaded) return true
+    if (holos.state.connection.status === "connecting") return true
+    return false
+  }
+
+  const hasAccounts = () => holos.state.identity.accounts.length > 0
+
+  const accountLabel = (a: { agentId: string; label: string | null }) => a.label || a.agentId.slice(0, 8)
+
+  const isActiveAccount = (agentId: string) => holos.state.identity.activeAccount?.agentId === agentId
+
+  const handleSwitchAccount = async (agentId: string) => {
+    try {
+      await props.globalSDK.client.holos.accounts.switch({ agentId }, { throwOnError: true })
+      closeMenu()
+      void holos.refresh()
+      showToast({ type: "success", title: "Account switched", description: `Switched to ${agentId.slice(0, 8)}` })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      showToast({ type: "error", title: "Account switch failed", description: msg })
+    }
+  }
+
+  const handleHolosClick = () => {
+    if (!holos.loaded) return
+    if (!holos.state.identity.loggedIn) {
+      closeMenu()
+      startHolosLogin()
+      return
+    }
+    if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected") {
+      closeMenu()
+      void holosReconnect()
+      return
+    }
+  }
+
+  async function startHolosLogin() {
+    try {
+      const res = await props.globalSDK.client.holos.login({ callbackUrl: callbackUrl() }, { throwOnError: true })
+      const authUrl = res.data?.url
+      if (!authUrl) {
+        showToast({ type: "error", title: "Holos login failed", description: "No login URL returned." })
+        return
+      }
+
+      if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
+      if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
+      const clearLoginMessageHandler = () => {
+        if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
+        if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
+        loginMessageHandler = undefined
+        loginMessageTimeout = undefined
+      }
+      loginMessageHandler = (event: MessageEvent) => {
+        if (event.origin !== callbackOrigin()) return
+        if (event.data?.type === "holos-login-success") {
+          clearLoginMessageHandler()
+          void holos.refresh()
+          showToast({ type: "success", title: "Holos connected", description: "Your agent is now linked to Holos." })
+          return
+        }
+        if (event.data?.type === "holos-login-failed") {
+          clearLoginMessageHandler()
+          const errMsg = typeof event.data?.error === "string" ? event.data.error : "Please try again."
+          showToast({ type: "error", title: "Holos login failed", description: errMsg })
+        }
+      }
+
+      window.addEventListener("message", loginMessageHandler)
+      const popup = window.open(authUrl, "holos-login", "width=600,height=700")
+      loginMessageTimeout = setTimeout(() => {
+        clearLoginMessageHandler()
+      }, 300_000)
+      if (!popup) {
+        clearLoginMessageHandler()
+        showToast({
+          type: "warning",
+          title: "Popup blocked",
+          description: "Allow popups for this site to sign in to Holos.",
+          duration: 8000,
+        })
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      showToast({ type: "error", title: "Holos login failed", description: msg })
+    }
+  }
+
+  async function holosReconnect() {
+    try {
+      await props.globalSDK.client.holos.reconnect({ throwOnError: true })
+      void holos.refresh()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      showToast({ type: "error", title: "Holos reconnect failed", description: msg })
+    }
+  }
+
+  return (
+    <div class="sidebar-account-hub">
+      <Tooltip value="Account" placement="right" inactive={props.isExpanded}>
+        <button
+          type="button"
+          classList={{
+            "sidebar-account-trigger": true,
+            "sidebar-account-trigger--expanded": menuOpen(),
+            "sidebar-account-trigger--collapsed": !props.isExpanded,
+          }}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen()}
+          aria-controls="sidebar-account-menu"
+          onClick={toggleMenu}
+        >
+          <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
+            <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
+            <span class="sidebar-account-avatarStatus" />
+          </span>
+          <Show when={props.isExpanded}>
+            <div class="sidebar-account-identity">
+              <span class="sidebar-account-name">{displayName()}</span>
+            </div>
+            <Icon name={menuOpen() ? "chevron-up" : "chevron-down"} size="small" class="sidebar-account-chevron" />
+          </Show>
+        </button>
+      </Tooltip>
+
+      <Show when={menuOpen()}>
+        <div class="sidebar-account-menu-backdrop" onClick={closeMenu} />
+        <div id="sidebar-account-menu" class="sidebar-account-menu" role="menu">
+          <button
+            type="button"
+            class="sidebar-account-menuItem"
+            role="menuitem"
+            onClick={() => {
+              closeMenu()
+              props.dialog.show(() => <SettingsDialog />)
+            }}
+          >
+            <Icon name="settings" size="small" />
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            class="sidebar-account-menuItem"
+            role="menuitem"
+            onClick={() => {
+              closeMenu()
+              props.dialog.show(() => <DialogSelectProvider />)
+            }}
+          >
+            <Icon name="cable" size="small" />
+            <span>Connect Provider</span>
+          </button>
+          <Show
+            when={hasAccounts()}
+            fallback={
+              <button
+                type="button"
+                class="sidebar-account-menuItem"
+                role="menuitem"
+                disabled={holosMenuDisabled()}
+                onClick={handleHolosClick}
+              >
+                <Icon name={getSemanticIcon("connection.holos")} size="small" />
+                <span>Holos</span>
+                <span class="sidebar-account-menuStatus">{holosMenuRightLabel()}</span>
+              </button>
+            }
+          >
+            <div class="sidebar-account-section-label">Holos</div>
+            <For each={holos.state.identity.accounts}>
+              {(account) => (
+                <button
+                  type="button"
+                  classList={{
+                    "sidebar-account-menuItem": true,
+                    "sidebar-account-menuItem--account": true,
+                    "sidebar-account-menuItem--active": isActiveAccount(account.agentId),
+                  }}
+                  role="menuitem"
+                  onClick={() => {
+                    if (!isActiveAccount(account.agentId)) {
+                      void handleSwitchAccount(account.agentId)
+                    }
+                  }}
+                >
+                  <Icon name={isActiveAccount(account.agentId) ? "check" : "circle"} size="small" />
+                  <span>{accountLabel(account)}</span>
+                  <span class="sidebar-account-menuStatus">
+                    {holos.state.connection.status === "connected" && isActiveAccount(account.agentId) ? "Active" : ""}
+                  </span>
+                </button>
+              )}
+            </For>
+            <button
+              type="button"
+              class="sidebar-account-menuItem sidebar-account-menuItem--add"
+              role="menuitem"
+              onClick={() => {
+                closeMenu()
+                startHolosLogin()
+              }}
+            >
+              <Icon name="plus" size="small" />
+              <span>Add account</span>
+            </button>
+          </Show>
+        </div>
+      </Show>
+    </div>
   )
 }

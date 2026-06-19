@@ -12,12 +12,13 @@ import { HolosReadiness } from "../holos/readiness"
 import { Presence } from "../holos/presence"
 import { HolosRuntime } from "../holos/runtime"
 import { HolosState } from "../holos/state"
+import { HolosAccounts } from "../holos/accounts"
 import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "server.holos" })
 
-const pendingStates = new Map<string, { state: string; createdAt: number }>()
+const pendingStates = new Map<string, { state: string; createdAt: number; callbackOrigin: string }>()
 
 const STATE_TTL_MS = 5 * 60_000
 
@@ -29,6 +30,19 @@ function cleanupExpiredStates() {
   const now = Date.now()
   for (const [key, entry] of pendingStates) {
     if (now - entry.createdAt > STATE_TTL_MS) pendingStates.delete(key)
+  }
+}
+
+function resolveCallbackUrl(input: { requested?: string; serverOrigin: string }): string | undefined {
+  const fallback = Access.fromServerUrl(input.serverOrigin).callbackUrl
+  if (!input.requested) return fallback
+  try {
+    const requested = new URL(input.requested)
+    if (requested.origin !== new URL(fallback).origin) return undefined
+    if (requested.pathname !== "/holos/callback") return undefined
+    return requested.toString()
+  } catch {
+    return undefined
   }
 }
 
@@ -66,12 +80,13 @@ export const HolosRoute = new Hono()
     ),
     async (c) => {
       cleanupExpiredStates()
+      const body = c.req.valid("json")
+      const serverOrigin = new URL(c.req.url).origin
+      const callbackUrl = resolveCallbackUrl({ requested: body?.callbackUrl, serverOrigin })
+      if (!callbackUrl) return c.json({ message: "callbackUrl must point to this server's /holos/callback" }, 400)
 
       const state = crypto.randomUUID()
-      pendingStates.set(state, { state, createdAt: Date.now() })
-
-      const body = c.req.valid("json")
-      const callbackUrl = body?.callbackUrl ?? Access.fromServerUrl(new URL(c.req.url).origin).callbackUrl
+      pendingStates.set(state, { state, createdAt: Date.now(), callbackOrigin: new URL(callbackUrl).origin })
 
       return c.json({ url: HolosLoginFlow.createBindUrl({ callbackUrl, state }) })
     },
@@ -93,23 +108,26 @@ export const HolosRoute = new Hono()
       const code = c.req.query("code")
       const state = c.req.query("state")
 
+      const callbackOrigin = new URL(c.req.url).origin
       if (!code || !state) {
-        return c.html(resultPage("Login Failed", "Missing code or state parameter.", false))
+        return c.html(resultPage("Login Failed", "Missing code or state parameter.", false, callbackOrigin))
       }
 
       const pending = pendingStates.get(state)
       if (!pending) {
-        return c.html(resultPage("Login Failed", "Invalid or expired state. Please try again.", false))
+        return c.html(resultPage("Login Failed", "Invalid or expired state. Please try again.", false, callbackOrigin))
       }
       pendingStates.delete(state)
 
       try {
         const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code, state })
         await HolosLoginFlow.saveAndReload({ agentId, agentSecret })
-        return c.html(resultPage("Login Successful", "You can close this window.", true, { agentId }))
+        return c.html(
+          resultPage("Login Successful", "You can close this window.", true, pending.callbackOrigin, { agentId }),
+        )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return c.html(resultPage("Login Failed", message, false))
+        return c.html(resultPage("Login Failed", message, false, pending.callbackOrigin))
       }
     },
   )
@@ -158,8 +176,8 @@ export const HolosRoute = new Hono()
   .delete(
     "/credentials",
     describeRoute({
-      summary: "Clear Holos credentials",
-      description: "Remove stored Holos credentials and stop the Holos runtime. Used for sign-out.",
+      summary: "Clear active Holos credentials",
+      description: "Remove the active Holos account credentials and stop the Holos runtime. Used for sign-out.",
       operationId: "holos.logout",
       responses: {
         200: {
@@ -174,7 +192,7 @@ export const HolosRoute = new Hono()
     }),
     async (c) => {
       await HolosRuntime.stop()
-      await HolosAuth.clearCredentials()
+      await HolosAuth.clearActiveAccount()
       return c.json({ success: true as const })
     },
   )
@@ -316,6 +334,199 @@ export const HolosDataRoute = new Hono()
       } catch {
         return c.json({ message: "Unable to reach Holos to verify credentials" }, 401)
       }
+    },
+  )
+  // --- Multi-account management ---
+
+  .get(
+    "/accounts",
+    describeRoute({
+      summary: "List Holos accounts",
+      description: "List all stored Holos accounts. Secrets are never included in the response.",
+      operationId: "holos.accounts.list",
+      responses: {
+        200: {
+          description: "Account list",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    activeAccountId: z.string().nullable(),
+                    accounts: HolosState.AccountMeta.array(),
+                  })
+                  .meta({ ref: "HolosAccountsListResponse" }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const accounts = await HolosAccounts.listAccounts()
+      const active = await HolosAccounts.getActiveAccount()
+      return c.json({
+        activeAccountId: active?.agentId ?? null,
+        accounts: accounts.map((a) => ({
+          agentId: a.agentId,
+          label: a.label,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+        })),
+      })
+    },
+  )
+
+  .post(
+    "/accounts/switch",
+    describeRoute({
+      summary: "Switch active Holos account",
+      description: "Switch the active Holos account and reload the runtime to connect with new credentials.",
+      operationId: "holos.accounts.switch",
+      responses: {
+        200: {
+          description: "Account switched",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    success: z.literal(true),
+                    activeAccountId: z.string(),
+                    status: HolosState.ConnectionStatus,
+                  })
+                  .meta({ ref: "HolosAccountsSwitchResponse" }),
+              ),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        agentId: z.string().min(1),
+      }),
+    ),
+    async (c) => {
+      const { agentId } = c.req.valid("json")
+      const account = await HolosAccounts.getAccount(agentId)
+      if (!account) {
+        return c.json({ message: `Account not found: ${agentId}` }, 404)
+      }
+
+      await HolosAccounts.setActiveAccount(agentId)
+
+      let status: HolosState.ConnectionStatus = "disconnected"
+      try {
+        await HolosAuth.configureHolos()
+        await HolosAuth.reloadRuntime()
+        const runtimeStatus = await HolosRuntime.status()
+        status = runtimeStatus.status
+      } catch (err) {
+        log.warn("runtime reload after account switch failed", { error: err })
+        status = "failed"
+      }
+
+      return c.json({ success: true as const, activeAccountId: agentId, status })
+    },
+  )
+
+  .delete(
+    "/accounts/:agentId",
+    describeRoute({
+      summary: "Remove a Holos account",
+      description:
+        "Remove a stored Holos account. If the account is active, stops the runtime and clears the active state.",
+      operationId: "holos.accounts.remove",
+      responses: {
+        200: {
+          description: "Account removed",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    success: z.literal(true),
+                    activeAccountId: z.string().nullable(),
+                    wasActive: z.boolean(),
+                  })
+                  .meta({ ref: "HolosAccountsRemoveResponse" }),
+              ),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    validator("param", z.object({ agentId: z.string() })),
+    async (c) => {
+      const agentId = c.req.valid("param").agentId
+      const account = await HolosAccounts.getAccount(agentId)
+      if (!account) {
+        return c.json({ message: `Account not found: ${agentId}` }, 404)
+      }
+
+      const active = await HolosAccounts.getActiveAccount()
+      const wasActive = active?.agentId === agentId
+
+      if (wasActive) {
+        await HolosRuntime.stop()
+      }
+
+      await HolosAccounts.deleteAccount(agentId)
+
+      const newActive = await HolosAccounts.getActiveAccount()
+
+      return c.json({
+        success: true as const,
+        activeAccountId: newActive?.agentId ?? null,
+        wasActive,
+      })
+    },
+  )
+
+  // --- Connection status ---
+
+  .get(
+    "/status",
+    describeRoute({
+      summary: "Get Holos connection status",
+      description:
+        "Return the current connection status for the active account. Non-active accounts show as disconnected.",
+      operationId: "holos.status",
+      responses: {
+        200: {
+          description: "Connection status",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    agentId: z.string().nullable(),
+                    status: HolosState.ConnectionStatus,
+                    error: z.string().optional(),
+                    peerId: z.string().nullable(),
+                  })
+                  .meta({ ref: "HolosStatusResponse" }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const active = await HolosAccounts.getActiveAccount()
+      const runtimeStatus = await HolosRuntime.status()
+      const provider = await HolosRuntime.getProvider()
+
+      return c.json({
+        agentId: active?.agentId ?? null,
+        status: runtimeStatus.status,
+        error: "error" in runtimeStatus ? runtimeStatus.error : undefined,
+        peerId: provider?.peerId ?? null,
+      })
     },
   )
 
@@ -713,7 +924,13 @@ export const HolosDataRoute = new Hono()
     },
   )
 
-function resultPage(title: string, message: string, success: boolean, data?: { agentId: string }): string {
+function resultPage(
+  title: string,
+  message: string,
+  success: boolean,
+  targetOrigin: string,
+  data?: { agentId: string },
+): string {
   const postMessageScript =
     success && data
       ? `<script>
@@ -721,7 +938,7 @@ function resultPage(title: string, message: string, success: boolean, data?: { a
           window.opener.postMessage({
             type: 'holos-login-success',
             agentId: ${JSON.stringify(data.agentId)}
-          }, '*');
+          }, ${JSON.stringify(targetOrigin)});
         }
       </script>`
       : success
@@ -731,7 +948,7 @@ function resultPage(title: string, message: string, success: boolean, data?: { a
           window.opener.postMessage({
             type: 'holos-login-failed',
             error: ${JSON.stringify(message)}
-          }, '*');
+          }, ${JSON.stringify(targetOrigin)});
         }
       </script>`
 

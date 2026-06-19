@@ -37,6 +37,8 @@ const DEFAULT_STATE: HolosState = {
   identity: {
     loggedIn: false,
     agentId: null,
+    activeAccount: null,
+    accounts: [],
   },
   connection: {
     status: "unknown",

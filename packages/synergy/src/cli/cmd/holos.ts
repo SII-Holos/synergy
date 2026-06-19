@@ -6,15 +6,15 @@ import { HolosAuth } from "../../holos/auth"
 import { attachOption, ensureServer, fetchHolosApi } from "./holos-server"
 import { Server } from "../../server/server"
 
-const statusOrder = ["connected", "connecting", "disconnected", "disabled", "failed"] as const
+const statusOrder = ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"] as const
 
 type HolosStatus =
-  | { status: "connected" }
-  | { status: "connecting" }
-  | { status: "disconnected" }
-  | { status: "disabled" }
-  | { status: "failed"; error: string }
-
+  | { status: "connected"; agentId?: string | null; peerId?: string | null }
+  | { status: "connecting"; agentId?: string | null; peerId?: string | null }
+  | { status: "disconnected"; agentId?: string | null; peerId?: string | null }
+  | { status: "disabled"; agentId?: string | null; peerId?: string | null }
+  | { status: "unknown"; agentId?: string | null; peerId?: string | null }
+  | { status: "failed"; error?: string; agentId?: string | null; peerId?: string | null }
 function getStatusIcon(status: HolosStatus["status"]): string {
   switch (status) {
     case "connected":
@@ -27,6 +27,8 @@ function getStatusIcon(status: HolosStatus["status"]): string {
       return "○"
     case "failed":
       return "✗"
+    case "unknown":
+      return "?"
   }
 }
 
@@ -35,21 +37,14 @@ function getStatusText(status: HolosStatus): string {
   return status.status
 }
 
-function printStatusMap(statuses: Record<string, HolosStatus>) {
-  const entries = Object.entries(statuses).sort((a, b) => {
-    const aIndex = statusOrder.indexOf(a[1].status)
-    const bIndex = statusOrder.indexOf(b[1].status)
-    return aIndex - bIndex || a[0].localeCompare(b[0])
-  })
-
-  if (entries.length === 0) {
-    prompts.log.warn("No Holos runtime accounts configured")
+function printStatus(status: HolosStatus) {
+  const id = status.agentId ?? status.peerId
+  if (!id) {
+    prompts.log.warn("No active Holos account configured")
     return
   }
 
-  for (const [key, status] of entries) {
-    prompts.log.info(`${getStatusIcon(status.status)} ${key} ${UI.Style.TEXT_DIM}${getStatusText(status)}`)
-  }
+  prompts.log.info(`${getStatusIcon(status.status)} ${id} ${UI.Style.TEXT_DIM}${getStatusText(status)}`)
 }
 
 async function reconnectHolosIfServerRunning(
@@ -196,16 +191,16 @@ export const HolosStatusCommand = cmd({
     const serverUrl = args.attach
     if (!(await ensureServer(serverUrl))) process.exit(1)
 
-    const statuses = await fetchHolosApi<Record<string, HolosStatus>>({ serverUrl, path: "/status" })
+    const status = await fetchHolosApi<HolosStatus>({ serverUrl, path: "/status" })
     if (args.json) {
-      process.stdout.write(JSON.stringify(statuses, null, 2) + "\n")
+      process.stdout.write(JSON.stringify(status, null, 2) + "\n")
       return
     }
 
     UI.empty()
     prompts.intro("Holos Status")
-    printStatusMap(statuses)
-    prompts.outro(`${Object.keys(statuses).length} account(s)`)
+    printStatus(status)
+    prompts.outro(status.agentId ? "1 active account" : "No active account")
   },
 })
 

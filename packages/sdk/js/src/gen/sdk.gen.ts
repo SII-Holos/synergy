@@ -140,6 +140,11 @@ import type {
   GlobalNavRecentResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
+  HolosAccountsListResponses,
+  HolosAccountsRemoveErrors,
+  HolosAccountsRemoveResponses,
+  HolosAccountsSwitchErrors,
+  HolosAccountsSwitchResponses,
   HolosAgentsGetErrors,
   HolosAgentsGetResponses,
   HolosAgentsListResponses,
@@ -166,6 +171,7 @@ import type {
   HolosSendRetryErrors,
   HolosSendRetryResponses,
   HolosStateResponses,
+  HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
   InstanceDisposeResponses,
@@ -1933,6 +1939,98 @@ export class Credentials extends HeyApiClient {
   }
 }
 
+export class Accounts extends HeyApiClient {
+  /**
+   * List Holos accounts
+   *
+   * List all stored Holos accounts. Secrets are never included in the response.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosAccountsListResponses, unknown, ThrowOnError>({
+      url: "/holos/accounts",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Switch active Holos account
+   *
+   * Switch the active Holos account and reload the runtime to connect with new credentials.
+   */
+  public switch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      agentId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "agentId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<HolosAccountsSwitchResponses, HolosAccountsSwitchErrors, ThrowOnError>(
+      {
+        url: "/holos/accounts/switch",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Remove a Holos account
+   *
+   * Remove a stored Holos account. If the account is active, stops the runtime and clears the active state.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      agentId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "agentId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      HolosAccountsRemoveResponses,
+      HolosAccountsRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/holos/accounts/{agentId}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Contact extends HeyApiClient {
   /**
    * List contacts
@@ -2302,9 +2400,9 @@ export class Holos extends HeyApiClient {
   }
 
   /**
-   * Clear Holos credentials
+   * Clear active Holos credentials
    *
-   * Remove stored Holos credentials and stop the Holos runtime. Used for sign-out.
+   * Remove the active Holos account credentials and stop the Holos runtime. Used for sign-out.
    */
   public logout<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).delete<HolosLogoutResponses, unknown, ThrowOnError>({
@@ -2399,6 +2497,25 @@ export class Holos extends HeyApiClient {
   }
 
   /**
+   * Get Holos connection status
+   *
+   * Return the current connection status for the active account. Non-active accounts show as disconnected.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosStatusResponses, unknown, ThrowOnError>({
+      url: "/holos/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get friend presence
    *
    * Get the online/offline status of all contacts from the presence cache.
@@ -2457,6 +2574,8 @@ export class Holos extends HeyApiClient {
   }
 
   credentials2 = new Credentials({ client: this.client })
+
+  accounts = new Accounts({ client: this.client })
 
   contact = new Contact({ client: this.client })
 

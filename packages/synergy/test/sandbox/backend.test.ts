@@ -1,3 +1,4 @@
+import { describe, test, expect } from "bun:test"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import * as fs from "fs"
 import * as os from "os"
@@ -569,7 +570,7 @@ describe("SandboxBackend unavailable fallback", () => {
 
     expect(wrapper.skipReason).toBeDefined()
     expect(typeof wrapper.skipReason).toBe("string")
-    expect(wrapper.skipReason.length).toBeGreaterThan(0)
+    expect(wrapper.skipReason!.length).toBeGreaterThan(0)
   })
 
   test("when fallback is deny, execute rejects with clear error", () => {

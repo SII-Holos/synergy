@@ -191,8 +191,8 @@
       },
       "delete": {
         "operationId": "holos.logout",
-        "summary": "Clear Holos credentials",
-        "description": "Remove stored Holos credentials and stop the Holos runtime. Used for sign-out.",
+        "summary": "Clear active Holos credentials",
+        "description": "Remove the active Holos account credentials and stop the Holos runtime. Used for sign-out.",
         "responses": {
           "200": {
             "description": "Credentials cleared",
@@ -9320,6 +9320,196 @@
         ]
       }
     },
+    "/holos/accounts": {
+      "get": {
+        "operationId": "holos.accounts.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List Holos accounts",
+        "description": "List all stored Holos accounts. Secrets are never included in the response.",
+        "responses": {
+          "200": {
+            "description": "Account list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAccountsListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/accounts/switch": {
+      "post": {
+        "operationId": "holos.accounts.switch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Switch active Holos account",
+        "description": "Switch the active Holos account and reload the runtime to connect with new credentials.",
+        "responses": {
+          "200": {
+            "description": "Account switched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAccountsSwitchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["agentId"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.switch({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/accounts/{agentId}": {
+      "delete": {
+        "operationId": "holos.accounts.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "agentId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove a Holos account",
+        "description": "Remove a stored Holos account. If the account is active, stops the runtime and clears the active state.",
+        "responses": {
+          "200": {
+            "description": "Account removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAccountsRemoveResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/status": {
+      "get": {
+        "operationId": "holos.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Holos connection status",
+        "description": "Return the current connection status for the active account. Non-active accounts show as disconnected.",
+        "responses": {
+          "200": {
+            "description": "Connection status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/holos/contact": {
       "get": {
         "operationId": "holos.contact.list",
@@ -13769,6 +13959,27 @@
             "description": "How to proceed when the requested sandbox runtime is unavailable",
             "type": "string",
             "enum": ["warn", "allow", "deny"]
+          },
+          "backend": {
+            "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+            "type": "string",
+            "enum": ["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"]
+          },
+          "windows": {
+            "description": "Windows-specific sandbox settings",
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["disabled", "restricted-token", "elevated"]
+              },
+              "helperPath": {
+                "type": "string"
+              },
+              "verifyHelperHash": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -19099,6 +19310,31 @@
         },
         "required": ["exists"]
       },
+      "HolosAccountMeta": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["agentId", "label", "createdAt", "updatedAt"]
+      },
       "HolosIdentityState": {
         "type": "object",
         "properties": {
@@ -19114,9 +19350,25 @@
                 "type": "null"
               }
             ]
+          },
+          "activeAccount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HolosAccountMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HolosAccountMeta"
+            }
           }
         },
-        "required": ["loggedIn", "agentId"]
+        "required": ["loggedIn", "agentId", "activeAccount", "accounts"]
       },
       "HolosConnectionState": {
         "type": "object",
@@ -19241,6 +19493,101 @@
           }
         },
         "required": ["valid", "agentId"]
+      },
+      "HolosAccountsListResponse": {
+        "type": "object",
+        "properties": {
+          "activeAccountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HolosAccountMeta"
+            }
+          }
+        },
+        "required": ["activeAccountId", "accounts"]
+      },
+      "HolosAccountsSwitchResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "activeAccountId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"]
+          }
+        },
+        "required": ["success", "activeAccountId", "status"]
+      },
+      "HolosAccountsRemoveResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "activeAccountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wasActive": {
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "activeAccountId", "wasActive"]
+      },
+      "HolosStatusResponse": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"]
+          },
+          "error": {
+            "type": "string"
+          },
+          "peerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["agentId", "status", "peerId"]
       },
       "HolosPresenceMap": {
         "type": "object",
