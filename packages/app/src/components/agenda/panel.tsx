@@ -61,6 +61,7 @@ export function AgendaPanel() {
   const [tab, setTab] = createSignal<PanelTab>("schedule")
   const [editingItem, setEditingItem] = createSignal<AgendaItem | undefined>()
   const [popoverItem, setPopoverItem] = createSignal<AgendaItem | undefined>()
+  const [popoverRect, setPopoverRect] = createSignal<DOMRect | undefined>()
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
   const [actionLoading, setActionLoading] = createSignal<Set<string>>(new Set())
   const [actionDone, setActionDone] = createSignal<Set<string>>(new Set())
@@ -185,14 +186,16 @@ export function AgendaPanel() {
     setView("form")
   }
 
-  function openDetail(item: AgendaItem) {
+  function openDetail(item: AgendaItem, rect?: DOMRect) {
+    setPopoverRect(rect)
     setPopoverItem(item)
     loadRuns(item.id)
   }
 
-  function handleEventClick(event: CalendarEvent) {
+  function handleEventClick(event: CalendarEvent, e?: MouseEvent) {
+    const rect = e ? (e.target as HTMLElement).getBoundingClientRect() : undefined
     const item = itemById(event.itemId)
-    if (item) openDetail(item)
+    if (item) openDetail(item, rect)
   }
 
   function handleDateClick(ts: number) {
@@ -293,7 +296,12 @@ export function AgendaPanel() {
                     </div>
                     <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
                       <For each={todoItems()}>
-                        {(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}
+                        {(item) => (
+                          <TodoCard
+                            item={item}
+                            onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
+                          />
+                        )}
                       </For>
                     </div>
                   </Show>
@@ -311,24 +319,21 @@ export function AgendaPanel() {
                   onRangeChange={(start, end) => setCalendarRange({ start, end })}
                 />
 
-                <Show when={popoverItem()}>
-                  {(pi) => {
-                    const liveItem = createMemo(() => itemById(pi().id) ?? pi())
-                    return (
-                      <DetailPopover
-                        item={liveItem()}
-                        runs={runsCache()[liveItem().id]}
-                        isLoading={isLoading}
-                        isDone={isDone}
-                        onClose={() => setPopoverItem(undefined)}
-                        onAction={(action) => performAction(liveItem().id, action)}
-                        onEdit={() => {
-                          setPopoverItem(undefined)
-                          openEdit(liveItem())
-                        }}
-                      />
-                    )
-                  }}
+                <Show when={popoverItem() && popoverRect()}>
+                  <DetailPopover
+                    anchor={popoverRect()}
+                    item={popoverItem()!}
+                    runs={runsCache()[popoverItem()!.id]}
+                    isLoading={isLoading}
+                    isDone={isDone}
+                    onClose={() => setPopoverItem(undefined)}
+                    onAction={(action) => performAction(popoverItem()!.id, action)}
+                    onEdit={() => {
+                      const pi = popoverItem()!
+                      setPopoverItem(undefined)
+                      openEdit(pi)
+                    }}
+                  />
                 </Show>
               </div>
             </AppPanel.Body>
@@ -362,7 +367,7 @@ export function AgendaPanel() {
   )
 }
 
-function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
+function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void }) {
   return (
     <div
       class="flex items-center gap-2.5 rounded-[0.9rem] bg-surface-raised-base/92 px-2.5 py-2 ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base transition-colors cursor-pointer shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]"
@@ -380,6 +385,7 @@ function TodoCard(props: { item: AgendaItem; onClick: () => void }) {
 }
 
 function DetailPopover(props: {
+  anchor?: DOMRect
   item: AgendaItem
   runs: AgendaRunLog[] | undefined
   isLoading: (id: string, action: string) => boolean
@@ -388,6 +394,21 @@ function DetailPopover(props: {
   onAction: (action: "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove") => void
   onEdit: () => void
 }) {
+  const pos = () => {
+    const a = props.anchor
+    if (!a) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+    const cardW = 360
+    const cardH = 480
+    let left = a.left + a.width / 2 - cardW / 2
+    const vw = window.innerWidth
+    if (left < 12) left = 12
+    if (left + cardW > vw - 12) left = vw - cardW - 12
+    let top = a.bottom + 8
+    const vh = window.innerHeight
+    if (top + cardH > vh - 16) top = a.top - cardH - 8
+    if (top < 8) top = 8
+    return { top: `${top}px`, left: `${left}px` }
+  }
   let cardRef: HTMLDivElement | undefined
   const state = () => props.item.state
 
@@ -405,12 +426,12 @@ function DetailPopover(props: {
       document.removeEventListener("keydown", onKeyDown)
     })
   })
-
   return (
-    <div class="absolute inset-0 z-20 flex items-start justify-center pt-8 px-4 pointer-events-none">
+    <div class="fixed inset-0 z-20 pointer-events-none">
       <div
         ref={cardRef}
-        class="pointer-events-auto w-full max-w-sm max-h-[calc(100%-16px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+        class="pointer-events-auto fixed w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+        style={pos()}
       >
         <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
           <button
