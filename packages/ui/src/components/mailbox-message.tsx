@@ -1,6 +1,6 @@
 import { type AssistantMessage, type TextPart } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { createMemo } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { Markdown } from "./markdown"
 import { Icon } from "./icon"
 import { DateTime } from "luxon"
@@ -42,15 +42,17 @@ export function MailboxMessage(props: {
             <Icon name="message-square" size="small" />
             <span data-slot="mailbox-message-source-label">
               From{" "}
-              <button
-                data-slot="mailbox-message-source-link"
-                onClick={() => {
-                  const id = sourceSessionID()
-                  if (id) data.navigateToSession?.(id)
-                }}
+              <Show
+                when={sourceSessionID()}
+                fallback={<span data-slot="mailbox-message-source-text">{sourceLabel()}</span>}
               >
-                {sourceLabel()}
-              </button>
+                <button
+                  data-slot="mailbox-message-source-link"
+                  onClick={() => data.navigateToSession?.(sourceSessionID()!)}
+                >
+                  {sourceLabel()}
+                </button>
+              </Show>
             </span>
           </div>
           <span data-slot="mailbox-message-time">{timestamp()}</span>

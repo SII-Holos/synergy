@@ -112,15 +112,11 @@ function MailboxSourceBadge(props: { message: UserMessage }) {
       <Icon name="message-square" size="small" />
       <span>
         From{" "}
-        <button
-          data-slot="session-turn-mailbox-link"
-          onClick={() => {
-            const id = sourceID()
-            if (id) data.navigateToSession?.(id)
-          }}
-        >
-          {label()}
-        </button>
+        <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
+          <button data-slot="session-turn-mailbox-link" onClick={() => data.navigateToSession?.(sourceID()!)}>
+            {label()}
+          </button>
+        </Show>
       </span>
     </div>
   )
