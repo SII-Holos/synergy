@@ -261,6 +261,8 @@ import type {
   ScopeUpdateResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionAgendaErrors,
+  SessionAgendaResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -1233,6 +1235,40 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionDagResponses, SessionDagErrors, ThrowOnError>({
       url: "/session/{sessionID}/dag",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get session agenda wakeups
+   *
+   * Retrieve agenda items that can wake the specified session.
+   */
+  public agenda<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      limit?: number
+      offset?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
+      url: "/session/{sessionID}/agenda",
       ...options,
       ...params,
     })
