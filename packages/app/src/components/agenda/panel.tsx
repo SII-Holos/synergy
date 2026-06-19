@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { Portal } from "solid-js/web"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -320,20 +321,22 @@ export function AgendaPanel() {
                 />
 
                 <Show when={popoverItem()}>
-                  <DetailPopover
-                    anchor={popoverRect()}
-                    item={popoverItem()!}
-                    runs={runsCache()[popoverItem()!.id]}
-                    isLoading={isLoading}
-                    isDone={isDone}
-                    onClose={() => setPopoverItem(undefined)}
-                    onAction={(action) => performAction(popoverItem()!.id, action)}
-                    onEdit={() => {
-                      const pi = popoverItem()!
-                      setPopoverItem(undefined)
-                      openEdit(pi)
-                    }}
-                  />
+                  <Portal>
+                    <DetailPopover
+                      anchor={popoverRect()}
+                      item={popoverItem()!}
+                      runs={runsCache()[popoverItem()!.id]}
+                      isLoading={isLoading}
+                      isDone={isDone}
+                      onClose={() => setPopoverItem(undefined)}
+                      onAction={(action) => performAction(popoverItem()!.id, action)}
+                      onEdit={() => {
+                        const pi = popoverItem()!
+                        setPopoverItem(undefined)
+                        openEdit(pi)
+                      }}
+                    />
+                  </Portal>
                 </Show>
               </div>
             </AppPanel.Body>
@@ -427,149 +430,147 @@ function DetailPopover(props: {
     })
   })
   return (
-    <div class="fixed inset-0 z-20 pointer-events-none">
-      <div
-        ref={cardRef}
-        class="pointer-events-auto fixed w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
-        style={pos()}
-      >
-        <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
-          <button
-            type="button"
-            class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={props.onEdit}
-            title="Edit"
-          >
-            <Icon name="pen-line" size="small" />
-          </button>
-          <ActionIconBtn
-            icon="trash-2"
-            title="Delete"
-            loading={props.isLoading(props.item.id, "remove")}
-            onClick={() => props.onAction("remove")}
-            danger
-          />
-          <div class="flex-1" />
-          <button
-            type="button"
-            class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={props.onClose}
-            title="Close"
-          >
-            <Icon name="x" size="small" />
-          </button>
-        </div>
+    <div
+      ref={cardRef}
+      class="pointer-events-auto fixed z-50 w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+      style={pos()}
+    >
+      <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
+        <button
+          type="button"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          onClick={props.onEdit}
+          title="Edit"
+        >
+          <Icon name="pen-line" size="small" />
+        </button>
+        <ActionIconBtn
+          icon="trash-2"
+          title="Delete"
+          loading={props.isLoading(props.item.id, "remove")}
+          onClick={() => props.onAction("remove")}
+          danger
+        />
+        <div class="flex-1" />
+        <button
+          type="button"
+          class="size-7 flex items-center justify-center rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+          onClick={props.onClose}
+          title="Close"
+        >
+          <Icon name="x" size="small" />
+        </button>
+      </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-            <div class="flex items-start gap-2">
-              <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
-              <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
-                {props.item.status}
-              </span>
-            </div>
+      <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="flex items-start gap-2">
+            <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
+            <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
+              {props.item.status}
+            </span>
+          </div>
 
-            <Show when={props.item.description}>
-              <p class="text-12-regular text-text-weak leading-relaxed">{props.item.description}</p>
-            </Show>
+          <Show when={props.item.description}>
+            <p class="text-12-regular text-text-weak leading-relaxed">{props.item.description}</p>
+          </Show>
 
-            <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+              {triggerSummary(props.item.triggers)}
+            </span>
+            <Show when={state()?.runCount}>
               <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                {triggerSummary(props.item.triggers)}
+                {state()!.runCount} runs
               </span>
-              <Show when={state()?.runCount}>
-                <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  {state()!.runCount} runs
-                </span>
+            </Show>
+            <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
+              <span class="px-2 py-0.5 rounded-full bg-text-diff-delete-base/12 text-10-medium text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12">
+                {state()!.consecutiveErrors} errors
+              </span>
+            </Show>
+            <Show when={props.item.createdBy === "agent"}>
+              <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
+                agent
+              </span>
+            </Show>
+          </div>
+
+          <Show when={state()?.nextRunAt}>
+            <div class="text-11-regular text-text-weaker">Next: {relativeTime(state()!.nextRunAt!)}</div>
+          </Show>
+
+          <Show when={state()?.lastRunAt}>
+            <div class="text-11-regular text-text-weaker">
+              Last run: {absoluteDate(state()!.lastRunAt!)}
+              <Show when={state()?.lastRunStatus}>
+                {" · "}
+                <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
               </Show>
-              <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-                <span class="px-2 py-0.5 rounded-full bg-text-diff-delete-base/12 text-10-medium text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12">
-                  {state()!.consecutiveErrors} errors
-                </span>
-              </Show>
-              <Show when={props.item.createdBy === "agent"}>
-                <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
-                  agent
-                </span>
+              <Show when={state()?.lastRunDuration}>
+                {" · "}
+                {formatAgendaDuration(state()!.lastRunDuration!)}
               </Show>
             </div>
+          </Show>
 
-            <Show when={state()?.nextRunAt}>
-              <div class="text-11-regular text-text-weaker">Next: {relativeTime(state()!.nextRunAt!)}</div>
-            </Show>
+          <Show when={state()?.lastRunError}>
+            <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
+              {state()!.lastRunError}
+            </div>
+          </Show>
 
-            <Show when={state()?.lastRunAt}>
-              <div class="text-11-regular text-text-weaker">
-                Last run: {absoluteDate(state()!.lastRunAt!)}
-                <Show when={state()?.lastRunStatus}>
-                  {" · "}
-                  <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
+          <Show when={props.item.tags && props.item.tags.length > 0}>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <For each={props.item.tags}>
+                {(tag) => (
+                  <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                    #{tag}
+                  </span>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          <Show when={props.item.prompt}>
+            <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+              <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
+                Task
+              </div>
+              <div class="px-3 py-2.5">
+                <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
+                  {props.item.prompt}
+                </p>
+                <Show when={props.item.agent}>
+                  <span class="text-10-medium text-text-weaker mt-1.5 block">Agent: {props.item.agent}</span>
                 </Show>
-                <Show when={state()?.lastRunDuration}>
-                  {" · "}
-                  {formatAgendaDuration(state()!.lastRunDuration!)}
-                </Show>
               </div>
-            </Show>
+            </div>
+          </Show>
 
-            <Show when={state()?.lastRunError}>
-              <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
-                {state()!.lastRunError}
-              </div>
-            </Show>
+          <ActionBar item={props.item} isLoading={props.isLoading} isDone={props.isDone} onAction={props.onAction} />
 
-            <Show when={props.item.tags && props.item.tags.length > 0}>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <For each={props.item.tags}>
-                  {(tag) => (
-                    <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                      #{tag}
-                    </span>
-                  )}
-                </For>
-              </div>
-            </Show>
-
-            <Show when={props.item.prompt}>
-              <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
-                  Task
-                </div>
-                <div class="px-3 py-2.5">
-                  <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
-                    {props.item.prompt}
-                  </p>
-                  <Show when={props.item.agent}>
-                    <span class="text-10-medium text-text-weaker mt-1.5 block">Agent: {props.item.agent}</span>
-                  </Show>
-                </div>
-              </div>
-            </Show>
-
-            <ActionBar item={props.item} isLoading={props.isLoading} isDone={props.isDone} onAction={props.onAction} />
-
-            <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
-              {(runs) => (
-                <Show when={runs().length > 0}>
-                  <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                    <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
-                      Recent runs
-                    </div>
-                    <div>
-                      <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
-                    </div>
+          <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
+            {(runs) => (
+              <Show when={runs().length > 0}>
+                <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                  <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
+                    Recent runs
                   </div>
-                </Show>
-              )}
-            </Show>
-
-            <div class="text-10-regular text-text-weaker">
-              Created {absoluteDate(props.item.time.created)}
-              <Show when={props.item.time.updated !== props.item.time.created}>
-                {" · updated "}
-                {absoluteDate(props.item.time.updated)}
+                  <div>
+                    <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
+                  </div>
+                </div>
               </Show>
-            </div>
+            )}
+          </Show>
+
+          <div class="text-10-regular text-text-weaker">
+            Created {absoluteDate(props.item.time.created)}
+            <Show when={props.item.time.updated !== props.item.time.created}>
+              {" · updated "}
+              {absoluteDate(props.item.time.updated)}
+            </Show>
           </div>
         </div>
       </div>

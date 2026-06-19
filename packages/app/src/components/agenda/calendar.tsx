@@ -85,7 +85,7 @@ interface CalendarGridProps {
   events: CalendarEvent[]
   onViewModeChange?: (mode: ViewMode) => void
   onAnchorChange?: (anchor: number) => void
-  onEventClick?: (event: CalendarEvent) => void
+  onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
   onRangeChange?: (start: number, end: number) => void
 }
 
@@ -325,7 +325,7 @@ function TimeGrid(props: {
   currentTimeDayTs: number
   currentTimeOffset: number
   isCurrentDayVisible: boolean
-  onEventClick?: (event: CalendarEvent) => void
+  onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
 }) {
   const colTemplate = () => `${TIME_COL}px repeat(${props.columns.length}, 1fr)`
 
@@ -412,7 +412,7 @@ function TimeGrid(props: {
                           }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            props.onEventClick?.(le.event)
+                            props.onEventClick?.(le.event, e)
                           }}
                           title={`${le.event.title}\n${formatEventTime(le.event.time)}`}
                         >
@@ -455,7 +455,7 @@ function MonthGrid(props: {
   rangeStart: number
   rangeEnd: number
   eventsByDay: Map<number, CalendarEvent[]>
-  onEventClick?: (event: CalendarEvent) => void
+  onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
   onDateClick?: (ts: number) => void
 }) {
   const today = createMemo(() => startOfDay(Date.now()))
@@ -518,7 +518,7 @@ function MonthGrid(props: {
                             class="flex items-center gap-1 min-w-0 rounded-[0.45rem] px-1 py-0.5 hover:bg-surface-interactive-selected-weak transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
-                              props.onEventClick?.(event)
+                              props.onEventClick?.(event, e)
                             }}
                           >
                             <div
