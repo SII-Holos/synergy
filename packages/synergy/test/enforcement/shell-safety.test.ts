@@ -302,7 +302,7 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("curl https://example.com")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("bun run build")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("mkdir newdir")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_destructive")
     expect(ShellSafety.classifyBashRisk("rm file.txt")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("python3 -c 'print(1)'")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("ssh user@host")).toBe("shell")
@@ -385,6 +385,22 @@ describe("ShellSafety classifyBashRisk — argument injection", () => {
 
   test("git config --system returns shell_destructive", () => {
     expect(ShellSafety.classifyBashRisk("git config --system user.name evil")).toBe("shell_destructive")
+  })
+
+  test("shell wrappers around destructive git commands are flagged", () => {
+    expect(ShellSafety.classifyBashRisk('bash -c "git push"')).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("sh -c 'git push origin main'")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk('bash -c "git revert HEAD"')).toBe("shell_destructive")
+  })
+
+  test("interpreter subprocess wrappers around destructive git commands are flagged", () => {
+    expect(
+      ShellSafety.classifyBashRisk("python3 -c \"import subprocess; subprocess.run(['git','push','origin','main'])\""),
+    ).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("node -e \"require('child_process').spawn('git',['push'])\"")).toBe(
+      "shell_destructive",
+    )
+    expect(ShellSafety.classifyBashRisk("ruby -e \"system('git reset --hard')\"")).toBe("shell_destructive")
   })
 
   test("normal find (no dangerous flags) is NOT flagged", () => {
@@ -684,8 +700,18 @@ describe("ShellSafety git taxonomy — safe_write (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git mv old.ts new.ts")).toBe("shell")
   })
 
-  test("git restore (staged) is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git restore file.ts")).toBe("shell")
+  test("git restore --staged is shell (safe local stage reversion)", () => {
+    expect(ShellSafety.classifyBashRisk("git restore --staged file.ts")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("git restore -S file.ts")).toBe("shell")
+  })
+
+  test("git restore (worktree) is shell_destructive (discards uncommitted changes)", () => {
+    expect(ShellSafety.classifyBashRisk("git restore file.ts")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git restore .")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git restore --source=HEAD~1 file.ts")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git restore -s HEAD~1 --staged file.ts")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git restore -sS HEAD~1 file.ts")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git restore -SW file.ts")).toBe("shell_destructive")
   })
 
   test("git switch is shell", () => {
@@ -737,27 +763,36 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git merge feature")).toBe("shell")
   })
 
-  test("git pull is shell", () => {
+  test("git pull is shell (plain pull is safe)", () => {
     expect(ShellSafety.classifyBashRisk("git pull")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git pull --rebase")).toBe("shell")
   })
 
-  test("git push (normal) is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git push origin main")).toBe("shell")
+  test("git pull --rebase is shell_destructive (history-rewriting remote merge)", () => {
+    expect(ShellSafety.classifyBashRisk("git pull --rebase")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git pull --rebase=merges")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git pull -r")).toBe("shell_destructive")
   })
 
-  test("git revert is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git revert HEAD")).toBe("shell")
+  test("git push (any form) is shell_destructive (remote publish)", () => {
+    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git push origin main")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git -C /tmp push")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git --git-dir=/tmp/repo/.git push origin main")).toBe("shell_destructive")
   })
 
-  test("git rm is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git rm file.txt")).toBe("shell")
+  test("git revert is shell_destructive (history-rewriting inverse commit)", () => {
+    expect(ShellSafety.classifyBashRisk("git revert HEAD")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git revert abc123")).toBe("shell_destructive")
   })
 
-  test("git commit is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git commit -m 'msg'")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git commit --amend -m 'msg'")).toBe("shell")
+  test("git rm is shell_destructive (tracked file removal)", () => {
+    expect(ShellSafety.classifyBashRisk("git rm file.txt")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git rm -r dir/")).toBe("shell_destructive")
+  })
+
+  test("git commit --amend is shell_destructive (history rewriting)", () => {
+    expect(ShellSafety.classifyBashRisk("git commit --amend -m 'msg'")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git commit --amend --no-edit")).toBe("shell_destructive")
   })
 
   test("git branch -d is shell", () => {
@@ -776,10 +811,11 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git remote remove origin")).toBe("shell")
   })
 
-  test("git stash drop/pop is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git stash drop")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git stash drop stash@{0}")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git stash pop")).toBe("shell")
+  test("git stash drop/pop is shell_destructive (permanent data loss)", () => {
+    expect(ShellSafety.classifyBashRisk("git stash drop")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git stash drop stash@{0}")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git stash pop")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git -C /tmp stash pop")).toBe("shell_destructive")
   })
 
   test("git tag -d is shell", () => {
@@ -850,9 +886,10 @@ describe("ShellSafety git taxonomy — destructive", () => {
     expect(ShellSafety.classifyBashRisk("git reset --hard HEAD~1")).toBe("shell_destructive")
   })
 
-  test("git reset (soft/mixed) is shell", () => {
-    expect(ShellSafety.classifyBashRisk("git reset")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git reset --soft HEAD~1")).toBe("shell")
+  test("git reset (all forms) is shell_destructive (all reset rewrites refs/history)", () => {
+    expect(ShellSafety.classifyBashRisk("git reset")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git reset --soft HEAD~1")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git reset --mixed HEAD~1")).toBe("shell_destructive")
   })
 
   test("git stash clear is shell_destructive", () => {

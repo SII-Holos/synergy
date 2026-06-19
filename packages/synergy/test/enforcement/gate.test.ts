@@ -722,6 +722,162 @@ describe("EnforcementGate profile integration", () => {
       }),
     ).toThrow()
   })
+
+  test("autonomous denies git push as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git push" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through git global options", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp push" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through shell wrapper", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: 'bash -c "git push"' })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git stash pop through git global options", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp stash pop" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through interpreter subprocess", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", {
+      command: "python3 -c \"import subprocess; subprocess.run(['git','push','origin','main'])\"",
+    })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git reset --soft as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git reset --soft HEAD~1" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git commit --amend as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git commit --amend -m 'fix'" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git rm as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git rm file.txt" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git revert as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git revert HEAD" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git stash drop as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git stash drop" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git pull --rebase as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git pull --rebase" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous allows plain git commit (no amend) as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git commit -m 'msg'" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows plain git pull (no rebase) as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git pull" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows git restore --staged as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git restore --staged file.ts" })
+    expect(envelope.decision).toBe("allow")
+  })
 })
 
 // ------------------------------------------------------------------
@@ -1179,6 +1335,190 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
     expect(hardline || destructive).toBeDefined()
+  })
+
+  // ── Refined git classifications (classifyBashRisk primary path) ──
+
+  test("git push (plain) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git push" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push origin main is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git push origin main" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push through git global options is classified as destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git -C /tmp push" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push through shell wrapper is classified as destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: 'bash -c "git push"' })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull --rebase is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull --rebase" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull -r is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull -r" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git revert is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git revert HEAD" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git rm is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git rm file.txt" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git commit --amend is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git commit --amend -m 'fix'" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git reset (soft) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git reset --soft HEAD~1" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git reset (bare) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git reset" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git restore (worktree) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git restore file.ts" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git stash pop is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git stash pop" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull (plain) is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("git restore --staged is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git restore --staged file.ts" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("git commit -m (no amend) is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git commit -m 'msg'" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
   })
 })
 

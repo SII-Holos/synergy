@@ -76,11 +76,20 @@ const DESTRUCTIVE_PATTERNS = [
   "git push --delete",
   "git stash clear",
   "git stash drop",
+  "git stash pop",
   // Git history rewriting
   "git rebase ",
   "git filter-branch",
   "git reflog expire",
   "git reflog delete",
+  // Git refined classifications — defense-in-depth
+  "git push ",
+  "git pull --rebase",
+  "git pull -r",
+  "git revert ",
+  "git rm ",
+  "git commit --amend",
+  "git reset ",
 ]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
