@@ -4,7 +4,7 @@ import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 
 function presenceLabel(status?: string) {
   if (status === "online") return "Online"
@@ -41,16 +41,32 @@ export function FriendsSection(props: {
       </div>
 
       <Show when={props.contacts.length > 3 || props.search}>
-        <div class="rounded-[1rem] bg-surface-raised-base/92 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-          <Panel.Search value={props.search} onInput={props.onSearch} placeholder="Search contacts..." />
+        <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5">
+          <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+            value={props.search}
+            onInput={(e) => props.onSearch(e.currentTarget.value)}
+          />
+          <Show when={props.search}>
+            <button
+              type="button"
+              class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
+              onClick={() => props.onSearch("")}
+            >
+              <Icon name="x" size="small" />
+            </button>
+          </Show>
         </div>
       </Show>
 
-      <Show when={!props.loading} fallback={<Panel.Loading />}>
+      <Show when={!props.loading} fallback={<AppPanel.Loading />}>
         <Show
           when={props.contacts.length > 0}
           fallback={
-            <Panel.Empty
+            <AppPanel.Empty
               icon="users"
               title={props.search ? "No contacts match" : "No contacts yet"}
               description={props.search ? undefined : "Contacts you add will appear here"}
@@ -91,7 +107,7 @@ function ContactCard(props: {
     <div
       class="group relative flex flex-col overflow-hidden rounded-[1.15rem] bg-surface-raised-base/96 p-4 ring-1 ring-inset ring-border-base/42 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)] transition-all duration-200 break-inside-avoid cursor-pointer hover:-translate-y-0.5 hover:bg-surface-raised-base hover:ring-border-base/58 active:scale-[0.995]"
       style={{
-        animation: "contactFadeUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards",
+        animation: "contactFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards",
         "animation-delay": `${props.delay}ms`,
       }}
       role="button"

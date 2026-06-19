@@ -1,5 +1,4 @@
 import { createSignal, Show } from "solid-js"
-import { Panel } from "@/components/panel"
 import { useEngramStats, type EngramStatsSnapshot, EMPTY_SNAPSHOT } from "./use-engram-stats"
 import { EngramOverviewCards } from "./overview-cards"
 import { MemoryDistribution } from "./memory-distribution"
@@ -45,7 +44,7 @@ export function StatsView() {
   }
 
   return (
-    <Panel.Body>
+    <>
       <SyncBar syncing={syncing()} syncError={syncError()} onSync={handleSync} />
       <Show
         when={data()}
@@ -64,7 +63,7 @@ export function StatsView() {
       >
         {(snapshot) => <EngramStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} />}
       </Show>
-    </Panel.Body>
+    </>
   )
 }
 

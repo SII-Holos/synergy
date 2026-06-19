@@ -3,7 +3,7 @@ import { Popover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { MemoryInfo, MemorySearchResult } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -23,6 +23,7 @@ import {
   engramInsetClass,
   engramMenuClass,
   engramMetaLabelClass,
+  EngramFilterChip,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -185,139 +186,135 @@ export function MemoryView(props: {
   })
 
   return (
-    <>
-      <Panel.SubHeader>
+    <div>
+      <Show
+        when={!selecting()}
+        fallback={
+          <SelectionBar
+            count={selected().size}
+            total={sorted().length}
+            deleting={deleting()}
+            onSelectAll={selectAll}
+            onDelete={deleteSelected}
+            onCancel={exitSelection}
+          />
+        }
+      >
+        <div class={`flex items-center gap-1.5 flex-wrap mb-3 px-3 py-2.5 ${engramInsetClass}`}>
+          <For each={MEMORY_CATEGORIES}>
+            {(cat) => {
+              const count = () => categoryCounts().get(cat) ?? 0
+              return (
+                <Show when={count() > 0}>
+                  <EngramFilterChip active={categoryFilter().has(cat)} onClick={() => toggleCategory(cat)}>
+                    {categoryLabels[cat]}
+                    <span class="ml-0.5">{count()}</span>
+                  </EngramFilterChip>
+                </Show>
+              )
+            }}
+          </For>
+          <Show when={categoryFilter().size > 0}>
+            <button
+              type="button"
+              class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-weak"
+              onClick={() => setCategoryFilter(new Set())}
+            >
+              Clear
+            </button>
+          </Show>
+
+          <div class="ml-auto flex items-center gap-1">
+            <Show when={sorted().length > 0}>
+              <button type="button" class={engramActionButtonClass} onClick={() => setSelecting(true)}>
+                <Icon name="square-check" size="small" class="opacity-70" />
+                <span>Select</span>
+              </button>
+            </Show>
+            <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
+              <Popover.Trigger as="button" class={engramActionButtonClass}>
+                <span>{memorySortLabels[sort()]}</span>
+                <Icon name="chevron-down" size="small" class="opacity-60" />
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content class={engramMenuClass}>
+                  <For each={availableSorts()}>
+                    {(key) => (
+                      <button
+                        type="button"
+                        classList={{
+                          "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
+                          "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
+                          "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
+                        }}
+                        onClick={() => {
+                          setSort(key)
+                          setSortOpen(false)
+                        }}
+                      >
+                        {memorySortLabels[key]}
+                      </button>
+                    )}
+                  </For>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover>
+          </div>
+        </div>
+      </Show>
+
+      <Show when={memories.loading}>
+        <AppPanel.Loading />
+      </Show>
+
+      <Show when={!memories.loading}>
         <Show
-          when={!selecting()}
+          when={sorted().length > 0}
           fallback={
-            <SelectionBar
-              count={selected().size}
-              total={sorted().length}
-              deleting={deleting()}
-              onSelectAll={selectAll}
-              onDelete={deleteSelected}
-              onCancel={exitSelection}
+            <AppPanel.Empty
+              icon="brain"
+              title={categoryFilter().size > 0 ? "No memories match the filter" : "No memories yet"}
+              description="Memories are created when sessions compact. They capture knowledge the agent learns over time."
             />
           }
         >
-          <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${engramInsetClass}`}>
-            <For each={MEMORY_CATEGORIES}>
-              {(cat) => {
-                const count = () => categoryCounts().get(cat) ?? 0
-                return (
-                  <Show when={count() > 0}>
-                    <Panel.FilterChip active={categoryFilter().has(cat)} onClick={() => toggleCategory(cat)}>
-                      {categoryLabels[cat]}
-                      <span class="ml-0.5">{count()}</span>
-                    </Panel.FilterChip>
-                  </Show>
-                )
-              }}
-            </For>
-            <Show when={categoryFilter().size > 0}>
-              <button
-                type="button"
-                class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-weak"
-                onClick={() => setCategoryFilter(new Set())}
-              >
-                Clear
-              </button>
-            </Show>
-
-            <div class="ml-auto flex items-center gap-1">
-              <Show when={sorted().length > 0}>
-                <button type="button" class={engramActionButtonClass} onClick={() => setSelecting(true)}>
-                  <Icon name="square-check" size="small" class="opacity-70" />
-                  <span>Select</span>
-                </button>
-              </Show>
-              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
-                <Popover.Trigger as="button" class={engramActionButtonClass}>
-                  <span>{memorySortLabels[sort()]}</span>
-                  <Icon name="chevron-down" size="small" class="opacity-60" />
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Content class={engramMenuClass}>
-                    <For each={availableSorts()}>
-                      {(key) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                            "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
-                            "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
-                          }}
-                          onClick={() => {
-                            setSort(key)
-                            setSortOpen(false)
-                          }}
-                        >
-                          {memorySortLabels[key]}
-                        </button>
-                      )}
-                    </For>
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover>
+          <div class="flex gap-3 items-start">
+            <div class="flex-1 min-w-0 flex flex-col gap-3">
+              <For each={leftColumn()}>
+                {(item) => (
+                  <MemoryCard
+                    item={item}
+                    expanded={expandedCards().has(item.id)}
+                    similarity={memorySimilarity(item)}
+                    searching={props.isSearching}
+                    selecting={selecting()}
+                    selected={selected().has(item.id)}
+                    onToggle={() => toggleCard(item.id)}
+                    onDelete={(e) => deleteMemory(item.id, e)}
+                  />
+                )}
+              </For>
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col gap-3">
+              <For each={rightColumn()}>
+                {(item) => (
+                  <MemoryCard
+                    item={item}
+                    expanded={expandedCards().has(item.id)}
+                    similarity={memorySimilarity(item)}
+                    searching={props.isSearching}
+                    selecting={selecting()}
+                    selected={selected().has(item.id)}
+                    onToggle={() => toggleCard(item.id)}
+                    onDelete={(e) => deleteMemory(item.id, e)}
+                  />
+                )}
+              </For>
             </div>
           </div>
         </Show>
-      </Panel.SubHeader>
-
-      <Panel.Body>
-        <Show when={memories.loading}>
-          <Panel.Loading />
-        </Show>
-
-        <Show when={!memories.loading}>
-          <Show
-            when={sorted().length > 0}
-            fallback={
-              <Panel.Empty
-                icon="brain"
-                title={categoryFilter().size > 0 ? "No memories match the filter" : "No memories yet"}
-                description="Memories are created when sessions compact. They capture knowledge the agent learns over time."
-              />
-            }
-          >
-            <div class="flex gap-3 items-start">
-              <div class="flex-1 min-w-0 flex flex-col gap-3">
-                <For each={leftColumn()}>
-                  {(item) => (
-                    <MemoryCard
-                      item={item}
-                      expanded={expandedCards().has(item.id)}
-                      similarity={memorySimilarity(item)}
-                      searching={props.isSearching}
-                      selecting={selecting()}
-                      selected={selected().has(item.id)}
-                      onToggle={() => toggleCard(item.id)}
-                      onDelete={(e) => deleteMemory(item.id, e)}
-                    />
-                  )}
-                </For>
-              </div>
-              <div class="flex-1 min-w-0 flex flex-col gap-3">
-                <For each={rightColumn()}>
-                  {(item) => (
-                    <MemoryCard
-                      item={item}
-                      expanded={expandedCards().has(item.id)}
-                      similarity={memorySimilarity(item)}
-                      searching={props.isSearching}
-                      selecting={selecting()}
-                      selected={selected().has(item.id)}
-                      onToggle={() => toggleCard(item.id)}
-                      onDelete={(e) => deleteMemory(item.id, e)}
-                    />
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
-        </Show>
-      </Panel.Body>
-    </>
+      </Show>
+    </div>
   )
 }
 

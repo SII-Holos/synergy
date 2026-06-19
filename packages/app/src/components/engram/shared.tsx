@@ -188,6 +188,21 @@ export function SelectionBar(props: {
     </div>
   )
 }
+export function EngramFilterChip(props: { active: boolean; onClick: () => void; children: any }) {
+  return (
+    <button
+      type="button"
+      classList={{
+        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
+        "bg-surface-raised-base-hover text-text-strong": props.active,
+        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
+      }}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
+  )
+}
 
 export function ViewTab(props: { active: boolean; onClick: () => void; children: any }) {
   return (

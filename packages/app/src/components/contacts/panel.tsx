@@ -4,11 +4,9 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
-import { Panel } from "@/components/panel"
-import { ViewTab } from "@/components/engram/shared"
+import { AppPanel } from "@/components/app-panel"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
-
 const CARD_ENTER_STYLE = `
 @keyframes contactFadeUp {
   from { opacity: 0; transform: translateY(8px) scale(0.97); }
@@ -79,41 +77,46 @@ export function HolosPanel() {
   })
 
   return (
-    <Panel.Root>
+    <AppPanel.Root>
       <style>{CARD_ENTER_STYLE}</style>
-      <Panel.Header>
-        <Panel.HeaderRow>
-          <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
-            <ViewTab active={tab() === "hub"} onClick={() => setTab("hub")}>
-              Hub
-            </ViewTab>
-            <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
-              Contacts
-            </ViewTab>
-          </div>
-        </Panel.HeaderRow>
-      </Panel.Header>
-      <Panel.Body>
-        <Show when={holos.loaded} fallback={<Panel.Loading />}>
-          <Show when={tab() === "hub"}>
-            <HubView
-              profile={holos.state.social.profile}
-              agentId={holos.state.identity.agentId}
-              connectionStatus={holos.state.connection.status}
-              loggedIn={holos.state.identity.loggedIn}
-              isGuest={auth.status === "guest"}
-              connecting={connecting()}
-              reconnecting={reconnecting()}
-              onDisconnect={handleDisconnect}
-              onReconnect={handleReconnect}
-              onConnectHolos={handleConnectHolos}
-            />
+      <AppPanel.Content>
+        <AppPanel.Header>
+          <AppPanel.HeaderRow>
+            <AppPanel.Title>Holos</AppPanel.Title>
+            <AppPanel.Actions>
+              <AppPanel.SegmentedNav
+                items={[
+                  { id: "hub", label: "Hub" },
+                  { id: "contacts", label: "Contacts" },
+                ]}
+                active={tab()}
+                onChange={(id) => setTab(id as "hub" | "contacts")}
+              />
+            </AppPanel.Actions>
+          </AppPanel.HeaderRow>
+        </AppPanel.Header>
+        <AppPanel.Body>
+          <Show when={holos.loaded} fallback={<AppPanel.Loading />}>
+            <Show when={tab() === "hub"}>
+              <HubView
+                profile={holos.state.social.profile}
+                agentId={holos.state.identity.agentId}
+                connectionStatus={holos.state.connection.status}
+                loggedIn={holos.state.identity.loggedIn}
+                isGuest={auth.status === "guest"}
+                connecting={connecting()}
+                reconnecting={reconnecting()}
+                onDisconnect={handleDisconnect}
+                onReconnect={handleReconnect}
+                onConnectHolos={handleConnectHolos}
+              />
+            </Show>
+            <Show when={tab() === "contacts"}>
+              <ContactsView onRefresh={refetchAll} refreshing={refreshingContacts()} />
+            </Show>
           </Show>
-          <Show when={tab() === "contacts"}>
-            <ContactsView onRefresh={refetchAll} refreshing={refreshingContacts()} />
-          </Show>
-        </Show>
-      </Panel.Body>
-    </Panel.Root>
+        </AppPanel.Body>
+      </AppPanel.Content>
+    </AppPanel.Root>
   )
 }

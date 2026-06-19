@@ -1,15 +1,23 @@
 import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
-import { type View, ViewTab, formatBytes } from "./shared"
+import { type View, formatBytes } from "./shared"
 import { StatsView } from "./stats/stats-view"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
+
+const viewLabel: Record<View, string> = {
+  stats: "Usage overview and analytics",
+  memory: "Browse, search, and manage knowledge memories",
+  experience: "Browse, search, and manage behavioral experiences",
+  skill: "Manage installed skills and import new ones",
+}
 
 export function EngramPanel() {
   const sdk = useGlobalSDK()
@@ -69,91 +77,130 @@ export function EngramPanel() {
   const showSearch = () => view() !== "stats"
 
   return (
-    <Panel.Root>
-      <Panel.Header>
-        <Panel.HeaderRow>
-          <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-lg bg-surface-inset-base/50 p-0.5">
-            <ViewTab active={view() === "stats"} onClick={() => setView("stats")}>
-              Stats
-            </ViewTab>
-            <ViewTab active={view() === "memory"} onClick={() => setView("memory")}>
-              Memory
+    <AppPanel.Root>
+      <AppPanel.Nav>
+        <AppPanel.NavSection label="Engram">
+          <AppPanel.NavItem
+            icon="activity"
+            label="Stats"
+            active={view() === "stats"}
+            onClick={() => setView("stats")}
+          />
+          <AppPanel.NavItem
+            icon="brain"
+            label="Memory"
+            active={view() === "memory"}
+            onClick={() => setView("memory")}
+            badge={
               <Show when={memoryCount() > 0}>
-                <span class="ml-1 text-text-weaker">{memoryCount()}</span>
+                <span class="text-11-regular text-text-weaker">{memoryCount()}</span>
               </Show>
-            </ViewTab>
-            <ViewTab active={view() === "experience"} onClick={() => setView("experience")}>
-              Experience
-              <Show when={experienceCount() > 0}>
-                <span class="ml-1 text-text-weaker">{experienceCount()}</span>
-              </Show>
-            </ViewTab>
-            <ViewTab active={view() === "skill"} onClick={() => setView("skill")}>
-              Skill
-            </ViewTab>
-          </div>
-          <Panel.Actions>
-            <Show when={stats()}>
-              <span class="text-11-regular text-text-weaker mr-0.5">{formatBytes(stats()!.dbSizeBytes)}</span>
-            </Show>
-            <Show when={view() !== "stats"}>
-              <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
-            </Show>
-          </Panel.Actions>
-        </Panel.HeaderRow>
-        <Show when={showSearch()}>
-          <Panel.Search
-            value={search()}
-            onInput={onSearchInput}
-            placeholder={
-              view() === "memory"
-                ? "Search memories..."
-                : view() === "experience"
-                  ? "Search experiences..."
-                  : "Search skills..."
             }
           />
-        </Show>
-        <Show when={searchError()}>
-          <span class="text-11-regular text-text-diff-delete-base">
-            Search unavailable — embedding API may not be configured
-          </span>
-        </Show>
-      </Panel.Header>
+          <AppPanel.NavItem
+            icon="zap"
+            label="Experience"
+            active={view() === "experience"}
+            onClick={() => setView("experience")}
+            badge={
+              <Show when={experienceCount() > 0}>
+                <span class="text-11-regular text-text-weaker">{experienceCount()}</span>
+              </Show>
+            }
+          />
+          <AppPanel.NavItem
+            icon="sparkles"
+            label="Skill"
+            active={view() === "skill"}
+            onClick={() => setView("skill")}
+          />
+        </AppPanel.NavSection>
+      </AppPanel.Nav>
 
-      <Show when={view() === "stats"}>
-        <StatsView />
-      </Show>
-      <Show when={view() === "memory"}>
-        <MemoryView
-          sdk={sdk}
-          search={debouncedSearch()}
-          isSearching={isSearching()}
-          setSearchError={setSearchError}
-          onRegisterRefetch={(fn) => (refetchMemoryData = fn)}
-          refetchStats={refetchStats}
-        />
-      </Show>
-      <Show when={view() === "experience"}>
-        <ExperienceView
-          sdk={sdk}
-          search={debouncedSearch()}
-          isSearching={isSearching()}
-          setSearchError={setSearchError}
-          onRegisterRefetch={(fn) => (refetchExperienceData = fn)}
-          refetchStats={refetchStats}
-          currentScopeID={currentScopeID()}
-          currentSessionID={currentSessionID()}
-        />
-      </Show>
-      <Show when={view() === "skill"}>
-        <SkillView
-          sdk={sdk}
-          search={debouncedSearch()}
-          directory={directory()}
-          onRegisterRefetch={(fn) => (refetchSkillData = fn)}
-        />
-      </Show>
-    </Panel.Root>
+      <AppPanel.Content>
+        <AppPanel.Header>
+          <AppPanel.HeaderRow>
+            <AppPanel.Title>Engram</AppPanel.Title>
+            <AppPanel.Actions>
+              <Show when={stats()}>
+                <span class="text-11-regular text-text-weaker">{formatBytes(stats()!.dbSizeBytes)}</span>
+              </Show>
+              <Show when={view() !== "stats"}>
+                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
+              </Show>
+            </AppPanel.Actions>
+          </AppPanel.HeaderRow>
+          <AppPanel.Subtitle>{viewLabel[view()]}</AppPanel.Subtitle>
+          <Show when={showSearch()}>
+            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5">
+              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+              <input
+                type="text"
+                placeholder={
+                  view() === "memory"
+                    ? "Search memories..."
+                    : view() === "experience"
+                      ? "Search experiences..."
+                      : "Search skills..."
+                }
+                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                value={search()}
+                onInput={(e) => onSearchInput(e.currentTarget.value)}
+              />
+              <Show when={search()}>
+                <button
+                  type="button"
+                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
+                  onClick={() => onSearchInput("")}
+                >
+                  <Icon name="x" size="small" />
+                </button>
+              </Show>
+            </div>
+          </Show>
+          <Show when={searchError()}>
+            <span class="text-11-regular text-text-diff-delete-base">
+              Search unavailable — embedding API may not be configured
+            </span>
+          </Show>
+        </AppPanel.Header>
+
+        <AppPanel.Body>
+          <Show when={view() === "stats"}>
+            <StatsView />
+          </Show>
+          <Show when={view() === "memory"}>
+            <MemoryView
+              sdk={sdk}
+              search={debouncedSearch()}
+              isSearching={isSearching()}
+              setSearchError={setSearchError}
+              onRegisterRefetch={(fn) => (refetchMemoryData = fn)}
+              refetchStats={refetchStats}
+            />
+          </Show>
+          <Show when={view() === "experience"}>
+            <ExperienceView
+              sdk={sdk}
+              search={debouncedSearch()}
+              isSearching={isSearching()}
+              setSearchError={setSearchError}
+              onRegisterRefetch={(fn) => (refetchExperienceData = fn)}
+              refetchStats={refetchStats}
+              currentScopeID={currentScopeID()}
+              currentSessionID={currentSessionID()}
+            />
+          </Show>
+          <Show when={view() === "skill"}>
+            <SkillView
+              sdk={sdk}
+              search={debouncedSearch()}
+              directory={directory()}
+              onRegisterRefetch={(fn) => (refetchSkillData = fn)}
+            />
+          </Show>
+        </AppPanel.Body>
+      </AppPanel.Content>
+    </AppPanel.Root>
   )
 }

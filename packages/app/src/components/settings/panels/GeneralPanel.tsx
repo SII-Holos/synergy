@@ -1,8 +1,15 @@
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
 import { SettingRow } from "../components/SettingRow"
 import { SectionLabel } from "../components/SectionLabel"
 import { SegmentPill } from "../components/SegmentPill"
+
+const schemeOptions: { value: ColorScheme; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+]
 
 export function GeneralPanel(props: {
   editingLabel: string
@@ -13,9 +20,27 @@ export function GeneralPanel(props: {
   onAutoupdateChange: (value: string) => void
   onSendShortcutChange: (value: SendShortcut) => void
 }) {
+  const theme = useTheme()
+
   return (
     <div class="ds-content-inner">
       <h1 class="ds-content-title">General</h1>
+
+      <div class="ds-setting-section">
+        <SectionLabel title="Appearance" />
+        <SettingRow
+          title="Color Scheme"
+          description="Choose light, dark, or follow your system setting"
+          trailing={
+            <SegmentPill
+              value={theme.colorScheme()}
+              options={schemeOptions}
+              onChange={(value) => theme.setColorScheme(value as ColorScheme)}
+            />
+          }
+        />
+      </div>
+
       <div class="ds-setting-section">
         <SectionLabel title="Server-backed" />
         <p class="ds-section-hint">

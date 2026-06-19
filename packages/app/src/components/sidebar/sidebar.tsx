@@ -613,7 +613,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
-      {/* Bottom: Settings, Connect Provider, Theme */}
+      {/* Bottom: Settings, Connect Provider */}
       <div class="sb-bottom">
         <Tooltip value="Settings" placement="right">
           <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <SettingsDialog />)}>
@@ -625,12 +625,6 @@ export function Sidebar(props: SidebarProps) {
           <button type="button" class="sb-bottom-btn" onClick={() => dialog.show(() => <DialogSelectProvider />)}>
             <Icon name="cable" size="normal" />
             <span class="sb-bottom-label">Connect Provider</span>
-          </button>
-        </Tooltip>
-        <Tooltip value={isDark() ? "Switch to light mode" : "Switch to dark mode"} placement="right">
-          <button type="button" class="sb-bottom-btn" onClick={() => theme.setColorScheme(isDark() ? "light" : "dark")}>
-            <Icon name={isDark() ? "sun" : "moon"} size="normal" />
-            <span class="sb-bottom-label">{isDark() ? "Light" : "Dark"}</span>
           </button>
         </Tooltip>
       </div>

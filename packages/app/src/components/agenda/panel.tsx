@@ -5,14 +5,13 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
 import { MiniCalendar } from "./mini-calendar"
 import { AgendaForm } from "./form"
 import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
-import { ViewTab } from "../engram/shared"
 import { ActivityView } from "./activity-view"
 import {
   defaultAgendaActivityState,
@@ -243,113 +242,123 @@ export function AgendaPanel() {
   }
 
   return (
-    <Panel.Root>
+    <AppPanel.Root>
       <Show when={view() === "form"}>
-        <AgendaForm directory={formDirectory()} item={editingItem()} onBack={() => setView("main")} />
+        <AppPanel.Content>
+          <AgendaForm directory={formDirectory()} item={editingItem()} onBack={() => setView("main")} />
+        </AppPanel.Content>
       </Show>
-
       <Show when={view() === "main"}>
-        <Panel.Header>
-          <Panel.HeaderRow>
-            <div class="flex items-center flex-1 min-w-0 gap-0.5 rounded-[1rem] bg-surface-inset-base/42 p-0.75 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-              <ViewTab active={tab() === "schedule"} onClick={() => setTab("schedule")}>
-                Schedule
-              </ViewTab>
-              <ViewTab active={tab() === "activity"} onClick={() => setTab("activity")}>
-                Activity
-              </ViewTab>
-            </div>
-            <Panel.Actions>
-              <Panel.Action icon="refresh-ccw" title="Refresh" onClick={refresh} />
-              <Panel.Action icon="plus" title="New item" onClick={openCreate} />
-            </Panel.Actions>
-          </Panel.HeaderRow>
-        </Panel.Header>
-
-        <Show when={tab() === "schedule"}>
-          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-3 py-2.5 border-b border-border-weaker-base/45 shrink-0">
-            <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
-              <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
-            </div>
-            <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-              <Show
-                when={todoItems().length > 0}
-                fallback={
-                  <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                    <span class="text-10-medium text-text-weaker/60">No todo items</span>
-                  </div>
-                }
-              >
-                <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                  <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                    <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-                      {todoItems().length}
-                    </span>
-                  </div>
-                </div>
-                <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                  <For each={todoItems()}>{(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}</For>
-                </div>
-              </Show>
-            </div>
-          </div>
-
-          <div class="flex flex-col flex-1 min-h-0 relative px-3 pb-3 pt-2.5">
-            <CalendarGrid
-              viewMode={viewMode()}
-              anchor={anchor()}
-              events={calendarEvents()}
-              onViewModeChange={setViewMode}
-              onAnchorChange={setAnchor}
-              onEventClick={handleEventClick}
-              onRangeChange={(start, end) => setCalendarRange({ start, end })}
+        <AppPanel.Content>
+          <AppPanel.Header>
+            <AppPanel.HeaderRow>
+              <AppPanel.Title>Agenda</AppPanel.Title>
+              <AppPanel.Actions>
+                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refresh} />
+                <AppPanel.Action icon="plus" title="New item" onClick={openCreate} />
+              </AppPanel.Actions>
+            </AppPanel.HeaderRow>
+            <AppPanel.SegmentedNav
+              items={[
+                { id: "schedule", label: "Schedule" },
+                { id: "activity", label: "Activity" },
+              ]}
+              active={tab()}
+              onChange={(id) => setTab(id as PanelTab)}
             />
+          </AppPanel.Header>
 
-            <Show when={popoverItem()}>
-              {(pi) => {
-                const liveItem = createMemo(() => itemById(pi().id) ?? pi())
-                return (
-                  <DetailPopover
-                    item={liveItem()}
-                    runs={runsCache()[liveItem().id]}
-                    isLoading={isLoading}
-                    isDone={isDone}
-                    onClose={() => setPopoverItem(undefined)}
-                    onAction={(action) => performAction(liveItem().id, action)}
-                    onEdit={() => {
-                      setPopoverItem(undefined)
-                      openEdit(liveItem())
-                    }}
-                  />
-                )
-              }}
-            </Show>
-          </div>
-        </Show>
+          <Show when={tab() === "schedule"}>
+            <AppPanel.Body padding={false} class="!px-4">
+              <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 pb-3">
+                <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
+                  <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
+                </div>
+                <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                  <Show
+                    when={todoItems().length > 0}
+                    fallback={
+                      <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                        <span class="text-10-medium text-text-weaker/60">No todo items</span>
+                      </div>
+                    }
+                  >
+                    <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                        <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
+                          {todoItems().length}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+                      <For each={todoItems()}>
+                        {(item) => <TodoCard item={item} onClick={() => openDetail(item)} />}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </div>
 
-        <Show when={tab() === "activity"}>
-          <ActivityView
-            items={activity().items}
-            total={activity().total}
-            hasMore={activity().hasMore}
-            loading={activityLoading()}
-            query={activityQuery()}
-            error={activityError()}
-            onQueryChange={(value: string) => {
-              setActivityQuery(value)
-              void loadActivity({ reset: true, query: value })
-            }}
-            onLoadMore={() => void loadActivity({ append: true })}
-            onNavigate={navigateToSession}
-            onItemClick={(itemId) => {
-              const item = itemById(itemId)
-              if (item) openDetail(item)
-            }}
-          />
-        </Show>
+              <div class="flex flex-col flex-1 min-h-0 relative">
+                <CalendarGrid
+                  viewMode={viewMode()}
+                  anchor={anchor()}
+                  events={calendarEvents()}
+                  onViewModeChange={setViewMode}
+                  onAnchorChange={setAnchor}
+                  onEventClick={handleEventClick}
+                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
+                />
+
+                <Show when={popoverItem()}>
+                  {(pi) => {
+                    const liveItem = createMemo(() => itemById(pi().id) ?? pi())
+                    return (
+                      <DetailPopover
+                        item={liveItem()}
+                        runs={runsCache()[liveItem().id]}
+                        isLoading={isLoading}
+                        isDone={isDone}
+                        onClose={() => setPopoverItem(undefined)}
+                        onAction={(action) => performAction(liveItem().id, action)}
+                        onEdit={() => {
+                          setPopoverItem(undefined)
+                          openEdit(liveItem())
+                        }}
+                      />
+                    )
+                  }}
+                </Show>
+              </div>
+            </AppPanel.Body>
+          </Show>
+
+          <Show when={tab() === "activity"}>
+            <AppPanel.Body padding={false}>
+              <ActivityView
+                items={activity().items}
+                total={activity().total}
+                hasMore={activity().hasMore}
+                loading={activityLoading()}
+                query={activityQuery()}
+                error={activityError()}
+                onQueryChange={(value: string) => {
+                  setActivityQuery(value)
+                  void loadActivity({ reset: true, query: value })
+                }}
+                onLoadMore={() => void loadActivity({ append: true })}
+                onNavigate={navigateToSession}
+                onItemClick={(itemId) => {
+                  const item = itemById(itemId)
+                  if (item) openDetail(item)
+                }}
+              />
+            </AppPanel.Body>
+          </Show>
+        </AppPanel.Content>
       </Show>
-    </Panel.Root>
+    </AppPanel.Root>
   )
 }
 

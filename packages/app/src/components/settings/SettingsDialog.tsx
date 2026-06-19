@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, Show, For } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -11,6 +11,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
+import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
 import type {
   ProviderModel,
@@ -21,11 +22,10 @@ import type {
   SettingsEditMode,
   DialogSettingsProps,
 } from "./types"
-import { groupByProvider, emptyMcp } from "./types"
+import { groupByProvider, emptyMcp, NAV_GROUPS } from "./types"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
-import { SettingsNav } from "./components/SettingsNav"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { McpPanel } from "./panels/McpPanel"
@@ -366,200 +366,225 @@ export function SettingsDialog(props: DialogSettingsProps) {
   }
 
   return (
-    <Dialog title="Settings" class="dialog-settings-v2">
+    <Dialog class="dialog-settings-v2">
       {ready() ? (
-        <div class="ds-settings-layout">
-          <div class="ds-settings-rail">
-            <div class="ds-settings-rail-top">
-              <Show when={editMode() === "form"}>
-                <div class="ds-rail-set-info">
-                  <div class="ds-rail-set-name">{selectedSet()?.name ?? activeSet()?.name ?? "default"}</div>
-                  <Show when={!selectedSetIsActive()}>
-                    <span class="ds-rail-set-inactive">Inactive</span>
-                  </Show>
-                  <Show when={save.explicitDirty()}>
-                    <span class="ds-rail-set-dirty">Unsaved</span>
-                  </Show>
-                  <Show when={save.autoStatus() === "saved"}>
-                    <span class="ds-rail-set-saved">Saved</span>
-                  </Show>
-                </div>
-              </Show>
-              <Show when={editMode() === "raw"}>
-                <div class="ds-rail-set-info">
-                  <div class="ds-rail-set-name">{editingLabel()}</div>
-                  <span class="ds-rail-set-mode">Raw</span>
-                  <Show when={hasRawChanges()}>
-                    <span class="ds-rail-set-dirty">Unsaved</span>
-                  </Show>
-                </div>
-              </Show>
-              <SettingsNav activeTab={activeTab} onSelect={setActiveTab} />
+        <AppPanel.Root class="h-full min-h-0">
+          <AppPanel.Nav>
+            {/* Config set info */}
+            <div class="px-3 pt-4 pb-2 flex flex-col gap-0.5">
+              <div class="text-14-medium text-text-strong truncate">
+                {selectedSet()?.name ?? activeSet()?.name ?? "default"}
+              </div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <Show when={editMode() === "form" && !selectedSetIsActive()}>
+                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-border-weaker-base/40">
+                    Inactive
+                  </span>
+                </Show>
+                <Show when={save.explicitDirty()}>
+                  <span class="px-1.5 py-px rounded-full text-12-medium text-text-strong bg-icon-warning-base/18">
+                    Unsaved
+                  </span>
+                </Show>
+                <Show when={save.autoStatus() === "saved"}>
+                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-icon-success-base/14">
+                    Saved
+                  </span>
+                </Show>
+                <Show when={editMode() === "raw"}>
+                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-border-weaker-base/40">
+                    Raw
+                  </span>
+                </Show>
+              </div>
             </div>
-            <div class="ds-settings-rail-footer">
+
+            {/* Navigation groups */}
+            <div class="flex-1 overflow-y-auto px-2 pb-3">
+              <For each={NAV_GROUPS}>
+                {(group) => (
+                  <AppPanel.NavSection label={group.label}>
+                    <For each={group.items}>
+                      {(item) => (
+                        <AppPanel.NavItem
+                          icon={item.icon}
+                          label={item.label}
+                          active={activeTab() === item.id}
+                          onClick={() => setActiveTab(item.id)}
+                        />
+                      )}
+                    </For>
+                  </AppPanel.NavSection>
+                )}
+              </For>
+            </div>
+
+            {/* Form/JSON toggle */}
+            <div class="px-2 pb-2 pt-1 border-t border-border-weaker-base/30">
               <button
                 type="button"
-                class="ds-mode-toggle"
-                classList={{ "ds-mode-toggle-active": editMode() === "raw" }}
+                class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors w-full text-left"
                 onClick={() => save.switchToEditMode(editMode() === "raw" ? "form" : "raw")}
               >
-                <Icon name={editMode() === "raw" ? "settings" : "code"} size="small" />
+                <Icon name={editMode() === "raw" ? "layout-grid" : "code"} size="small" class="shrink-0" />
                 <span>{editMode() === "raw" ? "Form" : "JSON"}</span>
               </button>
             </div>
-          </div>
+          </AppPanel.Nav>
 
-          <div class="ds-settings-content">
-            <Show when={editMode() === "form" && activeTab() === "general"}>
-              <GeneralPanel
-                editingLabel={editingLabel()}
-                snapshot={general.snapshot}
-                autoupdate={general.autoupdate}
-                sendShortcut={general.sendShortcut}
-                onSnapshotChange={(value) => setGeneral("snapshot", value)}
-                onAutoupdateChange={(value) => setGeneral("autoupdate", value)}
-                onSendShortcutChange={handleLocalSendShortcut}
-              />
-            </Show>
+          <AppPanel.Content>
+            <AppPanel.Body padding={false}>
+              <Show when={editMode() === "form" && activeTab() === "general"}>
+                <GeneralPanel
+                  editingLabel={editingLabel()}
+                  snapshot={general.snapshot}
+                  autoupdate={general.autoupdate}
+                  sendShortcut={general.sendShortcut}
+                  onSnapshotChange={(value) => setGeneral("snapshot", value)}
+                  onAutoupdateChange={(value) => setGeneral("autoupdate", value)}
+                  onSendShortcutChange={handleLocalSendShortcut}
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "models"}>
-              <ModelsPanel
-                models={models}
-                providerModels={providerModels}
-                onModelChange={(key, value) => setModels(key, value)}
-                onManageModels={() => dialog.show(() => <DialogSelectModel />)}
-              />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "models"}>
+                <ModelsPanel
+                  models={models}
+                  providerModels={providerModels}
+                  onModelChange={(key, value) => setModels(key, value)}
+                  onManageModels={() => dialog.show(() => <DialogSelectModel />)}
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "mcp"}>
-              <McpPanel
-                entries={mcps.entries}
-                onAdd={() => setMcps("entries", (prev) => [...prev, emptyMcp()])}
-                onChange={(index, field, value) => setMcps("entries", index, field as keyof McpEntry, value as never)}
-                onRemove={(index) =>
-                  setMcps(
-                    "entries",
-                    produce((draft) => {
-                      draft.splice(index, 1)
-                    }),
-                  )
-                }
-              />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "mcp"}>
+                <McpPanel
+                  entries={mcps.entries}
+                  onAdd={() => setMcps("entries", (prev) => [...prev, emptyMcp()])}
+                  onChange={(index, field, value) => setMcps("entries", index, field as keyof McpEntry, value as never)}
+                  onRemove={(index) =>
+                    setMcps(
+                      "entries",
+                      produce((draft) => {
+                        draft.splice(index, 1)
+                      }),
+                    )
+                  }
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "plugins"}>
-              <PluginsPanel
-                entries={plugins.entries}
-                onAdd={() => setPlugins("entries", (prev) => [...prev, { value: "" }])}
-                onChange={(index, value) => setPlugins("entries", index, "value", value)}
-                onRemove={(index) =>
-                  setPlugins(
-                    "entries",
-                    produce((draft) => {
-                      draft.splice(index, 1)
-                    }),
-                  )
-                }
-              />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "plugins"}>
+                <PluginsPanel
+                  entries={plugins.entries}
+                  onAdd={() => setPlugins("entries", (prev) => [...prev, { value: "" }])}
+                  onChange={(index, value) => setPlugins("entries", index, "value", value)}
+                  onRemove={(index) =>
+                    setPlugins(
+                      "entries",
+                      produce((draft) => {
+                        draft.splice(index, 1)
+                      }),
+                    )
+                  }
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "channels"}>
-              <ChannelsPanel
-                channels={channels}
-                onChannelToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
-              />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "channels"}>
+                <ChannelsPanel
+                  channels={channels}
+                  onChannelToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "email"}>
-              <EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value as never)} />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "email"}>
+                <EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value as never)} />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "identity"}>
-              <IdentityPanel identity={identity} onIdentityChange={(key, value) => setIdentity(key, value)} />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "identity"}>
+                <IdentityPanel identity={identity} onIdentityChange={(key, value) => setIdentity(key, value)} />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "advanced"}>
-              <AdvancedPanel
-                advanced={advanced}
-                controlProfiles={controlProfiles() ?? []}
-                sandboxStatus={sandboxStatus()}
-                onAdvancedChange={(key, value) => setAdvanced(key, value)}
-              />
-            </Show>
+              <Show when={editMode() === "form" && activeTab() === "advanced"}>
+                <AdvancedPanel
+                  advanced={advanced}
+                  controlProfiles={controlProfiles() ?? []}
+                  sandboxStatus={sandboxStatus()}
+                  onAdvancedChange={(key, value) => setAdvanced(key, value)}
+                />
+              </Show>
 
-            <Show when={editMode() === "form" && activeTab() === "config-sets"}>
-              <ConfigSetsPanel
-                configSets={globalSync.configSets}
-                selectedSetName={selectedSetName}
-                activeSetName={() => activeSet()?.name}
-                createSetName={createSetName}
-                creatingSet={creatingSet}
-                onOpenSet={(name) => {
-                  if (name !== selectedSet()?.name && hasAnyChanges()) {
-                    save.runDiscardGuard(`open ${name}`, async () => {
-                      setSelectedSetName(name)
-                      setActiveTab("general")
-                      resetEditor()
-                      const isActive = globalSync.configSets.find((s) => s.name === name)?.active
-                      showToast({
-                        type: "info",
-                        title: `Opened ${name}`,
-                        description: isActive
-                          ? "You are now editing the active Config Set. Save changes to update runtime config."
-                          : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
+              <Show when={editMode() === "form" && activeTab() === "config-sets"}>
+                <ConfigSetsPanel
+                  configSets={globalSync.configSets}
+                  selectedSetName={selectedSetName}
+                  activeSetName={() => activeSet()?.name}
+                  createSetName={createSetName}
+                  creatingSet={creatingSet}
+                  onOpenSet={(name) => {
+                    if (name !== selectedSet()?.name && hasAnyChanges()) {
+                      save.runDiscardGuard(`open ${name}`, async () => {
+                        setSelectedSetName(name)
+                        setActiveTab("general")
+                        resetEditor()
+                        const isActive = globalSync.configSets.find((s) => s.name === name)?.active
+                        showToast({
+                          type: "info",
+                          title: `Opened ${name}`,
+                          description: isActive
+                            ? "You are now editing the active Config Set. Save changes to update runtime config."
+                            : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
+                        })
                       })
+                      return
+                    }
+                    setSelectedSetName(name)
+                    setActiveTab("general")
+                    resetEditor()
+                    const isActive = globalSync.configSets.find((s) => s.name === name)?.active
+                    showToast({
+                      type: "info",
+                      title: `Opened ${name}`,
+                      description: isActive
+                        ? "You are now editing the active Config Set. Save changes to update runtime config."
+                        : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
                     })
-                    return
-                  }
-                  setSelectedSetName(name)
-                  setActiveTab("general")
-                  resetEditor()
-                  const isActive = globalSync.configSets.find((s) => s.name === name)?.active
-                  showToast({
-                    type: "info",
-                    title: `Opened ${name}`,
-                    description: isActive
-                      ? "You are now editing the active Config Set. Save changes to update runtime config."
-                      : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
-                  })
-                }}
-                onActivateSet={save.handleSwitchSet}
-                onDeleteSet={save.handleDeleteSet}
-                onCreateSetNameChange={setCreateSetName}
-                onCreateSet={() => save.handleCreateSet(createSetName())}
-              />
-            </Show>
+                  }}
+                  onActivateSet={save.handleSwitchSet}
+                  onDeleteSet={save.handleDeleteSet}
+                  onCreateSetNameChange={setCreateSetName}
+                  onCreateSet={() => save.handleCreateSet(createSetName())}
+                />
+              </Show>
 
-            <Show when={editMode() === "raw"}>
-              <RawEditorPanel
-                rawPath={rawConfig()?.path}
-                rawText={rawText}
-                rawValidation={rawValidation}
-                validatingRaw={validatingRaw}
-                hasRawChanges={hasRawChanges}
-                onValidate={validateRawConfig}
-                onTextChange={(value) => {
-                  setRawText(value)
-                  if (!rawValidation.valid || rawValidation.errors.length > 0) {
-                    setRawValidation({ valid: true, errors: [], warnings: [] })
-                  }
-                }}
-              />
-            </Show>
+              <Show when={editMode() === "raw"}>
+                <RawEditorPanel
+                  rawPath={rawConfig()?.path}
+                  rawText={rawText}
+                  rawValidation={rawValidation}
+                  validatingRaw={validatingRaw}
+                  hasRawChanges={hasRawChanges}
+                  onValidate={validateRawConfig}
+                  onTextChange={(value) => {
+                    setRawText(value)
+                    if (!rawValidation.valid || rawValidation.errors.length > 0) {
+                      setRawValidation({ valid: true, errors: [], warnings: [] })
+                    }
+                  }}
+                />
+              </Show>
+            </AppPanel.Body>
 
-            <div class="ds-footer">
-              <div class="ds-footer-status">
+            <AppPanel.Footer>
+              <div class="flex-1 flex items-center gap-2">
                 <Show when={save.bgStatus() === "saving"}>
-                  <span class="ds-save-status ds-save-status-saving">Saving...</span>
+                  <span class="text-12-medium text-text-interactive-base">Saving...</span>
                 </Show>
                 <Show when={save.bgStatus() === "saved"}>
-                  <span class="ds-save-status ds-save-status-done">
+                  <span class="flex items-center gap-1 text-12-medium text-text-weak">
                     <Icon name="check" size="small" />
                     Saved
                   </span>
                 </Show>
                 <Show when={save.autoStatus() === "error" || save.bgStatus() === "error"}>
-                  <span class="ds-save-status ds-save-status-error">Save failed</span>
+                  <span class="text-12-medium text-icon-critical-base">Save failed</span>
                 </Show>
               </div>
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
@@ -635,9 +660,9 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   </Button>
                 </Show>
               </Show>
-            </div>
-          </div>
-        </div>
+            </AppPanel.Footer>
+          </AppPanel.Content>
+        </AppPanel.Root>
       ) : (
         <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">Loading...</div>
       )}

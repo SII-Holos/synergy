@@ -1,194 +1,47 @@
-/* ===== Settings dialog layout ===== */
+/* ===== Settings dialog overrides =====
+ * The Kobalte Dialog provides backdrop/escape/close mechanics.
+ * We override the dialog container size to feel like a large panel.
+ * dialog-settings-v2 class is on [data-slot="dialog-content"],
+ * so we use :has() to reach its parent container.
+ */
 
-.ds-settings-layout {
-  display: flex;
+/* Override dialog container to Settings panel size */
+[data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-container"] {
+  width: min(calc(100vw - 16px), 980px);
+  height: min(calc(100vh - 16px), 680px);
+  max-height: min(calc(100vh - 16px), 680px);
+}
+
+/* Make content area fill the container */
+.dialog-settings-v2 {
   height: 100%;
+  min-height: 0;
+}
+
+/* Body fills remaining space with no scroll — AppPanel handles its own scroll */
+.dialog-settings-v2 [data-slot="dialog-body"] {
   overflow: hidden;
 }
 
-/* ===== Left navigation rail ===== */
-
-.ds-settings-rail {
-  width: 252px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid color-mix(in srgb, var(--border-base) 62%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base) 78%, var(--background-base));
+/* Hide the built-in Dialog header (title + close) — AppPanel provides its own chrome */
+.dialog-settings-v2 [data-slot="dialog-header"] {
+  display: none;
 }
 
-.ds-settings-rail-top {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  padding-top: 4px;
-  overflow-y: auto;
-}
-
-.ds-rail-set-info {
-  padding: 20px 10px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ds-rail-set-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-base);
-}
-
-.ds-rail-set-inactive {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--border-base) 24%, transparent);
-  padding: 1px 6px;
-  border-radius: 9999px;
-  align-self: flex-start;
-}
-
-.ds-rail-set-dirty {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-strong);
-  background: color-mix(in oklch, var(--icon-warning-base) 18%, transparent);
-  padding: 1px 6px;
-  border-radius: 9999px;
-  align-self: flex-start;
-}
-
-.ds-rail-set-mode {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--border-base) 24%, transparent);
-  padding: 1px 6px;
-  border-radius: 9999px;
-  align-self: flex-start;
-}
-
-.ds-rail-set-saved {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--icon-success-base) 14%, transparent);
-  padding: 1px 6px;
-  border-radius: 9999px;
-  align-self: flex-start;
-}
-
-/* ===== Nav groups ===== */
-
-.ds-nav-group {
-  margin-top: 8px;
-}
-
-.ds-nav-group:first-child {
-  margin-top: 0;
-}
-
-.ds-nav-group-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-weaker);
-  user-select: none;
-}
-
-/* ===== Nav items ===== */
-
-.ds-settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
-}
-
-.ds-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 12px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-base);
-  cursor: default;
-  border: none;
-  background: transparent;
-  transition: background-color 0.12s ease;
-  text-align: left;
-}
-
-.ds-nav-item:hover {
-  background: color-mix(in oklch, var(--surface-raised-base-hover) 60%, transparent);
-}
-
-.ds-nav-item-active {
-  background: color-mix(in oklch, var(--surface-raised-base-hover) 80%, transparent);
-  color: var(--text-strong);
-  font-weight: 600;
-}
-
-/* ===== Rail footer (Form/JSON toggle) ===== */
-
-.ds-settings-rail-footer {
-  padding: 8px;
-  border-top: 1px solid color-mix(in oklch, var(--border-base) 16%, transparent);
-}
-
-.ds-mode-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-subtle);
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--border-weak-base) 50%, transparent);
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.ds-mode-toggle:hover {
-  color: var(--text-base);
-  background: var(--surface-raised-base-hover);
-  border-color: color-mix(in oklch, var(--border-base) 60%, transparent);
-}
-
-.ds-mode-toggle-active {
-  color: var(--text-strong);
-  background: var(--surface-raised-stronger-non-alpha);
-  border-color: color-mix(in oklch, var(--border-base) 40%, transparent);
+@media (max-width: 840px) {
+  [data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-container"] {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+  }
 }
 
 /* ===== Right content area ===== */
 
-.ds-settings-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--surface-raised-stronger-non-alpha);
-}
-
 .ds-content-inner {
   flex: 1;
   overflow-y: auto;
-  padding: 42px 56px 32px;
+  padding: 36px 48px 32px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-base) 46%, transparent) transparent;
   display: flex;
@@ -197,10 +50,10 @@
 }
 
 .ds-content-title {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 650;
   color: var(--text-strong);
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   line-height: 1.2;
 }
 
@@ -549,46 +402,6 @@
 .ds-inline-badge-dirty {
   background: color-mix(in oklch, var(--icon-warning-base) 18%, transparent);
   color: var(--text-strong);
-}
-
-/* ===== Footer ===== */
-
-.ds-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid color-mix(in oklch, var(--border-base) 15%, transparent);
-  flex-shrink: 0;
-}
-
-.ds-footer-status {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ds-save-status {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-weak);
-}
-
-.ds-save-status-saving {
-  color: var(--text-interactive-base);
-}
-
-.ds-save-status-done {
-  color: var(--text-weak);
-}
-
-.ds-save-status-error {
-  color: var(--icon-critical-base);
 }
 
 /* ===== Raw editor ===== */

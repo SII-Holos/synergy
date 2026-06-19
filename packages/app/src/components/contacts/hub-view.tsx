@@ -3,7 +3,7 @@ interface HolosProfile {
   bio?: string
 }
 
-import { Show } from "solid-js"
+import { AppPanel } from "@/components/app-panel"
 import { AgentCard } from "./agent-card"
 import { StatsSection } from "@/components/stats/stats-section"
 
@@ -21,7 +21,7 @@ export function HubView(props: {
 }) {
   return (
     <>
-      <section class="rounded-[1.35rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <AppPanel.Section label="Profile">
         <AgentCard
           profile={props.profile}
           agentId={props.agentId}
@@ -34,11 +34,10 @@ export function HubView(props: {
           onReconnect={props.onReconnect}
           onConnectHolos={props.onConnectHolos}
         />
-      </section>
-
-      <div class="mt-6">
+      </AppPanel.Section>
+      <AppPanel.Section label="Usage Trends">
         <StatsSection />
-      </div>
+      </AppPanel.Section>
     </>
   )
 }

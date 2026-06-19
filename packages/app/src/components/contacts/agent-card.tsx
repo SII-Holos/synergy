@@ -67,7 +67,7 @@ export function AgentCard(props: {
   return (
     <div
       class="overflow-hidden rounded-[1.15rem] bg-surface-inset-base/45 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-all"
-      style={{ animation: "contactFadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
+      style={{ animation: "contactFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both" }}
     >
       <Show
         when={!props.isGuest && props.profile}
