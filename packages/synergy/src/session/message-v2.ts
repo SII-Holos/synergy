@@ -16,6 +16,9 @@ import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
 
+function isTLSError(message: string) {
+  return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
+}
 export namespace MessageV2 {
   async function requireSession(sessionID: string) {
     const { SessionManager } = await import("./manager")
@@ -751,6 +754,16 @@ export namespace MessageV2 {
               syscall: (e as SystemError).syscall ?? "",
               message: (e as SystemError).message ?? "",
             },
+          },
+          { cause: e },
+        ).toObject()
+      case e instanceof Error &&
+        typeof (e as SystemError).message === "string" &&
+        isTLSError((e as SystemError).message):
+        return new MessageV2.APIError(
+          {
+            message: (e as SystemError).message,
+            isRetryable: true,
           },
           { cause: e },
         ).toObject()
