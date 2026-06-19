@@ -3,7 +3,6 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useLayout } from "./layout"
 import { useParams } from "@solidjs/router"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
-import { WORKSPACE_DEFAULT_WIDTH } from "./workspace-layout"
 
 export interface WorkspaceTool {
   id: string
@@ -43,7 +42,7 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
       activeTool,
       active: () => ws().active(),
       opened: () => ws().opened() ?? false,
-      width: () => ws().width() ?? WORKSPACE_DEFAULT_WIDTH,
+      width: () => ws().width(),
       openPanel: () => ws().open(),
       closePanel: () => ws().close(),
       setActive: (id: string | null) => ws().setActive(id),

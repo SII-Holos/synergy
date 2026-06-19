@@ -18252,6 +18252,9 @@
           },
           "searchText": {
             "type": "string"
+          },
+          "previewHtml": {
+            "type": "string"
           }
         },
         "required": ["id", "title", "pinned", "global", "tags", "version", "time", "searchText"]

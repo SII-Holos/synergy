@@ -3199,6 +3199,7 @@ export type NoteMetaInfo = {
     updated: number
   }
   searchText: string
+  previewHtml?: string
 }
 
 export type NoteMetaScopeGroup = {

@@ -26,3 +26,10 @@ export function computeWorkspaceRailRight(workspaceWidth: number, viewportWidth:
     Math.max(WORKSPACE_RAIL_GAP, viewportWidth - WORKSPACE_RAIL_VISIBLE_MARGIN),
   )
 }
+
+export function computeDefaultWorkspaceWidth(viewportWidth: number, constraints: WorkspaceWidthConstraints = {}) {
+  const sessionMinWidth = constraints.sessionMinWidth ?? WORKSPACE_SESSION_MIN_WIDTH
+  const remaining = viewportWidth - sessionMinWidth
+  // 3/5 of the remaining space, but not below WORKSPACE_MIN_WIDTH
+  return Math.max(WORKSPACE_MIN_WIDTH, Math.round(remaining * 0.6))
+}

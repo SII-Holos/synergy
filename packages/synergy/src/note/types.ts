@@ -63,6 +63,7 @@ export namespace NoteTypes {
         updated: z.number(),
       }),
       searchText: z.string(),
+      previewHtml: z.string().optional(),
     })
     .meta({ ref: "NoteMetaInfo" })
   export type MetaInfo = z.infer<typeof MetaInfo>

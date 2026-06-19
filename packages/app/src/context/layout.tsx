@@ -11,7 +11,7 @@ import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
-import { WORKSPACE_DEFAULT_WIDTH } from "./workspace-layout"
+import { computeDefaultWorkspaceWidth } from "./workspace-layout"
 import { reconcile } from "solid-js/store"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -93,7 +93,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const [store, setStore, _, ready] = persisted(
-      Persist.global("layout", ["layout.v8"]),
+      Persist.global("layout", ["layout.v8", "layout.v9"]),
       createStore({
         sidebar: {
           opened: false,
@@ -115,7 +115,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
-        workspaceSessions: {} as Record<string, { opened: boolean; active: string | null; width: number }>,
+        workspaceSessions: {} as Record<string, { opened: boolean; active: string | null; width?: number }>,
       }),
     )
 
@@ -929,18 +929,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       workspace(sessionKey: string) {
         touch(sessionKey)
-        const ws = createMemo(
-          () => store.workspaceSessions[sessionKey] ?? { opened: false, active: null, width: WORKSPACE_DEFAULT_WIDTH },
-        )
+        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null })
         return {
           opened: createMemo(() => ws().opened),
           active: createMemo(() => ws().active),
-          width: createMemo(() => ws().width),
+          width: createMemo(() => ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth)),
           open() {
             setStore("workspaceSessions", sessionKey, {
               opened: true,
               active: ws().active ?? null,
-              width: ws().width ?? WORKSPACE_DEFAULT_WIDTH,
+              width: ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth),
             })
           },
           close() {
@@ -951,7 +949,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           setActive(tool: string | null) {
             if (!store.workspaceSessions[sessionKey]) {
-              setStore("workspaceSessions", sessionKey, { opened: false, active: tool, width: WORKSPACE_DEFAULT_WIDTH })
+              setStore("workspaceSessions", sessionKey, {
+                opened: false,
+                active: tool,
+                width: computeDefaultWorkspaceWidth(window.innerWidth),
+              })
             } else {
               setStore("workspaceSessions", sessionKey, "active", tool)
             }

@@ -7,6 +7,7 @@ import {
   WORKSPACE_SESSION_MIN_WIDTH,
   WORKSPACE_TABS_MIN_WIDTH,
   clampWorkspaceWidth,
+  computeDefaultWorkspaceWidth,
   computeMaxWorkspaceWidth,
   computeWorkspaceRailRight,
 } from "./workspace-layout"
@@ -95,5 +96,45 @@ describe("computeWorkspaceRailRight", () => {
 
   test("never positions the dock closer than the default gap", () => {
     expect(computeWorkspaceRailRight(0, 40)).toBe(WORKSPACE_RAIL_GAP)
+  })
+})
+
+describe("computeDefaultWorkspaceWidth", () => {
+  test("returns roughly 3/5 of remaining space on a 1440px desktop", () => {
+    const width = computeDefaultWorkspaceWidth(1440)
+    // remaining after session min: 1440 - 350 = 1090, 3/5 ≈ 654
+    expect(width).toBeGreaterThan(640)
+    expect(width).toBeLessThanOrEqual(800)
+  })
+
+  test("returns roughly 3/5 of remaining space on a 1920px desktop", () => {
+    const width = computeDefaultWorkspaceWidth(1920)
+    // remaining: 1920 - 350 = 1570, 3/5 ≈ 942
+    expect(width).toBeGreaterThan(640)
+    expect(width).toBeLessThanOrEqual(1100)
+  })
+
+  test("scales down on narrower viewports", () => {
+    const width = computeDefaultWorkspaceWidth(1024)
+    expect(width).toBeGreaterThanOrEqual(WORKSPACE_MIN_WIDTH)
+    expect(width).toBeLessThanOrEqual(600)
+  })
+
+  test("never returns less than the workspace minimum", () => {
+    const width = computeDefaultWorkspaceWidth(400)
+    expect(width).toBeGreaterThanOrEqual(WORKSPACE_MIN_WIDTH)
+  })
+
+  test("respects custom session minimum", () => {
+    const width = computeDefaultWorkspaceWidth(1440, { sessionMinWidth: 420 })
+    // remaining: 1440 - 420 = 1020, 3/5 = 612 — less than legacy 640 is expected with larger session min
+    expect(width).toBeGreaterThan(600)
+    expect(width).toBeLessThan(640)
+  })
+
+  test("returns larger than legacy 640 on viewports 1440 and above", () => {
+    for (const vp of [1440, 1680, 1920, 2560]) {
+      expect(computeDefaultWorkspaceWidth(vp)).toBeGreaterThan(640)
+    }
   })
 })
