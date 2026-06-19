@@ -89,34 +89,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         .finally(() => {
           setMeta("loading", sessionID, false)
         })
+        .catch(() => {})
     }
 
     const evictSession = (sessionID: string) => {
-      const messages = store.message[sessionID]
-      if (!messages) return
-
-      batch(() => {
-        setStore(
-          produce((draft) => {
-            for (const msg of messages) {
-              delete draft.part[msg.id]
-            }
-            delete draft.message[sessionID]
-            delete draft.session_diff[sessionID]
-            delete draft.todo[sessionID]
-            delete draft.dag[sessionID]
-            if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
-            delete draft.question[sessionID]
-          }),
-        )
-        setMeta(
-          produce((draft) => {
-            delete draft.limit[sessionID]
-            delete draft.complete[sessionID]
-            delete draft.loading[sessionID]
-          }),
-        )
-      })
+      setStore(
+        produce((draft) => {
+          delete draft.session_diff[sessionID]
+          delete draft.todo[sessionID]
+          delete draft.dag[sessionID]
+          if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
+          delete draft.question[sessionID]
+        }),
+      )
+      setMeta(
+        produce((draft) => {
+          delete draft.limit[sessionID]
+          delete draft.complete[sessionID]
+          delete draft.loading[sessionID]
+        }),
+      )
     }
 
     return {
