@@ -15,7 +15,7 @@ import CodeBlockShiki from "tiptap-extension-code-block-shiki"
 import MathExtension from "@aarkue/tiptap-math-extension"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { Panel } from "@/components/panel"
+
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
@@ -236,7 +236,7 @@ function ScopeSection(props: {
         when={props.expanded}
         fallback={
           <Show when={previewNotes().length > 0}>
-            <div class="grid grid-cols-1 gap-2 px-1 pb-1 pt-1.5 sm:grid-cols-3">
+            <div class="flex flex-col gap-2 px-1 pb-1 pt-1.5">
               <For each={previewNotes()}>
                 {(note) => (
                   <MiniNoteCard
@@ -254,16 +254,12 @@ function ScopeSection(props: {
           when={props.group.notes.length > 0}
           fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
-          <div class="mb-1 mt-2 flex gap-2.5 px-1">
-            {[0, 1, 2].map((col) => (
-              <div class="flex min-w-0 flex-1 flex-col gap-2.5">
-                <For each={props.group.notes.filter((_, i) => i % 3 === col)}>
-                  {(note) => (
-                    <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
-                  )}
-                </For>
-              </div>
-            ))}
+          <div class="mt-2 flex flex-col gap-2.5 px-1 mb-1">
+            <For each={props.group.notes}>
+              {(note) => (
+                <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
+              )}
+            </For>
           </div>
         </Show>
       </Show>
@@ -417,56 +413,88 @@ export function NotePanel() {
       <style>{TIPTAP_STYLES}</style>
 
       <Show when={view() === "list"}>
-        <Panel.Root>
-          <Panel.Header>
-            <Panel.HeaderRow>
-              <Panel.Title>Notes</Panel.Title>
-              <Show when={rawGroups()}>
-                <Panel.Count>{totalNotes()}</Panel.Count>
+        <div class="flex flex-col h-full">
+          <div class="shrink-0 px-4 pt-3 pb-2">
+            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
+              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+              <input
+                type="text"
+                placeholder="Search notes..."
+                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                value={search()}
+                onInput={(e) => setSearch(e.currentTarget.value)}
+              />
+              <Show when={search()}>
+                <button
+                  type="button"
+                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
+                  aria-label="Clear search"
+                  onClick={() => setSearch("")}
+                >
+                  <Icon name="x" size="small" />
+                </button>
               </Show>
-              <Panel.Actions>
-                <Panel.Action icon="refresh-ccw" title="Refresh" onClick={() => refetch()} />
-                <Panel.Action icon="plus" title="New Note" onClick={() => createNoteInScope(directory() ?? "global")} />
-              </Panel.Actions>
-            </Panel.HeaderRow>
-            <Panel.Search value={search()} onInput={setSearch} placeholder="Search notes..." />
-          </Panel.Header>
+              <span class="text-11-regular text-text-weak mr-0.5">{totalNotes()}</span>
+              <button
+                type="button"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                onClick={() => refetch()}
+                title="Refresh"
+              >
+                <Icon name="refresh-ccw" size="small" />
+              </button>
+            </div>
 
-          <Show when={allTags().length > 0}>
-            <div class="shrink-0 px-6 pb-2">
-              <div class="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Show when={allTags().length > 0}>
+              <div class="mt-2 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <Show when={selectedTags().size > 0}>
                   <button
                     type="button"
                     class="shrink-0 flex items-center justify-center size-6 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                     onClick={() => setSelectedTags(new Set())}
-                    title="Clear filters"
+                    aria-label="Clear all filters"
                   >
                     <Icon name="x" size="small" />
                   </button>
                 </Show>
                 <For each={allTags()}>
                   {({ tag, count }) => (
-                    <Panel.FilterChip active={selectedTags().has(tag)} onClick={() => toggleTag(tag)}>
+                    <button
+                      type="button"
+                      classList={{
+                        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
+                        "bg-surface-raised-base-hover text-text-strong": selectedTags().has(tag),
+                        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                          !selectedTags().has(tag),
+                      }}
+                      onClick={() => toggleTag(tag)}
+                    >
                       <span class="whitespace-nowrap">
                         {tag}
                         <span class="ml-0.5 opacity-60">{count}</span>
                       </span>
-                    </Panel.FilterChip>
+                    </button>
                   )}
                 </For>
               </div>
-            </div>
-          </Show>
+            </Show>
+          </div>
 
-          <Panel.Body padding="tight">
+          <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Show when={rawGroups.loading}>
-              <Panel.Loading />
+              <div class="flex items-center justify-center py-16">
+                <Spinner class="size-5" />
+              </div>
             </Show>
             <Show when={!rawGroups.loading}>
               <Show
                 when={displayGroups().length > 0}
-                fallback={<Panel.Empty icon="notebook-pen" title="No notes found" />}
+                fallback={
+                  <div class="flex flex-col items-center justify-center py-16 gap-3">
+                    <Icon name="notebook-pen" size="large" class="text-icon-weak" />
+                    <div class="text-14-medium text-text-weak">No notes found</div>
+                  </div>
+                }
               >
                 <div class="flex flex-col gap-1">
                   <For each={displayGroups()}>
@@ -484,8 +512,8 @@ export function NotePanel() {
                 </div>
               </Show>
             </Show>
-          </Panel.Body>
-        </Panel.Root>
+          </div>
+        </div>
       </Show>
 
       <Show when={view() === "editor" && selectedNoteId()}>

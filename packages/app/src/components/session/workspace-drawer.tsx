@@ -1,7 +1,6 @@
-import { Show, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
+import { Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
 import "./workspace-drawer.css"
@@ -77,22 +76,6 @@ export function WorkspaceDrawer() {
           width: workspace.opened() ? `${workspace.width()}px` : "0px",
         }}
       >
-        <header class="shrink-0 flex items-center justify-between px-4 h-11 border-b border-border-weak-base">
-          <div class="flex items-center gap-2 min-w-0">
-            <Show when={tool()}>
-              <Icon name={tool()!.icon} size="normal" class="text-icon-weak shrink-0" />
-              <span class="text-14-medium text-text-strong truncate">{tool()?.label}</span>
-            </Show>
-          </div>
-          <IconButton
-            icon="x"
-            variant="ghost"
-            onClick={() => {
-              setClosing(true)
-              workspace.closePanel()
-            }}
-          />
-        </header>
         <div class="flex-1 min-h-0 overflow-hidden">
           <Show
             when={tool()}
@@ -100,7 +83,15 @@ export function WorkspaceDrawer() {
               <div class="flex items-center justify-center h-full text-text-weak text-14">No tool selected</div>
             }
           >
-            <Dynamic component={tool()!.component} />
+            <Suspense
+              fallback={
+                <div class="flex items-center justify-center h-full">
+                  <Spinner class="size-5" />
+                </div>
+              }
+            >
+              <Dynamic component={tool()!.component} />
+            </Suspense>
           </Show>
         </div>
       </aside>

@@ -9,7 +9,17 @@ export function WorkspaceRail() {
 
   return (
     <Show when={workspace.tools().length > 0}>
-      <div class="workspace-rail" role="toolbar" aria-label="Workspace tools">
+      <div
+        class="workspace-rail"
+        classList={{
+          "workspace-rail--open": workspace.opened(),
+        }}
+        role="toolbar"
+        aria-label="Workspace tools"
+        style={{
+          right: workspace.opened() ? `${workspace.width() + 8}px` : undefined,
+        }}
+      >
         <For each={workspace.tools()}>
           {(tool) => {
             const isActive = createMemo(() => workspace.opened() && workspace.active() === tool.id)
