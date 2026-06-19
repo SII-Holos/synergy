@@ -38,7 +38,7 @@ export namespace RuntimeReload {
     "category",
     "compaction",
     "snapshot",
-    "agora",
+    //     "agora",
     "instructions",
     "autoupdate",
     "enterprise",

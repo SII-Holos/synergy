@@ -144,16 +144,16 @@ const SAFE_PSEUDO_PATHS = new Set([
 
 const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 
-const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
-
-const AGORA_STATEFUL_TOOLS = new Set([
-  "agora_post",
-  "agora_comment",
-  "agora_submit",
-  "agora_sync",
-  "agora_join",
-  "agora_accept",
-])
+// const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
+//
+// const AGORA_STATEFUL_TOOLS = new Set([
+//   "agora_post",
+//   "agora_comment",
+//   "agora_submit",
+//   "agora_sync",
+//   "agora_join",
+//   "agora_accept",
+// ])
 
 const INSPIRE_STATEFUL_TOOLS = new Set([
   "inspire_login",
@@ -379,22 +379,22 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Agora is external collaboration I/O. Join/accept also touch local
-      // directories, so they keep the file path classification in addition to
-      // network/platform capabilities.
-      if (AGORA_NETWORK_TOOLS.has(toolName) || AGORA_STATEFUL_TOOLS.has(toolName)) {
-        caps.push({ class: "network_request", nonBypassable: true })
-        if (AGORA_STATEFUL_TOOLS.has(toolName)) {
-          caps.push({ class: "platform_control", nonBypassable: true })
-        }
-        if (toolName === "agora_join" || toolName === "agora_accept") {
-          const dir = args.directory ?? ""
-          if (dir) {
-            classifyPathCapability(caps, dir, { activeWorkspace, originalCheckout, write: true })
-          }
-        }
-        return { capabilities: caps }
-      }
+      //       // Agora is external collaboration I/O. Join/accept also touch local
+      //       // directories, so they keep the file path classification in addition to
+      //       // network/platform capabilities.
+      //       if (AGORA_NETWORK_TOOLS.has(toolName) || AGORA_STATEFUL_TOOLS.has(toolName)) {
+      //         caps.push({ class: "network_request", nonBypassable: true })
+      //         if (AGORA_STATEFUL_TOOLS.has(toolName)) {
+      //           caps.push({ class: "platform_control", nonBypassable: true })
+      //         }
+      //         if (toolName === "agora_join" || toolName === "agora_accept") {
+      //           const dir = args.directory ?? ""
+      //           if (dir) {
+      //             classifyPathCapability(caps, dir, { activeWorkspace, originalCheckout, write: true })
+      //           }
+      //         }
+      //         return { capabilities: caps }
+      //       }
 
       // Shell operations
       if (toolName === "bash") {

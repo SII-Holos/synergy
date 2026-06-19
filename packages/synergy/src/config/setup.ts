@@ -1501,7 +1501,7 @@ export namespace ConfigSetup {
     "permission",
     "tools",
     "enterprise",
-    "agora",
+    //     "agora",
     "compaction",
     "experimental",
     "category",

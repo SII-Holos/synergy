@@ -78,7 +78,7 @@ export namespace ToolResolver {
    */
   function externalPathFromArgs(toolName: string, args: Record<string, any>): string {
     if (toolName === "bash") return (args.workdir ?? args.command) as string
-    if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
+    //     if (toolName === "agora_join" || toolName === "agora_accept") return (args.directory ?? "") as string
     if (toolName === "look_at" || toolName === "attach") {
       const raw = args.file_path ?? args.filePath ?? ""
       return Array.isArray(raw) ? (raw[0] ?? "") : String(raw)

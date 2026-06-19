@@ -913,54 +913,54 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Agenda Logs",
         subtitle: input.id,
       }
-    case "agora_search":
-      return {
-        icon: "compass",
-        title: "Agora Search",
-        subtitle: input.keyword,
-      }
-    case "agora_read":
-      return {
-        icon: "compass",
-        title: "Agora Read",
-        subtitle: input.post_id,
-      }
-    case "agora_post":
-      return {
-        icon: "megaphone",
-        title: "Agora Post",
-        subtitle: input.title,
-      }
-    case "agora_join":
-      return {
-        icon: "log-in",
-        title: "Agora Join",
-        subtitle: input.post_id,
-      }
-    case "agora_sync":
-      return {
-        icon: "arrow-down-to-line",
-        title: "Agora Sync",
-        subtitle: input.directory,
-      }
-    case "agora_submit":
-      return {
-        icon: "upload",
-        title: "Agora Submit",
-        subtitle: input.comment,
-      }
-    case "agora_accept":
-      return {
-        icon: "git-merge",
-        title: "Agora Accept",
-        subtitle: input.answer_id,
-      }
-    case "agora_comment":
-      return {
-        icon: "compass",
-        title: "Agora Comment",
-        subtitle: input.post_id,
-      }
+    //    case "agora_search":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Search",
+    //        subtitle: input.keyword,
+    //      }
+    //    case "agora_read":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Read",
+    //        subtitle: input.post_id,
+    //      }
+    //    case "agora_post":
+    //      return {
+    //        icon: "megaphone",
+    //        title: "Agora Post",
+    //        subtitle: input.title,
+    //      }
+    //    case "agora_join":
+    //      return {
+    //        icon: "log-in",
+    //        title: "Agora Join",
+    //        subtitle: input.post_id,
+    //      }
+    //    case "agora_sync":
+    //      return {
+    //        icon: "arrow-down-to-line",
+    //        title: "Agora Sync",
+    //        subtitle: input.directory,
+    //      }
+    //    case "agora_submit":
+    //      return {
+    //        icon: "upload",
+    //        title: "Agora Submit",
+    //        subtitle: input.comment,
+    //      }
+    //    case "agora_accept":
+    //      return {
+    //        icon: "git-merge",
+    //        title: "Agora Accept",
+    //        subtitle: input.answer_id,
+    //      }
+    //    case "agora_comment":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Comment",
+    //        subtitle: input.post_id,
+    //      }
     case "memory_search":
       return {
         icon: "brain",
