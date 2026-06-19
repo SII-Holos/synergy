@@ -27,6 +27,7 @@ describe("SandboxBackend command wrapping (macOS)", () => {
       args: ["hello", "world"],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      forcePlatform: "macos",
     })
 
     // The wrapper must produce the command and arguments as an argv array,
@@ -49,6 +50,7 @@ describe("SandboxBackend command wrapping (macOS)", () => {
       args: [],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      forcePlatform: "macos",
     })
 
     expect(wrapper.command).toBe("sandbox-exec")
@@ -65,6 +67,7 @@ describe("SandboxBackend command wrapping (macOS)", () => {
       args: ["status"],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      forcePlatform: "macos",
     })
 
     // Position 1 (after -f) must be a .sb temp file path
@@ -86,6 +89,7 @@ describe("SandboxBackend temp profile lifecycle", () => {
       args: ["-e", "console.log(1)"],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      forcePlatform: "macos",
     })
 
     const tempPath = wrapper.args[1]
