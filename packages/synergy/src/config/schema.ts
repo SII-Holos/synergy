@@ -199,25 +199,78 @@ export type Holos = z.infer<typeof Holos>
 
 export const SandboxConfig = z
   .object({
-    enabled: z.boolean().optional().describe("Enable the sandbox runtime when available"),
+    enabled: z.boolean().optional().describe("Enable the sandbox runtime when available (default: true)"),
     fallbackPolicy: z
       .enum(["warn", "allow", "deny"])
       .optional()
-      .describe("How to proceed when the requested sandbox runtime is unavailable"),
+      .describe("How to proceed when the requested sandbox runtime is unavailable (default: 'deny')"),
     backend: z
-      .enum(["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"])
+      .enum([
+        "auto",
+        "seatbelt-deny-default",
+        "seatbelt-legacy-allow-default",
+        "synergy-sandbox-linux",
+        "bwrap-inline-debug",
+        "windows-restricted-token",
+        "windows-elevated",
+      ])
       .optional()
       .describe(
         "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. " +
-          "Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), " +
+          "Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), " +
+          "'seatbelt-legacy-allow-default' (macOS allow-default SBPL), " +
+          "'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), " +
           "'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
       ),
+    network: z
+      .object({
+        mode: z
+          .enum(["restricted", "proxy_only", "full"])
+          .optional()
+          .describe("Network access mode within the sandbox (default: 'restricted')"),
+      })
+      .strict()
+      .optional()
+      .describe("Network configuration for sandbox enforcement"),
+    macos: z
+      .object({
+        denialLogger: z.boolean().optional().describe("Log sandbox denials via macOS Seatbelt (default: true)"),
+      })
+      .strict()
+      .optional()
+      .describe("macOS-specific sandbox settings"),
+    linux: z
+      .object({
+        bundledBwrap: z
+          .boolean()
+          .optional()
+          .describe("Use the bundled bwrap binary instead of system bwrap (default: true)"),
+        landlockFallback: z
+          .boolean()
+          .optional()
+          .describe("Fall back to Landlock LSM when bwrap is unavailable (default: true)"),
+      })
+      .strict()
+      .optional()
+      .describe("Linux-specific sandbox settings"),
     windows: z
       .object({
-        level: z.enum(["disabled", "restricted-token", "elevated"]).optional(),
-        helperPath: z.string().optional(),
-        verifyHelperHash: z.boolean().optional(),
+        level: z
+          .enum(["disabled", "restricted-token", "elevated"])
+          .optional()
+          .describe("Windows sandbox level (default: 'restricted-token')"),
+        helperPath: z.string().optional().describe("Path to the synergy-sandbox.exe helper binary"),
+        verifyHelperHash: z
+          .boolean()
+          .optional()
+          .describe("Verify the helper binary SHA-256 hash before use (default: true)"),
+        privateDesktop: z
+          .boolean()
+          .optional()
+          .describe("Create a private desktop for the sandboxed process (default: true)"),
+        conpty: z.boolean().optional().describe("Use ConPTY for pseudo-terminal support (default: true)"),
       })
+      .strict()
       .optional()
       .describe("Windows-specific sandbox settings"),
   })

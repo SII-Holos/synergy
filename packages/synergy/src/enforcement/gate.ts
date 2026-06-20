@@ -1,3 +1,4 @@
+import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier } from "./classify"
@@ -282,7 +283,7 @@ function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: Profi
 }
 
 export namespace EnforcementGate {
-  export function create(options: GateOptions) {
+  export async function create(options: GateOptions) {
     const {
       activeWorkspace,
       workspaceType,
@@ -295,7 +296,7 @@ export namespace EnforcementGate {
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
-    const resolved = ControlProfileCompiler.resolve(profileId, {
+    const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
       interactionMode,
@@ -304,9 +305,12 @@ export namespace EnforcementGate {
     if (!resolved.valid) {
       throw new Error(resolved.reason ?? "Invalid profile for this context")
     }
-
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
+    // Accumulated sandbox-approved paths across all evaluate() calls
+    const approvedReadPaths = new Set<string>()
+    const approvedWritePaths = new Set<string>()
+    let approvedNetwork = false
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
@@ -617,6 +621,22 @@ export namespace EnforcementGate {
         }
       }
 
+      // Accumulate sandbox-approved paths when the profile auto-allows
+      if (decision === "allow") {
+        for (const cap of capabilities) {
+          if (cap.paths?.length) {
+            if (cap.class === "file_read" || cap.class === "file_external") {
+              for (const p of cap.paths) approvedReadPaths.add(p)
+            } else if (cap.class === "file_write") {
+              for (const p of cap.paths) approvedWritePaths.add(p)
+            }
+          }
+          if (cap.class === "network_request") {
+            approvedNetwork = true
+          }
+        }
+      }
+
       const opaque = capabilities.some((c) => c.opaque === true)
 
       // Track pending capabilities
@@ -672,6 +692,29 @@ export namespace EnforcementGate {
       },
       resolveCapability(className: string) {
         pendingCapabilities.delete(className)
+      },
+      /** Register approval-granted external paths from outside the gate (e.g. tool-resolver). */
+      registerApprovedPaths(readPaths: string[], writePaths: string[], network: boolean) {
+        for (const p of readPaths) approvedReadPaths.add(p)
+        for (const p of writePaths) approvedWritePaths.add(p)
+        if (network) approvedNetwork = true
+      },
+      /**
+       * Build the aggregated sandbox permission profile from all accumulated
+       * approved paths. Returns null when sandbox is disabled.
+       */
+      getSandboxPolicy(): SynergySandboxPermissionProfile | null {
+        const sandbox = resolved.sandbox
+        if (sandbox.mode === "none") return null
+        return buildPermissionProfile({
+          workspace: activeWorkspace,
+          executionCwd: activeWorkspace,
+          sandboxMode: sandbox.mode,
+          approvedReadPaths: [...approvedReadPaths],
+          approvedWritePaths: [...approvedWritePaths],
+          approvedNetwork,
+          approvedUnixSockets: [],
+        })
       },
     }
   }

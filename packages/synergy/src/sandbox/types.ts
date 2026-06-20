@@ -5,6 +5,7 @@
 export type SandboxMode = "none" | "read_only" | "workspace_write"
 
 export type FallbackPolicy = "warn" | "allow" | "deny"
+export type SandboxNetworkMode = "full" | "restricted" | "proxy_only"
 
 export interface PlatformInfo {
   platform: string
@@ -33,6 +34,8 @@ export interface PrepareLinuxWrapperOpts {
   workspace: string
   sandboxMode: SandboxMode
   runtimeReadRoots?: string[]
+  extraReadRoots?: string[]
+  extraWritableRoots?: string[]
   forcePlatform?: string
 }
 
@@ -53,11 +56,21 @@ export interface SandboxExecutionWrapper {
   tempPath?: string
 }
 
-export interface ExecuteOpts {
-  fallbackPolicy?: FallbackPolicy
+export interface SandboxExecuteOpts {
+  fallbackPolicy: FallbackPolicy
+  env?: Record<string, string>
+  cwd?: string
+  signal?: AbortSignal
+  timeoutMs?: number
+  maxOutputBytes?: number
+  onStdout?: (chunk: Buffer) => void
+  onStderr?: (chunk: Buffer) => void
 }
 
-export interface ExecuteResult {
-  exitCode: number | null
+export interface SandboxExecuteResult {
+  exitCode: number
   stdout: string
+  stderr: string
+  timedOut: boolean
+  truncated: boolean
 }

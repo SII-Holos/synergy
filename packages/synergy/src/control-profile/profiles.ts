@@ -1,3 +1,6 @@
+import { Config } from "../config/config"
+import { Log } from "../util/log"
+import type { ProfileSandbox } from "./types"
 import type {
   ControlProfile,
   ProfileApproval,
@@ -127,9 +130,74 @@ export function normalizeProfileId(id: string | undefined): ProfileId {
   return "guarded"
 }
 
-export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): ResolvedProfile {
+const LOG = Log.create({ service: "control-profile" })
+
+export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<ProfileSandbox> {
+  const defaults: Record<ProfileId, ProfileSandbox> = {
+    guarded: { mode: "workspace_write", fallback: "deny" },
+    autonomous: { mode: "workspace_write", fallback: "deny" },
+    full_access: { mode: "none", fallback: "allow" },
+  }
+  const profile = { ...defaults[profileId] }
+
+  const cfg = await Config.get()
+  const sandboxCfg = cfg.sandbox
+  if (!sandboxCfg) {
+    LOG.debug("no sandbox config found, using profile defaults", { profile: profileId, defaults: profile })
+    return profile
+  }
+
+  LOG.debug("sandbox config loaded", {
+    profile: profileId,
+    enabled: sandboxCfg.enabled,
+    fallbackPolicy: sandboxCfg.fallbackPolicy,
+    backend: sandboxCfg.backend,
+    hasWindowsConfig: Boolean(sandboxCfg.windows),
+    hasNetworkConfig: Boolean(sandboxCfg.network),
+    hasMacosConfig: Boolean(sandboxCfg.macos),
+    hasLinuxConfig: Boolean(sandboxCfg.linux),
+  })
+
+  if (sandboxCfg.enabled === false && profile.mode !== "none") {
+    LOG.warn("sandbox.enabled=false in config overrides profile sandbox. Sandbox is disabled.", {
+      profile: profileId,
+      profileMode: profile.mode,
+    })
+    return { mode: "none", fallback: "allow" }
+  }
+
+  if (sandboxCfg.fallbackPolicy) {
+    profile.fallback = sandboxCfg.fallbackPolicy
+    LOG.info("sandbox fallback policy overridden by config", {
+      profile: profileId,
+      fallbackPolicy: sandboxCfg.fallbackPolicy,
+    })
+  }
+
+  if (sandboxCfg.backend && sandboxCfg.backend !== "auto") {
+    profile.backend = sandboxCfg.backend
+    LOG.info("sandbox backend overridden by config", {
+      profile: profileId,
+      backend: sandboxCfg.backend,
+    })
+  }
+
+  if (sandboxCfg.windows?.level) {
+    profile.windowsLevel = sandboxCfg.windows.level
+    LOG.info("sandbox windows level overridden by config", {
+      profile: profileId,
+      windowsLevel: sandboxCfg.windows.level,
+    })
+  }
+
+  LOG.debug("resolved effective sandbox", { profile: profileId, effective: profile })
+  return profile
+}
+
+export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
   const { workspace, interactionMode } = ctx
+  const effectiveSandbox = await resolveEffectiveSandbox(id)
 
   switch (id) {
     case "guarded": {
@@ -141,6 +209,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
           "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
         ruleset: guardedRules(),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("guarded"),
       }
       return { ...profile, summary: summary(id, profile, [], workspace) }
@@ -154,6 +223,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
         description: "Keep working unattended. High-risk actions are denied with guidance instead of prompting.",
         ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("autonomous"),
       }
       return {
@@ -183,6 +253,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
         description: "Allow all tool requests without workspace, shell, or network approval prompts.",
         ruleset: rulesFor({ low: "allow", medium: "allow", high: "allow" }),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("full_access"),
       }
       return { ...profile, summary: summary(id, profile, [], workspace) }
@@ -190,6 +261,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
   }
 }
 
-export function getProfileLabel(id: string): string {
-  return buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" }).label
+export async function getProfileLabel(id: string): Promise<string> {
+  const profile = await buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" })
+  return profile.label
 }

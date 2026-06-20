@@ -486,7 +486,7 @@ export namespace SessionInvoke {
           const profileId = ControlProfileCompiler.normalize(
             session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
           )
-          const resolved = ControlProfileCompiler.resolve(profileId, {
+          const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
             interactionMode,

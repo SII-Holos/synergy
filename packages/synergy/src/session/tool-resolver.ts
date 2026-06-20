@@ -20,7 +20,7 @@ import { Instance } from "@/scope/instance"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
-import type { ProfileId } from "@/control-profile/types"
+import type { ProfileId, ResolvedProfile } from "@/control-profile/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
@@ -268,8 +268,8 @@ export namespace ToolResolver {
 
   async function applyGateApproval(
     ctx: Tool.Context,
-    gate: ReturnType<typeof EnforcementGate.create>,
-    envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
+    gate: Awaited<ReturnType<typeof EnforcementGate.create>>,
+    envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
   ) {
@@ -359,10 +359,11 @@ export namespace ToolResolver {
 
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
-      let profilePromise: Promise<ReturnType<typeof ControlProfileCompiler.resolve>> | undefined
-      const resolvedProfile = async () => {
+      let profilePromise: Promise<ResolvedProfile> | undefined
+      const resolvedProfile = async (): Promise<ResolvedProfile> => {
         if (!profilePromise) {
-          profilePromise = cachedTopLevelProfile().then((topLevelProfile) => {
+          profilePromise = (async () => {
+            const topLevelProfile = await cachedTopLevelProfile()
             const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, input.session)
             const workspaceInfo = Instance.workspace
             const interaction = input.session?.interaction
@@ -372,7 +373,7 @@ export namespace ToolResolver {
               workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
               interactionMode,
             })
-          })
+          })()
         }
         return profilePromise
       }
@@ -491,7 +492,7 @@ export namespace ToolResolver {
                 const topLevelProfile = await cachedTopLevelProfile()
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
                 const synergyRoot = Global.Path.root
-                const gate = EnforcementGate.create({
+                const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
@@ -517,13 +518,22 @@ export namespace ToolResolver {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
                     const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
+                    // Register externally-approved roots into the gate so the
+                    // policy engine can aggregate them with auto-approved paths.
+                    const extRoots = approvedExternalRoots(ctx)
+                    if (extRoots.length > 0) {
+                      gate.registerApprovedPaths(extRoots, extRoots, false)
+                    }
+                    const sandboxPolicy = gate.getSandboxPolicy()
                     sandboxWrapper = SandboxBackend.prepareWrapper({
                       command: "/bin/sh",
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...approvedExternalRoots(ctx)],
-                      extraWritableRoots: approvedExternalRoots(ctx),
+                      extraReadRoots: [synergyRoot, ...extRoots],
+                      extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
+                      protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
+                      dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
                     })
                     if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
                       throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
@@ -641,7 +651,7 @@ export namespace ToolResolver {
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
                   const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
-                  const gate = EnforcementGate.create({
+                  const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,

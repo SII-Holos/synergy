@@ -22,6 +22,15 @@ const HELPER_SEARCH_PATHS = [
   // Global Synergy binary directory
   (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox.exe"),
 ]
+/**
+ * Trusted SHA-256 hashes for helper binaries.
+ * Updated with every helper binary release.
+ * Never load from config — embedded at compile time.
+ */
+const TRUSTED_HELPER_HASHES: Record<string, string> = {
+  // Phase 3 MVP: placeholder — will be replaced with actual hash when helper binary is built
+  // The empty string means "no trusted hash yet — helper cannot be used"
+}
 
 /**
  * Resolve the path to the sandbox helper binary on Windows.
@@ -34,7 +43,12 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
     try {
       if (fs.existsSync(p)) {
         const verified = verifyHelperHash(p)
-        return { path: p, verified }
+        if (verified) {
+          return { path: p, verified: true }
+        }
+        // Hash mismatch — log warning and continue searching
+        log.warn("Windows sandbox helper hash verification failed", { path: p })
+        return { path: p, verified: false }
       }
     } catch {
       // Permission denied or filesystem error — skip this path
@@ -44,23 +58,24 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
   return null
 }
 
-/**
- * Verify the helper binary's SHA-256 hash against a known trusted hash.
- * Returns true if verification passes or is not configured.
- *
- * Phase 3 MVP: return true (no hash configured yet).
- * Phase 4: load trusted hash from config or embedded constant.
- */
 function verifyHelperHash(binaryPath: string): boolean {
-  // MVP: no hash verification configured — trusted by location
+  const trustedHash = TRUSTED_HELPER_HASHES[binaryPath]
+  // If no trusted hash is embedded, refuse to trust the binary
+  if (!trustedHash || trustedHash.length === 0) {
+    return false
+  }
   try {
     const hash = crypto.createHash("sha256")
     const data = fs.readFileSync(binaryPath)
     hash.update(data)
     const digest = hash.digest("hex")
-    log.debug(`Helper binary hash: ${digest}`)
-    // TODO Phase 4: compare against trusted hash list
-    return true
+    // Constant-time comparison
+    if (digest.length !== trustedHash.length) return false
+    let result = 0
+    for (let i = 0; i < digest.length; i++) {
+      result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+    }
+    return result === 0
   } catch {
     return false
   }
@@ -146,7 +161,8 @@ export namespace WindowsBackend {
         command,
         args,
         sandboxed: false,
-        skipReason: "Windows sandbox helper binary hash verification failed.",
+        skipReason:
+          "Windows sandbox helper binary hash verification failed. The helper may be corrupted or tampered. Reinstall the Synergy Windows sandbox helper.",
       }
     }
 

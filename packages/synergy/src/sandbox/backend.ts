@@ -12,24 +12,24 @@
 // This file imports from those modules and provides:
 //   1. Re-exports of all public types (backward compat)
 //   2. SandboxBackend namespace with platform dispatch
-//   3. The shared execute() function
+//   3. The shared executeAsync() function
 //
 // Design invariants:
-//   - prepareWrapper writes a temp .sb profile; execute cleans it in finally.
+//   - prepareWrapper writes a temp .sb profile; executeAsync cleans it in finally.
 //   - Seatbelt uses allow-default for OS viability, then explicitly denies user-data roots
 //     and re-allows the active workspace / controlled temp paths.
 //   - Protected paths (deny file-write*) follow write-allow rules (last-match-wins).
 //   - bwrap never --ro-bind /; only runtime roots + workspace + controlled tmp.
 // ---------------------------------------------------------------------------
 
-import type {
-  PlatformInfo,
-  PrepareWrapperOpts,
-  PrepareLinuxWrapperOpts,
-  SeatbeltProfileOpts,
-  SandboxExecutionWrapper,
-  ExecuteOpts,
-  ExecuteResult,
+import {
+  type PlatformInfo,
+  type PrepareWrapperOpts,
+  type PrepareLinuxWrapperOpts,
+  type SeatbeltProfileOpts,
+  type SandboxExecutionWrapper,
+  type SandboxExecuteOpts,
+  type SandboxExecuteResult,
 } from "./types"
 
 // ------------------------------------------------------------------
@@ -42,14 +42,16 @@ export type {
   PrepareLinuxWrapperOpts,
   SeatbeltProfileOpts,
   SandboxExecutionWrapper,
-  ExecuteOpts,
-  ExecuteResult,
+  SandboxExecuteOpts,
+  SandboxExecuteResult,
 } from "./types"
 
 // ------------------------------------------------------------------
 // Imports from sibling modules
 // ------------------------------------------------------------------
 
+import { SandboxDetector } from "@/enforcement/sandbox-detector"
+import { EnforcementError } from "@/enforcement/errors"
 import { detectPlatform, isPlatformSupported as platformIsSupported, platformInfo as getPlatformInfo } from "./platform"
 import { MacBackend } from "./macos"
 import { LinuxBackend } from "./linux"
@@ -115,6 +117,8 @@ export namespace SandboxBackend {
           workspace: opts.workspace,
           sandboxMode: opts.sandboxMode,
           runtimeReadRoots: opts.runtimeReadRoots,
+          extraReadRoots: opts.extraReadRoots,
+          extraWritableRoots: opts.extraWritableRoots,
           forcePlatform: opts.forcePlatform,
         }
         return LinuxBackend.prepare(linuxOpts)
@@ -136,9 +140,8 @@ export namespace SandboxBackend {
    *
    * Key design:
    * - NEVER --ro-bind / /  (full root filesystem exposure)
-   * - Bind runtime read roots individually with --bind (read-write, minimal)
-   * - Bind active workspace with --bind
-   * - Use --bind for controlled tmp
+   * - --ro-bind for platform and runtime read roots
+   * - Bind active workspace with --bind (read-write) or --ro-bind (read-only)
    * - Final args: bwrap <mounts> -- <command> <args...>
    */
   export function prepareLinuxWrapper(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrapper {
@@ -146,68 +149,214 @@ export namespace SandboxBackend {
   }
 
   // ----------------------------------------------------------------
-  // Execution (shared, platform-agnostic)
+  // Execution (shared, platform-agnostic async spawn)
   // ----------------------------------------------------------------
 
   /**
-   * Execute the sandbox wrapper.
-   *
-   * If sandbox is unavailable (skipReason set):
-   *   - deny  → throws immediately
-   *   - warn  → runs command directly (unsandboxed)
-   *   - allow → runs command directly (unsandboxed)
-   *
-   * If sandbox is active:
-   *   - Spawns the wrapper command (e.g. sandbox-exec)
-   *   - Cleans up the temp profile in a finally block
-   *   - Throws on non-zero exit code
+   * Environment variables allowed through the sandbox.
+   * Never expose credential-bearing variables.
    */
-  export function execute(wrapper: SandboxExecutionWrapper, opts?: ExecuteOpts): ExecuteResult {
-    // --- unsandboxed fallback path ---
-    if (wrapper.skipReason) {
-      const policy = opts?.fallbackPolicy ?? "warn"
-      if (policy === "deny") {
-        throw new Error(`Sandbox execution denied: ${wrapper.skipReason}`)
-      }
-      // warn / allow: run directly
-      const result = Bun.spawnSync({
-        cmd: [wrapper.command, ...wrapper.args],
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      if (result.exitCode !== 0) {
-        const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : ""
-        throw new Error(`Command failed (unsandboxed) with exit code ${result.exitCode}: ${stderr.trim()}`)
-      }
-      return {
-        exitCode: result.exitCode,
-        stdout: result.stdout ? new TextDecoder().decode(result.stdout) : "",
+  export const SANDBOX_ENV_ALLOWLIST = [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "SHELL",
+    "TERM",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "BUN_INSTALL",
+    "NODE_PATH",
+    "npm_config_cache",
+    "PYTHONPATH",
+    "GIT_EXEC_PATH",
+  ]
+
+  function buildSandboxEnv(requestedEnv?: Record<string, string>): Record<string, string> {
+    const env: Record<string, string> = {}
+    const processEnv = process.env
+
+    for (const key of SANDBOX_ENV_ALLOWLIST) {
+      const val = processEnv[key]
+      if (val !== undefined) {
+        env[key] = val
       }
     }
 
-    // --- sandboxed path ---
+    // Explicitly requested env vars from the caller (e.g. approved tool paths)
+    if (requestedEnv) {
+      for (const [k, v] of Object.entries(requestedEnv)) {
+        env[k] = v
+      }
+    }
+
+    return env
+  }
+
+  export interface ExecuteAsyncResult {
+    exitCode: number
+    stdout: string
+    stderr: string
+    timedOut: boolean
+    truncated: boolean
+  }
+
+  /**
+   * Async spawn through the sandbox wrapper.
+   *
+   * Features:
+   *   - Env allowlist: only safe env vars pass through
+   *   - Timeout: SIGTERM → 2s grace → SIGKILL
+   *   - Output cap: maxOutputBytes (default 1 MB); truncated set when exceeded
+   *   - Signal: AbortSignal support
+   *   - Temp profile cleanup in finally block
+   *   - Throws EnforcementError.SandboxBlocked on sandbox denial detection
+   *   - Otherwise returns structured result for non-zero exits
+   */
+  export async function executeAsync(
+    wrapper: SandboxExecutionWrapper,
+    opts: SandboxExecuteOpts,
+  ): Promise<ExecuteAsyncResult> {
+    if (wrapper.skipReason) {
+      if (opts.fallbackPolicy === "deny") {
+        throw new Error(`Sandbox required but unavailable: ${wrapper.skipReason}`)
+      }
+      // warn/allow: run unsandboxed with warning logged
+    }
+
+    const env = buildSandboxEnv(opts.env)
+    const cwd = opts.cwd ?? process.cwd()
+
+    const cmd: string[] = [wrapper.command, ...wrapper.args]
+
+    const child = Bun.spawn({
+      cmd,
+      cwd,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: null,
+      onExit: () => {},
+    })
+
+    const outputChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+
+    const reader = child.stdout.getReader()
+    const errReader = child.stderr.getReader()
+
+    const MAX_OUTPUT_BYTES = opts.maxOutputBytes ?? 1024 * 1024 // 1 MB default
+    let totalBytes = 0
+    let timedOut = false
+    let truncated = false
+
+    const readStream = async (
+      r: ReadableStreamDefaultReader<Uint8Array>,
+      collector: Buffer[],
+      onChunk?: (chunk: Buffer) => void,
+    ) => {
+      while (true) {
+        const { done, value } = await r.read()
+        if (done) break
+        if (onChunk) onChunk(Buffer.from(value))
+        if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
+          collector.push(Buffer.from(value.slice(0, MAX_OUTPUT_BYTES - totalBytes)))
+          truncated = true
+          break
+        }
+        collector.push(Buffer.from(value))
+        totalBytes += value.length
+      }
+    }
+
     const tempPath = wrapper.tempPath
+
     try {
-      const result = Bun.spawnSync({
-        cmd: [wrapper.command, ...wrapper.args],
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-
-      if (result.exitCode !== 0) {
-        const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : ""
-        throw new Error(`Sandbox command failed with exit code ${result.exitCode}: ${stderr.trim()}`)
+      if (opts.signal) {
+        const abort = () => {
+          timedOut = true
+          child.kill("SIGTERM")
+          setTimeout(() => child.kill("SIGKILL"), 2000)
+        }
+        if (opts.signal.aborted) {
+          abort()
+        } else {
+          opts.signal.addEventListener("abort", abort, { once: true })
+        }
       }
 
-      return {
-        exitCode: result.exitCode,
-        stdout: result.stdout ? new TextDecoder().decode(result.stdout) : "",
+      if (opts.timeoutMs && opts.timeoutMs > 0) {
+        const timeout = setTimeout(() => {
+          timedOut = true
+          child.kill("SIGTERM")
+          setTimeout(() => child.kill("SIGKILL"), 2000)
+        }, opts.timeoutMs)
+
+        await Promise.all([
+          readStream(reader, outputChunks, opts.onStdout),
+          readStream(errReader, stderrChunks, opts.onStderr),
+          child.exited,
+        ])
+        clearTimeout(timeout)
+      } else {
+        await Promise.all([
+          readStream(reader, outputChunks, opts.onStdout),
+          readStream(errReader, stderrChunks, opts.onStderr),
+          child.exited,
+        ])
       }
+    } catch (e) {
+      child.kill("SIGKILL")
+      throw e
     } finally {
-      // Clean up temp profile even on failure
       if (tempPath) {
         cleanupTemp(tempPath)
       }
+    }
+
+    const exitCode = child.exitCode ?? -1
+    const stdout = Buffer.concat(outputChunks).toString("utf-8")
+    const stderr = Buffer.concat(stderrChunks).toString("utf-8")
+
+    // ── Sandbox denial detection ──────────────────────────────────
+    // When the sandbox is active and the command fails, scan output
+    // for OS-level permission denial patterns. If matched, throw a
+    // structured SandboxBlocked error.
+    if (wrapper.sandboxed && exitCode !== 0 && !timedOut) {
+      const combinedOutput = stdout + stderr
+      const matches = SandboxDetector.scan(combinedOutput)
+      if (matches.length > 0) {
+        const info = platformInfo()
+        const explanation = SandboxDetector.buildBlockExplanation(matches, {
+          command: wrapper.command,
+          backend: info.backend,
+        })
+        const message = explanation
+          ? SandboxDetector.formatBlockExplanation(matches, {
+              command: wrapper.command,
+              backend: info.backend,
+            })
+          : SandboxDetector.explain(matches)
+        throw new EnforcementError.SandboxBlocked(
+          message,
+          exitCode,
+          matches[0]?.label ?? null,
+          combinedOutput,
+          explanation ?? undefined,
+        )
+      }
+    }
+
+    return {
+      exitCode,
+      stdout,
+      stderr,
+      timedOut,
+      truncated,
     }
   }
 }

@@ -10,7 +10,6 @@ import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
-import { SandboxDetector } from "@/enforcement/sandbox-detector"
 import { EnforcementError } from "@/enforcement/errors"
 import { ShellSafety } from "@/enforcement/shell-safety"
 
@@ -116,53 +115,19 @@ export const LocalBashBackend: BashBackend = {
       (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
 
-    let child: ReturnType<typeof spawn>
-    if (sandboxWrapper) {
-      if (sandboxWrapper.skipReason) {
-        if (sandboxFallback === "deny") {
-          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-        }
-        log.warn("sandbox unavailable, running unsandboxed", {
-          reason: sandboxWrapper.skipReason,
-          fallback: sandboxFallback,
-        })
-        child = spawn(params.command, {
-          shell,
-          cwd,
-          env: {
-            ...process.env,
-          },
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
-      } else {
-        child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
-          cwd,
-          env: {
-            ...process.env,
-          },
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
+    // Build sandbox-safe environment from the backend allowlist
+    const sandboxEnv: Record<string, string> = {}
+    for (const key of SandboxBackend.SANDBOX_ENV_ALLOWLIST) {
+      const val = process.env[key]
+      if (val !== undefined) {
+        sandboxEnv[key] = val
       }
-    } else {
-      child = spawn(params.command, {
-        shell,
-        cwd,
-        env: {
-          ...process.env,
-        },
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32",
-      })
     }
-
+    // ── ProcessRegistry setup (shared across both paths) ──────────
     const regProc = ProcessRegistry.create({
       command: params.command,
       description: params.description,
       cwd,
-      child,
-      stdin: child.stdin ?? undefined,
     })
 
     ctx.metadata({
@@ -198,10 +163,94 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const append = (chunk: Buffer) => {
-      const text = chunk.toString()
-      ProcessRegistry.appendOutput(regProc, text)
+      ProcessRegistry.appendOutput(regProc, chunk.toString())
       scheduleMetadata()
     }
+
+    // ── Synchronous sandboxed execution via unified sandbox path ──
+    // executeAsync handles env allowlist, timeout, output cap, signal,
+    // sandbox denial detection, and temp cleanup — all in one call.
+    if (sandboxWrapper && !sandboxWrapper.skipReason && !params.background && !params.yieldSeconds) {
+      try {
+        const result = await SandboxBackend.executeAsync(sandboxWrapper, {
+          fallbackPolicy: sandboxFallback ?? "warn",
+          env: sandboxEnv,
+          cwd,
+          signal: ctx.abort,
+          timeoutMs: 3_600_000, // 60-minute hard ceiling
+          maxOutputBytes: 1024 * 1024, // 1 MB
+          onStdout: append,
+          onStderr: append,
+        })
+
+        if (metadataDirty) flushMetadata()
+
+        if (ctx.abort.aborted || result.timedOut) {
+          const abortReason = deriveAbortReason(ctx.abort.reason)
+          const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
+          ProcessRegistry.remove(regProc.id)
+          return {
+            title: params.description,
+            metadata: {
+              output: truncateMetadataOutput(regProc.output + abortTag),
+              exit: result.exitCode,
+              description: params.description,
+              backend: "local",
+            },
+            output: regProc.output + abortTag,
+          }
+        }
+
+        ProcessRegistry.remove(regProc.id)
+        return {
+          title: params.description,
+          metadata: {
+            output: truncateMetadataOutput(regProc.output),
+            exit: result.exitCode,
+            description: params.description,
+            backend: "local",
+          },
+          output: regProc.output,
+        }
+      } catch (e: unknown) {
+        ProcessRegistry.remove(regProc.id)
+        if (e instanceof EnforcementError.SandboxBlocked) throw e
+        throw e
+      }
+    }
+
+    let child: ReturnType<typeof spawn>
+    if (sandboxWrapper && !sandboxWrapper.skipReason) {
+      // Sandboxed path: use allowlisted env
+      child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+        cwd,
+        env: sandboxEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    } else {
+      // Unsandboxed path: check for deny policy on skip
+      if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
+        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+      }
+      if (sandboxWrapper?.skipReason) {
+        log.warn("sandbox unavailable, running unsandboxed", {
+          reason: sandboxWrapper.skipReason,
+          fallback: sandboxFallback,
+        })
+      }
+      child = spawn(params.command, {
+        shell,
+        cwd,
+        env: { ...process.env },
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    }
+    // Wire the spawned child into the existing ProcessRegistry entry
+    regProc.child = child
+    regProc.stdin = child.stdin ?? undefined
+    regProc.pid = child.pid
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
@@ -325,24 +374,6 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const output = regProc.output
-    // ── Sandbox denial detection ──────────────────────────────────
-    // When the sandbox is active and the command fails, scan output
-    // for OS-level permission denial patterns. If matched, throw a
-    // structured SandboxBlocked error that tells the model this is
-    // a boundary, not a transient technical failure.
-    const sandboxActive = sandboxWrapper?.sandboxed === true && !sandboxWrapper?.skipReason
-    if (sandboxActive && child.exitCode !== null && child.exitCode !== 0) {
-      const matches = SandboxDetector.scan(output)
-      if (matches.length > 0) {
-        throw new EnforcementError.SandboxBlocked(
-          SandboxDetector.explain(matches),
-          child.exitCode,
-          matches[0]?.label ?? null,
-          output,
-        )
-      }
-    }
-
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
     if (aborted) {
