@@ -14,7 +14,7 @@ export namespace AgendaBootstrap {
   async function isAutonomyEnabled(): Promise<boolean> {
     const { Config } = await import("../config/config")
     const config = await Config.get()
-    return config.identity?.autonomy !== false
+    return config.engram?.autonomy !== false
   }
 
   export async function seed(): Promise<void> {

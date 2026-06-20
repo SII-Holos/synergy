@@ -43,10 +43,8 @@ export function AgentCard(props: {
   isGuest: boolean
   connecting?: boolean
   reconnecting?: boolean
-  onEditProfile: () => void
   onDisconnect: () => void
   onReconnect: () => void
-  onRerunSetup: () => void
   onConnectHolos: () => void
 }) {
   const statusDot = () => {
@@ -139,15 +137,11 @@ export function AgentCard(props: {
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content class="min-w-44">
-                          <DropdownMenu.Item onSelect={props.onEditProfile}>
-                            <Icon name="pen" size="small" class="mr-2" />
-                            <DropdownMenu.ItemLabel>Edit profile</DropdownMenu.ItemLabel>
-                          </DropdownMenu.Item>
                           <Show when={props.agentId}>
                             <DropdownMenu.Item
                               onSelect={() => {
                                 navigator.clipboard.writeText(props.agentId ?? "")
-                                showToast({ title: "Agent ID copied" })
+                                showToast({ type: "info", title: "Agent ID copied" })
                               }}
                             >
                               <Icon name="copy" size="small" class="mr-2" />
@@ -161,10 +155,6 @@ export function AgentCard(props: {
                               <DropdownMenu.ItemLabel>Disconnect</DropdownMenu.ItemLabel>
                             </DropdownMenu.Item>
                           </Show>
-                          <DropdownMenu.Item onSelect={props.onRerunSetup}>
-                            <Icon name="refresh-ccw" size="small" class="mr-2" />
-                            <DropdownMenu.ItemLabel>Re-run setup</DropdownMenu.ItemLabel>
-                          </DropdownMenu.Item>
                         </DropdownMenu.Content>
                       </DropdownMenu.Portal>
                     </DropdownMenu>

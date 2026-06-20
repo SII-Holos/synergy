@@ -85,6 +85,9 @@ import type {
   ConfigSetUpdateResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  ControlProfileEffectiveErrors,
+  ControlProfileEffectiveResponses,
+  ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
   CortexGetErrors,
@@ -135,6 +138,8 @@ import type {
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
   GlobalHealthResponses,
+  GlobalNavPinnedResponses,
+  GlobalNavRecentResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
   HolosAgentsGetErrors,
@@ -147,37 +152,28 @@ import type {
   HolosContactGetResponses,
   HolosContactListResponses,
   HolosContactRemoveResponses,
-  HolosContactSendMessageErrors,
-  HolosContactSendMessageResponses,
-  HolosContactSessionErrors,
-  HolosContactSessionResponses,
-  HolosContactUpdateConfigErrors,
-  HolosContactUpdateConfigResponses,
+  HolosContactToggleBlockErrors,
+  HolosContactToggleBlockResponses,
   HolosCredentialsErrors,
   HolosCredentialsResponses,
   HolosCredentialsStatusResponses,
-  HolosFriendReplyListResponses,
-  HolosFriendRequestCreateErrors,
-  HolosFriendRequestCreateResponses,
-  HolosFriendRequestListResponses,
-  HolosFriendRequestRemoveResponses,
-  HolosFriendRequestRespondErrors,
-  HolosFriendRequestRespondResponses,
-  HolosFriendRequestSendErrors,
-  HolosFriendRequestSendResponses,
+  HolosInboxListResponses,
   HolosLoginResponses,
   HolosLogoutResponses,
+  HolosOutboxListResponses,
   HolosPresenceResponses,
   HolosProfileGetResponses,
   HolosProfileResetResponses,
   HolosProfileSkipGenesisResponses,
   HolosProfileUpdateErrors,
   HolosProfileUpdateResponses,
-  HolosQueueListResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
-  HolosRefreshPresenceResponses,
+  HolosSendResponses,
+  HolosSendRetryErrors,
+  HolosSendRetryResponses,
   HolosStateResponses,
+  HolosThreadGetResponses,
   HolosVerifyResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -193,9 +189,17 @@ import type {
   McpAuthStartResponses,
   McpConnectResponses,
   McpDisconnectResponses,
+  McpInspectErrors,
+  McpInspectResponses,
   McpLocalConfig,
+  McpRefreshErrors,
+  McpRefreshResponses,
   McpRemoteConfig,
+  McpRestartErrors,
+  McpRestartResponses,
   McpStatusResponses,
+  McpTestErrors,
+  McpTestResponses,
   MemoryCategory,
   MemoryRecallMode,
   NoteCreateErrors,
@@ -208,6 +212,8 @@ import type {
   NoteListAllErrors,
   NoteListAllResponses,
   NoteListErrors,
+  NoteListMetaErrors,
+  NoteListMetaResponses,
   NoteListResponses,
   NotePatchInput,
   NoteRemoveErrors,
@@ -220,15 +226,11 @@ import type {
   PartUpdateErrors,
   PartUpdateResponses,
   PathGetResponses,
-  PermissionIsAllowingAllErrors,
-  PermissionIsAllowingAllResponses,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
-  PermissionSetAllowAllErrors,
-  PermissionSetAllowAllResponses,
   ProviderAuthResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -257,7 +259,9 @@ import type {
   RuntimeReloadResponses,
   RuntimeReloadScope,
   RuntimeReloadTarget,
+  SandboxStatusResponses,
   ScopeCurrentResponses,
+  ScopeIndexResponses,
   ScopeListResponses,
   ScopeRemoveResponses,
   ScopeUpdateErrors,
@@ -284,6 +288,7 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
   SessionListResponses,
@@ -902,6 +907,48 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * List session navigation entries
+   *
+   * Get paginated session navigation entries for the current scope with filtering and cursor support.
+   */
+  public index<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      category?: "project" | "home" | "channel" | "background"
+      parentOnly?: "true" | "false"
+      includeArchived?: "true" | "false"
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "category" },
+            { in: "query", key: "parentOnly" },
+            { in: "query", key: "includeArchived" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionIndexResponses, unknown, ThrowOnError>({
+      url: "/session/index",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List sessions
    *
    * Get a paginated list of Synergy sessions, sorted by most recently updated.
@@ -954,6 +1001,7 @@ export class Session extends HeyApiClient {
       parentID?: string
       title?: string
       id?: string
+      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -966,6 +1014,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
             { in: "body", key: "id" },
+            { in: "body", key: "controlProfile" },
           ],
         },
       ],
@@ -1072,6 +1121,7 @@ export class Session extends HeyApiClient {
       directory?: string
       title?: string
       pinned?: number
+      controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
       time?: {
         archived?: number
       }
@@ -1087,6 +1137,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
             { in: "body", key: "pinned" },
+            { in: "body", key: "controlProfile" },
             { in: "body", key: "time" },
           ],
         },
@@ -1741,6 +1792,65 @@ export class Session extends HeyApiClient {
   export = new Export({ client: this.client })
 }
 
+export class Nav extends HeyApiClient {
+  /**
+   * Recent sessions across all scopes
+   *
+   * Get a paginated list of recently active sessions across all scopes (global + projects).
+   */
+  public recent<ThrowOnError extends boolean = false>(
+    parameters?: {
+      parentOnly?: boolean
+      includeArchived?: boolean
+      search?: string
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "parentOnly" },
+            { in: "query", key: "includeArchived" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GlobalNavRecentResponses, unknown, ThrowOnError>({
+      url: "/global/recent",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Pinned sessions across all scopes
+   *
+   * Get a list of pinned sessions across all scopes (global + projects), sorted by recent activity.
+   */
+  public pinned<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "limit" }] }])
+    return (options?.client ?? this.client).get<GlobalNavPinnedResponses, unknown, ThrowOnError>({
+      url: "/global/pinned",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -1769,6 +1879,8 @@ export class Global extends HeyApiClient {
   agenda = new Agenda({ client: this.client })
 
   session = new Session({ client: this.client })
+
+  nav = new Nav({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -1917,9 +2029,7 @@ export class Contact extends HeyApiClient {
     parameters?: {
       directory?: string
       id?: string
-      holosId?: string
       name?: string
-      bio?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1930,9 +2040,7 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "body", key: "id" },
-            { in: "body", key: "holosId" },
             { in: "body", key: "name" },
-            { in: "body", key: "bio" },
           ],
         },
       ],
@@ -1952,7 +2060,7 @@ export class Contact extends HeyApiClient {
   /**
    * Remove contact
    *
-   * Remove a contact and notify the peer via WebSocket.
+   * Remove a contact.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2010,18 +2118,15 @@ export class Contact extends HeyApiClient {
   }
 
   /**
-   * Update contact config
+   * Toggle contact blocked status
    *
-   * Update per-contact configuration (autoReply, autoInitiate, blocked).
+   * Block or unblock a contact. Blocked contacts' messages are silently discarded.
    */
-  public updateConfig<ThrowOnError extends boolean = false>(
+  public toggleBlock<ThrowOnError extends boolean = false>(
     parameters: {
       id: string
       directory?: string
-      autoReply?: boolean
-      autoInitiate?: boolean
       blocked?: boolean
-      maxAutoTurns?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2032,271 +2137,17 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
-            { in: "body", key: "autoReply" },
-            { in: "body", key: "autoInitiate" },
             { in: "body", key: "blocked" },
-            { in: "body", key: "maxAutoTurns" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).put<
-      HolosContactUpdateConfigResponses,
-      HolosContactUpdateConfigErrors,
+      HolosContactToggleBlockResponses,
+      HolosContactToggleBlockErrors,
       ThrowOnError
     >({
-      url: "/holos/contact/{id}/config",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get or create session for contact
-   *
-   * Returns the friend session for a contact, creating one if it doesn't exist yet.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<HolosContactSessionResponses, HolosContactSessionErrors, ThrowOnError>({
-      url: "/holos/contact/{id}/session",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Send message to contact
-   *
-   * Send a message to a contact via the friend session mailbox. The outbound hook handles Holos WS delivery automatically.
-   */
-  public sendMessage<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      text?: string
-      replyToMessageId?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "text" },
-            { in: "body", key: "replyToMessageId" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosContactSendMessageResponses,
-      HolosContactSendMessageErrors,
-      ThrowOnError
-    >({
-      url: "/holos/contact/{id}/message",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class FriendRequest extends HeyApiClient {
-  /**
-   * List friend requests
-   *
-   * List all friend requests.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<HolosFriendRequestListResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-request",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create friend request
-   *
-   * Create a new outgoing friend request.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      id?: string
-      peerId?: string
-      peerName?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "id" },
-            { in: "body", key: "peerId" },
-            { in: "body", key: "peerName" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosFriendRequestCreateResponses,
-      HolosFriendRequestCreateErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Remove friend request
-   *
-   * Remove a friend request.
-   */
-  public remove<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<HolosFriendRequestRemoveResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-request/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Send friend request
-   *
-   * Send an outgoing friend request to another agent via WebSocket.
-   */
-  public send<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      peerId?: string
-      peerName?: string
-      peerBio?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "peerId" },
-            { in: "body", key: "peerName" },
-            { in: "body", key: "peerBio" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      HolosFriendRequestSendResponses,
-      HolosFriendRequestSendErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request/send",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Respond to friend request
-   *
-   * Accept or reject a friend request. Sends the response over WebSocket and updates local storage.
-   */
-  public respond<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      status?: "accepted" | "rejected"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "status" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<
-      HolosFriendRequestRespondResponses,
-      HolosFriendRequestRespondErrors,
-      ThrowOnError
-    >({
-      url: "/holos/friend-request/{id}/respond",
+      url: "/holos/contact/{id}/block",
       ...options,
       ...params,
       headers: {
@@ -2374,36 +2225,15 @@ export class Agents extends HeyApiClient {
   }
 }
 
-export class Queue extends HeyApiClient {
+export class Send extends HeyApiClient {
   /**
-   * List message queue
+   * Retry sending a failed message
    *
-   * List all pending messages in the outgoing message queue.
+   * Attempt to resend a previously failed outbox message.
    */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<HolosQueueListResponses, unknown, ThrowOnError>({
-      url: "/holos/queue",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class FriendReply extends HeyApiClient {
-  /**
-   * List friend reply sub-sessions
-   *
-   * List all sub-session mappings for a friend session. Maps trigger message IDs to sub-session IDs.
-   */
-  public list<ThrowOnError extends boolean = false>(
+  public retry<ThrowOnError extends boolean = false>(
     parameters: {
-      sessionId: string
+      messageId: string
       directory?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2413,14 +2243,88 @@ export class FriendReply extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "sessionId" },
+            { in: "path", key: "messageId" },
             { in: "query", key: "directory" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosFriendReplyListResponses, unknown, ThrowOnError>({
-      url: "/holos/friend-reply/{sessionId}",
+    return (options?.client ?? this.client).post<HolosSendRetryResponses, HolosSendRetryErrors, ThrowOnError>({
+      url: "/holos/send/{messageId}/retry",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Inbox extends HeyApiClient {
+  /**
+   * List inbox messages
+   *
+   * List all received messages, sorted by timestamp descending.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosInboxListResponses, unknown, ThrowOnError>({
+      url: "/holos/inbox",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Outbox extends HeyApiClient {
+  /**
+   * List outbox messages
+   *
+   * List all sent messages, sorted by timestamp descending.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<HolosOutboxListResponses, unknown, ThrowOnError>({
+      url: "/holos/outbox",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Thread extends HeyApiClient {
+  /**
+   * Get conversation thread
+   *
+   * Get all messages (inbound + outbound) with a specific contact.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      contactId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "contactId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<HolosThreadGetResponses, unknown, ThrowOnError>({
+      url: "/holos/thread/{contactId}",
       ...options,
       ...params,
     })
@@ -2581,21 +2485,41 @@ export class Holos extends HeyApiClient {
   }
 
   /**
-   * Refresh friend presence
+   * Send message to Holos contact
    *
-   * Trigger a fresh presence probe for all unblocked Holos contacts.
+   * Send a text message to a Holos agent by ID. Messages are sent via WebSocket. If the recipient is offline, the message will be marked as failed.
    */
-  public refreshPresence<ThrowOnError extends boolean = false>(
+  public send<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      toId?: string
+      text?: string
+      replyToMessageId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<HolosRefreshPresenceResponses, unknown, ThrowOnError>({
-      url: "/holos/refresh-presence",
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "toId" },
+            { in: "body", key: "text" },
+            { in: "body", key: "replyToMessageId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<HolosSendResponses, unknown, ThrowOnError>({
+      url: "/holos/send",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -2605,13 +2529,15 @@ export class Holos extends HeyApiClient {
 
   contact = new Contact({ client: this.client })
 
-  friendRequest = new FriendRequest({ client: this.client })
-
   agents = new Agents({ client: this.client })
 
-  queue = new Queue({ client: this.client })
+  send2 = new Send({ client: this.client })
 
-  friendReply = new FriendReply({ client: this.client })
+  inbox = new Inbox({ client: this.client })
+
+  outbox = new Outbox({ client: this.client })
+
+  thread = new Thread({ client: this.client })
 }
 
 export class Scope extends HeyApiClient {
@@ -2648,6 +2574,25 @@ export class Scope extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ScopeCurrentResponses, unknown, ThrowOnError>({
       url: "/scope/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List scope navigation entries
+   *
+   * Get navigation entries for all known scopes, sorted by latest session activity.
+   */
+  public index<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ScopeIndexResponses, unknown, ThrowOnError>({
+      url: "/scope/index",
       ...options,
       ...params,
     })
@@ -3405,6 +3350,82 @@ export class Runtime extends HeyApiClient {
   }
 }
 
+export class ControlProfile extends HeyApiClient {
+  /**
+   * List control profiles
+   *
+   * List all available control profiles with their ids, labels, and descriptions.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ControlProfileListResponses, unknown, ThrowOnError>({
+      url: "/control-profiles",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get effective control profile
+   *
+   * Resolve the effective control profile for a given agent or the default. Precedence: agent config > top-level config > guarded default.
+   */
+  public effective<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      agent?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "agent" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ControlProfileEffectiveResponses,
+      ControlProfileEffectiveErrors,
+      ThrowOnError
+    >({
+      url: "/control-profiles/effective",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Sandbox extends HeyApiClient {
+  /**
+   * Get sandbox status
+   *
+   * Get the current sandbox platform availability and backend information.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SandboxStatusResponses, unknown, ThrowOnError>({
+      url: "/sandbox/status",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Tool extends HeyApiClient {
   /**
    * List tool IDs
@@ -3721,81 +3742,6 @@ export class Permission extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PermissionReplyResponses, PermissionReplyErrors, ThrowOnError>({
       url: "/permission/{requestID}/reply",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Check allow-all status
-   *
-   * Check if allow-all mode is enabled for a session.
-   */
-  public isAllowingAll<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      sessionID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "sessionID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      PermissionIsAllowingAllResponses,
-      PermissionIsAllowingAllErrors,
-      ThrowOnError
-    >({
-      url: "/permission/allow-all",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Set allow-all for a session
-   *
-   * Enable or disable allow-all mode for a session. When enabled, all permission requests are automatically approved and any currently pending permissions are resolved.
-   */
-  public setAllowAll<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      sessionID?: string
-      enabled?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "sessionID" },
-            { in: "body", key: "enabled" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      PermissionSetAllowAllResponses,
-      PermissionSetAllowAllErrors,
-      ThrowOnError
-    >({
-      url: "/permission/allow-all",
       ...options,
       ...params,
       headers: {
@@ -4979,6 +4925,25 @@ export class Engram extends HeyApiClient {
 
 export class Note extends HeyApiClient {
   /**
+   * List note metadata grouped by scope
+   *
+   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.
+   */
+  public listMeta<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
+      url: "/note/meta",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List all notes grouped by scope
    *
    * List all notes across all scopes, grouped by scope ID.
@@ -5683,6 +5648,126 @@ export class Mcp extends HeyApiClient {
     })
   }
 
+  /**
+   * Restart MCP server
+   *
+   * Disconnect and reconnect an MCP server, resetting retry count.
+   */
+  public restart<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpRestartResponses, McpRestartErrors, ThrowOnError>({
+      url: "/mcp/{name}/restart",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Refresh MCP server discovery
+   *
+   * Re-list tools, prompts, and resources for a connected MCP server.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpRefreshResponses, McpRefreshErrors, ThrowOnError>({
+      url: "/mcp/{name}/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Inspect MCP server
+   *
+   * Get status and lightweight diagnostics (tool names, resources, prompts) for an MCP server.
+   */
+  public inspect<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpInspectResponses, McpInspectErrors, ThrowOnError>({
+      url: "/mcp/{name}/inspect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Test MCP server
+   *
+   * Validate presence and return status snapshot for an MCP server.
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpTestResponses, McpTestErrors, ThrowOnError>({
+      url: "/mcp/{name}/test",
+      ...options,
+      ...params,
+    })
+  }
+
   auth = new Auth({ client: this.client })
 }
 
@@ -5996,6 +6081,10 @@ export class SynergyClient extends HeyApiClient {
   config = new Config({ client: this.client })
 
   runtime = new Runtime({ client: this.client })
+
+  controlProfile = new ControlProfile({ client: this.client })
+
+  sandbox = new Sandbox({ client: this.client })
 
   tool = new Tool({ client: this.client })
 

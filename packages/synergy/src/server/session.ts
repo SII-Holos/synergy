@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import { stream } from "hono/streaming"
 import z from "zod"
+import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
@@ -18,6 +19,7 @@ import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
+const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
 
 export const SessionRoute = new Hono()
   .get(
@@ -103,7 +105,7 @@ export const SessionRoute = new Hono()
       },
     }),
     async (c) => {
-      const result = SessionManager.listStatuses(Instance.scope.id)
+      const result = await SessionManager.listStatuses(Instance.scope.id)
       return c.json(result)
     },
   )
@@ -255,6 +257,7 @@ export const SessionRoute = new Hono()
           parentID: z.string().optional(),
           title: z.string().optional(),
           id: z.string().optional(),
+          controlProfile: ControlProfileId.optional(),
         })
         .optional(),
     ),
@@ -323,6 +326,7 @@ export const SessionRoute = new Hono()
       z.object({
         title: z.string().optional(),
         pinned: z.number().optional(),
+        controlProfile: ControlProfileId.optional(),
         time: z
           .object({
             archived: z.number().optional(),
@@ -334,11 +338,16 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
 
-      const updatedSession = await Session.update(sessionID, (session) => {
+      const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-      })
+      }
+
+      const updatedSession =
+        updates.controlProfile === undefined
+          ? await Session.update(sessionID, applyOtherUpdates)
+          : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
 
       return c.json(updatedSession)
     },
@@ -793,8 +802,17 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      // Fire and forget — errors are surfaced to the client via session event bus.
-      SessionInvoke.command({ ...body, sessionID }).catch(() => {})
+      const command = await Command.require(body.command)
+      if (command.kind === "action") {
+        SessionManager.assertIdle(sessionID)
+        await SessionInvoke.command({ ...body, sessionID })
+        return c.body(null, 204)
+      }
+      // Prompt commands are fire-and-forget because they may run a full model loop.
+      // Keep errors visible in logs instead of silently swallowing them.
+      SessionInvoke.command({ ...body, sessionID }).catch((error) => {
+        log.error("failed to execute async command", { command: body.command, sessionID, error })
+      })
       return c.body(null, 204)
     },
   )

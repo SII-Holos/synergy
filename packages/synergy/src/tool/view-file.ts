@@ -4,7 +4,6 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import {
-  assertInsideOrAsk,
   DEFAULT_VIEW_BYTES,
   DEFAULT_VIEW_LINES,
   displayPath,
@@ -17,6 +16,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const RangeSchema = z.object({
@@ -57,6 +57,19 @@ function cappedPreviewMessage(filePath: string): string {
   ].join("\n")
 }
 
+function recordDisplayLines(
+  sessionID: string,
+  filePath: string,
+  tag: string | undefined,
+  startLine: number,
+  endLine: number,
+): void {
+  if (!tag || endLine < startLine) return
+  const seenLines: number[] = []
+  for (let i = startLine; i <= endLine; i++) seenLines.push(i)
+  recordSeenSessionLines(sessionID, filePath, seenLines, tag)
+}
+
 export const ViewFileTool = Tool.define("view_file", {
   description: DESCRIPTION,
   parameters: z.object({
@@ -77,7 +90,6 @@ export const ViewFileTool = Tool.define("view_file", {
   }),
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)
-    await assertInsideOrAsk(filePath, ctx)
     await ctx.ask({ permission: "view_file", patterns: [filePath], metadata: {} })
 
     let content = await readTextFileUnderSnapshotCap(filePath)
@@ -115,6 +127,12 @@ export const ViewFileTool = Tool.define("view_file", {
           truncatedLines: formatted.truncatedLines,
         }
       })
+
+      // Record all displayed ranges as seen lines
+      for (const rm of rangeMetadata) {
+        recordDisplayLines(ctx.sessionID, filePath, tag, rm.startLine, rm.endLine)
+      }
+
       const outputParts = [warning, header, ...blocks].filter(Boolean)
       return {
         title: display,
@@ -139,6 +157,9 @@ export const ViewFileTool = Tool.define("view_file", {
     const limit = normalizeLineLimit(rawLimit)
     const formatted = formatLineRange(lines, offset, limit)
     const output = `${[warning, header, formatted.body].filter(Boolean).join("\n")}${formatted.body ? "" : "\n"}`
+
+    // Record the displayed offset..offset+limit range as seen lines
+    recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
 
     return {
       title: display,

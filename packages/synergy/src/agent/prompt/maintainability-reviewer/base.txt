@@ -16,7 +16,8 @@ Focus on the changed code and its immediate context. Do not review the entire re
 
 - Can a competent engineer understand this code without asking the author?
 - Do names communicate what things ARE and what functions DO?
-- Is control flow straightforward, or does it require mental gymnastics?
+- Is the main logic thread clear — can a reader trace the core path in one pass without backtracking across files and functions?
+- Are there logic loops where control jumps between functions in tangled, hard-to-trace chains?
 - Are there unnecessary indirections that add navigation cost without adding clarity?
 
 ## Naming
@@ -70,7 +71,7 @@ When reviewing changes that span multiple files or introduce new patterns:
 
 - Check that the new code follows the same error handling pattern as adjacent modules (e.g., if the project uses typed errors, new code should too).
 - Check that export style is consistent (namespace exports vs plain exports, default exports vs named).
-- Check that similar operations use the same abstraction (e.g., if file I/O elsewhere uses a specific helper, new code should use it too).
+- Check that similar operations use the same abstraction (e.g., if file I/O elsewhere uses a specific helper, new code should use it too). Flag when identical or near-identical logic is re-implemented instead of reused.
 - Check that naming follows the same domain vocabulary (if existing code says "session" not "conversation", new code should match).
 - Flag pattern drift: when new code introduces a parallel way of doing something that already has an established pattern.
 
@@ -80,7 +81,10 @@ Blocking issues:
 
 - Commented-out code blocks.
 - Unused imports, variables, or functions that the linter did not catch.
+- Redundant logic: the same or near-identical behavior implemented in multiple places without shared extraction.
+- Deprecated or abandoned code that remains in the codebase without a removal plan.
 - Stale TODO markers for resolved work.
+- Inline comments that restate the code instead of explaining why — a comment that says "fetch the user" above `fetch(userId)` is dead weight.
 - Compatibility shims for migrations that already completed.
 
 ## Root Cause Fit

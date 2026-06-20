@@ -20,7 +20,7 @@ import { Scope } from "@/scope"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
 import { Auth } from "../provider/api-key"
-import { Command } from "../skill/command"
+import { Command } from "../command/command"
 import { Global } from "../global"
 import { ScopeRoute } from "./scope"
 import { GitRoute } from "./git"
@@ -59,6 +59,9 @@ import { SkillRoute } from "./skill-route"
 import { HolosRoute, HolosDataRoute } from "./holos"
 import { RuntimeRoute } from "./runtime-route"
 import { GlobalSessionRoute } from "./global-session"
+import { SessionNavRoute } from "./session-nav"
+import { GlobalNavRoute } from "./global-nav"
+import { ControlProfileRoute } from "./control-profile-route"
 import { RuntimeReload } from "../runtime/reload"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -81,6 +84,9 @@ export namespace Server {
   let _url: URL | undefined
   let _corsWhitelist = new Set<string>()
   let _appMounted = false
+  let _globalEventBroadcastOff: (() => void) | undefined
+  let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
+  let _globalEventClients: Set<any> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -159,7 +165,8 @@ export namespace Server {
               ConfigSet.ExistsError.isInstance(err) ||
               ConfigSet.DeleteDefaultError.isInstance(err) ||
               ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree")
+              err.name.startsWith("Worktree") ||
+              err.name.startsWith("Command")
             )
               status = 400
             else status = 500
@@ -259,6 +266,7 @@ export namespace Server {
               }
             }
             GlobalBus.on("event", broadcastHandler)
+            _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
             const heartbeat = setInterval(() => {
               for (const client of globalEventClients) {
                 try {
@@ -275,6 +283,8 @@ export namespace Server {
                 }
               }
             }, 30000)
+            _globalEventHeartbeatInterval = heartbeat
+            _globalEventClients = globalEventClients
             return upgradeWebSocket(() => ({
               onOpen(_event, ws) {
                 log.info("global event ws connected")
@@ -368,6 +378,7 @@ export namespace Server {
           },
         )
         .route("/global/session", GlobalSessionRoute)
+        .route("/global", GlobalNavRoute)
         .post(
           "/agenda/webhook/:token",
           describeRoute({
@@ -424,6 +435,7 @@ export namespace Server {
         .route("/pty", PtyRoute)
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
+        .route("", ControlProfileRoute)
 
         .get(
           "/experimental/tool/ids",
@@ -635,6 +647,7 @@ export namespace Server {
           },
         )
 
+        .route("/session", SessionNavRoute)
         .route("/session", SessionRoute)
         .route("", PermissionRoute)
         .route("/question", QuestionRoute)
@@ -1042,6 +1055,9 @@ export namespace Server {
     server.stop = async (closeActiveConnections?: boolean) => {
       Agenda.stop()
       if (shouldPublishMDNS) MDNS.unpublish()
+      _globalEventBroadcastOff?.()
+      if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
+      _globalEventClients?.clear()
       return originalStop(closeActiveConnections)
     }
 

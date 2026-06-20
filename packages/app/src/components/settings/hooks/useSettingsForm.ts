@@ -54,7 +54,6 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     mini_model: cfg.mini_model ?? MODEL_DEFAULTS.mini_model,
     mid_model: cfg.mid_model ?? MODEL_DEFAULTS.mid_model,
     vision_model: cfg.vision_model ?? MODEL_DEFAULTS.vision_model,
-    holos_friend_reply_model: cfg.holos_friend_reply_model ?? MODEL_DEFAULTS.holos_friend_reply_model,
     thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
@@ -100,6 +99,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setAdvanced({
+    controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
     compaction_auto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
     compaction_overflow_threshold: String(
       cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
@@ -134,70 +134,53 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       : [],
   })
 
-  const ident = cfg.identity
-  const evolution = ident?.evolution
+  const engram = cfg.engram
+  const memory = engram?.memory
+  const experience = engram?.experience
   params.setIdentity({
     evolution: (() => {
-      if (evolution === undefined) return UI_DEFAULTS.identityEvolution
-      if (typeof evolution === "boolean") return evolution ? "true" : "false"
-      const passive = evolution.passive
-      const active = evolution.active
-      if (passive === false && active === false) return "false"
+      const memoryEnabled = memory?.enabled
+      const experienceEncode = experience?.encode
+      const experienceRetrieve = experience?.retrieve
+      if (memoryEnabled === false && experienceEncode === false && experienceRetrieve === false) return "false"
       return "true"
     })(),
     autonomy: (() => {
-      if (ident?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
-      return ident.autonomy ? "true" : "false"
+      if (engram?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
+      return engram.autonomy ? "true" : "false"
     })(),
     memorySimThreshold: (() => {
-      const retrieve =
-        typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
-          ? evolution.active.retrieve
-          : undefined
+      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
       return typeof retrieve === "object" && retrieve?.simThreshold !== undefined
         ? String(retrieve.simThreshold)
         : UI_DEFAULTS.memorySimThreshold
     })(),
     memoryTopK: (() => {
-      const retrieve =
-        typeof evolution === "object" && evolution?.active && typeof evolution.active === "object"
-          ? evolution.active.retrieve
-          : undefined
+      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
       return typeof retrieve === "object" && retrieve?.topK !== undefined
         ? String(retrieve.topK)
         : UI_DEFAULTS.memoryTopK
     })(),
     experienceSimThreshold: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.simThreshold !== undefined
         ? String(retrieve.simThreshold)
         : UI_DEFAULTS.experienceSimThreshold
     })(),
     experienceTopK: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined
         ? String(retrieve.topK)
         : UI_DEFAULTS.experienceTopK
     })(),
     experienceEpsilon: (() => {
-      const passive =
-        typeof evolution === "object" && evolution?.passive && typeof evolution.passive === "object"
-          ? evolution.passive
-          : undefined
-      const retrieve = passive && typeof passive.retrieve === "object" ? passive.retrieve : undefined
+      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
       return retrieve && typeof retrieve === "object" && retrieve.epsilon !== undefined
         ? String(retrieve.epsilon)
         : UI_DEFAULTS.experienceEpsilon
     })(),
   })
 
+  params.setInitialized(true)
   return setName
 }

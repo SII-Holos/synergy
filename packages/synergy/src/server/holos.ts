@@ -3,28 +3,17 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { Access } from "../access"
 import { Contact } from "../holos/contact"
-import { FriendReply } from "../holos/friend-reply"
-import { FriendRequest } from "../holos/friend-request"
-import { HolosMessageMetadata } from "../holos/message-metadata"
+import { Mailbox } from "../holos/mailbox"
 import { HolosAuth } from "../holos/auth"
 import { HOLOS_URL } from "../holos/constants"
 import { HolosLoginFlow } from "../holos/login-flow"
-import { HolosProfile } from "../holos/profile"
 import { HolosProtocol } from "../holos/protocol"
 import { HolosReadiness } from "../holos/readiness"
-import { HolosRequest } from "../holos/request"
-import { MessageQueue } from "../holos/queue"
 import { Presence } from "../holos/presence"
 import { HolosRuntime } from "../holos/runtime"
 import { HolosState } from "../holos/state"
-import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { errors } from "./error"
-import { Scope } from "../scope"
-import { Session } from "../session"
-import { SessionManager } from "../session/manager"
-import { MessageV2 } from "../session/message-v2"
-import { SessionEndpoint } from "../session/endpoint"
 
 const log = Log.create({ service: "server.holos" })
 
@@ -34,12 +23,6 @@ const STATE_TTL_MS = 5 * 60_000
 
 function holosApiUrl(path: string): string {
   return new URL(path, HOLOS_URL).toString()
-}
-
-async function resolvePrimaryHolosConnection() {
-  const provider = await HolosRuntime.getProvider()
-  if (!provider) return null
-  return { provider }
 }
 
 function cleanupExpiredStates() {
@@ -336,117 +319,6 @@ export const HolosDataRoute = new Hono()
     },
   )
 
-  // --- Profile ---
-
-  .get(
-    "/profile",
-    describeRoute({
-      summary: "Get profile",
-      description: "Retrieve the current agent profile.",
-      operationId: "holos.profile.get",
-      responses: {
-        200: {
-          description: "Agent profile",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    agentId: z.string().nullable(),
-                    profile: HolosProfile.Info.nullable(),
-                  })
-                  .meta({ ref: "HolosProfileResponse" }),
-              ),
-            },
-          },
-        },
-      },
-    }),
-    async (c) => {
-      const [profile, credentials] = await Promise.all([HolosProfile.get(), HolosAuth.getStoredCredential()])
-      return c.json({ agentId: credentials?.agentId ?? null, profile: profile ?? null })
-    },
-  )
-
-  .put(
-    "/profile",
-    describeRoute({
-      summary: "Update profile",
-      description: "Update the current agent profile.",
-      operationId: "holos.profile.update",
-      responses: {
-        200: {
-          description: "Updated profile",
-          content: { "application/json": { schema: resolver(HolosProfile.Info) } },
-        },
-        ...errors(400),
-      },
-    }),
-    validator(
-      "json",
-      z.object({
-        name: z.string(),
-        bio: z.string(),
-      }),
-    ),
-
-    async (c) => {
-      const body = c.req.valid("json")
-      const existing = await HolosProfile.get()
-      const profile = await HolosProfile.update({
-        name: body.name,
-        bio: body.bio,
-        initialized: true,
-        initializedAt: existing?.initializedAt ?? Date.now(),
-      })
-
-      return c.json(profile)
-    },
-  )
-
-  .post(
-    "/profile/reset",
-    describeRoute({
-      summary: "Reset profile initialization",
-      description: "Set the profile initialized flag to false, allowing the user to re-run the onboarding setup flow.",
-      operationId: "holos.profile.reset",
-      responses: {
-        200: {
-          description: "Profile reset",
-          content: { "application/json": { schema: resolver(z.boolean()) } },
-        },
-      },
-    }),
-    async (c) => {
-      const existing = await HolosProfile.get()
-      if (existing) {
-        await HolosProfile.update({ ...existing, initialized: false })
-      }
-      return c.json(true)
-    },
-  )
-
-  .post(
-    "/profile/skip-genesis",
-    describeRoute({
-      summary: "Skip genesis and create default profile",
-      description: "Creates a default profile, skipping the onboarding chat. No-ops if profile is already initialized.",
-      operationId: "holos.profile.skipGenesis",
-      responses: {
-        200: {
-          description: "Profile",
-          content: { "application/json": { schema: resolver(HolosProfile.Info) } },
-        },
-      },
-    }),
-    async (c) => {
-      const existing = await HolosProfile.get()
-      if (existing?.initialized) return c.json(existing)
-      const profile = await HolosProfile.update(HolosProfile.defaultProfile())
-      return c.json(profile)
-    },
-  )
-
   // --- Contacts ---
 
   .get(
@@ -508,189 +380,18 @@ export const HolosDataRoute = new Hono()
       "json",
       z.object({
         id: z.string(),
-        holosId: z.string().optional(),
         name: z.string(),
-        bio: z.string().optional(),
       }),
     ),
     async (c) => {
       const body = c.req.valid("json")
       const contact = await Contact.add({
         id: body.id,
-        holosId: body.holosId,
         name: body.name,
-        bio: body.bio,
-        status: "active",
+        blocked: false,
         addedAt: Date.now(),
-        config: { autoReply: false, autoInitiate: false, blocked: false, maxAutoTurns: 10 },
       })
       return c.json(contact)
-    },
-  )
-
-  // --- Friend Requests ---
-
-  .get(
-    "/friend-request",
-    describeRoute({
-      summary: "List friend requests",
-      description: "List all friend requests.",
-      operationId: "holos.friendRequest.list",
-      responses: {
-        200: {
-          description: "List of friend requests",
-          content: { "application/json": { schema: resolver(FriendRequest.Info.array()) } },
-        },
-      },
-    }),
-    async (c) => {
-      const requests = await FriendRequest.list()
-      return c.json(requests)
-    },
-  )
-
-  .post(
-    "/friend-request",
-    describeRoute({
-      summary: "Create friend request",
-      description: "Create a new outgoing friend request.",
-      operationId: "holos.friendRequest.create",
-      responses: {
-        200: {
-          description: "Created friend request",
-          content: { "application/json": { schema: resolver(FriendRequest.Info) } },
-        },
-        ...errors(400),
-      },
-    }),
-    validator(
-      "json",
-      z.object({
-        id: z.string(),
-        peerId: z.string(),
-        peerName: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      const body = c.req.valid("json")
-      const request = await FriendRequest.create({
-        id: body.id,
-        direction: "outgoing",
-        peerId: body.peerId,
-        peerName: body.peerName,
-        status: "pending",
-        createdAt: Date.now(),
-      })
-      return c.json(request)
-    },
-  )
-
-  .delete(
-    "/friend-request/:id",
-    describeRoute({
-      summary: "Remove friend request",
-      description: "Remove a friend request.",
-      operationId: "holos.friendRequest.remove",
-      responses: {
-        200: {
-          description: "Removed",
-          content: { "application/json": { schema: resolver(z.boolean()) } },
-        },
-      },
-    }),
-    validator("param", z.object({ id: z.string() })),
-    async (c) => {
-      await FriendRequest.remove(c.req.valid("param").id)
-      return c.json(true)
-    },
-  )
-
-  // --- Friend request actions (bridge to provider) ---
-
-  .post(
-    "/friend-request/send",
-    describeRoute({
-      summary: "Send friend request",
-      description: "Send an outgoing friend request to another agent via WebSocket.",
-      operationId: "holos.friendRequest.send",
-      responses: {
-        200: {
-          description: "Friend request sent or queued",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ queued: z.boolean() }).meta({ ref: "FriendRequestSendResponse" })),
-            },
-          },
-        },
-        ...errors(400, 503),
-      },
-    }),
-    validator(
-      "json",
-      z.object({ peerId: z.string(), peerName: z.string().optional(), peerBio: z.string().optional() }),
-    ),
-    async (c) => {
-      const connection = await resolvePrimaryHolosConnection()
-      if (!connection) return c.json({ message: "Holos not connected" }, 503)
-
-      const body = c.req.valid("json")
-      const result = await connection.provider.sendFriendRequest(body.peerId, body.peerName, body.peerBio)
-      return c.json({ queued: result.queued })
-    },
-  )
-
-  .put(
-    "/friend-request/:id/respond",
-    describeRoute({
-      summary: "Respond to friend request",
-      description: "Accept or reject a friend request. Sends the response over WebSocket and updates local storage.",
-      operationId: "holos.friendRequest.respond",
-      responses: {
-        200: {
-          description: "Updated friend request",
-          content: { "application/json": { schema: resolver(FriendRequest.Info) } },
-        },
-        ...errors(400, 404, 503),
-      },
-    }),
-    validator("param", z.object({ id: z.string() })),
-    validator("json", z.object({ status: z.enum(["accepted", "rejected"]) })),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const body = c.req.valid("json")
-
-        const request = await FriendRequest.get(id)
-        if (!request) return c.json({ message: "Friend request not found" }, 404)
-
-        const connection = await resolvePrimaryHolosConnection()
-        if (connection) {
-          if (body.status === "accepted") {
-            await connection.provider.acceptFriendRequest(request.peerId)
-
-            const existing = await Contact.get(request.peerId)
-            if (!existing) {
-              await Contact.add({
-                id: request.peerId,
-                holosId: request.peerId,
-                name: request.peerName ?? "Unknown",
-                bio: request.peerBio,
-                status: "active",
-                addedAt: Date.now(),
-                config: { autoReply: false, autoInitiate: false, blocked: false, maxAutoTurns: 10 },
-              })
-            }
-          } else {
-            await connection.provider.rejectFriendRequest(request.peerId)
-          }
-        }
-
-        const updated = await FriendRequest.respond(id, body.status)
-        return c.json(updated)
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ message }, 400)
-      }
     },
   )
 
@@ -698,7 +399,7 @@ export const HolosDataRoute = new Hono()
     "/contact/:id",
     describeRoute({
       summary: "Remove contact",
-      description: "Remove a contact and notify the peer via WebSocket.",
+      description: "Remove a contact.",
       operationId: "holos.contact.remove",
       responses: {
         200: {
@@ -711,18 +412,9 @@ export const HolosDataRoute = new Hono()
     async (c) => {
       const id = c.req.valid("param").id
       const contact = await Contact.get(id)
-
-      if (contact?.holosId) {
-        const connection = await resolvePrimaryHolosConnection()
-        if (connection) {
-          await connection.provider.removeFriend(contact.holosId).catch(() => {})
-        }
-        Presence.remove(contact.holosId)
-        await Session.archiveEndpointSession(SessionEndpoint.holos(contact.holosId)).catch((err: unknown) =>
-          log.warn("failed to archive session for removed contact", { id, error: err }),
-        )
+      if (contact) {
+        Presence.remove(contact.id)
       }
-
       await Contact.remove(id)
       return c.json(true)
     },
@@ -731,197 +423,28 @@ export const HolosDataRoute = new Hono()
   // --- Contact config ---
 
   .put(
-    "/contact/:id/config",
+    "/contact/:id/block",
     describeRoute({
-      summary: "Update contact config",
-      description: "Update per-contact configuration (autoReply, autoInitiate, blocked).",
-      operationId: "holos.contact.updateConfig",
+      summary: "Toggle contact blocked status",
+      description: "Block or unblock a contact. Blocked contacts' messages are silently discarded.",
+      operationId: "holos.contact.toggleBlock",
       responses: {
         200: {
           description: "Updated contact",
           content: { "application/json": { schema: resolver(Contact.Info) } },
         },
-        ...errors(400, 404),
+        ...errors(404),
       },
     }),
     validator("param", z.object({ id: z.string() })),
-    validator(
-      "json",
-      z.object({
-        autoReply: z.boolean().optional(),
-        autoInitiate: z.boolean().optional(),
-        blocked: z.boolean().optional(),
-        maxAutoTurns: z.number().optional(),
-      }),
-    ),
+    validator("json", z.object({ blocked: z.boolean() })),
     async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const body = c.req.valid("json")
-        const updated = await Contact.updateConfig(id, body)
-        return c.json(updated)
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ message }, 404)
-      }
-    },
-  )
-
-  // --- Contact session ---
-
-  .get(
-    "/contact/:id/session",
-    describeRoute({
-      summary: "Get or create session for contact",
-      description: "Returns the friend session for a contact, creating one if it doesn't exist yet.",
-      operationId: "holos.contact.session",
-      responses: {
-        200: {
-          description: "Session info for navigation",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    sessionID: z.string(),
-                    directory: z.string(),
-                  })
-                  .meta({ ref: "HolosContactSessionResponse" }),
-              ),
-            },
-          },
-        },
-        ...errors(404, 503),
-      },
-    }),
-    validator("param", z.object({ id: z.string() })),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const contact = await Contact.get(id)
-        if (!contact) return c.json({ message: "Contact not found" }, 404)
-
-        const provider = await HolosRuntime.getProvider()
-        if (!provider) return c.json({ message: "Holos not connected" }, 503)
-
-        const session = await HolosRuntime.getOrCreateSession(contact.holosId ?? contact.id, Scope.global())
-
-        const sessionScope = session.scope as { type?: string; directory?: string }
-        return c.json({
-          sessionID: session.id,
-          directory: sessionScope.type === "global" ? "global" : (sessionScope.directory ?? "global"),
-        })
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ message }, 404)
-      }
-    },
-  )
-
-  // --- Send message ---
-
-  .post(
-    "/contact/:id/message",
-    describeRoute({
-      summary: "Send message to contact",
-      description:
-        "Send a message to a contact via the friend session mailbox. " +
-        "The outbound hook handles Holos WS delivery automatically.",
-      operationId: "holos.contact.sendMessage",
-      responses: {
-        200: {
-          description: "Message delivered to session",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    sessionID: z.string(),
-                  })
-                  .meta({ ref: "HolosSendMessageResponse" }),
-              ),
-            },
-          },
-        },
-        ...errors(400, 403, 404, 503),
-      },
-    }),
-    validator("param", z.object({ id: z.string() })),
-    validator(
-      "json",
-      z.object({
-        text: z.string().min(1),
-        replyToMessageId: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      try {
-        const id = c.req.valid("param").id
-        const body = c.req.valid("json")
-
-        const contact = await Contact.get(id)
-        if (!contact) return c.json({ message: "Contact not found" }, 404)
-        if (contact.config.blocked) return c.json({ message: "Contact is blocked" }, 403)
-
-        const provider = await HolosRuntime.getProvider()
-        if (!provider) return c.json({ message: "Holos not connected" }, 503)
-
-        const session = await HolosRuntime.getOrCreateSession(contact.holosId ?? contact.id, Scope.global())
-        log.debug("[send-message] session resolved", { sessionID: session.id, contactId: id })
-
-        const textPart: MessageV2.TextPart = {
-          id: Identifier.ascending("part"),
-          sessionID: session.id,
-          messageID: Identifier.ascending("message"),
-          type: "text",
-          text: body.text,
-        }
-
-        const replyToMessage = body.replyToMessageId
-          ? (await Session.messages({ sessionID: session.id, limit: 200 })).find(
-              (message) => message.info.id === body.replyToMessageId,
-            )
-          : undefined
-        if (body.replyToMessageId && !replyToMessage) {
-          return c.json({ message: "Reply target not found in this conversation" }, 400)
-        }
-
-        const quotedText = MessageV2.extractText(replyToMessage?.parts ?? [])
-        const replyMetadata = (replyToMessage?.info.metadata as Record<string, unknown> | undefined) ?? undefined
-        const replyToHolosMessageId = HolosMessageMetadata.holos(replyMetadata)?.messageId
-
-        const mail: SessionManager.SessionMail.Assistant = {
-          type: "assistant",
-          parts: [textPart],
-          metadata: HolosMessageMetadata.merge(undefined, {
-            source: "human",
-            holos: replyToHolosMessageId
-              ? {
-                  replyToMessageId: replyToHolosMessageId,
-                }
-              : undefined,
-            quote: body.replyToMessageId
-              ? {
-                  messageId: body.replyToMessageId,
-                  text: quotedText || undefined,
-                  senderName: replyToMessage?.info.role === "user" ? contact.name : "You",
-                }
-              : undefined,
-          }),
-        }
-
-        log.debug("[send-message] delivering assistant mail", { sessionID: session.id, messageID: textPart.messageID })
-        await SessionManager.deliver({ target: session.id, mail })
-
-        FriendReply.resetAutoTurnCount(contact.holosId ?? contact.id).catch((err: unknown) => {
-          log.warn("failed to reset auto-turn count", { contactId: id, error: err })
-        })
-
-        return c.json({ sessionID: session.id })
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ message }, 400)
-      }
+      const id = c.req.valid("param").id
+      const { blocked } = c.req.valid("json")
+      const existing = await Contact.get(id)
+      if (!existing) return c.json({ message: "Contact not found" }, 404)
+      const updated = await Contact.update({ ...existing, blocked })
+      return c.json(updated)
     },
   )
 
@@ -951,39 +474,6 @@ export const HolosDataRoute = new Hono()
         result[id] = status
       }
       return c.json(result)
-    },
-  )
-  .post(
-    "/refresh-presence",
-    describeRoute({
-      summary: "Refresh friend presence",
-      description: "Trigger a fresh presence probe for all unblocked Holos contacts.",
-      operationId: "holos.refreshPresence",
-      responses: {
-        200: {
-          description: "Presence refresh triggered",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z
-                  .object({
-                    success: z.literal(true),
-                    count: z.number(),
-                  })
-                  .meta({ ref: "HolosPresenceRefreshResponse" }),
-              ),
-            },
-          },
-        },
-        ...errors(503),
-      },
-    }),
-    async (c) => {
-      const connection = await resolvePrimaryHolosConnection()
-      if (!connection) return c.json({ message: "Holos not connected" }, 503)
-
-      const result = await connection.provider.refreshPresence()
-      return c.json({ success: true as const, count: result.count })
     },
   )
 
@@ -1027,8 +517,8 @@ export const HolosDataRoute = new Hono()
         need_active: String(query.need_active),
       })
 
-      const res = await HolosRequest.fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), undefined, {
-        capability: "agent_lookup",
+      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), {
+        headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Holos API error: ${res.status}` }, 503)
 
@@ -1062,8 +552,8 @@ export const HolosDataRoute = new Hono()
       }
 
       const agentId = c.req.valid("param").agentId
-      const res = await HolosRequest.fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), undefined, {
-        capability: "agent_lookup",
+      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), {
+        headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Agent not found: ${res.status}` }, 404)
 
@@ -1072,60 +562,154 @@ export const HolosDataRoute = new Hono()
     },
   )
 
-  // --- Message queue ---
+  // --- Mailbox ---
 
-  .get(
-    "/queue",
+  .post(
+    "/send",
     describeRoute({
-      summary: "List message queue",
-      description: "List all pending messages in the outgoing message queue.",
-      operationId: "holos.queue.list",
+      summary: "Send message to Holos contact",
+      description:
+        "Send a text message to a Holos agent by ID. Messages are sent via WebSocket. If the recipient is offline, the message will be marked as failed.",
+      operationId: "holos.send",
       responses: {
         200: {
-          description: "Queue items",
-          content: { "application/json": { schema: resolver(MessageQueue.Info.array()) } },
-        },
-      },
-    }),
-    async (c) => {
-      const items = await MessageQueue.list()
-      return c.json(items)
-    },
-  )
-
-  // --- Friend reply sub-sessions ---
-
-  .get(
-    "/friend-reply/:sessionId",
-    describeRoute({
-      summary: "List friend reply sub-sessions",
-      description: "List all sub-session mappings for a friend session. Maps trigger message IDs to sub-session IDs.",
-      operationId: "holos.friendReply.list",
-      responses: {
-        200: {
-          description: "Sub-session mappings",
+          description: "Send result",
           content: {
             "application/json": {
               schema: resolver(
                 z
-                  .array(
-                    z.object({
-                      triggerMessageId: z.string(),
-                      subSessionId: z.string(),
-                    }),
-                  )
-                  .meta({ ref: "FriendReplyMapping" }),
+                  .object({
+                    messageId: z.string(),
+                    sent: z.boolean(),
+                    reason: z.string().optional(),
+                  })
+                  .meta({ ref: "HolosSendResponse" }),
               ),
             },
           },
         },
+        ...errors(503),
       },
     }),
-    validator("param", z.object({ sessionId: z.string() })),
+    validator(
+      "json",
+      z.object({
+        toId: z.string().min(1).describe("Recipient Holos agent ID"),
+        text: z.string().min(1).describe("Message text"),
+        replyToMessageId: z.string().optional(),
+      }),
+    ),
     async (c) => {
-      const sessionId = c.req.valid("param").sessionId
-      const mappings = await FriendReply.listSubSessions(sessionId)
-      return c.json(mappings)
+      const body = c.req.valid("json")
+      const result = await Mailbox.send({
+        toId: body.toId,
+        text: body.text,
+        replyToMessageId: body.replyToMessageId,
+      })
+      return c.json({ messageId: result.id, sent: result.sent, reason: result.reason })
+    },
+  )
+
+  .post(
+    "/send/:messageId/retry",
+    describeRoute({
+      summary: "Retry sending a failed message",
+      description: "Attempt to resend a previously failed outbox message.",
+      operationId: "holos.send.retry",
+      responses: {
+        200: {
+          description: "Retry result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    messageId: z.string(),
+                    sent: z.boolean(),
+                    reason: z.string().optional(),
+                  })
+                  .meta({ ref: "HolosRetryResponse" }),
+              ),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    validator("param", z.object({ messageId: z.string() })),
+    async (c) => {
+      const { messageId } = c.req.valid("param")
+      try {
+        const result = await Mailbox.retry(messageId)
+        return c.json({ messageId: result.id, sent: result.sent, reason: result.reason })
+      } catch {
+        return c.json({ message: "Message not found" }, 404)
+      }
+    },
+  )
+
+  .get(
+    "/inbox",
+    describeRoute({
+      summary: "List inbox messages",
+      description: "List all received messages, sorted by timestamp descending.",
+      operationId: "holos.inbox.list",
+      responses: {
+        200: {
+          description: "Inbox messages",
+          content: {
+            "application/json": { schema: resolver(z.array(z.unknown()).meta({ ref: "MailboxMessageList" })) },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const messages = await Mailbox.list("inbox")
+      return c.json(messages)
+    },
+  )
+
+  .get(
+    "/outbox",
+    describeRoute({
+      summary: "List outbox messages",
+      description: "List all sent messages, sorted by timestamp descending.",
+      operationId: "holos.outbox.list",
+      responses: {
+        200: {
+          description: "Outbox messages",
+          content: {
+            "application/json": { schema: resolver(z.array(z.unknown()).meta({ ref: "MailboxMessageList" })) },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const messages = await Mailbox.list("outbox")
+      return c.json(messages)
+    },
+  )
+
+  .get(
+    "/thread/:contactId",
+    describeRoute({
+      summary: "Get conversation thread",
+      description: "Get all messages (inbound + outbound) with a specific contact.",
+      operationId: "holos.thread.get",
+      responses: {
+        200: {
+          description: "Thread messages",
+          content: {
+            "application/json": { schema: resolver(z.array(z.unknown()).meta({ ref: "MailboxMessageList" })) },
+          },
+        },
+      },
+    }),
+    validator("param", z.object({ contactId: z.string() })),
+    async (c) => {
+      const { contactId } = c.req.valid("param")
+      const messages = await Mailbox.getThread(contactId)
+      return c.json(messages)
     },
   )
 

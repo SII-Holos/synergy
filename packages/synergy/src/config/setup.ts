@@ -13,7 +13,6 @@ import { embed, generateText, type ModelMessage } from "ai"
 import { mergeDeep } from "remeda"
 import z from "zod"
 import path from "path"
-import fs from "fs/promises"
 
 export namespace ConfigSetup {
   export interface ProviderInfo {
@@ -159,12 +158,11 @@ export namespace ConfigSetup {
     thinking_model?: string
     long_context_model?: string
     creative_model?: string
-    holos_friend_reply_model?: string
     provider?: Record<string, Config.Provider>
     auth?: Record<string, StagedAuthChange>
   }
 
-  export type RequiredCoreField = "model" | "vision_model" | "embedding" | "rerank"
+  export type RequiredCoreField = "model" | "embedding" | "rerank"
 
   export type ValidationMode = "static" | "live" | "catalog" | "unsupported"
 
@@ -179,7 +177,7 @@ export namespace ConfigSetup {
 
   export interface RequiredCoreValidationResult {
     valid: boolean
-    fields: Record<RequiredCoreField, FieldValidationResult>
+    fields: Record<string, FieldValidationResult>
   }
 
   interface LiveProbeOptions {
@@ -698,7 +696,6 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
   ] as const
 
   const ROLE_KEYS = [
@@ -709,7 +706,6 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
   ] as const
 
@@ -724,35 +720,27 @@ export namespace ConfigSetup {
     }
   }
 
-  function summarizeValidation(fields: Record<RequiredCoreField, FieldValidationResult>): RequiredCoreValidationResult {
+  function summarizeValidation(fields: Record<string, FieldValidationResult>): RequiredCoreValidationResult {
     return {
       valid: Object.values(fields).every((field) => field.valid),
       fields,
     }
   }
 
-  function extractIdentityInputs(config: SetupDraft | Config.Info) {
+  function extractEmbeddingRerank(config: SetupDraft | Config.Info) {
     const draft = config as SetupDraft
     const info = config as Config.Info
 
     const embedding =
       draft.embedding ??
-      (info.identity?.embedding?.baseURL && info.identity.embedding.apiKey && info.identity.embedding.model
-        ? {
-            baseURL: info.identity.embedding.baseURL,
-            apiKey: info.identity.embedding.apiKey,
-            model: info.identity.embedding.model,
-          }
+      (info.embedding?.baseURL && info.embedding.apiKey && info.embedding.model
+        ? { baseURL: info.embedding.baseURL, apiKey: info.embedding.apiKey, model: info.embedding.model }
         : undefined)
 
     const rerank =
       draft.rerank ??
-      (info.identity?.rerank?.baseURL && info.identity.rerank.apiKey && info.identity.rerank.model
-        ? {
-            baseURL: info.identity.rerank.baseURL,
-            apiKey: info.identity.rerank.apiKey,
-            model: info.identity.rerank.model,
-          }
+      (info.rerank?.baseURL && info.rerank.apiKey && info.rerank.model
+        ? { baseURL: info.rerank.baseURL, apiKey: info.rerank.apiKey, model: info.rerank.model }
         : undefined)
 
     return { embedding, rerank }
@@ -1241,22 +1229,22 @@ export namespace ConfigSetup {
     }
   }
 
-  function stripFailedIdentityFields(
-    identity: Record<string, unknown>,
+  function disableEngramForMissingEmbedding(
+    next: { engram?: Record<string, unknown> },
     validation: RequiredCoreValidationResult,
   ): void {
     const embeddingFailed = validation.fields.embedding.failedRecommended
     const rerankFailed = validation.fields.rerank.failedRecommended
     if (!embeddingFailed && !rerankFailed) return
-    if (embeddingFailed) delete identity.embedding
-    if (rerankFailed) delete identity.rerank
-    identity.evolution = false
+    if (!next.engram) next.engram = {}
+    next.engram.memory = { enabled: false }
+    next.engram.experience = { encode: false, retrieve: false }
   }
 
   export async function validateRequiredCore(config: SetupDraft): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractIdentityInputs(config)
+    const { embedding, rerank } = extractEmbeddingRerank(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
-    const fields: Record<RequiredCoreField, FieldValidationResult> = {
+    const fields: Record<string, FieldValidationResult> = {
       model: config.model
         ? await verifyLanguageModel(config.model, { label: "Default model", importContext: context })
         : requiredMissing("Default model is required"),
@@ -1266,17 +1254,13 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: context,
           })
-        : requiredMissing("Vision model is required"),
-      embedding: downgradeRecommended(
-        embedding
-          ? await verifyIdentityModel(embedding, "embedding")
-          : recommendedSkipped("Skipped — memory evolution will be disabled"),
-      ),
-      rerank: downgradeRecommended(
-        rerank
-          ? await verifyIdentityModel(rerank, "rerank")
-          : recommendedSkipped("Skipped — memory evolution will be disabled"),
-      ),
+        : recommendedSkipped("No vision model configured — look_at will be disabled"),
+      embedding: embedding
+        ? await verifyIdentityModel(embedding, "embedding")
+        : recommendedSkipped("No embedding configured — using local model"),
+      rerank: rerank
+        ? downgradeRecommended(await verifyIdentityModel(rerank, "rerank"))
+        : recommendedSkipped("No rerank configured — reranking disabled"),
     }
 
     return summarizeValidation(fields)
@@ -1286,7 +1270,7 @@ export namespace ConfigSetup {
     config: SetupDraft,
     options: LiveProbeOptions = {},
   ): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractIdentityInputs(config)
+    const { embedding, rerank } = extractEmbeddingRerank(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
@@ -1298,10 +1282,10 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: context,
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? probeEmbeddingModel(embedding)
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
       rerank
         ? options.rerank === "skip"
           ? Promise.resolve({
@@ -1310,7 +1294,7 @@ export namespace ConfigSetup {
               message: "Rerank live probe skipped",
             })
           : probeRerankModel(rerank)
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No rerank configured — reranking disabled")),
     ])
 
     return summarizeValidation({
@@ -1322,7 +1306,7 @@ export namespace ConfigSetup {
   }
 
   async function validateImportedCore(config: Config.Info): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractIdentityInputs(config)
+    const { embedding, rerank } = extractEmbeddingRerank(config)
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? verifyLanguageModel(config.model, { label: "Default model", importContext: { config } })
@@ -1333,13 +1317,13 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: { config },
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? verifyIdentityModel(embedding, "embedding")
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
       rerank
         ? verifyIdentityModel(rerank, "rerank")
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No rerank configured — reranking disabled")),
     ])
 
     return summarizeValidation({
@@ -1354,7 +1338,7 @@ export namespace ConfigSetup {
     config: Config.Info,
     options: LiveProbeOptions = {},
   ): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractIdentityInputs(config)
+    const { embedding, rerank } = extractEmbeddingRerank(config)
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? probeLanguageModel(config.model, { label: "Default model", importContext: { config } })
@@ -1365,10 +1349,10 @@ export namespace ConfigSetup {
             requireMultimodal: true,
             importContext: { config },
           })
-        : Promise.resolve(requiredMissing("Vision model is required")),
+        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
         ? probeEmbeddingModel(embedding)
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
       rerank
         ? options.rerank === "skip"
           ? Promise.resolve({
@@ -1377,7 +1361,7 @@ export namespace ConfigSetup {
               message: "Rerank live probe skipped",
             })
           : probeRerankModel(rerank)
-        : Promise.resolve(recommendedSkipped("Skipped — memory evolution will be disabled")),
+        : Promise.resolve(recommendedSkipped("No rerank configured — reranking disabled")),
     ])
 
     return summarizeValidation({
@@ -1400,35 +1384,33 @@ export namespace ConfigSetup {
       else delete next[key]
     }
 
-    const identity = { ...(base.identity ?? {}) }
     const hasEmbedding = Boolean(draft.embedding?.baseURL && draft.embedding?.apiKey && draft.embedding?.model)
     const hasRerank = Boolean(draft.rerank?.baseURL && draft.rerank?.apiKey && draft.rerank?.model)
 
+    // Embedding — always available (local fallback), but preserve user's explicit remote config
     if (hasEmbedding) {
-      identity.embedding = {
+      next.embedding = {
         baseURL: draft.embedding!.baseURL,
         apiKey: draft.embedding!.apiKey,
         model: draft.embedding!.model,
       }
     } else {
-      delete identity.embedding
+      delete next.embedding
     }
 
+    // Rerank
     if (hasRerank) {
-      identity.rerank = {
+      next.rerank = {
         baseURL: draft.rerank!.baseURL,
         apiKey: draft.rerank!.apiKey,
         model: draft.rerank!.model,
       }
     } else {
-      delete identity.rerank
+      delete next.rerank
     }
 
-    identity.evolution = hasEmbedding && hasRerank
-
-    if (Object.keys(identity).length > 0) next.identity = identity
-    else delete next.identity
-
+    // Engram — always enabled (local embedding always works)
+    next.engram = { memory: { enabled: true }, experience: { encode: true, retrieve: true }, autonomy: true }
     if (draft.provider) {
       const provider = { ...(base.provider ?? {}) }
       for (const [providerID, config] of Object.entries(draft.provider)) {
@@ -1470,10 +1452,7 @@ export namespace ConfigSetup {
     const current = await Config.globalRaw()
     const built = applySetupDraft(current, config)
 
-    if (built.identity) {
-      stripFailedIdentityFields(built.identity, resolvedValidation)
-      if (Object.keys(built.identity).length === 0) delete built.identity
-    }
+    disableEngramForMissingEmbedding(built as { engram?: Record<string, unknown> }, resolvedValidation)
 
     const parsed = Config.Info.safeParse(built)
     if (!parsed.success) {
@@ -1506,13 +1485,13 @@ export namespace ConfigSetup {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
     "default_agent",
     "username",
     "agent",
-    "provider",
-    "identity",
+    "embedding",
+    "rerank",
+    "engram",
     "mcp",
     "channel",
     "formatter",
@@ -1636,14 +1615,6 @@ export namespace ConfigSetup {
     const out: Record<string, unknown> = { $schema: CONFIG_SCHEMA }
     for (const [key, value] of Object.entries(result.config)) {
       if (value !== undefined && value !== null) out[key] = value
-    }
-
-    if (result.coreValidation) {
-      const identity = out.identity as Record<string, unknown> | undefined
-      if (identity) {
-        stripFailedIdentityFields(identity, result.coreValidation)
-        if (Object.keys(identity).length === 0) delete out.identity
-      }
     }
 
     const parsed = Config.Info.safeParse(out)

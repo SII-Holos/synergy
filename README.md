@@ -232,6 +232,17 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Session commands
+
+Synergy uses one command registry with two command kinds:
+
+- **Prompt commands** expand a template and enter the normal conversation flow. Built-ins such as `/review` and project commands from `.synergy/command/*.md` are prompt commands.
+- **Action commands** perform deterministic session/runtime actions. They can be shown in the session timeline, but they are marked as not prompt-visible and are excluded from future model history. `/worktree` is an action command.
+
+Frontend-only shortcuts such as model selection or panel toggles can also use slash syntax, but they are UI actions rather than backend commands. The slash syntax is only an entry point; the command kind decides whether the action talks to the model.
+
+Modules that implement deterministic behavior should register an action handler with the command framework. For example, the worktree implementation lives under `packages/synergy/src/project/`, while the shared command registry lives under `packages/synergy/src/command/`.
+
 ### Session worktrees
 
 When you want to work on multiple features in the same Git repository at the same time, bind a Synergy session to a Git worktree. The session keeps the same Scope identity, but tools run from the session workspace instead of the main checkout.
@@ -267,6 +278,36 @@ What they do:
 - `/worktree remove <name-or-id> [--force]` — remove a worktree. Without `--force`, Synergy refuses to remove a dirty worktree.
 
 After `/worktree new` or `/worktree enter`, the switch applies to subsequent session work. Agents see the current workspace in their environment block, and tools such as shell commands and file edits run from that workspace.
+
+Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
+
+Control profiles are configured in `synergy.jsonc`:
+
+```jsonc
+{
+  "controlProfile": "workspace",
+  "agents": {
+    "synergy-max": {
+      "controlProfile": "auto_review",
+    },
+  },
+}
+```
+
+**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `workspace`.
+
+Built-in profiles:
+
+| Config value  | UI label     | File scope                  | Shell/network                                                                   | Sandbox                            |
+| ------------- | ------------ | --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------- |
+| `review`      | 审阅         | Read-only active workspace  | Denied                                                                          | `read_only`, fallback `deny`       |
+| `workspace`   | 工作区       | Read/write active workspace | Ask/restricted                                                                  | `workspace_write`, fallback `deny` |
+| `auto_review` | 自动审查     | Same as `workspace`         | Same boundary as `workspace`; low-risk requests can be reviewed automatically   | `workspace_write`, fallback `deny` |
+| `full_access` | 完全访问权限 | Full local filesystem       | Allowed, while identity/outbound communication still requires explicit approval | none, fallback `allow`             |
+
+`full_access` is blocked in unattended execution mode. It is only available in attended sessions.
+
+Sandbox behavior is driven by the active control profile. The older `sandbox.enabled` and `sandbox.fallbackPolicy` config fields are currently reserved for compatibility and do not override profile behavior.
 
 #### Where Synergy stores worktrees
 

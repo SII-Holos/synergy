@@ -193,14 +193,6 @@ export const AgoraJoinTool = Tool.define<typeof parameters, AgoraJoinMetadata>("
       throw new Error(`Target path already exists: ${permissionPath}`)
     }
 
-    if (!Instance.contains(directory)) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [directory],
-        metadata: {},
-      })
-    }
-
     await ctx.ask({
       permission: "edit",
       patterns: [permissionPath],

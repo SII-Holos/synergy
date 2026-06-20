@@ -4,7 +4,6 @@ import { resolver } from "hono-openapi"
 import { PermissionNext } from "../permission/next"
 import z from "zod"
 import { errors } from "./error"
-import { Identifier } from "@/id/id"
 
 export const PermissionRoute = new Hono()
   .post(
@@ -77,56 +76,6 @@ export const PermissionRoute = new Hono()
         message: json.message,
       })
       return c.json(true)
-    },
-  )
-  .post(
-    "/permission/allow-all",
-    describeRoute({
-      summary: "Set allow-all for a session",
-      description:
-        "Enable or disable allow-all mode for a session. When enabled, all permission requests are automatically approved and any currently pending permissions are resolved.",
-      operationId: "permission.setAllowAll",
-      responses: {
-        200: {
-          description: "Allow-all updated",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("json", z.object({ sessionID: Identifier.schema("session"), enabled: z.boolean() })),
-    async (c) => {
-      const json = c.req.valid("json")
-      await PermissionNext.setAllowAll(json.sessionID, json.enabled)
-      return c.json(true)
-    },
-  )
-  .get(
-    "/permission/allow-all",
-    describeRoute({
-      summary: "Check allow-all status",
-      description: "Check if allow-all mode is enabled for a session.",
-      operationId: "permission.isAllowingAll",
-      responses: {
-        200: {
-          description: "Allow-all status",
-          content: {
-            "application/json": {
-              schema: resolver(z.boolean()),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("query", z.object({ sessionID: Identifier.schema("session") })),
-    async (c) => {
-      const enabled = await PermissionNext.isAllowingAll(c.req.valid("query").sessionID)
-      return c.json(enabled)
     },
   )
   .get(

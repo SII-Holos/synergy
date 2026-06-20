@@ -6,8 +6,6 @@ import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Panel } from "@/components/panel"
 
-const MAX_TURNS_PRESETS = [3, 5, 10, 20, 50] as const
-
 function presenceLabel(status?: string) {
   if (status === "online") return "Online"
   if (status === "offline") return "Offline"
@@ -21,7 +19,6 @@ export function FriendsSection(props: {
   onSearch: (value: string) => void
   onRemove: (id: string) => void
   onNavigate: (contact: Contact) => void
-  onUpdateConfig: (id: string, config: Partial<NonNullable<Contact["config"]>>) => void
   presence: () => Record<string, string>
   requestCount?: number
 }) {
@@ -67,7 +64,6 @@ export function FriendsSection(props: {
                   contact={contact}
                   onRemove={() => props.onRemove(contact.id)}
                   onNavigate={() => props.onNavigate(contact)}
-                  onUpdateConfig={(config) => props.onUpdateConfig(contact.id, config)}
                   delay={i() * 40}
                   presence={props.presence()}
                 />
@@ -84,15 +80,10 @@ function ContactCard(props: {
   contact: Contact
   onRemove: () => void
   onNavigate: () => void
-  onUpdateConfig: (config: Partial<NonNullable<Contact["config"]>>) => void
   delay: number
   presence: Record<string, string>
 }) {
-  const status = () => props.presence[props.contact.holosId ?? ""]
-  const isBlocked = () => props.contact.config?.blocked ?? false
-  const autoReply = () => props.contact.config?.autoReply ?? false
-  const autoInitiate = () => props.contact.config?.autoInitiate ?? false
-  const maxAutoTurns = () => props.contact.config?.maxAutoTurns ?? 10
+  const status = () => props.presence[props.contact.id ?? ""]
 
   const [menuOpen, setMenuOpen] = createSignal(false)
 
@@ -157,9 +148,9 @@ function ContactCard(props: {
                   />
                   {presenceLabel(status())}
                 </span>
-                <Show when={props.contact.holosId}>
+                <Show when={props.contact.id}>
                   <span class="inline-flex max-w-full items-center rounded-full bg-surface-inset-base/70 px-2.5 py-1 font-mono text-[10px] text-text-subtle ring-1 ring-inset ring-border-base/45">
-                    {(props.contact.holosId ?? "").slice(0, 8)}…
+                    {(props.contact.id ?? "").slice(0, 8)}…
                   </span>
                 </Show>
               </div>
@@ -178,72 +169,17 @@ function ContactCard(props: {
                     <Icon name="message-circle" size="small" class="mr-2" />
                     <DropdownMenu.ItemLabel>Open chat</DropdownMenu.ItemLabel>
                   </DropdownMenu.Item>
-                  <Show when={props.contact.holosId}>
+                  <Show when={props.contact.id}>
                     <DropdownMenu.Item
                       onSelect={() => {
-                        navigator.clipboard.writeText(props.contact.holosId ?? "")
-                        showToast({ title: "ID copied" })
+                        navigator.clipboard.writeText(props.contact.id ?? "")
+                        showToast({ type: "info", title: "ID copied" })
                       }}
                     >
                       <Icon name="copy" size="small" class="mr-2" />
                       <DropdownMenu.ItemLabel>Copy ID</DropdownMenu.ItemLabel>
                     </DropdownMenu.Item>
                   </Show>
-
-                  <DropdownMenu.Separator />
-
-                  <DropdownMenu.Group>
-                    <DropdownMenu.GroupLabel>Settings</DropdownMenu.GroupLabel>
-                    <ConfigCheckbox
-                      checked={autoReply()}
-                      onChange={(v) => props.onUpdateConfig({ autoReply: v })}
-                      label="Auto Reply"
-                    />
-                    <ConfigCheckbox
-                      checked={autoInitiate()}
-                      onChange={(v) => props.onUpdateConfig({ autoInitiate: v })}
-                      label="Auto-initiate"
-                    />
-                    <ConfigCheckbox
-                      checked={isBlocked()}
-                      onChange={(v) => props.onUpdateConfig({ blocked: v })}
-                      label="Blocked"
-                      danger
-                    />
-
-                    <DropdownMenu.Sub>
-                      <DropdownMenu.SubTrigger>
-                        <Icon name="repeat" size="small" class="mr-2" />
-                        <span class="flex-1">
-                          Max turns
-                          <span class="ml-1.5 text-text-weakest">{maxAutoTurns()}</span>
-                        </span>
-                      </DropdownMenu.SubTrigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.SubContent>
-                          <DropdownMenu.RadioGroup
-                            value={String(maxAutoTurns())}
-                            onChange={(v) => props.onUpdateConfig({ maxAutoTurns: Number(v) })}
-                          >
-                            <For each={[...MAX_TURNS_PRESETS]}>
-                              {(n) => (
-                                <DropdownMenu.RadioItem value={String(n)}>
-                                  <DropdownMenu.ItemIndicator forceMount>
-                                    <div class="size-3.5 mr-1.5 flex items-center justify-center">
-                                      <Show when={maxAutoTurns() === n}>
-                                        <Icon name="check" size="small" />
-                                      </Show>
-                                    </div>
-                                  </DropdownMenu.ItemIndicator>
-                                  <DropdownMenu.ItemLabel>{n} turns</DropdownMenu.ItemLabel>
-                                </DropdownMenu.RadioItem>
-                              )}
-                            </For>
-                          </DropdownMenu.RadioGroup>
-                        </DropdownMenu.SubContent>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Sub>
-                  </DropdownMenu.Group>
 
                   <DropdownMenu.Separator />
 
@@ -261,35 +197,13 @@ function ContactCard(props: {
             </DropdownMenu>
           </div>
 
-          <div class="mt-3 min-h-[4.5rem] rounded-2xl bg-surface-inset-base/34 px-3 py-2.5 ring-1 ring-inset ring-border-base/24">
-            <div class="text-11-regular text-text-weak leading-5 line-clamp-3">
-              {props.contact.bio || <span class="italic text-text-subtle">No bio added yet</span>}
-            </div>
-          </div>
-
           <div class="mt-3 flex flex-wrap gap-1.5">
-            <Show when={autoReply()}>
-              <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-2.5 py-1 text-10-medium text-text-base">
-                <Icon name="message-circle" size="small" />
-                Auto reply
-              </span>
-            </Show>
-            <Show when={autoInitiate()}>
-              <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/70 px-2.5 py-1 text-10-medium text-text-base">
-                <Icon name="sparkles" size="small" />
-                Auto-initiate
-              </span>
-            </Show>
-            <Show when={isBlocked()}>
+            <Show when={props.contact.blocked}>
               <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/9 px-2.5 py-1 text-10-medium text-icon-critical-base ring-1 ring-inset ring-rose-400/15">
                 <Icon name="x" size="small" />
                 Blocked
               </span>
             </Show>
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-10-medium text-text-weak">
-              <Icon name="repeat" size="small" />
-              {maxAutoTurns()} turns
-            </span>
           </div>
         </div>
       </div>
@@ -304,27 +218,5 @@ function ContactCard(props: {
         </span>
       </div>
     </div>
-  )
-}
-
-function ConfigCheckbox(props: {
-  checked: boolean
-  onChange: (value: boolean) => void
-  label: string
-  danger?: boolean
-}) {
-  return (
-    <DropdownMenu.CheckboxItem checked={props.checked} onChange={props.onChange}>
-      <DropdownMenu.ItemIndicator forceMount>
-        <div class="size-3.5 mr-1.5 flex items-center justify-center">
-          <Show when={props.checked}>
-            <Icon name="check" size="small" class={props.danger ? "text-icon-critical-base" : undefined} />
-          </Show>
-        </div>
-      </DropdownMenu.ItemIndicator>
-      <DropdownMenu.ItemLabel class={props.danger ? "text-icon-critical-base" : undefined}>
-        {props.label}
-      </DropdownMenu.ItemLabel>
-    </DropdownMenu.CheckboxItem>
   )
 }

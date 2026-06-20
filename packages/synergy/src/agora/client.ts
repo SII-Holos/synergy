@@ -1,7 +1,11 @@
+// TODO: Migrate Agora to an independent Synergy plugin or MCP tool.
+// The Holos auth chain is fake — Holos does not actually validate these requests.
+// For now, AgoraClient is preserved as a reference implementation with a
+// stub auth path. Future: extract to plugin, remove from core.
+
 import { Flag } from "@/flag/flag"
 import { Config } from "@/config/config"
-import { HolosProfile } from "@/holos/profile"
-import { HolosRequest } from "@/holos/request"
+import { HolosAuth } from "@/holos/auth"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "agora" })
@@ -44,17 +48,17 @@ export namespace AgoraClient {
       return tokenCache.token
     }
 
-    const res = await HolosRequest.fetch(
-      `${config.tokenUrl}${TOKEN_EXCHANGE_PATH}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: "{}",
+    // Stub auth: Holos does not validate these requests.
+    // Future plugin should use its own auth mechanism.
+    const credentials = await HolosAuth.getCredentialOrThrow()
+    const res = await fetch(`${config.tokenUrl}${TOKEN_EXCHANGE_PATH}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${credentials.agentSecret}`,
       },
-      { capability: "agora" },
-    )
+      body: "{}",
+    })
 
     if (!res.ok) {
       const text = await res.text()
@@ -76,8 +80,7 @@ export namespace AgoraClient {
   }
 
   async function registerActor(config: AgoraConfig, token: string): Promise<void> {
-    const profile = await HolosProfile.get()
-    const displayName = profile?.name || "Synergy Agent"
+    const displayName = process.env.USER || process.env.USERNAME || "Synergy Agent"
 
     const res = await fetch(`${config.url}/api/actors`, {
       method: "POST",

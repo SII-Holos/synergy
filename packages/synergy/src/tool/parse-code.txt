@@ -20,3 +20,4 @@ Result control:
 Critical:
 - A parse error or invalid pattern is a query failure, not evidence that the code is absent.
 - Use `scan_files` for literal text or error-message search; use `parse_code` when syntax structure matters.
+- After finding a match, call `view_file` with the matched range to get a fresh tag before using `revise_file`. The match locations from `parse_code` are accurate line references, but `view_file` provides the definitive tag for editing.

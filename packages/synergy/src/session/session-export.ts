@@ -88,7 +88,9 @@ export namespace SessionExport {
             ...part,
             state: {
               ...part.state,
-              output: truncateToolOutput(part.state.output, limit),
+              output: part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : truncateToolOutput(part.state.output, limit),
             },
           } as typeof part
         }

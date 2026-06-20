@@ -54,13 +54,14 @@ export function PermissionDock(props: PermissionDockProps) {
 
   const toolPart = createMemo((): ToolPart | undefined => {
     const item = activeItem()
-    if (!item || !item.permission.tool) return undefined
+    if (!item?.permission.tool) return undefined
+    const { messageID, callID } = item.permission.tool
     const messages = data.store.message[item.permission.sessionID] ?? []
-    const message = messages.findLast((m) => m.id === item.permission.tool!.messageID)
+    const message = messages.findLast((m) => m.id === messageID)
     if (!message) return undefined
     const parts = data.store.part[message.id] ?? []
     for (const part of parts) {
-      if (part?.type === "tool" && (part as ToolPart).callID === item.permission.tool!.callID) {
+      if (part?.type === "tool" && (part as ToolPart).callID === callID) {
         return part as ToolPart
       }
     }
@@ -68,10 +69,15 @@ export function PermissionDock(props: PermissionDockProps) {
   })
 
   const permissionLabel = createMemo(() => {
-    const part = toolPart()
     const item = activeItem()
-    if (!part) return item?.permission.permission ?? "Permission"
-    const info = getToolInfo(part.tool, part.state?.input, item?.permission.metadata)
+    if (!item) return "Permission"
+    const part = toolPart()
+    if (part) {
+      const info = getToolInfo(part.tool, part.state?.input, item.permission.metadata)
+      if (info.subtitle) return `${info.title} ${info.subtitle}`
+      return info.title
+    }
+    const info = getToolInfo(item.permission.permission, {}, item.permission.metadata ?? {})
     if (info.subtitle) return `${info.title} ${info.subtitle}`
     return info.title
   })
@@ -94,21 +100,23 @@ export function PermissionDock(props: PermissionDockProps) {
 
   function tabLabel(item: PermissionItem): string {
     const perm = item.permission
-    if (perm.tool) {
-      const messages = data.store.message[perm.sessionID] ?? []
-      const message = messages.findLast((m) => m.id === perm.tool!.messageID)
-      if (message) {
-        const parts = data.store.part[message.id] ?? []
-        for (const part of parts) {
-          if (part?.type === "tool" && (part as ToolPart).callID === perm.tool!.callID) {
-            const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
-            if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-            return info.title
-          }
+    if (!perm.tool) return perm.permission ?? "Permission"
+    const { messageID, callID } = perm.tool
+    const messages = data.store.message[perm.sessionID] ?? []
+    const message = messages.findLast((m) => m.id === messageID)
+    if (message) {
+      const parts = data.store.part[message.id] ?? []
+      for (const part of parts) {
+        if (part?.type === "tool" && (part as ToolPart).callID === callID) {
+          const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
+          if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
+          return info.title
         }
       }
     }
-    return perm.permission ?? "Permission"
+    const info = getToolInfo(perm.permission, {}, perm.metadata ?? {})
+    if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
+    return info.title
   }
 
   const multi = createMemo(() => permissions().length > 1)
@@ -158,33 +166,33 @@ export function PermissionDock(props: PermissionDockProps) {
             )}
           </Show>
 
-          <Show when={toolPart()}>
-            {(part) => (
+          {(() => {
+            const item = activeItem()
+            if (!item?.permission.tool) return null
+            const part = toolPart()
+            const toolName = part?.tool ?? item.permission.permission
+            const render = ToolRegistry.render(toolName) ?? GenericTool
+            const state = part?.state
+            const input = state?.input ?? {}
+            const permissionMetadata = item.permission.metadata ?? {}
+            const stateMetadata = state && "metadata" in state ? (state.metadata ?? {}) : {}
+            const metadata = { ...permissionMetadata, ...stateMetadata }
+            const output = state && "output" in state ? state.output : undefined
+            const status = state?.status ?? "running"
+            return (
               <div class="border-t border-border-base px-4 py-3 overflow-y-auto min-h-0 [scrollbar-width:thin]">
-                {(() => {
-                  const p = part()
-                  const render = ToolRegistry.render(p.tool) ?? GenericTool
-                  const input = p.state?.input ?? {}
-                  const permissionMetadata = activeItem()?.permission.metadata ?? {}
-                  // @ts-expect-error - metadata not present on all ToolState variants
-                  const stateMetadata = p.state?.metadata ?? {}
-                  const metadata = { ...permissionMetadata, ...stateMetadata }
-                  return (
-                    <Dynamic
-                      component={render}
-                      input={input}
-                      tool={p.tool}
-                      metadata={metadata}
-                      // @ts-expect-error - output not present on all ToolState variants
-                      output={p.state.output}
-                      status={p.state.status}
-                      defaultOpen={true}
-                    />
-                  )
-                })()}
+                <Dynamic
+                  component={render}
+                  input={input}
+                  tool={toolName}
+                  metadata={metadata}
+                  output={output}
+                  status={status}
+                  defaultOpen={true}
+                />
               </div>
-            )}
-          </Show>
+            )
+          })()}
         </div>
       </div>
     </Show>

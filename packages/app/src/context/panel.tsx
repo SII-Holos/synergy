@@ -9,7 +9,6 @@ export interface PanelDef {
 }
 
 export const PANELS: PanelDef[] = [
-  { id: "note", label: "Notes", icon: "notebook-pen" },
   { id: "engram", label: "Engram", icon: "brain" },
   { id: "agenda", label: "Agenda", icon: "clipboard-list" },
   { id: "holos", label: "Holos", icon: "users" },

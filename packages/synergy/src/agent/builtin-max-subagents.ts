@@ -14,9 +14,7 @@ import { createIntegrationEngineerAgent } from "./prompt/integration-engineer/bu
 import { createLiteratureAnalystAgent } from "./prompt/literature-analyst/builder"
 import { createLiteratureSearcherAgent } from "./prompt/literature-searcher/builder"
 import { createMaintainabilityReviewerAgent } from "./prompt/maintainability-reviewer/builder"
-import { createMemoryCuratorAgent } from "./prompt/memory-curator/builder"
 import { createMigrationArchitectAgent } from "./prompt/migration-architect/builder"
-import { createNoteLibrarianAgent } from "./prompt/note-librarian/builder"
 import { createPerformanceReviewerAgent } from "./prompt/performance-reviewer/builder"
 import { createPropertyTestEngineerAgent } from "./prompt/property-test-engineer/builder"
 import { createPythonQualityEngineerAgent } from "./prompt/python-quality-engineer/builder"
@@ -51,8 +49,6 @@ const FACTORIES = [
   createRefactoringEngineerAgent,
   createIntegrationEngineerAgent,
   createDocumentationEngineerAgent,
-  createMemoryCuratorAgent,
-  createNoteLibrarianAgent,
   createSessionHistorianAgent,
   createQualityGatekeeperAgent,
   createPythonQualityEngineerAgent,

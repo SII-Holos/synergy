@@ -1,36 +1,75 @@
+import { For } from "solid-js"
 import { SettingRow } from "../components/SettingRow"
 import { SectionLabel } from "../components/SectionLabel"
 import { SegmentPill } from "../components/SegmentPill"
 import type { AdvancedStore } from "../types"
+import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
+
+const FALLBACK_PROFILES: ControlProfileSummary[] = [
+  {
+    id: "manual",
+    label: "Manual Approval",
+    description: "Ask before every tool request. Best when you are present and want full review.",
+  },
+  {
+    id: "guarded",
+    label: "Guarded",
+    description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
+  },
+  {
+    id: "autonomous",
+    label: "Autonomous",
+    description: "Keep working unattended. High-risk actions are denied instead of prompting.",
+  },
+  {
+    id: "full_access",
+    label: "Full Access",
+    description: "Allow all local tool requests without approval prompts.",
+  },
+]
+
+function profileDescription(profile: ControlProfileSummary) {
+  return FALLBACK_PROFILES.find((item) => item.id === profile.id)?.description ?? profile.description
+}
+
+function sandboxLabel(status: SandboxStatus | undefined) {
+  if (!status) return "Checking sandbox status..."
+  if (!status.supported) return `Sandbox is not supported on ${status.platform}. Permission gates still apply.`
+  if (!status.available) return `${status.backend ?? "Sandbox"} is unavailable. Fallback policy will apply.`
+  return `${status.backend ?? "Sandbox"} is available on ${status.platform}.`
+}
 
 export function AdvancedPanel(props: {
   advanced: AdvancedStore
+  controlProfiles: ControlProfileSummary[]
+  sandboxStatus?: SandboxStatus
   onAdvancedChange: (key: keyof AdvancedStore, value: string) => void
 }) {
+  const profiles = () => (props.controlProfiles.length ? props.controlProfiles : FALLBACK_PROFILES)
   return (
     <div class="ds-content-inner">
       <h1 class="ds-content-title">System</h1>
 
       <div class="ds-setting-section">
-        <SectionLabel title="Permission" />
-        <SettingRow
-          title="Default Mode"
-          description="How tool permission requests are handled"
-          trailing={
-            <SegmentPill
-              value={props.advanced.permission}
-              options={[
-                { value: "allow", label: "Allow" },
-                { value: "ask", label: "Ask" },
-                { value: "deny", label: "Deny" },
-              ]}
-              onChange={(value) => props.onAdvancedChange("permission", value)}
-              showReset
-              defaultValue="ask"
-              onReset={() => props.onAdvancedChange("permission", "ask")}
-            />
-          }
-        />
+        <SectionLabel title="Control profile" />
+        <div class="ds-profile-grid">
+          <For each={profiles()}>
+            {(profile) => (
+              <button
+                type="button"
+                class="ds-profile-card"
+                classList={{ "ds-profile-card-active": props.advanced.controlProfile === profile.id }}
+                onClick={() => props.onAdvancedChange("controlProfile", profile.id)}
+              >
+                <span class="ds-profile-name">{profile.label}</span>
+                <span class="ds-profile-description">{profileDescription(profile)}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <div class="ds-sandbox-status" classList={{ "ds-sandbox-status-ok": props.sandboxStatus?.available === true }}>
+          {sandboxLabel(props.sandboxStatus)}
+        </div>
       </div>
 
       <div class="ds-setting-section">

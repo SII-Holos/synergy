@@ -254,6 +254,35 @@ export type AgendaItem = {
   }
 }
 
+export type SessionNavEntry = {
+  id: string
+  scopeID: string
+  scopeType: "global" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+  endpointKind?: "channel"
+}
+
+export type NavCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
+}
+
+export type PinnedResponse = {
+  items: Array<SessionNavEntry>
+  total: number
+}
+
 export type AgendaWebhookResult = {
   accepted: boolean
 }
@@ -276,6 +305,19 @@ export type Scope = {
     archived?: number
   }
   sandboxes: Array<string>
+}
+
+export type ScopeNavEntry = {
+  scopeID: string
+  scopeType: "global" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: {
+    url?: string
+    color?: string
+  }
 }
 
 export type NotFoundError = {
@@ -701,6 +743,11 @@ export type PermissionConfig =
     }
   | PermissionActionConfig
 
+/**
+ * Default control profile applied to all agents
+ */
+export type ControlProfileId = "manual" | "guarded" | "autonomous" | "full_access"
+
 export type AgentConfig = {
   model?: string
   temperature?: number
@@ -738,6 +785,7 @@ export type AgentConfig = {
    */
   maxSteps?: number
   permission?: PermissionConfig
+  controlProfile?: ControlProfileId
   [key: string]:
     | unknown
     | string
@@ -755,6 +803,7 @@ export type AgentConfig = {
     | string
     | number
     | PermissionConfig
+    | ControlProfileId
     | undefined
 }
 
@@ -865,6 +914,86 @@ export type ProviderConfig = {
   }
 }
 
+/**
+ * Embedding model configuration. When absent, a local model is used automatically.
+ */
+export type EmbeddingConfig = {
+  /**
+   * Base URL for the embedding API
+   */
+  baseURL?: string
+  /**
+   * API key for the embedding service
+   */
+  apiKey?: string
+  /**
+   * Embedding model name
+   */
+  model?: string
+}
+
+/**
+ * Rerank model for memory retrieval refinement. Disabled when not configured.
+ */
+export type RerankConfig = {
+  /**
+   * Base URL for the rerank API
+   */
+  baseURL?: string
+  /**
+   * API key for the rerank service
+   */
+  apiKey?: string
+  /**
+   * Rerank model name
+   */
+  model?: string
+}
+
+export type MemoryConfig = {
+  /**
+   * Enable agent-initiated memory curation via chronicler (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Semantic memory retrieval settings
+   */
+  retrieval?: {
+    /**
+     * Minimum similarity for auto-injection (default: 0.7)
+     */
+    simThreshold?: number
+    /**
+     * Max entries per category to retrieve (default: 3)
+     */
+    topK?: number
+    /**
+     * Per-category retrieval overrides
+     */
+    categories?: {
+      [key: string]: {
+        /**
+         * Minimum similarity for contextual retrieval
+         */
+        simThreshold?: number
+        /**
+         * Maximum contextual entries to retrieve
+         */
+        topK?: number
+      }
+    }
+  }
+  /**
+   * Memory deduplication settings
+   */
+  dedup?: {
+    /**
+     * Cosine similarity threshold for duplicate detection (default: 0.75)
+     */
+    threshold?: number
+  }
+}
+
 export type PassiveRetrievalConfig = {
   /**
    * Minimum cosine similarity for retrieval candidates (default: 0.7)
@@ -893,7 +1022,7 @@ export type PassiveRetrievalConfig = {
 }
 
 /**
- * Hyperparameters for the experience learning pipeline
+ * Q-learning hyperparameters for experience evaluation
  */
 export type LearningConfig = {
   /**
@@ -971,112 +1100,89 @@ export type LearningConfig = {
   rewardDelay?: number
 }
 
-export type EvolutionPassive = {
+export type ExperienceConfig = {
   /**
-   * Learn from conversations — extract intent, reward, and scripts (default: true)
+   * Auto-encode conversation patterns into experiences (default: true)
    */
   encode?: boolean
   /**
-   * Inject relevant past experiences into new conversations (default: true)
+   * Inject relevant past experiences into prompts (default: true)
    */
   retrieve?: boolean | PassiveRetrievalConfig
   learning?: LearningConfig
 }
 
-export type EvolutionActive = {
-  /**
-   * Auto-inject relevant memories into new conversations (default: true)
-   */
-  retrieve?:
-    | boolean
-    | {
-        /**
-         * Default minimum similarity for auto-injection (default: 0.7)
-         */
-        simThreshold?: number
-        /**
-         * Default maximum entries per category to contextually retrieve (default: 3)
-         */
-        topK?: number
-        /**
-         * Per-category contextual retrieval overrides
-         */
-        categories?: {
-          [key: string]: {
-            /**
-             * Minimum similarity for contextual retrieval
-             */
-            simThreshold?: number
-            /**
-             * Maximum contextual entries to retrieve
-             */
-            topK?: number
-          }
-        }
-      }
-  /**
-   * Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)
-   */
-  memoryDedupThreshold?: number
-}
-
-export type EvolutionConfig = {
-  /**
-   * RL-enhanced passive experience learning (default: true)
-   */
-  passive?: boolean | EvolutionPassive
-  /**
-   * Agent-initiated active memory curation via memory tools (default: true)
-   */
-  active?: boolean | EvolutionActive
-}
-
-/**
- * Identity configuration for embedding and evolution
- */
-export type IdentityConfig = {
-  /**
-   * Embedding model configuration for memory and retrieval
-   */
-  embedding?: {
-    /**
-     * Base URL for the embedding API
-     */
-    baseURL?: string
-    /**
-     * API key for the embedding service
-     */
-    apiKey?: string
-    /**
-     * Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')
-     */
-    model?: string
-  }
-  /**
-   * Rerank model configuration for memory retrieval refinement
-   */
-  rerank?: {
-    /**
-     * Base URL for the rerank API
-     */
-    baseURL?: string
-    /**
-     * API key for the rerank service (falls back to embedding.apiKey)
-     */
-    apiKey?: string
-    /**
-     * Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')
-     */
-    model?: string
-  }
-  /**
-   * Dual-mode evolution system: passive experience learning + active memory curation (default: true)
-   */
-  evolution?: boolean | EvolutionConfig
+export type EngramConfig = {
+  memory?: MemoryConfig
+  experience?: ExperienceConfig
   /**
    * Enable autonomous background routines like anima daily wake (default: true)
    */
   autonomy?: boolean
+}
+
+/**
+ * Retry policy for connecting to this server
+ */
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
+}
+
+/**
+ * Filter which tools are exposed from this server
+ */
+export type McpToolFilterConfig = {
+  /**
+   * Tool names to include (allowlist)
+   */
+  include?: Array<string>
+  /**
+   * Tool names to exclude (blocklist)
+   */
+  exclude?: Array<string>
+}
+
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
 }
 
 export type McpLocalConfig = {
@@ -1099,9 +1205,37 @@ export type McpLocalConfig = {
    */
   enabled?: boolean
   /**
-   * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type McpOAuthConfig = {
@@ -1143,9 +1277,71 @@ export type McpRemoteConfig = {
    */
   oauth?: McpOAuthConfig | false
   /**
-   * Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 export type ChannelFeishuAccountConfig = {
@@ -1217,6 +1413,20 @@ export type ChannelFeishuConfig = {
    * Default streaming setting for all accounts
    */
   streaming?: boolean
+}
+
+/**
+ * Sandbox configuration for workspace boundary enforcement
+ */
+export type SandboxConfig = {
+  /**
+   * Enable the sandbox runtime when available
+   */
+  enabled?: boolean
+  /**
+   * How to proceed when the requested sandbox runtime is unavailable
+   */
+  fallbackPolicy?: "warn" | "allow" | "deny"
 }
 
 /**
@@ -1448,10 +1658,6 @@ export type Config = {
    */
   creative_model?: string
   /**
-   * Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.
-   */
-  holos_friend_reply_model?: string
-  /**
    * Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.
    */
   vision_model?: string
@@ -1489,7 +1695,9 @@ export type Config = {
   provider?: {
     [key: string]: ProviderConfig
   }
-  identity?: IdentityConfig
+  embedding?: EmbeddingConfig
+  rerank?: RerankConfig
+  engram?: EngramConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -1501,12 +1709,15 @@ export type Config = {
           enabled: boolean
         }
   }
+  mcpDefaults?: McpDefaultsConfig
   /**
    * Channel configurations for messaging platform integrations
    */
   channel?: {
     [key: string]: ChannelFeishuConfig
   }
+  sandbox?: SandboxConfig
+  controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
   formatter?:
@@ -1631,6 +1842,21 @@ export type Config = {
    */
   category?: {
     [key: string]: CategoryConfig
+  }
+  /**
+   * Toast notification preferences
+   */
+  toast?: {
+    /**
+     * Toast types to suppress. The underlying logic still runs but the visual card is not rendered.
+     */
+    muted?: Array<"info" | "success" | "warning" | "error">
+    /**
+     * Override auto-dismiss duration in ms per toast type (max 30s).
+     */
+    durationOverrides?: {
+      [key: string]: number
+    }
   }
 }
 
@@ -1809,6 +2035,28 @@ export type Provider = {
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
+export type ControlProfileSummary = {
+  id: "manual" | "guarded" | "autonomous" | "full_access"
+  label: string
+  description: string
+}
+
+export type EffectiveProfileResult = {
+  profileId: string
+  label: string
+  source: "agent" | "config" | "default"
+  configProfile?: string
+  agentProfile?: string
+  agentName?: string
+}
+
+export type SandboxStatus = {
+  platform: string
+  available: boolean
+  backend: string | null
+  supported: boolean
+}
+
 export type ToolIds = Array<string>
 
 export type ToolListItem = {
@@ -1936,6 +2184,21 @@ export type SessionCortexDelegation = {
   error?: string
 }
 
+export type SessionWorkingInfo =
+  | {
+      status: "busy"
+      description?: string
+    }
+  | {
+      status: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      status: "recovering"
+    }
+
 export type SessionWorkspace = {
   type: string
   path: string
@@ -1947,6 +2210,7 @@ export type Session = {
   id: string
   scope: SessionScope
   parentID?: string
+  category?: "project" | "home" | "channel" | "background"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -1964,8 +2228,8 @@ export type Session = {
   }
   pinned?: number
   permission?: PermissionRuleset
+  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   pendingReply?: boolean
-  allowAll?: boolean
   interaction?: SessionInteraction
   agenda?: {
     itemID: string
@@ -1981,6 +2245,7 @@ export type Session = {
     diff?: string
   }
   cortex?: SessionCortexDelegation
+  working?: SessionWorkingInfo
   workspace?: SessionWorkspace
 }
 
@@ -1996,6 +2261,10 @@ export type SessionStatus =
     }
   | {
       type: "busy"
+      description?: string
+    }
+  | {
+      type: "recovering"
       description?: string
     }
 
@@ -2051,6 +2320,10 @@ export type DagNode = {
    * Short node-local memo for important result, blocker, or handoff context
    */
   memo?: string
+  /**
+   * Execution result (trajectory summary or error) populated automatically on completion — do not set manually
+   */
+  result?: string
 }
 
 export type UserMessage = {
@@ -2548,12 +2821,15 @@ export type CortexTask = {
 export type Command = {
   name: string
   description?: string
+  kind?: "prompt" | "action"
+  surfaces?: Array<"web" | "cli" | "channel">
+  promptVisible?: boolean
   agent?: string
   model?: string
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
-  action?: "worktree"
-  template: string
+  action?: string
+  template?: string
   hints: Array<string>
 }
 
@@ -2917,11 +3193,31 @@ export type AgendaPatchInput = {
   sessionRefs?: Array<AgendaSessionRef>
 }
 
+export type NoteMetaInfo = {
+  id: string
+  title: string
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+  searchText: string
+}
+
+export type NoteMetaScopeGroup = {
+  scopeID: string
+  scopeType: "global" | "project"
+  notes: Array<NoteMetaInfo>
+}
+
 export type NoteInfo = {
   id: string
   title: string
   content: unknown
-  contentText: string
   pinned: boolean
   global: boolean
   originScope?: string
@@ -2942,7 +3238,6 @@ export type NoteScopeGroup = {
 export type NoteCreateInput = {
   title: string
   content?: unknown
-  contentText?: string
   tags?: Array<string>
 }
 
@@ -2958,7 +3253,6 @@ export type NoteConflictError = {
 export type NotePatchInput = {
   title?: string
   content?: unknown
-  contentText?: string
   pinned?: boolean
   global?: boolean
   tags?: Array<string>
@@ -3131,53 +3425,6 @@ export type HolosReadinessState = {
   reason?: "not_logged_in" | "not_connected"
 }
 
-export type HolosCapabilityKey = "agora" | "websearch" | "arxiv" | "remote_execution"
-
-export type HolosCapabilityStatus = "available" | "locked" | "degraded" | "unknown"
-
-export type HolosCapabilityReason =
-  | "not_logged_in"
-  | "not_connected"
-  | "quota_unavailable"
-  | "quota_exhausted"
-  | "temporarily_unavailable"
-  | "unknown"
-
-export type HolosCapabilityActionKind = "login_holos" | "reconnect_holos" | "open_settings" | "wait"
-
-export type HolosCapabilityAction = {
-  kind: HolosCapabilityActionKind
-  label: string
-}
-
-export type HolosCapabilityItem = {
-  key: HolosCapabilityKey
-  status: HolosCapabilityStatus
-  reason?: HolosCapabilityReason
-  title: string
-  description: string
-  action?: HolosCapabilityAction
-}
-
-export type HolosCapabilityState = {
-  items: Array<HolosCapabilityItem>
-}
-
-export type HolosQuotaStatus = "available" | "exhausted" | "unknown" | "unavailable"
-
-export type HolosQuotaInfo = {
-  status: HolosQuotaStatus
-  remaining: number | null
-  limit: number | null
-  reason?: string
-}
-
-export type HolosEntitlementState = {
-  quotas: {
-    dailyFreeUsage: HolosQuotaInfo
-  }
-}
-
 export type HolosProfile = {
   name: string
   bio: string
@@ -3187,82 +3434,26 @@ export type HolosProfile = {
 
 export type Contact = {
   /**
-   * Local contact identifier
+   * Holos Agent ID
    */
   id: string
-  /**
-   * Holos platform ID (when available)
-   */
-  holosId?: string
   /**
    * Display name
    */
   name: string
   /**
-   * Short bio
+   * Block messages from this contact
    */
-  bio?: string
-  status?: "active" | "blocked"
+  blocked?: boolean
   /**
    * Timestamp when contact was added
    */
   addedAt: number
-  config?: {
-    /**
-     * Allow the agent to automatically reply to messages from this contact
-     */
-    autoReply: boolean
-    /**
-     * Allow the agent to proactively send messages to this contact
-     */
-    autoInitiate: boolean
-    /**
-     * Block all messages from this contact
-     */
-    blocked: boolean
-    /**
-     * Maximum consecutive auto-replies without human intervention
-     */
-    maxAutoTurns?: number
-  }
-}
-
-export type FriendRequest = {
-  /**
-   * Request identifier
-   */
-  id: string
-  /**
-   * Whether this request was sent or received
-   */
-  direction: "incoming" | "outgoing"
-  /**
-   * Holos ID of the other party
-   */
-  peerId: string
-  /**
-   * Display name of the other party
-   */
-  peerName?: string
-  /**
-   * Short bio of the other party
-   */
-  peerBio?: string
-  status?: "pending" | "accepted" | "rejected" | "pending_delivery"
-  /**
-   * Timestamp when request was created
-   */
-  createdAt: number
-  /**
-   * Timestamp when request was accepted/rejected
-   */
-  respondedAt?: number
 }
 
 export type HolosSocialState = {
   profile: HolosProfile | null
   contacts: Array<Contact>
-  friendRequests: Array<FriendRequest>
   presence: {
     [key: string]: "online" | "offline" | "unknown"
   }
@@ -3272,8 +3463,6 @@ export type HolosState = {
   identity: HolosIdentityState
   connection: HolosConnectionState
   readiness: HolosReadinessState
-  capability: HolosCapabilityState
-  entitlement: HolosEntitlementState
   social: HolosSocialState
 }
 
@@ -3287,32 +3476,23 @@ export type HolosProfileResponse = {
   profile: HolosProfile | null
 }
 
-export type FriendRequestSendResponse = {
-  queued: boolean
-}
-
-export type HolosContactSessionResponse = {
-  sessionID: string
-  directory: string
-}
-
-export type HolosSendMessageResponse = {
-  sessionID: string
-}
-
 export type HolosPresenceMap = {
   [key: string]: string
 }
 
-export type HolosPresenceRefreshResponse = {
-  success: true
-  count: number
+export type HolosSendResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
 }
 
-export type FriendReplyMapping = Array<{
-  triggerMessageId: string
-  subSessionId: string
-}>
+export type HolosRetryResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
+}
+
+export type MailboxMessageList = Array<unknown>
 
 export type ExternalAgentInfo = {
   adapter: string
@@ -3334,6 +3514,7 @@ export type Agent = {
   temperature?: number
   color?: string
   permission: PermissionRuleset
+  controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   model?: {
     modelID: string
     providerID: string
@@ -3346,17 +3527,39 @@ export type Agent = {
   external?: ExternalAgentInfo
 }
 
+export type McpStatusUninitialized = {
+  status: "uninitialized"
+}
+
+export type McpStatusStarting = {
+  status: "starting"
+}
+
+export type McpStatusConnecting = {
+  status: "connecting"
+}
+
+export type McpStatusListingTools = {
+  status: "listing_tools"
+}
+
 export type McpStatusConnected = {
   status: "connected"
 }
 
-export type McpStatusDisabled = {
-  status: "disabled"
+export type McpStatusReconnecting = {
+  status: "reconnecting"
+  attempt: number
+  maxAttempts: number
 }
 
 export type McpStatusFailed = {
   status: "failed"
   error: string
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
 }
 
 export type McpStatusNeedsAuth = {
@@ -3368,12 +3571,22 @@ export type McpStatusNeedsClientRegistration = {
   error: string
 }
 
+export type McpStatusStopping = {
+  status: "stopping"
+}
+
 export type McpStatus =
+  | McpStatusUninitialized
+  | McpStatusStarting
+  | McpStatusConnecting
+  | McpStatusListingTools
   | McpStatusConnected
-  | McpStatusDisabled
+  | McpStatusReconnecting
   | McpStatusFailed
+  | McpStatusDisabled
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
+  | McpStatusStopping
 
 export type ChannelStatus =
   | {
@@ -3441,6 +3654,18 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -3452,18 +3677,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
   }
 }
 
@@ -3515,6 +3728,14 @@ export type EventMcpReady = {
   type: "mcp.ready"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
   }
 }
 
@@ -3576,18 +3797,6 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "reject"
-  }
-}
-
-export type EventPermissionAllowAllChanged = {
-  type: "permission.allowAll.changed"
-  properties: {
-    sessionID: string
-    enabled: boolean
-    sessions: Array<{
-      sessionID: string
-      enabled: boolean
-    }>
   }
 }
 
@@ -3764,110 +3973,6 @@ export type EventAppPush = {
   }
 }
 
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactConfigUpdated = {
-  type: "holos.contact.config_updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosFriendRequestCreated = {
-  type: "holos.friend_request.created"
-  properties: {
-    request: FriendRequest
-  }
-}
-
-export type EventHolosFriendRequestUpdated = {
-  type: "holos.friend_request.updated"
-  properties: {
-    request: FriendRequest
-  }
-}
-
-export type EventHolosFriendRequestRemoved = {
-  type: "holos.friend_request.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosQueueEnqueued = {
-  type: "holos.queue.enqueued"
-  properties: {
-    item: {
-      id: string
-      targetAgentId: string
-      event: string
-      payload: unknown
-      status?: "pending" | "sending" | "delivered" | "expired" | "failed"
-      createdAt: number
-      expiresAt: number
-      retryCount?: number
-      lastRetryAt?: number
-      wsRequestId?: string
-    }
-  }
-}
-
-export type EventHolosQueueDelivered = {
-  type: "holos.queue.delivered"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosQueueExpired = {
-  type: "holos.queue.expired"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -3985,6 +4090,50 @@ export type EventChannelMessageReceived = {
   }
 }
 
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -4000,10 +4149,10 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventConfigUpdated
   | EventConfigSetActivated
   | EventServerInstanceDisposed
@@ -4011,6 +4160,7 @@ export type Event =
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
+  | EventMcpFailed
   | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
@@ -4019,7 +4169,6 @@ export type Event =
   | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventPermissionAllowAllChanged
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
@@ -4042,19 +4191,6 @@ export type Event =
   | EventTodoUpdated
   | EventHolosProfileUpdated
   | EventAppPush
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosContactConfigUpdated
-  | EventHolosFriendRequestCreated
-  | EventHolosFriendRequestUpdated
-  | EventHolosFriendRequestRemoved
-  | EventHolosQueueEnqueued
-  | EventHolosQueueDelivered
-  | EventHolosQueueExpired
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
   | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
@@ -4070,6 +4206,12 @@ export type Event =
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -4320,6 +4462,47 @@ export type GlobalSessionSearchResponses = {
 
 export type GlobalSessionSearchResponse = GlobalSessionSearchResponses[keyof GlobalSessionSearchResponses]
 
+export type GlobalNavRecentData = {
+  body?: never
+  path?: never
+  query?: {
+    parentOnly?: boolean
+    includeArchived?: boolean
+    search?: string
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/global/recent"
+}
+
+export type GlobalNavRecentResponses = {
+  /**
+   * Paginated recent sessions
+   */
+  200: SessionNavResponse
+}
+
+export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]
+
+export type GlobalNavPinnedData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+  }
+  url: "/global/pinned"
+}
+
+export type GlobalNavPinnedResponses = {
+  /**
+   * Pinned sessions
+   */
+  200: PinnedResponse
+}
+
+export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
+
 export type AgendaWebhookData = {
   body?: never
   path: {
@@ -4387,6 +4570,24 @@ export type ScopeCurrentResponses = {
 }
 
 export type ScopeCurrentResponse = ScopeCurrentResponses[keyof ScopeCurrentResponses]
+
+export type ScopeIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/scope/index"
+}
+
+export type ScopeIndexResponses = {
+  /**
+   * Array of scope navigation entries
+   */
+  200: Array<ScopeNavEntry>
+}
+
+export type ScopeIndexResponse = ScopeIndexResponses[keyof ScopeIndexResponses]
 
 export type ScopeRemoveData = {
   body?: never
@@ -5030,6 +5231,73 @@ export type RuntimeReloadResponses = {
 
 export type RuntimeReloadResponse = RuntimeReloadResponses[keyof RuntimeReloadResponses]
 
+export type ControlProfileListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/control-profiles"
+}
+
+export type ControlProfileListResponses = {
+  /**
+   * List of control profiles
+   */
+  200: Array<ControlProfileSummary>
+}
+
+export type ControlProfileListResponse = ControlProfileListResponses[keyof ControlProfileListResponses]
+
+export type ControlProfileEffectiveData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Agent name to resolve profile for
+     */
+    agent?: string
+  }
+  url: "/control-profiles/effective"
+}
+
+export type ControlProfileEffectiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ControlProfileEffectiveError = ControlProfileEffectiveErrors[keyof ControlProfileEffectiveErrors]
+
+export type ControlProfileEffectiveResponses = {
+  /**
+   * Effective profile resolution
+   */
+  200: EffectiveProfileResult
+}
+
+export type ControlProfileEffectiveResponse = ControlProfileEffectiveResponses[keyof ControlProfileEffectiveResponses]
+
+export type SandboxStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/status"
+}
+
+export type SandboxStatusResponses = {
+  /**
+   * Sandbox status information
+   */
+  200: SandboxStatus
+}
+
+export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
+
 export type ToolIdsData = {
   body?: never
   path?: never
@@ -5185,6 +5453,31 @@ export type VcsGetResponses = {
 
 export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
 
+export type SessionIndexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    category?: "project" | "home" | "channel" | "background"
+    parentOnly?: "true" | "false"
+    includeArchived?: "true" | "false"
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+  }
+  url: "/session/index"
+}
+
+export type SessionIndexResponses = {
+  /**
+   * Paginated session navigation entries
+   */
+  200: SessionNavResponse
+}
+
+export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
+
 export type SessionListData = {
   body?: never
   path?: never
@@ -5241,6 +5534,7 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     id?: string
+    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
   }
   path?: never
   query?: {
@@ -5366,6 +5660,7 @@ export type SessionUpdateData = {
   body?: {
     title?: string
     pinned?: number
+    controlProfile?: "manual" | "guarded" | "autonomous" | "full_access"
     time?: {
       archived?: number
     }
@@ -6207,64 +6502,6 @@ export type PermissionReplyResponses = {
 }
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
-
-export type PermissionIsAllowingAllData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    sessionID: string
-  }
-  url: "/permission/allow-all"
-}
-
-export type PermissionIsAllowingAllErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type PermissionIsAllowingAllError = PermissionIsAllowingAllErrors[keyof PermissionIsAllowingAllErrors]
-
-export type PermissionIsAllowingAllResponses = {
-  /**
-   * Allow-all status
-   */
-  200: boolean
-}
-
-export type PermissionIsAllowingAllResponse = PermissionIsAllowingAllResponses[keyof PermissionIsAllowingAllResponses]
-
-export type PermissionSetAllowAllData = {
-  body?: {
-    sessionID: string
-    enabled: boolean
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/permission/allow-all"
-}
-
-export type PermissionSetAllowAllErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type PermissionSetAllowAllError = PermissionSetAllowAllErrors[keyof PermissionSetAllowAllErrors]
-
-export type PermissionSetAllowAllResponses = {
-  /**
-   * Allow-all updated
-   */
-  200: boolean
-}
-
-export type PermissionSetAllowAllResponse = PermissionSetAllowAllResponses[keyof PermissionSetAllowAllResponses]
 
 export type PermissionListData = {
   body?: never
@@ -7918,6 +8155,33 @@ export type AgendaCreateResponses = {
 
 export type AgendaCreateResponse = AgendaCreateResponses[keyof AgendaCreateResponses]
 
+export type NoteListMetaData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/note/meta"
+}
+
+export type NoteListMetaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
+
+export type NoteListMetaResponses = {
+  /**
+   * Note metadata grouped by scope
+   */
+  200: Array<NoteMetaScopeGroup>
+}
+
+export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
+
 export type NoteListAllData = {
   body?: never
   path?: never
@@ -8555,9 +8819,7 @@ export type HolosContactListResponse = HolosContactListResponses[keyof HolosCont
 export type HolosContactAddData = {
   body?: {
     id: string
-    holosId?: string
     name: string
-    bio?: string
   }
   path?: never
   query?: {
@@ -8633,111 +8895,9 @@ export type HolosContactGetResponses = {
 
 export type HolosContactGetResponse = HolosContactGetResponses[keyof HolosContactGetResponses]
 
-export type HolosFriendRequestListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request"
-}
-
-export type HolosFriendRequestListResponses = {
-  /**
-   * List of friend requests
-   */
-  200: Array<FriendRequest>
-}
-
-export type HolosFriendRequestListResponse = HolosFriendRequestListResponses[keyof HolosFriendRequestListResponses]
-
-export type HolosFriendRequestCreateData = {
+export type HolosContactToggleBlockData = {
   body?: {
-    id: string
-    peerId: string
-    peerName?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request"
-}
-
-export type HolosFriendRequestCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type HolosFriendRequestCreateError = HolosFriendRequestCreateErrors[keyof HolosFriendRequestCreateErrors]
-
-export type HolosFriendRequestCreateResponses = {
-  /**
-   * Created friend request
-   */
-  200: FriendRequest
-}
-
-export type HolosFriendRequestCreateResponse =
-  HolosFriendRequestCreateResponses[keyof HolosFriendRequestCreateResponses]
-
-export type HolosFriendRequestRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request/{id}"
-}
-
-export type HolosFriendRequestRemoveResponses = {
-  /**
-   * Removed
-   */
-  200: boolean
-}
-
-export type HolosFriendRequestRemoveResponse =
-  HolosFriendRequestRemoveResponses[keyof HolosFriendRequestRemoveResponses]
-
-export type HolosFriendRequestSendData = {
-  body?: {
-    peerId: string
-    peerName?: string
-    peerBio?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/friend-request/send"
-}
-
-export type HolosFriendRequestSendErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type HolosFriendRequestSendError = HolosFriendRequestSendErrors[keyof HolosFriendRequestSendErrors]
-
-export type HolosFriendRequestSendResponses = {
-  /**
-   * Friend request sent or queued
-   */
-  200: FriendRequestSendResponse
-}
-
-export type HolosFriendRequestSendResponse = HolosFriendRequestSendResponses[keyof HolosFriendRequestSendResponses]
-
-export type HolosFriendRequestRespondData = {
-  body?: {
-    status: "accepted" | "rejected"
+    blocked: boolean
   }
   path: {
     id: string
@@ -8745,135 +8905,26 @@ export type HolosFriendRequestRespondData = {
   query?: {
     directory?: string
   }
-  url: "/holos/friend-request/{id}/respond"
+  url: "/holos/contact/{id}/block"
 }
 
-export type HolosFriendRequestRespondErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
+export type HolosContactToggleBlockErrors = {
   /**
    * Not found
    */
   404: NotFoundError
 }
 
-export type HolosFriendRequestRespondError = HolosFriendRequestRespondErrors[keyof HolosFriendRequestRespondErrors]
+export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
 
-export type HolosFriendRequestRespondResponses = {
-  /**
-   * Updated friend request
-   */
-  200: FriendRequest
-}
-
-export type HolosFriendRequestRespondResponse =
-  HolosFriendRequestRespondResponses[keyof HolosFriendRequestRespondResponses]
-
-export type HolosContactUpdateConfigData = {
-  body?: {
-    autoReply?: boolean
-    autoInitiate?: boolean
-    blocked?: boolean
-    maxAutoTurns?: number
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/config"
-}
-
-export type HolosContactUpdateConfigErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactUpdateConfigError = HolosContactUpdateConfigErrors[keyof HolosContactUpdateConfigErrors]
-
-export type HolosContactUpdateConfigResponses = {
+export type HolosContactToggleBlockResponses = {
   /**
    * Updated contact
    */
   200: Contact
 }
 
-export type HolosContactUpdateConfigResponse =
-  HolosContactUpdateConfigResponses[keyof HolosContactUpdateConfigResponses]
-
-export type HolosContactSessionData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/session"
-}
-
-export type HolosContactSessionErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactSessionError = HolosContactSessionErrors[keyof HolosContactSessionErrors]
-
-export type HolosContactSessionResponses = {
-  /**
-   * Session info for navigation
-   */
-  200: HolosContactSessionResponse
-}
-
-export type HolosContactSessionResponse2 = HolosContactSessionResponses[keyof HolosContactSessionResponses]
-
-export type HolosContactSendMessageData = {
-  body?: {
-    text: string
-    replyToMessageId?: string
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/holos/contact/{id}/message"
-}
-
-export type HolosContactSendMessageErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type HolosContactSendMessageError = HolosContactSendMessageErrors[keyof HolosContactSendMessageErrors]
-
-export type HolosContactSendMessageResponses = {
-  /**
-   * Message delivered to session
-   */
-  200: HolosSendMessageResponse
-}
-
-export type HolosContactSendMessageResponse = HolosContactSendMessageResponses[keyof HolosContactSendMessageResponses]
+export type HolosContactToggleBlockResponse = HolosContactToggleBlockResponses[keyof HolosContactToggleBlockResponses]
 
 export type HolosPresenceData = {
   body?: never
@@ -8892,24 +8943,6 @@ export type HolosPresenceResponses = {
 }
 
 export type HolosPresenceResponse = HolosPresenceResponses[keyof HolosPresenceResponses]
-
-export type HolosRefreshPresenceData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/holos/refresh-presence"
-}
-
-export type HolosRefreshPresenceResponses = {
-  /**
-   * Presence refresh triggered
-   */
-  200: HolosPresenceRefreshResponse
-}
-
-export type HolosRefreshPresenceResponse = HolosRefreshPresenceResponses[keyof HolosRefreshPresenceResponses]
 
 export type HolosAgentsListData = {
   body?: never
@@ -8990,54 +9023,118 @@ export type HolosAgentsGetResponses = {
 
 export type HolosAgentsGetResponse = HolosAgentsGetResponses[keyof HolosAgentsGetResponses]
 
-export type HolosQueueListData = {
+export type HolosSendData = {
+  body?: {
+    /**
+     * Recipient Holos agent ID
+     */
+    toId: string
+    /**
+     * Message text
+     */
+    text: string
+    replyToMessageId?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/send"
+}
+
+export type HolosSendResponses = {
+  /**
+   * Send result
+   */
+  200: HolosSendResponse
+}
+
+export type HolosSendResponse2 = HolosSendResponses[keyof HolosSendResponses]
+
+export type HolosSendRetryData = {
+  body?: never
+  path: {
+    messageId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/holos/send/{messageId}/retry"
+}
+
+export type HolosSendRetryErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
+
+export type HolosSendRetryResponses = {
+  /**
+   * Retry result
+   */
+  200: HolosRetryResponse
+}
+
+export type HolosSendRetryResponse = HolosSendRetryResponses[keyof HolosSendRetryResponses]
+
+export type HolosInboxListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/holos/queue"
+  url: "/holos/inbox"
 }
 
-export type HolosQueueListResponses = {
+export type HolosInboxListResponses = {
   /**
-   * Queue items
+   * Inbox messages
    */
-  200: Array<{
-    id: string
-    targetAgentId: string
-    event: string
-    payload: unknown
-    status?: "pending" | "sending" | "delivered" | "expired" | "failed"
-    createdAt: number
-    expiresAt: number
-    retryCount?: number
-    lastRetryAt?: number
-    wsRequestId?: string
-  }>
+  200: MailboxMessageList
 }
 
-export type HolosQueueListResponse = HolosQueueListResponses[keyof HolosQueueListResponses]
+export type HolosInboxListResponse = HolosInboxListResponses[keyof HolosInboxListResponses]
 
-export type HolosFriendReplyListData = {
+export type HolosOutboxListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/holos/outbox"
+}
+
+export type HolosOutboxListResponses = {
+  /**
+   * Outbox messages
+   */
+  200: MailboxMessageList
+}
+
+export type HolosOutboxListResponse = HolosOutboxListResponses[keyof HolosOutboxListResponses]
+
+export type HolosThreadGetData = {
   body?: never
   path: {
-    sessionId: string
+    contactId: string
   }
   query?: {
     directory?: string
   }
-  url: "/holos/friend-reply/{sessionId}"
+  url: "/holos/thread/{contactId}"
 }
 
-export type HolosFriendReplyListResponses = {
+export type HolosThreadGetResponses = {
   /**
-   * Sub-session mappings
+   * Thread messages
    */
-  200: FriendReplyMapping
+  200: MailboxMessageList
 }
 
-export type HolosFriendReplyListResponse = HolosFriendReplyListResponses[keyof HolosFriendReplyListResponses]
+export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
 
 export type AppLogData = {
   body?: {
@@ -9334,6 +9431,127 @@ export type McpDisconnectResponses = {
 }
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type McpRestartData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/restart"
+}
+
+export type McpRestartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRestartError = McpRestartErrors[keyof McpRestartErrors]
+
+export type McpRestartResponses = {
+  /**
+   * MCP server restart initiated
+   */
+  200: McpStatus
+}
+
+export type McpRestartResponse = McpRestartResponses[keyof McpRestartResponses]
+
+export type McpRefreshData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/refresh"
+}
+
+export type McpRefreshErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRefreshError = McpRefreshErrors[keyof McpRefreshErrors]
+
+export type McpRefreshResponses = {
+  /**
+   * MCP server discovery refreshed
+   */
+  200: McpStatus
+}
+
+export type McpRefreshResponse = McpRefreshResponses[keyof McpRefreshResponses]
+
+export type McpInspectData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/inspect"
+}
+
+export type McpInspectErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpInspectError = McpInspectErrors[keyof McpInspectErrors]
+
+export type McpInspectResponses = {
+  /**
+   * MCP server inspection result
+   */
+  200: {
+    status: McpStatus
+    toolNames: Array<string>
+    resourceNames: Array<string>
+    promptNames: Array<string>
+  }
+}
+
+export type McpInspectResponse = McpInspectResponses[keyof McpInspectResponses]
+
+export type McpTestData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/test"
+}
+
+export type McpTestErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpTestError = McpTestErrors[keyof McpTestErrors]
+
+export type McpTestResponses = {
+  /**
+   * MCP server test result
+   */
+  200: McpStatus
+}
+
+export type McpTestResponse = McpTestResponses[keyof McpTestResponses]
 
 export type ChannelStatusData = {
   body?: never

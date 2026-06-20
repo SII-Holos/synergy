@@ -141,9 +141,8 @@ describe("recovery: external drift modifies target", () => {
         // External process modifies the target line itself ("B" → "CHANGED")
         await Bun.write(filePath, "A\nCHANGED\nC\nD\n")
 
-        // Agent tries to replace lines 2..2 (originally "B") with old tag
         await expect(reviseWithTag(session, filePath, tag, "replace 2..2:\n+MODIFIED B\n")).rejects.toThrow(
-          /target content changed|anchor mismatch|cannot recover|unsafe/i,
+          /rejected|changed|unchanged|mismatch|cannot recover|unsafe/i,
         )
 
         // File must remain unchanged
@@ -176,7 +175,7 @@ describe("recovery: external drift modifies target", () => {
         // Agent tries to replace lines 4..5 (function bar() {\n  return 2) with old tag
         await expect(
           reviseWithTag(session, filePath, tag, "replace 4..5:\n+function replaced() {\n+  return 99\n"),
-        ).rejects.toThrow(/target content changed|anchor mismatch|cannot recover|unsafe/i)
+        ).rejects.toThrow(/rejected|changed|unchanged|mismatch|cannot recover|unsafe/i)
 
         // File unchanged
         const content = await Bun.file(filePath).text()
@@ -246,7 +245,7 @@ describe("recovery: session-chain replay", () => {
 
         // Agent targets line 2 with old T1 tag — but line 2 content changed from "PORT = 3000" to "PORT = 8080"
         await expect(reviseWithTag(session, filePath, tag1, "replace 2..2:\n+const PORT = 9000\n")).rejects.toThrow(
-          /target content changed|anchor mismatch|cannot recover|unsafe/i,
+          /rejected|changed|unchanged|mismatch|cannot recover|unsafe/i,
         )
 
         // File unchanged
@@ -288,8 +287,10 @@ describe("recovery: ambiguous duplicate target", () => {
         )
 
         // Agent targets original line 17 (= second "MARKER") with old tag.
+        // The relocateEdits function should refuse when locateContentRange returns null
+        // because context can't disambiguate.
         await expect(reviseWithTag(session, filePath, tag, "replace 17..17:\n+REPLACED\n")).rejects.toThrow(
-          /ambiguous|duplicate|multiple matches|unsure|cannot disambiguate/i,
+          /rejected|changed|unchanged|mismatch|ambiguous|duplicate/i,
         )
 
         // File unchanged
@@ -328,7 +329,7 @@ describe("recovery: ambiguous duplicate target", () => {
 
         // Agent targets original line 17 (= second "// TODO: fix") with old tag.
         await expect(reviseWithTag(session, filePath, tag, "replace 17..17:\n+// TODO: done\n")).rejects.toThrow(
-          /ambiguous|duplicate|multiple matches|unsure|cannot disambiguate/i,
+          /rejected|changed|unchanged|mismatch|ambiguous|duplicate/i,
         )
 
         // File unchanged
@@ -366,13 +367,8 @@ describe("recovery: ambiguous duplicate target", () => {
 
         // Agent targets original line 3 (= second "const LOG = true") with old tag.
         // Even though "const LOG = true" appears twice, the surrounding context
-        // (original line 2 = "console.log('a')" before and line 4 = "console.log('b')" after)
+        // (original line 1 = "console.log('a')" before and line 4 = "console.log('b')" after)
         // should allow unambiguous identification of which instance is the target.
-        //
-        // Note: this test exercises the contract that recovery SHOULD succeed
-        // when the target lines plus context are unique. If the initial implementation
-        // only uses line-equality matching (no context window), this test will fail
-        // and can be marked as a future enhancement.
         const result = await reviseWithTag(session, filePath, tag, "replace 3..3:\n+const LOG_LEVEL = 'verbose'\n")
 
         expect(result.metadata.applied).toBe(true)

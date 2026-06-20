@@ -2,9 +2,9 @@ import * as fs from "fs"
 import * as path from "path"
 import { FileTime } from "../file/time"
 import { Instance } from "../scope/instance"
-import { formatHashline, formatHashlineBlock } from "../hashline/format"
+import { formatHashlineHeader, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
-import { normalizeContent } from "../hashline/tag"
+import { normalizeContent, splitContentLines } from "../hashline/tag"
 
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
 export const MIN_VIEW_LINES = 120
@@ -20,19 +20,6 @@ export function resolveFilePath(filePath: string): string {
 export function displayPath(filePath: string): string {
   const relative = path.relative(Instance.directory, filePath)
   return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
-}
-
-export async function assertInsideOrAsk(
-  filePath: string,
-  ctx: { ask: (input: any) => Promise<void>; extra?: Record<string, unknown> },
-) {
-  if (ctx.extra?.["bypassCwdCheck"] || Instance.contains(filePath)) return
-  const parentDir = path.dirname(filePath)
-  await ctx.ask({
-    permission: "external_directory",
-    patterns: [parentDir],
-    metadata: { filepath: filePath, parentDir },
-  })
 }
 
 function isKnownBinaryPath(filePath: string): boolean {
@@ -111,7 +98,7 @@ export function markFileRead(sessionID: string, filePath: string): void {
 
 export function hashlineHeaderFor(sessionID: string, filePath: string, content: string): string {
   const tag = recordHashlineSnapshot(sessionID, filePath, content)
-  return formatHashline(displayPath(filePath), tag)
+  return formatHashlineHeader(displayPath(filePath), tag)
 }
 
 export function normalizeLineLimit(limit: number | undefined, fallback = DEFAULT_VIEW_LINES): number {
@@ -124,9 +111,7 @@ export function truncateLineForDisplay(line: string): { text: string; truncated:
 }
 
 export function splitDisplayLines(content: string): string[] {
-  const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")
-  if (lines.at(-1) === "") lines.pop()
-  return lines
+  return splitContentLines(content)
 }
 
 export function formatSelectedLine(lines: string[], lineNumber: number): { output: string; truncated: boolean } {
@@ -160,4 +145,14 @@ export function diffStats(diff: string): { additions: number; deletions: number 
     if (line.startsWith("-")) deletions++
   }
   return { additions, deletions }
+}
+
+/**
+ * Record that lines were displayed to the agent, keyed by the snapshot tag.
+ * The Patcher's seen-lines check reads from the snapshot store (by hash),
+ * not from the old parallel SeenStore.
+ */
+export function recordSeenSessionLines(sessionID: string, filePath: string, lines: number[], tag: string): void {
+  if (lines.length === 0) return
+  SessionHashlineStore.get(sessionID).recordSeenLines(filePath, tag, lines)
 }

@@ -565,7 +565,7 @@ Beyond code and execution tools, you have tools for managing your persistent sta
 
 **Community** — Agora is a collaborative workspace system where discussion and versioned project state can live together (`agora_search`, `agora_read`, `agora_post`, `agora_respond`, `agora_clone`, `agora_repo`, `agora_git`). Use it to discover workspaces, read briefs and coordination threads, contribute proposals, inspect backing repositories, and work through answer branches.
 
-**Profile** — Your public identity visible to other agents and users (`profile_get`, `profile_update`).
+**Profile** — Your agent identity is managed through Holos. No local profile editing is available.
 
 # Quality Standards
 

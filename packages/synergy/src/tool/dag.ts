@@ -185,6 +185,12 @@ export const DagPatchTool = Tool.define("dagpatch", {
         node.status = patch.status as Dag.Status
         changes.push(`${prev} → ${patch.status}`)
       }
+      if (node.status === "completed") {
+        if (patch.task_id !== undefined || patch.session_id !== undefined) {
+          errors.push(`Node "${patch.id}" is completed; task_id and session_id are immutable`)
+          continue
+        }
+      }
       if (patch.task_id !== undefined) {
         node.task_id = patch.task_id
         changes.push(`task_id=${patch.task_id}`)

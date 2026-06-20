@@ -1,0 +1,13 @@
+.workspace-drawer {
+  transition: width var(--motion-duration-base) var(--motion-ease-emphasized);
+}
+
+.workspace-drawer--closing {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-drawer {
+    transition: none;
+  }
+}

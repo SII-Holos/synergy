@@ -2,6 +2,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
+import { isNonBypassableMetadata } from "@/enforcement/capability"
 import { Instance } from "@/scope/instance"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
@@ -98,19 +99,10 @@ export namespace PermissionNext {
         reply: Reply,
       }),
     ),
-    AllowAllChanged: BusEvent.define(
-      "permission.allowAll.changed",
-      z.object({
-        sessionID: z.string(),
-        enabled: z.boolean(),
-        sessions: z.array(
-          z.object({
-            sessionID: z.string(),
-            enabled: z.boolean(),
-          }),
-        ),
-      }),
-    ),
+  }
+
+  function isNonBypassable(request: { metadata?: Record<string, any> }): boolean {
+    return isNonBypassableMetadata(request.metadata)
   }
 
   const state = Instance.state(async () => {
@@ -120,55 +112,82 @@ export namespace PermissionNext {
         info: Request
         resolve: () => void
         reject: (e: any) => void
+        cleanup?: () => void
       }
     > = {}
 
     return {
       pending,
-      allowAll: new Set<string>(),
-      parents: new Map<string, string>(),
     }
   })
 
   export const ask = fn(
     Request.partial({ id: true }).extend({
       ruleset: Ruleset,
+      signal: z.instanceof(AbortSignal).optional(),
     }),
     async (input) => {
       const s = await state()
-      const { ruleset, ...request } = input
+      const { ruleset, signal, ...request } = input
+      if (signal?.aborted) {
+        throw new DOMException("The operation was aborted", "AbortError")
+      }
+
       for (const pattern of request.patterns ?? []) {
         const rule = evaluate(request.permission, pattern, ruleset)
-        log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny")
-          throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
-        if (rule.action === "ask") {
-          if (s.allowAll.size > 0 && (await hasAllowAll(s, request.sessionID))) {
-            log.info("allow-all bypass", { sessionID: request.sessionID, permission: request.permission, pattern })
-            continue
-          }
-          if (request.metadata?.sessionInteractionMode === "unattended") {
+          throw new DeniedError(ruleset.filter((r: Rule) => Wildcard.match(request.permission, r.permission)))
+        if (rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request))) {
+          const id = input.id ?? Identifier.ascending("permission")
+          const info: Request = { id, ...request }
+          let resolvePending: (() => void) | undefined
+          let rejectPending: ((e: any) => void) | undefined
+          let cleanup: (() => void) | undefined
+          const pendingPromise = new Promise<void>((resolve, reject) => {
+            resolvePending = () => {
+              cleanup?.()
+              resolve()
+            }
+            rejectPending = (error) => {
+              cleanup?.()
+              reject(error)
+            }
+            if (signal) {
+              const onAbort = () => {
+                const pending = s.pending[id]
+                if (!pending) return
+                delete s.pending[id]
+                Bus.publish(Event.Replied, {
+                  sessionID: pending.info.sessionID,
+                  requestID: pending.info.id,
+                  reply: "reject",
+                })
+                pending.reject(new DOMException("The operation was aborted", "AbortError"))
+              }
+              if (signal.aborted) {
+                onAbort()
+                return
+              }
+              signal.addEventListener("abort", onAbort, { once: true })
+              cleanup = () => signal.removeEventListener("abort", onAbort)
+            }
+          })
+          s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
+
+          if (request.metadata?.sessionInteractionMode === "unattended" && !isNonBypassable(request)) {
             log.info("unattended auto-approve", {
               sessionID: request.sessionID,
               permission: request.permission,
               pattern,
             })
+            delete s.pending[id]
+            resolvePending!()
             continue
           }
-          const id = input.id ?? Identifier.ascending("permission")
-          return new Promise<void>((resolve, reject) => {
-            const info: Request = {
-              id,
-              ...request,
-            }
-            s.pending[id] = {
-              info,
-              resolve,
-              reject,
-            }
-            Bus.publish(Event.Asked, info)
-          })
+          Bus.publish(Event.Asked, info)
+          return pendingPromise
         }
+        // allow and not nonBypassable → auto-resolve; continue to next pattern
         if (rule.action === "allow") continue
       }
     },
@@ -260,53 +279,24 @@ export namespace PermissionNext {
     }
   }
 
-  export async function registerParent(childSessionID: string, parentSessionID: string) {
+  /**
+   * Reject all pending permission entries for the given session.
+   * Called by SessionInvoke.cancel() to prevent orphaned permissions
+   * that would otherwise leave the tool suspended forever.
+   */
+  export async function clearForSession(sessionID: string) {
     const s = await state()
-    s.parents.set(childSessionID, parentSessionID)
-  }
-
-  export async function setAllowAll(sessionID: string, enabled: boolean) {
-    const s = await state()
-    if (enabled) {
-      s.allowAll.add(sessionID)
-      for (const [id, entry] of Object.entries(s.pending)) {
-        if (!(await hasAllowAll(s, entry.info.sessionID))) continue
+    for (const [id, pending] of Object.entries(s.pending)) {
+      if (pending.info.sessionID === sessionID) {
         delete s.pending[id]
-        Bus.publish(Event.Replied, { sessionID: entry.info.sessionID, requestID: id, reply: "once" })
-        entry.resolve()
-      }
-    } else {
-      s.allowAll.delete(sessionID)
-    }
-    const sessions = await affectedSessions(s, sessionID)
-    Bus.publish(Event.AllowAllChanged, {
-      sessionID,
-      enabled,
-      sessions: await Promise.all(
-        sessions.map(async (sessionID) => ({ sessionID, enabled: await hasAllowAll(s, sessionID) })),
-      ),
-    })
-  }
-
-  export async function isAllowingAll(sessionID: string) {
-    const s = await state()
-    return hasAllowAll(s, sessionID)
-  }
-
-  async function affectedSessions(s: State, rootSessionID: string) {
-    const { Session } = await import("@/session")
-    const affected = new Set<string>([rootSessionID])
-    const queue = [rootSessionID]
-    while (queue.length > 0) {
-      const current = queue.shift()!
-      for (const child of await Session.children(current)) {
-        if (affected.has(child.id)) continue
-        affected.add(child.id)
-        queue.push(child.id)
-        s.parents.set(child.id, current)
+        Bus.publish(Event.Replied, {
+          sessionID: pending.info.sessionID,
+          requestID: pending.info.id,
+          reply: "reject",
+        })
+        pending.reject(new DOMException("Session was cancelled", "AbortError"))
       }
     }
-    return Array.from(affected)
   }
 
   export function requestMetadata(input?: { interaction?: SessionInteraction.Info }) {
@@ -315,27 +305,6 @@ export namespace PermissionNext {
       sessionInteractionMode: input.interaction.mode,
       sessionInteractionSource: input.interaction.source,
     }
-  }
-
-  type State = Awaited<ReturnType<typeof state>>
-
-  async function hasAllowAll(s: State, sessionID: string): Promise<boolean> {
-    let current: string | undefined = sessionID
-    while (current) {
-      if (s.allowAll.has(current)) return true
-      current = await parentSessionID(s, current)
-    }
-    return false
-  }
-
-  async function parentSessionID(s: State, sessionID: string) {
-    const cached = s.parents.get(sessionID)
-    if (cached) return cached
-    const { SessionManager } = await import("@/session/manager")
-    const session = await SessionManager.getSession(sessionID)
-    const parentID = session?.parentID
-    if (parentID) s.parents.set(sessionID, parentID)
-    return parentID
   }
 
   export async function list() {

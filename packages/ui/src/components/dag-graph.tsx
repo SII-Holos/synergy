@@ -10,6 +10,7 @@ export interface DagNode {
   task_id?: string
   session_id?: string
   memo?: string
+  result?: string
 }
 
 interface LayoutNode {
@@ -189,18 +190,27 @@ function statusCounts(nodes: DagNode[]) {
     pending: nodes.filter((n) => n.status === "pending").length,
   }
 }
-
-export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
+export function DagGraph(props: {
+  nodes?: DagNode[]
+  ready?: string[]
+  variant?: "default" | "panel"
+  selectedNodeId?: string
+  onSelectNode?: (node: DagNode) => void
+  focusNodeId?: string
+  onViewportInteraction?: () => void
+}) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
   const [dragging, setDragging] = createSignal(false)
   const [hasUserMoved, setHasUserMoved] = createSignal(false)
+  const [pointerMoved, setPointerMoved] = createSignal(false)
 
   const markerId = createUniqueId()
   let ref: HTMLDivElement | undefined
   let viewport: HTMLDivElement | undefined
   let dragStart: { pointer: { x: number; y: number }; pan: { x: number; y: number } } | undefined
+  let clickNodeId: string | undefined
 
   onMount(() => {
     if (!ref) return
@@ -219,6 +229,18 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
     const l = layout()
     if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
     focusActiveNodes()
+  })
+
+  createEffect(() => {
+    const focusId = props.focusNodeId
+    if (!focusId || hasUserMoved() || nodes().length > 200) return
+    const laid = layout().laid
+    if (laid.length === 0) return
+    const target = laid.find((ln) => ln.node.id === focusId)
+    if (!target || target.h === 0) return
+    requestAnimationFrame(() => {
+      fitToNodes([target])
+    })
   })
 
   function fitView() {
@@ -269,6 +291,7 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
     setScale(next)
     setPan({ x: originX - worldX * next, y: originY - worldY * next })
     setHasUserMoved(true)
+    props.onViewportInteraction?.()
   }
 
   function handleWheel(event: WheelEvent) {
@@ -284,26 +307,45 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
     if (target?.closest("button")) return
     setDragging(true)
     setHasUserMoved(true)
+    props.onViewportInteraction?.()
+    setPointerMoved(false)
+    const card = target?.closest('[data-slot="dag-graph-card"]')
+    clickNodeId = (card as HTMLElement | undefined)?.dataset.id ?? undefined
     dragStart = { pointer: { x: event.clientX, y: event.clientY }, pan: pan() }
     viewport?.setPointerCapture(event.pointerId)
   }
 
   function handlePointerMove(event: PointerEvent) {
     if (!dragging() || !dragStart) return
+    const dx = event.clientX - dragStart.pointer.x
+    const dy = event.clientY - dragStart.pointer.y
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      setPointerMoved(true)
+    }
     setPan({
-      x: dragStart.pan.x + event.clientX - dragStart.pointer.x,
-      y: dragStart.pan.y + event.clientY - dragStart.pointer.y,
+      x: dragStart.pan.x + dx,
+      y: dragStart.pan.y + dy,
     })
   }
 
   function handlePointerUp(event: PointerEvent) {
+    if (!pointerMoved() && clickNodeId && props.onSelectNode) {
+      const node = nodes().find((n) => n.id === clickNodeId)
+      if (node) props.onSelectNode(node)
+    }
     setDragging(false)
     dragStart = undefined
+    clickNodeId = undefined
     viewport?.releasePointerCapture(event.pointerId)
   }
 
   return (
-    <div data-component="dag-graph" ref={ref}>
+    <div
+      class="dag-graph"
+      data-component="dag-graph"
+      data-variant={props.variant === "panel" ? "panel" : undefined}
+      ref={ref}
+    >
       <Show when={layout()?.laid.length}>
         <div data-slot="dag-graph-toolbar">
           <div data-slot="dag-graph-stats">
@@ -397,9 +439,21 @@ export function DagGraph(props: { nodes?: DagNode[]; ready?: string[] }) {
             <For each={layout().laid}>
               {(ln) => (
                 <div
+                  class="dag-node"
                   data-slot="dag-graph-card"
+                  data-id={ln.node.id}
                   data-status={ln.node.status}
                   data-ready={readySet().has(ln.node.id)}
+                  data-selected={props.selectedNodeId && props.selectedNodeId === ln.node.id ? "true" : undefined}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`DAG node: ${ln.node.content}`}
+                  onKeyDown={(e: KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      props.onSelectNode?.(ln.node)
+                    }
+                  }}
                   style={{
                     left: `${ln.x}px`,
                     top: `${ln.y}px`,

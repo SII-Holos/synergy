@@ -45,7 +45,6 @@ async function updateExisting(input: {
   title?: string
   tags?: string[]
   content: unknown
-  contentText: string
 }) {
   const existing = await NoteStore.getAny(Instance.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
@@ -54,7 +53,6 @@ async function updateExisting(input: {
     await NoteStore.updateAny(Instance.scope.id, input.id, {
       title: input.title ?? undefined,
       content: input.content,
-      contentText: input.contentText,
       tags: input.tags ?? undefined,
       expectedVersion: existing.version,
     })
@@ -65,7 +63,7 @@ async function updateExisting(input: {
         action: input.action,
         title: existing.title,
         expectedVersion: existing.version,
-        currentVersion: error.data.note.version,
+        currentVersion: error instanceof NoteError.Conflict ? error.data.note.version : 0,
       })
     }
     throw error
@@ -88,7 +86,6 @@ export const NoteWriteTool = Tool.define("note_write", {
   parameters,
   async execute(params: z.infer<typeof parameters>) {
     const tiptapContent = NoteMarkdown.fromMarkdown(params.content)
-    const contentText = params.content
 
     if (params.mode === "create") {
       if (!params.title) {
@@ -104,7 +101,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         {
           title: params.title,
           content: tiptapContent,
-          contentText,
           tags: params.tags,
         },
         { scopeID },
@@ -143,7 +139,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         title: params.title,
         tags: params.tags,
         content: merged,
-        contentText: existing.contentText + "\n" + contentText,
       })
     }
 
@@ -154,7 +149,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         title: params.title,
         tags: params.tags,
         content: tiptapContent,
-        contentText,
       })
     }
 

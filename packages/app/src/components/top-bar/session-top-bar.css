@@ -26,13 +26,16 @@
   color: var(--text-subtle);
   font-family: ui-monospace, monospace;
 }
-
 .stb-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
   overflow: visible;
+
+  .stb-selector-btn + .stb-selector-btn {
+    margin-left: -4px;
+  }
 }
 
 .stb-right {
@@ -82,10 +85,9 @@
   white-space: nowrap;
   overflow: visible;
 }
-
 .stb-variant-label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 520;
   color: var(--text-weak);
   white-space: nowrap;
 }
@@ -110,5 +112,10 @@
 
 .stb-icon-btn:hover {
   color: var(--icon-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.stb-icon-btn--active {
+  color: var(--icon-strong);
   background: var(--surface-raised-base-hover);
 }

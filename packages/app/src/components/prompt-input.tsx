@@ -15,7 +15,7 @@ import {
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
-import { useInput } from "@/context/input"
+import { useInput, type ControlProfileId } from "@/context/input"
 import { useFile, type FileSelection } from "@/context/file"
 import {
   ContentPart,
@@ -37,13 +37,12 @@ import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
-import { usePermission } from "@/context/permission"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { List } from "@ericsanchezok/synergy-ui/list"
@@ -231,11 +230,59 @@ const FILE_INPUT_ACCEPT = [...ACCEPTED_FILE_TYPES, ...ACCEPTED_TEXT_MIME_PATTERN
   ",",
 )
 
+type PermissionModeVisual = {
+  id: ControlProfileId
+  label: string
+  shortLabel: string
+  description: string
+  icon: "hand" | "shield-check" | "orbit" | "shield-alert"
+  iconClass: string
+}
+
+const PERMISSION_MODES: PermissionModeVisual[] = [
+  {
+    id: "manual",
+    label: "Manual Approval",
+    shortLabel: "Manual",
+    description: "Ask before every tool request. Best when you want to review each action.",
+    icon: "hand",
+    iconClass: "text-icon-base",
+  },
+  {
+    id: "guarded",
+    label: "Guarded",
+    shortLabel: "Guarded",
+    description: "Auto-approve safe read-only work. Ask before shell, write, network, or external actions.",
+    icon: "shield-check",
+    iconClass: "text-icon-success-base",
+  },
+  {
+    id: "autonomous",
+    label: "Autonomous",
+    shortLabel: "Auto",
+    description: "Keep working unattended. High-risk actions are denied instead of prompting.",
+    icon: "orbit",
+    iconClass: "text-icon-interactive-base",
+  },
+  {
+    id: "full_access",
+    label: "Full Access",
+    shortLabel: "Full",
+    description: "Allow all tool requests without approval prompts or workspace sandboxing.",
+    icon: "shield-alert",
+    iconClass: "text-icon-warning-base",
+  },
+]
+function permissionModeVisual(id: string | undefined): PermissionModeVisual {
+  return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[1]
+}
+
 interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
   newSessionWorktree?: string
   onNewSessionWorktreeReset?: () => void
+  hideAgentSelector?: boolean
 }
 
 const PLACEHOLDERS = [
@@ -286,6 +333,7 @@ interface SlashCommand {
   description?: string
   keybind?: string
   type: "builtin" | "custom"
+  kind?: "prompt" | "action"
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -302,7 +350,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const params = useParams()
   const dialog = useDialog()
   const command = useCommand()
-  const permission = usePermission()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -350,6 +397,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
+  const selectedControlProfile = createMemo<ControlProfileId>(() => {
+    const configured = params.id
+      ? (info()?.controlProfile ?? sync.data.config.controlProfile)
+      : (input.controlProfile() ?? sync.data.config.controlProfile)
+    return permissionModeVisual(configured).id
+  })
+  const activePermissionMode = createMemo(() => permissionModeVisual(selectedControlProfile()))
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
     return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
@@ -388,6 +442,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       fallbackWorkingPhrase: fallbackWorkingPhrase(),
     }),
   )
+
+  async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
+    if (working()) {
+      showToast({
+        type: "warning",
+        title: "Session is running",
+        description: "Stop the session before changing its permission mode.",
+      })
+      return
+    }
+
+    if (!params.id) {
+      input.setControlProfile(profile)
+      close?.()
+      return
+    }
+
+    try {
+      await sdk.client.session.update({ sessionID: params.id, controlProfile: profile })
+      close?.()
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Permission mode unchanged",
+        description: err instanceof Error ? err.message : "Failed to update the session permission mode.",
+      })
+    }
+  }
   const imageAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
@@ -511,7 +593,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     try {
       const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
       if (isTextAttachmentFile(file)) {
-        const uploaded = await uploadPromptAttachment(sdk.url, file)
+        const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
         const attachment: UploadedAttachmentPart = {
           type: "attachment",
           id: createPromptPartID(),
@@ -553,6 +635,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             : "This attachment couldn’t be prepared. Try another file."
 
       showToast({
+        type: "error",
         title: error instanceof PromptAttachmentError ? error.title : "Couldn’t attach file",
         description,
       })
@@ -759,6 +842,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: cmd.name,
       description: cmd.description,
       type: "custom" as const,
+      kind: cmd.kind,
     }))
 
     return [...custom, ...builtin]
@@ -1361,6 +1445,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const currentAgent = local.agent.current()
     if (!currentModel || !currentAgent) {
       showToast({
+        type: "warning",
         title: "Select an agent and model",
         description: "Choose an agent and model before sending a prompt.",
       })
@@ -1394,6 +1479,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           .then((x) => x.data)
           .catch((err) => {
             showToast({
+              type: "error",
               title: "Failed to create worktree",
               description: errorMessage(err),
             })
@@ -1402,6 +1488,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
         if (!createdWorktree?.path) {
           showToast({
+            type: "error",
             title: "Failed to create worktree",
             description: "Request failed",
           })
@@ -1426,21 +1513,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       props.onNewSessionWorktreeReset?.()
     }
+    let createdSessionForSubmit = false
 
     let session = info()
     if (!session && isNewSession) {
       if (isGlobalScope(sessionDirectory)) {
         session = await client.channel.app.session().then((x) => x.data ?? undefined)
       } else {
-        session = await client.session.create().then((x) => x.data ?? undefined)
+        session = await client.session
+          .create({ controlProfile: selectedControlProfile() })
+          .then((x) => x.data ?? undefined)
       }
-      if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      if (session) {
+        createdSessionForSubmit = true
+        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      }
     }
     if (!session && params.id) {
       await sync.session.sync(params.id)
       session = info()
     }
     if (!session) return
+    if (isNewSession && session.controlProfile !== selectedControlProfile()) {
+      session = await client.session
+        .update({ sessionID: session.id, controlProfile: selectedControlProfile() })
+        .then((x) => x.data ?? session)
+        .catch(() => session)
+    }
+    const activeSession = session!
 
     const model = {
       modelID: currentModel.id,
@@ -1466,20 +1566,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
     }
 
+    const rollbackCreatedSession = async () => {
+      if (!createdSessionForSubmit) return
+      await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
+      navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
+    }
+
     if (mode === "shell") {
       clearInput()
       client.session
         .shell({
-          sessionID: session.id,
+          sessionID: activeSession.id,
           agent,
           model,
           command: text,
         })
         .catch((err) => {
           showToast({
+            type: "error",
             title: "Failed to send shell command",
             description: errorMessage(err),
           })
+          rollbackCreatedSession()
           restoreInput()
         })
       return
@@ -1493,7 +1601,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         clearInput()
         client.session
           .command({
-            sessionID: session.id,
+            sessionID: activeSession.id,
             command: commandName,
             arguments: args.join(" "),
             agent,
@@ -1544,9 +1652,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
           .catch((err) => {
             showToast({
+              type: "error",
               title: "Failed to send command",
               description: errorMessage(err),
             })
+            rollbackCreatedSession()
             restoreInput()
           })
         return
@@ -1720,13 +1830,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     const optimisticParts = requestParts.map((part) => ({
       ...part,
-      sessionID: session.id,
+      sessionID: activeSession.id,
       messageID,
     })) as unknown as Part[]
 
     const optimisticMessage: Message = {
       id: messageID,
-      sessionID: session.id,
+      sessionID: activeSession.id,
       role: "user",
       time: { created: Date.now() },
       agent,
@@ -1738,9 +1848,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const addOptimisticMessage = () => {
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[session.id]
+          const messages = draft.message[activeSession.id]
           if (!messages) {
-            draft.message[session.id] = [optimisticMessage]
+            draft.message[activeSession.id] = [optimisticMessage]
           } else {
             const result = Binary.search(messages, messageID, (m) => m.id)
             messages.splice(result.index, 0, optimisticMessage)
@@ -1756,7 +1866,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const removeOptimisticMessage = () => {
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[session.id]
+          const messages = draft.message[activeSession.id]
           if (messages) {
             const result = Binary.search(messages, messageID, (m) => m.id)
             if (result.found) messages.splice(result.index, 1)
@@ -1773,7 +1883,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     client.session
       .promptAsync({
-        sessionID: session.id,
+        sessionID: activeSession.id,
         agent,
         model,
         messageID,
@@ -1783,6 +1893,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .then(() => {
         if (!wsConnected) {
           showToast({
+            type: "warning",
             title: "Message sent",
             description: "Response will appear after reconnection",
           })
@@ -1790,10 +1901,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
       .catch((err) => {
         showToast({
+          type: "error",
           title: "Failed to send prompt",
           description: errorMessage(err),
         })
         removeOptimisticMessage()
+        rollbackCreatedSession()
         restoreInput()
       })
   }
@@ -1813,7 +1926,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
               onClick={() => layout.terminal.toggle()}
             >
-              <Icon name={layout.terminal.opened() ? "crosshair" : "radar"} size="small" />
+              <Icon name={layout.terminal.opened() ? "panel-bottom" : "terminal"} size="small" />
             </button>
           </Tooltip>
           <QuickActions
@@ -1884,7 +1997,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <div class="flex items-center gap-2 shrink-0">
                         <Show when={cmd.type === "custom"}>
                           <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                            custom
+                            {cmd.kind === "action" ? "action" : "prompt"}
                           </span>
                         </Show>
                         <Show when={command.keybind(cmd.id)}>
@@ -2108,110 +2221,141 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                 </Match>
                 <Match when={store.mode === "normal"}>
-                  <Show when={store.mode === "normal"}>
-                    <Tooltip placement="top" value="Attach file">
-                      <button
-                        type="button"
-                        class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                        onClick={() => fileInputRef.click()}
-                      >
-                        <Icon name="paperclip" size="small" class="text-icon-base" />
-                      </button>
-                    </Tooltip>
+                  <Show when={!props.hideAgentSelector}>
+                    <ToolbarSelectorPopover
+                      trigger={
+                        <button
+                          type="button"
+                          class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                        >
+                          <span class="text-12-medium text-text-base whitespace-nowrap">
+                            {getAgentVisual(local.agent.current()).label}
+                          </span>
+                          <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
+                        </button>
+                      }
+                      title="Select agent"
+                      contentClass="w-52 max-h-80"
+                      placement="top-start"
+                    >
+                      {(close) => (
+                        <List
+                          class="p-1"
+                          items={local.agent.list().filter((a) => !a.hidden)}
+                          key={(x) => x.name}
+                          filterKeys={["name"]}
+                          onSelect={(x) => {
+                            if (!x) return
+                            if (sessionHasMessages() && x.external) return
+                            local.agent.set(x.name)
+                            close()
+                          }}
+                        >
+                          {(agent) => {
+                            const visual = getAgentVisual(agent)
+                            return (
+                              <Tooltip
+                                placement="right"
+                                value={
+                                  sessionHasMessages() && agent.external
+                                    ? "Create a new session to use this external agent"
+                                    : undefined
+                                }
+                              >
+                                <div
+                                  classList={{
+                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "opacity-45": sessionHasMessages() && !!agent.external,
+                                  }}
+                                >
+                                  <div class="min-w-0">
+                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                  </div>
+                                </div>
+                              </Tooltip>
+                            )
+                          }}
+                        </List>
+                      )}
+                    </ToolbarSelectorPopover>
                   </Show>
+                  <Tooltip placement="top" value="Attach file">
+                    <button
+                      type="button"
+                      class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                      onClick={() => fileInputRef.click()}
+                    >
+                      <Icon name="paperclip" size="small" class="text-icon-base" />
+                    </button>
+                  </Tooltip>
                   <Show when={params.id}>
                     <ContextBar />
                   </Show>
-                  <Show when={permission.permissionsEnabled() && params.id}>
-                    <TooltipKeybind
-                      placement="top"
-                      title={permission.isAllowingAll(params.id!) ? "Stop allowing all" : "Allow all permissions"}
-                      keybind={command.keybind("permissions.allowall")}
-                    >
+                  <ToolbarSelectorPopover
+                    trigger={
                       <button
                         type="button"
-                        classList={{
-                          "flex items-center justify-center rounded-full transition-colors": true,
-                          "gap-1.5 px-2.5 h-7 border border-border-warning-base bg-surface-warning-base hover:bg-surface-warning-weak text-text-on-warning-base":
-                            permission.isAllowingAll(params.id!),
-                          "size-7 border border-border-success-base bg-surface-success-weak hover:bg-surface-success-base":
-                            !permission.isAllowingAll(params.id!),
+                        aria-disabled={working()}
+                        onClick={(event) => {
+                          if (!working()) return
+                          event.preventDefault()
+                          event.stopPropagation()
+                          showToast({
+                            type: "warning",
+                            title: "Session is running",
+                            description: "Stop the session before changing its permission mode.",
+                          })
                         }}
-                        onClick={() => permission.toggleAllowAll(params.id!, sdk.directory)}
+                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                        classList={{ "opacity-60 cursor-not-allowed": working() }}
                       >
                         <Icon
-                          name={permission.isAllowingAll(params.id!) ? "shield-alert" : "shield-check"}
+                          name={activePermissionMode().icon}
                           size="small"
-                          classList={{
-                            "text-icon-warning-base": permission.isAllowingAll(params.id!),
-                            "text-icon-success-base": !permission.isAllowingAll(params.id!),
-                          }}
+                          class={`shrink-0 ${activePermissionMode().iconClass}`}
                         />
-                        <Show when={permission.isAllowingAll(params.id!)}>
-                          <span class="text-12-medium">Allow All</span>
-                        </Show>
+                        <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
+                          {activePermissionMode().shortLabel}
+                        </span>
+                        <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
                       </button>
-                    </TooltipKeybind>
-                  </Show>
+                    }
+                    title="Permission mode"
+                    contentClass="w-80"
+                    placement="top-start"
+                  >
+                    {(close) => (
+                      <>
+                        <List
+                          class="p-1"
+                          items={PERMISSION_MODES}
+                          key={(mode) => mode.id}
+                          current={PERMISSION_MODES.find((m) => m.id === selectedControlProfile())}
+                          onSelect={(mode) => {
+                            if (!mode) return
+                            updateControlProfile(mode.id, close)
+                          }}
+                        >
+                          {(mode) => (
+                            <div class="flex items-start gap-3 min-w-0 text-left">
+                              <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
+                              <div class="min-w-0 flex-1">
+                                <div class="text-13-medium text-text-base">{mode.label}</div>
+                                <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
+                              </div>
+                            </div>
+                          )}
+                        </List>
+                        <Show when={working()}>
+                          <div class="px-3 pb-2 text-11-regular text-text-warning">
+                            Stop the session before changing permission mode.
+                          </div>
+                        </Show>
+                      </>
+                    )}
+                  </ToolbarSelectorPopover>
                 </Match>
               </Switch>
-              {/* Agent selector */}
-              <ToolbarSelectorPopover
-                trigger={
-                  <button
-                    type="button"
-                    class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                  >
-                    <span class="text-12-medium text-text-base whitespace-nowrap">
-                      {getAgentVisual(local.agent.current()).label}
-                    </span>
-                    <Icon name="chevron-down" size="small" class="text-icon-weak shrink-0" />
-                  </button>
-                }
-                title="Select agent"
-                contentClass="w-52 max-h-80"
-                placement="top-start"
-              >
-                {(close) => (
-                  <List
-                    class="p-1"
-                    items={local.agent.list().filter((a) => !a.hidden)}
-                    key={(x) => x.name}
-                    filterKeys={["name"]}
-                    onSelect={(x) => {
-                      if (!x) return
-                      if (sessionHasMessages() && x.external) return
-                      local.agent.set(x.name)
-                      close()
-                    }}
-                  >
-                    {(agent) => {
-                      const visual = getAgentVisual(agent)
-                      return (
-                        <Tooltip
-                          placement="right"
-                          value={
-                            sessionHasMessages() && agent.external
-                              ? "Create a new session to use this external agent"
-                              : undefined
-                          }
-                        >
-                          <div
-                            classList={{
-                              "flex items-center justify-between gap-3 px-2 py-1.5": true,
-                              "opacity-45": sessionHasMessages() && !!agent.external,
-                            }}
-                          >
-                            <div class="min-w-0">
-                              <div class="text-13-medium text-text-base truncate">{visual.label}</div>
-                            </div>
-                          </div>
-                        </Tooltip>
-                      )
-                    }}
-                  </List>
-                )}
-              </ToolbarSelectorPopover>
             </div>
             <div class="flex items-center gap-2">
               <input

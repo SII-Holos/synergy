@@ -3,7 +3,6 @@ import path from "path"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import { Instance } from "../scope/instance"
-import { HolosRequest } from "@/holos/request"
 
 const DEFAULT_TIMEOUT = 30 * 1000
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
@@ -72,18 +71,12 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT)
 
-    const response = await HolosRequest.fetch(
-      url,
-      {
-        method: "POST",
-        signal: AbortSignal.any([controller.signal, ctx.abort]),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-      { capability: "arxiv" },
-    ).catch((error) => {
+    const response = await fetch(url, {
+      method: "POST",
+      signal: AbortSignal.any([controller.signal, ctx.abort]),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch((error) => {
       clearTimeout(timeoutId)
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error("Request timed out")

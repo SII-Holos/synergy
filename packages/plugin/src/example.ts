@@ -84,9 +84,6 @@ export const ExamplePlugin: Plugin = {
       async "note.create.before"(_, output) {
         output.note.title = output.note.title.trim() || "Untitled note"
         output.note.tags = mergeTags(output.note.tags)
-        if (!output.note.contentText?.trim()) {
-          output.note.contentText = preview(output.note.title)
-        }
       },
       async "engram.memory.search.after"(input, output) {
         output.results = output.results

@@ -1,5 +1,6 @@
 import { createSignal, onCleanup } from "solid-js"
 import type { Accessor } from "solid-js"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
 interface HolosLoginResult {
   agentId: string
@@ -20,6 +21,7 @@ interface UseHolosLoginPopup {
 export function useHolosLoginPopup(opts: UseHolosLoginPopupOptions): UseHolosLoginPopup {
   const [connecting, setConnecting] = createSignal(false)
   let cleanupRef: (() => void) | null = null
+  const client = createSynergyClient({ baseUrl: opts.serverUrl })
 
   onCleanup(() => cleanupRef?.())
 
@@ -29,19 +31,8 @@ export function useHolosLoginPopup(opts: UseHolosLoginPopupOptions): UseHolosLog
 
     try {
       const callbackUrl = `${opts.serverUrl}/holos/callback`
-      const res = await fetch(`${opts.serverUrl}/holos/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callbackUrl }),
-      })
-
-      if (!res.ok) {
-        opts.onError?.("Failed to start Holos login")
-        setConnecting(false)
-        return
-      }
-
-      const { url } = await res.json()
+      const res = await client.holos.login({ callbackUrl })
+      const { url } = res.data!
       const popup = window.open(url, "holos-login", "width=600,height=700,popup=yes")
 
       if (!popup) {

@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
+import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
 import { SessionTimeline } from "./session-timeline"
@@ -102,6 +103,14 @@ export function SessionConversation(props: {
           const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
 
           if (msg.role === "assistant") {
+            const assistantMsg = msg as AssistantMessage
+            const source = assistantMsg.metadata?.source as string | undefined
+            const isCommand = source === "command"
+            const Component = isCommand ? CommandResultOutput : MailboxMessage
+            const borderClass = index() > 0 ? "border-t border-border-base pt-2 " : ""
+            const tabClass =
+              props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1 ? "md:pr-6 md:pl-18" : ""
+
             return (
               <div
                 id={props.anchor(msg.id)}
@@ -109,14 +118,11 @@ export function SessionConversation(props: {
                 class="min-w-0 w-full max-w-full"
                 style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
               >
-                <MailboxMessage
-                  message={msg as AssistantMessage}
+                <Component
+                  message={assistantMsg}
                   classes={{
                     root: "min-w-0 w-full relative",
-                    container:
-                      "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
-                      (index() > 0 ? "border-t border-border-base pt-2 " : "") +
-                      (props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1 ? "md:pr-6 md:pl-18" : ""),
+                    container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " + borderClass + tabClass,
                   }}
                 />
               </div>

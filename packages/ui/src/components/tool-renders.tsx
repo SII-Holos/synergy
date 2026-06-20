@@ -11,6 +11,7 @@ import { useCodeComponent } from "../context/code"
 import { createAutoScroll } from "../hooks"
 import { BasicTool } from "./basic-tool"
 import { Icon } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiagramRenderer } from "./diagram"
@@ -756,7 +757,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon="list-checks"
         trigger={() => ({
           title: "To-dos",
@@ -839,8 +839,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
           subtitle: firstReady() || "",
@@ -873,8 +872,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "DAG",
           subtitle: "updated",
@@ -907,8 +905,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
-        icon="git-branch"
+        icon={getSemanticIcon("orchestration.dag")}
         trigger={() => ({
           title: "Read DAG",
           args: ratio() ? [ratio()] : [],
@@ -2233,6 +2230,38 @@ const researchToolNames = [
 ] as const
 
 for (const name of researchToolNames) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const info = createMemo(() =>
+        getToolInfo(name, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
+      )
+      return (
+        <BasicTool
+          {...props}
+          icon={info().icon}
+          trigger={() => ({
+            title: info().title,
+            subtitle: info().subtitle || "",
+            args: info().args || [],
+          })}
+        >
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={output()} />
+              </div>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
+}
+
+const worktreeToolNames = ["worktree_enter", "worktree_leave", "worktree_list"] as const
+
+for (const name of worktreeToolNames) {
   ToolRegistry.register({
     name,
     render(props) {

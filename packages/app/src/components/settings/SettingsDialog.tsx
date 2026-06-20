@@ -8,7 +8,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
+import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
 import "./settings-dialog.css"
@@ -102,21 +102,20 @@ export function SettingsDialog(props: DialogSettingsProps) {
     () => selectedSet()?.name,
     async (name) => {
       if (!name) throw new Error("No Config Set selected")
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(name)}/raw`)
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.message ?? data?.error ?? `Failed to load raw config for ${name}`)
-      }
-      return data as {
-        name: string
-        path: string
-        raw: string
-        active: boolean
-        isDefault: boolean
-        config?: Config
-      }
+      const response = await globalSDK.client.config.set.raw.get({ name })
+      return response.data!
     },
   )
+
+  const [controlProfiles] = createResource(async () => {
+    const res = await globalSDK.client.controlProfile.list()
+    return (res.data ?? []) as ControlProfileSummary[]
+  })
+
+  const [sandboxStatus] = createResource(async () => {
+    const res = await globalSDK.client.sandbox.status()
+    return res.data as SandboxStatus | undefined
+  })
 
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
@@ -133,7 +132,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
     mini_model: "" as string,
     mid_model: "" as string,
     vision_model: "" as string,
-    holos_friend_reply_model: "" as string,
     thinking_model: "" as string,
     long_context_model: "" as string,
     creative_model: "" as string,
@@ -158,6 +156,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   })
 
   const [advanced, setAdvanced] = createStore({
+    controlProfile: "guarded" as string,
     compaction_auto: "" as string,
     compaction_overflow_threshold: "" as string,
     permission: "" as string,
@@ -287,12 +286,15 @@ export function SettingsDialog(props: DialogSettingsProps) {
     if (!setName) return false
     setValidatingRaw(true)
     try {
-      const response = await fetch(`${globalSDK.url}/config/sets/${encodeURIComponent(setName)}/raw/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: rawText() }),
+      const response = await globalSDK.client.config.set.raw.validate({
+        name: setName,
+        configSetRawValidateInput: { raw: rawText() },
       })
-      const data = await response.json()
+      const data = response.data
+      if (!data) {
+        setRawValidation({ valid: false, errors: ["Validation returned no data"], warnings: [] })
+        return false
+      }
       setRawValidation({
         valid: data.valid,
         errors: data.errors ?? [],
@@ -355,7 +357,11 @@ export function SettingsDialog(props: DialogSettingsProps) {
     setGeneral("sendShortcut", value)
     if (value !== input.sendShortcut()) {
       input.setSendShortcut(value)
-      showToast({ title: "Send shortcut updated", description: "This device preference is saved immediately." })
+      showToast({
+        type: "info",
+        title: "Send shortcut updated",
+        description: "This device preference is saved immediately.",
+      })
     }
   }
 
@@ -473,7 +479,12 @@ export function SettingsDialog(props: DialogSettingsProps) {
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "advanced"}>
-              <AdvancedPanel advanced={advanced} onAdvancedChange={(key, value) => setAdvanced(key, value)} />
+              <AdvancedPanel
+                advanced={advanced}
+                controlProfiles={controlProfiles() ?? []}
+                sandboxStatus={sandboxStatus()}
+                onAdvancedChange={(key, value) => setAdvanced(key, value)}
+              />
             </Show>
 
             <Show when={editMode() === "form" && activeTab() === "config-sets"}>
@@ -491,6 +502,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                       resetEditor()
                       const isActive = globalSync.configSets.find((s) => s.name === name)?.active
                       showToast({
+                        type: "info",
                         title: `Opened ${name}`,
                         description: isActive
                           ? "You are now editing the active Config Set. Save changes to update runtime config."
@@ -504,6 +516,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   resetEditor()
                   const isActive = globalSync.configSets.find((s) => s.name === name)?.active
                   showToast({
+                    type: "info",
                     title: `Opened ${name}`,
                     description: isActive
                       ? "You are now editing the active Config Set. Save changes to update runtime config."

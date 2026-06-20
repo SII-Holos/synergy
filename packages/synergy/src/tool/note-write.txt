@@ -1,8 +1,8 @@
-Create a new note or update an existing one. Content should be provided in markdown format — it will be automatically converted for storage.
+Create a new note or update an existing one. Content should be provided in markdown format — it will be converted to the internal ProseMirror JSON format for storage.
 
 Three modes are available:
 - "create" (default): Creates a new note. Requires `title` and `content`.
-- "append": Adds content to the end of an existing note. Requires `id` and `content`.
+- "append": Adds content to the end of an existing note. Requires `id` and `content`. The new content is appended as additional blocks after the existing document's blocks.
 - "replace": Overwrites the content of an existing note. Requires `id` and `content`.
 
 The `scope` parameter controls where new notes are created:
@@ -10,3 +10,5 @@ The `scope` parameter controls where new notes are created:
 - "global": Creates in the global scope (visible from all projects)
 
 When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
+
+Note: For surgical edits to specific parts of a note without rewriting the whole document, use `note_edit` instead.

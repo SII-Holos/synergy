@@ -30,6 +30,8 @@ export namespace StoragePath {
 
   export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
   export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
+  export const sessionNavIndexRoot = () => ["session_nav_v2"]
+  export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
 
   export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "sessions",
@@ -88,25 +90,25 @@ export namespace StoragePath {
   export const notesRoot = (scopeID: ScopeID) => ["notes", scopeID as string]
   export const note = (scopeID: ScopeID, noteID: string) => ["notes", scopeID as string, noteID]
 
-  export const holosProfile = () => ["holos", "profile"]
-
   export const holosContactsRoot = () => ["holos", "contacts"]
   export const holosContact = (id: string) => ["holos", "contacts", id]
 
-  export const holosFriendRequestsRoot = () => ["holos", "friend_requests"]
-  export const holosFriendRequest = (id: string) => ["holos", "friend_requests", id]
-
-  export const holosMessageQueueRoot = () => ["holos", "message_queue"]
-  export const holosMessageQueueItem = (id: string) => ["holos", "message_queue", id]
-
-  export const holosFriendReplyRoot = (sessionID: string) => ["holos", "friend_reply", sessionID]
-  export const holosFriendReply = (sessionID: string, triggerMessageID: string) => [
+  export const holosMailboxInboxRoot = (contactId: string) => ["holos", "mailbox", "inbox", contactId]
+  export const holosMailboxInboxItem = (contactId: string, messageId: string) => [
     "holos",
-    "friend_reply",
-    sessionID,
-    triggerMessageID,
+    "mailbox",
+    "inbox",
+    contactId,
+    messageId,
   ]
-  export const holosAutoTurnCount = (contactId: string) => ["holos", "auto_turns", contactId]
+  export const holosMailboxOutboxRoot = (contactId: string) => ["holos", "mailbox", "outbox", contactId]
+  export const holosMailboxOutboxItem = (contactId: string, messageId: string) => [
+    "holos",
+    "mailbox",
+    "outbox",
+    contactId,
+    messageId,
+  ]
 
   // Stats
   export const statsRoot = () => ["stats"]

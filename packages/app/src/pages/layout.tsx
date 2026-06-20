@@ -7,10 +7,9 @@ import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { usePlatform } from "@/context/platform"
 import { createStore } from "solid-js/store"
-import { showToast, Toast, toaster } from "@ericsanchezok/synergy-ui/toast"
+import { showToast, Toast, toaster, setToastConfig, type ToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { usePermission } from "@/context/permission"
 import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -26,7 +25,7 @@ import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { EngramPanel } from "@/components/engram"
 import { AgendaPanel } from "@/components/agenda"
-import { NotePanel } from "@/components/note-panel"
+
 import { HolosPanel } from "@/components/contacts"
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
@@ -43,12 +42,26 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const server = useServer()
   const notification = useNotification()
-  const permission = usePermission()
   const navigate = useNavigate()
   const dialog = useDialog()
   const command = useCommand()
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
+  // Wire toast config from serialized config, watching the current directory's config.
+  createEffect(() => {
+    const dir = params.dir ? base64Decode(params.dir) : undefined
+    if (!dir) return
+    const [store] = globalSync.child(dir)
+    const cfg = (store.config as any)?.toast
+    setToastConfig(
+      cfg
+        ? {
+            muted: cfg.muted,
+            durationOverrides: cfg.durationOverrides,
+          }
+        : undefined,
+    )
+  })
 
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeLabel: Record<ColorScheme, string> = {
@@ -65,6 +78,7 @@ export default function Layout(props: ParentProps) {
     const next = colorSchemeOrder[nextIndex]
     theme.setColorScheme(next)
     showToast({
+      type: "info",
       title: "Color scheme",
       description: colorSchemeLabel[next],
     })
@@ -80,7 +94,6 @@ export default function Layout(props: ParentProps) {
       if (e.details?.type !== "permission.asked") return
       const directory = e.name
       const perm = e.details.properties
-      if (permission.isAllowingAll(perm.sessionID, directory)) return
 
       const [childStore] = globalSync.child(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)
@@ -108,7 +121,8 @@ export default function Layout(props: ParentProps) {
       }
 
       const toastId = showToast({
-        persistent: true,
+        type: "warning",
+        duration: 10000,
         icon: "shield-alert",
         title: "Permission required",
         description,
@@ -441,6 +455,7 @@ export default function Layout(props: ParentProps) {
 }
 
 function GlobalPanelSwitch() {
+  const params = useParams()
   const panel = usePanel()
   return (
     <Switch>
@@ -450,9 +465,7 @@ function GlobalPanelSwitch() {
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
       </Match>
-      <Match when={panel.active() === "note"}>
-        <NotePanel />
-      </Match>
+
       <Match when={panel.active() === "holos"}>
         <HolosPanel />
       </Match>
@@ -512,7 +525,7 @@ function LayoutContent(
       <MobilePanelOverlay />
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <GlobalPanelOverlay panelContent={() => <GlobalPanelSwitch />} />
-      <Toast.Region />
+      <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
     </div>
   )
 }

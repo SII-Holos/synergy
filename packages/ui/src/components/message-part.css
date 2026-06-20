@@ -340,16 +340,20 @@
 
   [data-slot="message-part-actions"] {
     display: flex;
-    gap: 16px;
+    gap: 8px;
     align-items: center;
     justify-content: flex-end;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: visible;
   }
 }
 
 [data-component="anchored-trigger"] {
   [data-slot="message-part-actions"] {
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 8px;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
   }
 }
 
@@ -357,31 +361,23 @@
   display: inline-flex;
   align-items: center;
   height: 20px;
-  padding: 0 1px;
-  border-radius: var(--radius-full);
   color: var(--text-weak);
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-small);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-regular);
   line-height: 1;
   white-space: nowrap;
 
   &[data-tone="success"] {
-    border-color: var(--border-success-base);
-    background: var(--surface-success-weak);
-    color: var(--text-on-success-weak);
+    color: var(--text-diff-add-base);
   }
 
   &[data-tone="warning"] {
-    border-color: var(--border-warning-base);
-    background: var(--surface-warning-weak);
-    color: var(--text-on-warning-weak);
+    color: var(--text-diff-delete-base);
   }
 
   &[data-tone="danger"] {
-    border-color: var(--border-critical-base);
-    background: var(--surface-critical-weak);
-    color: var(--text-on-critical-weak);
+    color: var(--text-on-critical-base);
   }
 }
 
@@ -617,17 +613,41 @@
 [data-component="tool-part-wrapper"] {
   width: 100%;
   min-width: 0;
+  display: block;
+  position: relative;
+  overflow: visible;
   animation: tool-card-enter 0.25s ease-out both;
 
-  /* Tighten gap between consecutive tool cards */
   & + [data-component="tool-part-wrapper"] {
     margin-top: -8px;
   }
 
-  > [data-component="card"][data-variant="error"] {
+  > [data-component="tool-card-area"] > [data-component="card"][data-variant="error"] {
     border: 1px solid var(--border-critical-base);
     border-radius: var(--radius-lg);
   }
+}
+
+[data-component="tool-audit-icon"] {
+  position: absolute;
+  left: -28px;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  transition: background-color 150ms ease;
+  &:hover {
+    background: var(--surface-raised-base-hover);
+  }
+  animation: audit-icon-enter 2s var(--motion-ease-emphasized) both;
+}
+
+[data-component="tool-card-area"] {
+  width: 100%;
 }
 
 @keyframes tool-card-enter {
@@ -638,5 +658,16 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes audit-icon-enter {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

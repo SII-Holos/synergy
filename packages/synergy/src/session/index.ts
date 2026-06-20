@@ -24,10 +24,13 @@ import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
   Info as InfoType,
   StatusInfo as StatusInfoType,
+  WorkingInfo as WorkingInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
 } from "./types"
+import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
+import * as SessionWorking from "./working"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -51,9 +54,7 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    const result = { ...session }
-    delete result.allowAll
-    return result
+    return { ...session }
   }
 
   export type PageIndex = {
@@ -102,6 +103,32 @@ export namespace Session {
     }
   }
 
+  function toNavEntry(session: Info): SessionNavEntry {
+    const scope = session.scope as Scope
+    const scopeType = scope.id === "global" ? "global" : "project"
+    const category =
+      session.category ??
+      SessionNav.deriveCategory({
+        scopeType,
+        endpointKind: session.endpoint?.kind,
+        parentID: session.parentID,
+        cortex: session.cortex,
+        agenda: session.agenda,
+      })
+    return {
+      id: session.id,
+      scopeID: scope.id,
+      scopeType,
+      title: session.title,
+      category,
+      lastActivityAt: session.time.updated,
+      pinned: session.pinned ?? 0,
+      archived: !!session.time.archived,
+      parentID: session.parentID,
+      endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+    }
+  }
+
   async function writeEndpointIndex(session: Info) {
     if (!session.endpoint) return
 
@@ -119,11 +146,10 @@ export namespace Session {
     await Storage.remove(StoragePath.endpointSession(endpointKey, asSessionID(session.id))).catch(() => undefined)
   }
 
-  export async function withRuntimeInfo(session: Info): Promise<Info> {
-    return {
-      ...withoutRuntimeInfo(session),
-      allowAll: await PermissionNext.isAllowingAll(session.id),
-    }
+  export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const working = await SessionWorking.resolve(session.id)
+    if (!working) return withoutRuntimeInfo(session)
+    return { ...withoutRuntimeInfo(session), working }
   }
 
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
@@ -137,6 +163,7 @@ export namespace Session {
     parentID?: string
     title?: string
     permission?: PermissionNext.Ruleset
+    controlProfile?: Info["controlProfile"]
     endpoint?: SessionEndpoint.Info
     id?: string
     agenda?: { itemID: string }
@@ -153,24 +180,36 @@ export namespace Session {
         scopeID: scope.id,
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
+    const controlProfile = parent?.controlProfile ?? input?.controlProfile
 
     const endpoint = input?.endpoint
+    const createdAt = Date.now()
+    const scopeType = scope.id === "global" ? "global" : "project"
+    const category = SessionNav.deriveCategory({
+      scopeType,
+      endpointKind: endpoint?.kind,
+      parentID: input?.parentID,
+      cortex: input?.cortex,
+      agenda: input?.agenda,
+    })
 
     const result: Info = {
       id: Identifier.descending("session", input?.id),
       version: Installation.VERSION,
       scope,
       parentID: input?.parentID,
+      category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
+      controlProfile,
       endpoint,
       interaction: inheritedInteraction,
       agenda: input?.agenda,
       cortex: input?.cortex,
       workspace,
       time: {
-        created: Date.now(),
-        updated: Date.now(),
+        created: createdAt,
+        updated: createdAt,
       },
     }
     log.info("created", result)
@@ -182,6 +221,7 @@ export namespace Session {
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await writeEndpointIndex(result)
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result))
 
     if (result.agenda) {
       await Storage.write(StoragePath.agendaSession(result.agenda.itemID, result.id), {
@@ -189,8 +229,6 @@ export namespace Session {
         scopeID: scope.id,
       })
     }
-
-    if (input?.parentID) PermissionNext.registerParent(result.id, input.parentID)
 
     SessionManager.registerRuntime(result.id)
     Scope.touch(scope.id)
@@ -240,6 +278,41 @@ export namespace Session {
     })
   }
 
+  async function descendants(sessionID: string): Promise<Info[]> {
+    const result: Info[] = []
+    const queue = await children(sessionID)
+    while (queue.length > 0) {
+      const child = queue.shift()!
+      result.push(child)
+      queue.push(...(await children(child.id)))
+    }
+    return result
+  }
+
+  export async function updateControlProfile(
+    sessionID: string,
+    controlProfile: NonNullable<Info["controlProfile"]>,
+    editor?: (session: Info) => void,
+  ): Promise<Info> {
+    const childSessions = await descendants(sessionID)
+    for (const id of [sessionID, ...childSessions.map((child) => child.id)]) {
+      SessionManager.assertIdle(id)
+    }
+
+    const updatedParent = await update(sessionID, (draft) => {
+      draft.controlProfile = controlProfile
+      editor?.(draft)
+    })
+
+    for (const child of childSessions) {
+      await update(child.id, (draft) => {
+        draft.controlProfile = controlProfile
+      })
+    }
+
+    return updatedParent
+  }
+
   export const get = fn(Identifier.schema("session"), async (id) => {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
@@ -262,6 +335,7 @@ export namespace Session {
     await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result))
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined
@@ -393,6 +467,7 @@ export namespace Session {
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
       await removePageIndexEntry(scope.id, sessionID)
+      await SessionNav.removeNavEntry(scope.id, sessionID)
       Bus.publish(SessionEvent.Deleted, {
         info: session,
       })

@@ -32,7 +32,6 @@ export namespace RuntimeReload {
     "thinking_model",
     "long_context_model",
     "creative_model",
-    "holos_friend_reply_model",
     "vision_model",
     "default_agent",
     "username",
@@ -44,11 +43,13 @@ export namespace RuntimeReload {
     "autoupdate",
     "enterprise",
     "tools",
-    "identity",
+    "embedding",
+    "rerank",
+    "engram",
     "external_agent",
     "email",
   ])
-  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout"])
+  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast"])
 
   export const Event = {
     Reloaded: BusEvent.define(
@@ -148,9 +149,7 @@ export namespace RuntimeReload {
         ])
       : requested
 
-    for (const target of targetsToExecute) {
-      await executeTarget(target, ctx)
-    }
+    await Promise.all(targetsToExecute.map((target) => executeTarget(target, ctx)))
 
     const executedSet = new Set(executed)
     const cascaded = executed.filter((target) => !requested.includes(target))
@@ -221,9 +220,7 @@ export namespace RuntimeReload {
       // Execute inline cascades (e.g. provider → agent)
       const cascades = TARGET_CASCADES[target]
       if (cascades) {
-        for (const cascade of cascades) {
-          await executeTarget(cascade, ctx)
-        }
+        await Promise.all(cascades.map((cascade) => executeTarget(cascade, ctx)))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -250,17 +247,17 @@ export namespace RuntimeReload {
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
           await executeTarget(cascadedTarget, ctx)
         }
-        // P11: Handle identity → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("identity") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.identity?.autonomy !== false
-          const newAutonomy = result.config.identity?.autonomy !== false
+        // P11: Handle engram → autonomy/anima sync (migrated from Config.reload)
+        if (result.changedFields.includes("engram") && result.oldConfig) {
+          const oldAutonomy = result.oldConfig.engram?.autonomy !== false
+          const newAutonomy = result.config.engram?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
               const { AgendaBootstrap } = await import("../agenda/bootstrap")
               await AgendaBootstrap.syncAnima(newAutonomy)
             } catch (err) {
               ctx.warnings.push(
-                `Failed to sync anima after identity change: ${err instanceof Error ? err.message : String(err)}`,
+                `Failed to sync anima after engram change: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
           }
@@ -317,7 +314,7 @@ export namespace RuntimeReload {
         return
       }
       case "command": {
-        const { Command } = await import("../skill/command")
+        const { Command } = await import("../command/command")
         await Command.reload()
         return
       }
@@ -374,18 +371,19 @@ export namespace RuntimeReload {
       "thinking_model",
       "long_context_model",
       "creative_model",
-      "holos_friend_reply_model",
       "vision_model",
     ].some((field) => changed.has(field))
     if (roleModelChanged) {
-      // Model role changes may reference providers not yet loaded in cached state
-      cascaded.push("provider", "agent")
+      // Model role changes only affect Config values, not Provider state.
+      // resolveRoleModel() reads cfg[field], not Provider state.
+      // Agent prompts reference the resolved model role and need reload.
+      cascaded.push("agent")
     }
     if (changed.has("category")) {
       // Category configs can specify model overrides that reference different providers
       cascaded.push("provider", "agent")
     }
-    if (changed.has("agent") || changed.has("permission") || changed.has("identity") || changed.has("external_agent")) {
+    if (changed.has("agent") || changed.has("permission") || changed.has("engram") || changed.has("external_agent")) {
       cascaded.push("agent")
     }
     if (changed.has("default_agent") || changed.has("instructions")) {

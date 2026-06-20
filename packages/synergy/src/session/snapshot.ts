@@ -10,11 +10,11 @@ import { Instance } from "../scope/instance"
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
 
-  export async function track() {
+  export async function track(sessionID: string) {
     if (Instance.scope.type !== "project" || Instance.scope.vcs !== "git") return
     const cfg = await Config.get()
     if (cfg.snapshot === false) return
-    const git = gitdir()
+    const git = gitdir(sessionID)
     if (await fs.mkdir(git, { recursive: true })) {
       await $`git init`
         .env({
@@ -44,8 +44,8 @@ export namespace Snapshot {
   })
   export type Patch = z.infer<typeof Patch>
 
-  export async function patch(hash: string, opts?: { indexFresh?: boolean }): Promise<Patch> {
-    const git = gitdir()
+  export async function patch(hash: string, sessionID: string, opts?: { indexFresh?: boolean }): Promise<Patch> {
+    const git = gitdir(sessionID)
     if (!opts?.indexFresh) {
       await $`git add .`
         .env({ ...process.env, GIT_DIR: git, GIT_WORK_TREE: Instance.directory })
@@ -77,28 +77,45 @@ export namespace Snapshot {
     }
   }
 
-  export async function restore(snapshot: string) {
-    log.info("restore", { commit: snapshot })
-    const git = gitdir()
-    const result =
-      await $`git --git-dir ${git} --work-tree ${Instance.directory} read-tree ${snapshot} && git --git-dir ${git} --work-tree ${Instance.directory} checkout-index -a -f`
-        .quiet()
-        .cwd(Instance.directory)
-        .nothrow()
-
-    if (result.exitCode !== 0) {
-      log.error("failed to restore snapshot", {
-        snapshot,
-        exitCode: result.exitCode,
-        stderr: result.stderr.toString(),
-        stdout: result.stdout.toString(),
-      })
+  export async function restore(snapshot: string, sessionID: string) {
+    log.info("restore", { snapshot, sessionID })
+    const git = gitdir(sessionID)
+    let all
+    try {
+      const { Session } = await import(".")
+      all = await Session.messages({ sessionID })
+    } catch {
+      // session not found — no patches to restore, no-op
+      return
+    }
+    const seen = new Set<string>()
+    for (const msg of all) {
+      for (const part of msg.parts) {
+        if (part.type !== "patch") continue
+        for (const file of part.files) {
+          if (seen.has(file)) continue
+          seen.add(file)
+          const relativePath = path.relative(Instance.directory, file).replaceAll("\\", "/")
+          const result =
+            await $`git --git-dir ${git} --work-tree ${Instance.directory} checkout ${snapshot} -- ${relativePath}`
+              .quiet()
+              .cwd(Instance.directory)
+              .nothrow()
+          if (result.exitCode !== 0) {
+            log.warn("failed to restore file from snapshot", {
+              file,
+              snapshot,
+              stderr: result.stderr.toString(),
+            })
+          }
+        }
+      }
     }
   }
 
-  export async function revert(patches: Patch[]) {
+  export async function revert(patches: Patch[], sessionID: string) {
     const files = new Set<string>()
-    const git = gitdir()
+    const git = gitdir(sessionID)
     for (const item of patches) {
       for (const file of item.files) {
         if (files.has(file)) continue
@@ -141,8 +158,8 @@ export namespace Snapshot {
     }
   }
 
-  export async function diff(hash: string, opts?: { indexFresh?: boolean }) {
-    const git = gitdir()
+  export async function diff(hash: string, sessionID: string, opts?: { indexFresh?: boolean }) {
+    const git = gitdir(sessionID)
     if (!opts?.indexFresh)
       await $`git --git-dir ${git} --work-tree ${Instance.directory} add .`.quiet().cwd(Instance.directory).nothrow()
     const result =
@@ -176,8 +193,8 @@ export namespace Snapshot {
       ref: "FileDiff",
     })
   export type FileDiff = z.infer<typeof FileDiff>
-  export async function diffFull(from: string, to: string): Promise<FileDiff[]> {
-    const git = gitdir()
+  export async function diffFull(from: string, to: string, sessionID: string): Promise<FileDiff[]> {
+    const git = gitdir(sessionID)
     const result: FileDiff[] = []
     for await (const line of $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.directory} diff --no-ext-diff --no-renames --numstat ${from} ${to} -- .`
       .quiet()
@@ -212,8 +229,8 @@ export namespace Snapshot {
     return result
   }
 
-  function gitdir() {
+  function gitdir(sessionID: string) {
     const scope = Instance.scope
-    return path.join(Global.Path.snapshot, scope.id)
+    return path.join(Global.Path.snapshot, scope.id, sessionID)
   }
 }

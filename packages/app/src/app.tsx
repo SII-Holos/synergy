@@ -1,15 +1,5 @@
 import "@/index.css"
-import {
-  ErrorBoundary,
-  Show,
-  Switch,
-  Match,
-  lazy,
-  createEffect,
-  createMemo,
-  createSignal,
-  type ParentProps,
-} from "solid-js"
+import { ErrorBoundary, Show, Switch, Match, lazy, createMemo, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@ericsanchezok/synergy-ui/font"
@@ -21,7 +11,6 @@ import { Code } from "@ericsanchezok/synergy-ui/code"
 import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
 import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { GlobalSyncProvider } from "@/context/global-sync"
-import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
@@ -31,7 +20,6 @@ import { FileProvider } from "@/context/file"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 
-import { OnboardingProvider, useOnboarding } from "@/context/onboarding"
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
 import { InputProvider } from "@/context/input"
@@ -45,8 +33,6 @@ import { DialogSelectServer } from "@/components/dialog"
 import { ServerConnectionErrorPage } from "@/pages/server-connection-error"
 
 const Session = lazy(() => import("@/pages/session"))
-const Welcome = lazy(() => import("@/pages/onboarding/welcome"))
-const Setup = lazy(() => import("@/pages/onboarding/setup"))
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 import { proxyPrefix } from "@/utils/proxy"
@@ -112,68 +98,35 @@ function ServerKey(props: ParentProps) {
 export function AppInterface() {
   return (
     <AuthProvider>
-      <OnboardingProvider>
-        <OnboardingGate />
-      </OnboardingProvider>
+      <ServerProvider defaultUrl={defaultAccess.attachUrl}>
+        <ServerKey>
+          <ConnectedApp />
+        </ServerKey>
+      </ServerProvider>
     </AuthProvider>
-  )
-}
-
-function OnboardingGate() {
-  const onboarding = useOnboarding()
-
-  return (
-    <Show when={onboarding.ready} fallback={<Loading />}>
-      <Switch>
-        <Match when={onboarding.phase === "welcome"}>
-          <Suspense fallback={<Loading />}>
-            <Welcome serverUrl={defaultAccess.attachUrl} callbackUrl={defaultAccess.callbackUrl} />
-          </Suspense>
-        </Match>
-        <Match when={onboarding.phase === "setup" || onboarding.phase === "ready"}>
-          <ServerProvider defaultUrl={defaultAccess.attachUrl}>
-            <ServerKey>
-              <ConnectedApp />
-            </ServerKey>
-          </ServerProvider>
-        </Match>
-      </Switch>
-    </Show>
   )
 }
 
 function ConnectedApp() {
   const dialog = useDialog()
-  const onboarding = useOnboarding()
   const server = useServer()
-  const [setupConnectionFailed, setSetupConnectionFailed] = createSignal(false)
-  const [wasReady, setWasReady] = createSignal(false)
 
-  // Once the app has reached "ready", never regress to the error page due
-  // to a transient health-check failure.  The running app can survive brief
-  // disconnects — the WebSocket reconnects automatically, and a reconnect
-  // banner will inform the user.  Only show the hard error page before the
-  // first successful startup.
-  createEffect(() => {
-    if (onboarding.phase === "ready") setWasReady(true)
-  })
-
-  const startupView = createMemo<"loading" | "connection-error" | "setup" | "ready">(() => {
+  const startupView = createMemo<"loading" | "connection-error" | "ready">(() => {
     const healthy = server.healthy()
     if (healthy === undefined) return "loading"
-    if (!wasReady() && (healthy === false || setupConnectionFailed())) return "connection-error"
-    if (onboarding.phase === "ready") return "ready"
-    return "setup"
+    if (healthy === false) return "connection-error"
+    return "ready"
   })
 
   function retry() {
-    setSetupConnectionFailed(false)
     server.refresh()
   }
 
   function changeServer() {
     dialog.show(() => <DialogSelectServer />)
   }
+
+  const showModelReadyWarning = createMemo(() => server.modelReady() === false && server.healthy() === true)
 
   return (
     <GlobalSDKProvider>
@@ -191,25 +144,28 @@ function ConnectedApp() {
                 onChangeServer={changeServer}
               />
             </Match>
-            <Match when={startupView() === "setup"}>
-              <Suspense fallback={<Loading />}>
-                <Setup onConnectionError={() => setSetupConnectionFailed(true)} />
-              </Suspense>
-            </Match>
             <Match when={startupView() === "ready"}>
+              <Show when={showModelReadyWarning()}>
+                <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-soft text-text-warning">
+                  <span>⚠</span>
+                  <span>
+                    AI model not configured — run{" "}
+                    <code class="font-mono bg-surface-warning-base/20 px-1 rounded">synergy config</code> in your
+                    terminal to set one up
+                  </span>
+                </div>
+              </Show>
               <GlobalSyncProvider>
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (
-                    <PermissionProvider>
-                      <LayoutProvider>
-                        <NotificationProvider>
-                          <CommandProvider>
-                            <Layout>{props.children}</Layout>
-                          </CommandProvider>
-                        </NotificationProvider>
-                      </LayoutProvider>
-                    </PermissionProvider>
+                    <LayoutProvider>
+                      <NotificationProvider>
+                        <CommandProvider>
+                          <Layout>{props.children}</Layout>
+                        </CommandProvider>
+                      </NotificationProvider>
+                    </LayoutProvider>
                   )}
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />

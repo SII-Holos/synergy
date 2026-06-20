@@ -12,6 +12,8 @@ import "../config/migration"
 import "../engram/migration"
 import "../scope/migration"
 import "../session/migration"
+import "../note/migration"
+import "../holos/migration"
 import type { Migration, RunOptions, MigrationContext } from "./types"
 
 export type { Migration, RunOptions, RunResult, MigrationContext } from "./types"

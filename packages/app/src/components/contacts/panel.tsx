@@ -1,13 +1,11 @@
-import { createSignal, createMemo, Show } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 import { useAuth } from "@/context/auth"
 import { useHolosLoginPopup } from "@/hooks/use-holos-login-popup"
 import { Panel } from "@/components/panel"
 import { ViewTab } from "@/components/engram/shared"
-import { EditProfileDialog } from "./edit-profile-dialog"
 import { HubView } from "./hub-view"
 import { ContactsView } from "./contacts-view"
 
@@ -22,54 +20,26 @@ export function HolosPanel() {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const auth = useAuth()
-  const dialogCtx = useDialog()
 
   const [tab, setTab] = createSignal<"hub" | "contacts">("hub")
   const [reconnecting, setReconnecting] = createSignal(false)
   const [refreshingContacts, setRefreshingContacts] = createSignal(false)
 
-  const pendingIncoming = createMemo(() =>
-    (holos.state.social.friendRequests ?? []).filter((r) => r.direction === "incoming" && r.status === "pending"),
-  )
-
   async function refetchAll() {
     if (refreshingContacts()) return
     setRefreshingContacts(true)
     await holos.refresh()
-    try {
-      await globalSDK.client.holos.refreshPresence()
-    } finally {
-      await holos.refresh()
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        await holos.refresh()
-      }
-      setRefreshingContacts(false)
-    }
-  }
-
-  function handleEditProfile() {
-    const p = holos.state.social.profile
-    if (!p) return
-    dialogCtx.show(() => (
-      <EditProfileDialog
-        profile={p}
-        onSaved={() => void holos.refresh()}
-        onRerunSetup={() => {
-          void holos.refresh()
-          auth.logout()
-        }}
-      />
-    ))
+    // refreshPresence route removed; holos.refresh() already fetches latest state
+    setRefreshingContacts(false)
   }
 
   async function handleDisconnect() {
     try {
       await globalSDK.client.holos.logout()
-      showToast({ title: "Disconnected from Holos" })
+      showToast({ type: "info", title: "Disconnected from Holos" })
       void holos.refresh()
     } catch {
-      showToast({ title: "Failed to disconnect" })
+      showToast({ type: "error", title: "Failed to disconnect" })
     }
   }
 
@@ -78,7 +48,7 @@ export function HolosPanel() {
     setReconnecting(true)
     try {
       await globalSDK.client.holos.reconnect()
-      showToast({ title: "Reconnecting..." })
+      showToast({ type: "info", title: "Reconnecting..." })
     } catch (error: unknown) {
       const msg =
         error instanceof Error
@@ -90,18 +60,10 @@ export function HolosPanel() {
         void handleConnectHolos()
         return
       }
-      showToast({ title: "Reconnect failed", description: msg || "Failed to reconnect" })
+      showToast({ type: "error", title: "Reconnect failed", description: msg || "Failed to reconnect" })
     } finally {
       setReconnecting(false)
     }
-  }
-
-  function handleRerunSetup() {
-    if (!confirm("Re-run the onboarding setup? Your current profile data will be preserved.")) return
-    globalSDK.client.holos.profile
-      .reset()
-      .then(() => auth.logout())
-      .catch(() => showToast({ title: "Failed to reset setup" }))
   }
 
   const { trigger: handleConnectHolos, connecting } = useHolosLoginPopup({
@@ -111,9 +73,9 @@ export function HolosPanel() {
         auth.loginWithToken(agentId, { id: agentId })
       }
       void holos.refresh()
-      showToast({ title: "Connected to Holos" })
+      showToast({ type: "info", title: "Connected to Holos" })
     },
-    onError: (msg) => showToast({ title: msg }),
+    onError: (msg) => showToast({ type: "error", title: msg }),
   })
 
   return (
@@ -127,11 +89,6 @@ export function HolosPanel() {
             </ViewTab>
             <ViewTab active={tab() === "contacts"} onClick={() => setTab("contacts")}>
               Contacts
-              <Show when={pendingIncoming().length > 0}>
-                <span class="ml-1 flex inline-flex items-center justify-center size-4 rounded-full bg-surface-interactive-solid text-text-on-interactive-base text-[9px] font-medium leading-none">
-                  {pendingIncoming().length}
-                </span>
-              </Show>
             </ViewTab>
           </div>
         </Panel.HeaderRow>
@@ -147,12 +104,8 @@ export function HolosPanel() {
               isGuest={auth.status === "guest"}
               connecting={connecting()}
               reconnecting={reconnecting()}
-              capabilityItems={holos.state.capability.items}
-              entitlements={holos.state.entitlement}
-              onEditProfile={handleEditProfile}
               onDisconnect={handleDisconnect}
               onReconnect={handleReconnect}
-              onRerunSetup={handleRerunSetup}
               onConnectHolos={handleConnectHolos}
             />
           </Show>

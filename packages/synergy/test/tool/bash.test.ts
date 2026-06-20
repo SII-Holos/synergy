@@ -114,7 +114,35 @@ describe("tool.bash permissions", () => {
         )
         expect(requests.length).toBe(1)
         expect(requests[0].permission).toBe("bash")
+        expect(requests[0].metadata.capability).toBe("shell")
         expect(requests[0].patterns).toContain("echo hello")
+      },
+    })
+  })
+
+  test("marks read-only shell commands as low-risk shell_read", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bash = await BashTool.init()
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash.execute(
+          {
+            command: "ls -la 2>/dev/null; head -5 package.json",
+            description: "Inspect files",
+          },
+          testCtx,
+        )
+        expect(requests.length).toBe(1)
+        expect(requests[0].permission).toBe("bash")
+        expect(requests[0].metadata.capability).toBe("shell_read")
       },
     })
   })
@@ -147,7 +175,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("asks for external_directory permission when cd to parent", async () => {
+  test("does not emit external_directory directly when cd to parent", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       scope: await tmp.scope(),
@@ -167,13 +195,12 @@ describe("tool.bash permissions", () => {
           },
           testCtx,
         )
-        const extDirReq = requests.find((r) => r.permission === "external_directory")
-        expect(extDirReq).toBeDefined()
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
       },
     })
   })
 
-  test("asks for external_directory permission when workdir is outside project", async () => {
+  test("does not emit external_directory directly when workdir is outside project", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       scope: await tmp.scope(),
@@ -194,9 +221,8 @@ describe("tool.bash permissions", () => {
           },
           testCtx,
         )
-        const extDirReq = requests.find((r) => r.permission === "external_directory")
-        expect(extDirReq).toBeDefined()
-        expect(extDirReq!.patterns).toContain("/tmp")
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+        expect(requests.find((r) => r.permission === "bash")).toBeDefined()
       },
     })
   })
@@ -279,6 +305,36 @@ describe("tool.bash permissions", () => {
         )
         const bashReq = requests.find((r) => r.permission === "bash")
         expect(bashReq).toBeUndefined()
+      },
+    })
+  })
+
+  test("uses direct execution after profile approval instead of an existing sandbox wrapper", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bash = await BashTool.init()
+        const testCtx = {
+          ...ctx,
+          extra: {
+            shellBypassSandbox: true,
+            sandboxWrapper: {
+              command: "false",
+              args: [],
+              sandboxed: true,
+            },
+          },
+        }
+        const result = await bash.execute(
+          {
+            command: "echo approved",
+            description: "Approved shell",
+          },
+          testCtx,
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("approved")
       },
     })
   })
@@ -502,4 +558,154 @@ describe("tool.bash tree-sitter cleanup", () => {
       },
     })
   }, 60_000) // generous timeout for 200 shell invocations
+})
+
+describe("tool.bash workspace boundary enforcement", () => {
+  test("direct backend does not enforce worktree original-checkout boundary", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalCheckout = "/tmp"
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: "echo 'direct backend'",
+            workdir: originalCheckout,
+            description: "Direct backend original checkout path",
+          },
+          ctx,
+        )
+        expect(result.output).toContain("direct backend")
+      },
+    })
+  })
+
+  test("workdir inside active workspace does not trigger boundary rejection", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        // Bash with workdir inside the active workspace should succeed
+        const result = await bash.execute(
+          {
+            command: "echo 'should work'",
+            workdir: tmp.path,
+            description: "Test in-workspace command",
+          },
+          ctx,
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect(result.metadata.output).toContain("should work")
+      },
+    })
+  })
+
+  test("does not emit external_directory directly when command traverses toward original checkout", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash.execute(
+          {
+            command: "cd ../original-checkout && echo 'escaped'",
+            description: "Navigate to original checkout",
+          },
+          testCtx,
+        )
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+      },
+    })
+  })
+
+  test("does not emit external_directory directly when workdir is outside active workspace", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        const outsideDir = "/tmp/outside-" + Math.random().toString(36).slice(2)
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const testCtx = {
+          ...ctx,
+          ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+            requests.push(req)
+          },
+        }
+        await bash
+          .execute(
+            {
+              command: "ls",
+              workdir: outsideDir,
+              description: "List outside directory",
+            },
+            testCtx,
+          )
+          .catch(() => undefined)
+        expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+      },
+    })
+  })
+
+  test("local bash backend leaves workspace validation to ToolResolver gate", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await Instance.provide({
+      scope: await tmp.scope(),
+      workspace: {
+        type: "git_worktree",
+        path: tmp.path,
+        scopeID: (await tmp.scope()).id,
+        originalCheckout: "/tmp/original-checkout-" + Math.random().toString(36).slice(2),
+      },
+      fn: async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: "echo 'test'",
+            workdir: "/tmp",
+            description: "Direct backend invocation",
+          },
+          ctx,
+        )
+        expect(result.output).toContain("test")
+      },
+    })
+  })
 })

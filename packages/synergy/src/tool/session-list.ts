@@ -2,23 +2,19 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
-import { SessionManager } from "../session/manager"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { AppChannel } from "../channel/app"
-import { Contact } from "../holos/contact"
-import { Presence } from "../holos/presence"
 import DESCRIPTION from "./session-list.txt"
 
 const parameters = z.object({
   scope: z
-    .enum(["project", "home", "contacts", "feishu"])
+    .enum(["project", "home", "feishu"])
     .describe(
       "'project' = sessions across all projects (each entry includes its scope), " +
         "'home' = the app home session, " +
-        "'contacts' = Holos conversation sessions, " +
         "'feishu' = Feishu/Lark channel sessions.",
     ),
   limit: z.coerce.number().default(20).describe("Maximum number of items to return."),
@@ -94,35 +90,6 @@ async function listHome() {
   }
 }
 
-async function listContacts(limit: number, offset: number) {
-  const contacts = await Contact.list()
-  const sorted = contacts.sort((a, b) => b.addedAt - a.addedAt)
-  const total = sorted.length
-  const page = sorted.slice(offset, offset + limit)
-  const entries: string[] = []
-
-  for (const contact of page) {
-    const online = contact.holosId ? Presence.get(contact.holosId) : "unknown"
-    const statusLabel = contact.status === "blocked" ? "blocked" : online
-    const header = `- [${contact.id}] ${contact.name} (${statusLabel})`
-
-    const endpoint = SessionEndpoint.holos(contact.holosId ?? contact.id)
-    const session = await SessionManager.getSession(endpoint)
-    if (session && session.scope && !session.time.archived) {
-      const ex = session.lastExchange
-      const exLines: string[] = []
-      if (ex?.user) exLines.push(`  Last user: ${ex.user}`)
-      if (ex?.assistant) exLines.push(`  Last assistant: ${ex.assistant}`)
-      const exText = exLines.join("\n")
-      entries.push(exText ? `${header}\n  Session: ${session.id}\n${exText}` : `${header}\n  Session: ${session.id}`)
-    } else {
-      entries.push(`${header}\n  No conversation yet`)
-    }
-  }
-
-  return { entries, total, shown: page.length }
-}
-
 async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
   const scopeID = Identifier.asScopeID(Scope.global().id)
   const index = await Session.readPageIndex(scopeID)
@@ -168,9 +135,6 @@ export const SessionListTool = Tool.define("session_list", {
         break
       case "home":
         result = await listHome()
-        break
-      case "contacts":
-        result = await listContacts(clampedLimit, offset)
         break
       case "feishu":
         result = await listFeishu(clampedLimit, offset, filter)

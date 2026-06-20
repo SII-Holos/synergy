@@ -1,14 +1,19 @@
-Performs exact string replacements in a note's markdown content.
+Performs precise block-level edits to a note's content.
 
-This is the precise editing counterpart to `note_write`. Use it to fix a typo, update a single section, or make targeted changes — without rewriting the entire note.
+This tool operates on numbered blocks from the note's internal document model (ProseMirror JSON). Each block corresponds to a top-level element: a paragraph, heading, list, code block, image, etc. The block index is 1:1 with `note_read` format:'blocks' output.
 
 Usage:
-- You must read the note first via `note_read`, then edit it with this tool. Reading before editing is required to get the exact text to match and to know the current version for conflict detection.
-- `oldString` must match the note's current text exactly, including whitespace and indentation. If the string is not found or matches multiple times, the edit will fail with a clear error.
-- Use `replaceAll` to replace every occurrence of `oldString` in the note.
-- This tool uses optimistic concurrency: if the note was modified by another process between your read and edit, it will reject with a conflict error asking you to re-read and retry.
+- You MUST first call `note_read({ ids: [...], format: "blocks" })` to see the numbered block listing. Use those block indices in the `ops` array.
+- Operations are applied in descending index order automatically, so the indices you see in the blocks output are always correct regardless of operation order.
+- `replace`: overwrite the block at the given index with new markdown content. The markdown is parsed into one or more blocks.
+- `insertAfter`: insert new markdown content AFTER the block at the given index.
+- `delete`: remove the block at the given index (no `content` needed).
+- All operations require `content` except `delete`.
+- Blocks NOT referenced in any operation (e.g., Mermaid diagrams, videos, images, tables) are preserved intact. Only explicitly targeted blocks are modified.
+- Empty documents have 0 blocks. Use `note_write` mode:"append" or mode:"replace" to add content to an empty note, not `insertAfter`.
+- Version conflict: if the note was modified by another process between your read and edit, the tool returns a conflict error.
 
 Contrast with `note_write`:
-- `note_write` with `mode: "replace"` overwrites the ENTIRE document — use for major restructuring.
-- `note_write` with `mode: "append"` adds content to the END — use for adding new sections.
-- `note_edit` performs surgical string replacements — use for fixing typos, updating details, or tweaking specific sections without resending the whole document.
+- `note_write` mode:"replace" overwrites the ENTIRE document — use for full rewrites.
+- `note_write` mode:"append" adds content to the END — use for adding new sections.
+- `note_edit` performs surgical block-level edits — use for fixing typos, updating details, inserting between existing blocks, or deleting specific sections without touching the rest.

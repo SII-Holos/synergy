@@ -1,0 +1,255 @@
+import { describe, expect, test } from "bun:test"
+import { SessionNav } from "../../src/session/nav"
+
+describe("SessionNav.deriveCategory", () => {
+  // ── Project ───────────────────────────────────────────────────────────
+  test("project session: no endpoint, no parent, no cortex, no agenda, project scope", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("project")
+  })
+
+  test("project session: pinned state does not affect category", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("project")
+  })
+
+  // ── Home ──────────────────────────────────────────────────────────────
+  test("home session: global scope with no channel endpoint, no parent", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("home")
+  })
+
+  test("home session: global scope overrides project scope", () => {
+    // global scope always maps to home regardless of other flags
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("home")
+  })
+
+  // ── Channel (includes Holos) ──────────────────────────────────────────
+  test("channel session: endpoint kind 'channel' maps to channel", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: "channel",
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("channel")
+  })
+
+  test("channel session: channel endpoint maps to channel category", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: "channel",
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("channel")
+  })
+
+  test("channel category takes precedence over scope type for global scope", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: "channel",
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("channel")
+  })
+
+  test("channel category takes precedence over background for parentID", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: "channel",
+      parentID: "ses_parent123",
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("channel")
+  })
+
+  // ── Background (child / cortex / agenda) ──────────────────────────────
+  test("background: child session with parentID maps to background", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: "ses_parent456",
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("background")
+  })
+
+  test("background: cortex delegation session maps to background", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: {
+        parentSessionID: "ses_abc",
+        parentMessageID: "msg_xyz",
+        description: "delegated task",
+        agent: "test-agent",
+        startedAt: 1000,
+        status: "running",
+      },
+      agenda: undefined,
+    })
+    expect(cat).toBe("background")
+  })
+
+  test("background: agenda-driven session maps to background", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: { itemID: "agd_item1" },
+    })
+    expect(cat).toBe("background")
+  })
+
+  test("background: parentID and cortex combined still maps to background (single category)", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: "ses_parent789",
+      cortex: {
+        parentSessionID: "ses_root",
+        parentMessageID: "msg_root",
+        description: "combined",
+        agent: "test",
+        startedAt: 2000,
+        status: "completed",
+      },
+      agenda: { itemID: "agd_item2" },
+    })
+    expect(cat).toBe("background")
+  })
+
+  // ── Precedence rules ──────────────────────────────────────────────────
+  test("channel overrides everything", () => {
+    // channel always wins
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: "channel",
+      parentID: "ses_child",
+      cortex: {
+        parentSessionID: "ses_root",
+        parentMessageID: "msg_root",
+        description: "nested",
+        agent: "test",
+        startedAt: 3000,
+        status: "running",
+      },
+      agenda: { itemID: "agd_item3" },
+    })
+    expect(cat).toBe("channel")
+  })
+
+  test("background overrides home when channel is absent", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: undefined,
+      parentID: "ses_child",
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("background")
+  })
+
+  test("home is the fallback for global scope with no channel or background signals", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "global",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("home")
+  })
+
+  test("project is the fallback for project scope with no channel or background signals", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("project")
+  })
+
+  // ── Type narrowing (only 4 categories exist) ──────────────────────────
+  const validCategories = ["project", "home", "channel", "background"] as const
+
+  test("deriveCategory never returns a separate channel category name", () => {
+    // Channel sessions must return "channel", never anything else
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: "channel",
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(validCategories).toContain(cat)
+    expect(cat).toBe("channel")
+  })
+
+  test("deriveCategory never returns agenda as a separate category", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: undefined,
+      agenda: { itemID: "agd_test" },
+    })
+    expect(validCategories).toContain(cat)
+    expect(cat).toBe("background")
+  })
+
+  test("deriveCategory never returns cortex as a separate category", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      parentID: undefined,
+      cortex: {
+        parentSessionID: "ses_x",
+        parentMessageID: "msg_y",
+        description: "delegated",
+        agent: "test",
+        startedAt: 1000,
+        status: "running",
+      },
+      agenda: undefined,
+    })
+    expect(validCategories).toContain(cat)
+    expect(cat).toBe("background")
+  })
+})

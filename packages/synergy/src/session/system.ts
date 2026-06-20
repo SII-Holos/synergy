@@ -1,3 +1,4 @@
+import { Session } from "../session"
 import { Ripgrep } from "../file/ripgrep"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
@@ -38,7 +39,6 @@ export namespace SystemPrompt {
 
   const endpointLabels: Record<string, string> = {
     feishu: "Feishu (Lark)",
-    holos: "Holos",
   }
 
   export async function environment(options?: {
@@ -71,7 +71,14 @@ export namespace SystemPrompt {
         if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)
         if (workspace.baseRef) envLines.push(`  Worktree base: ${workspace.baseRef}`)
         envLines.push(
-          `  Worktree note: this session is isolated from the main checkout; do not remove the worktree or switch branches unless explicitly asked.`,
+          `  Worktree isolation: this session's active workspace is the worktree path above. Stay inside it by default; access outside the active workspace, including the original checkout, requires explicit permission. Do not use cd or workdir to operate outside the worktree unless the user asks for that specific path.`,
+        )
+        envLines.push(`  Workspace boundary: enforced by tools and permission checks`)
+        if (workspace.originalCheckout) {
+          envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
+        }
+        envLines.push(
+          `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,
         )
       }
     }
@@ -93,9 +100,6 @@ export namespace SystemPrompt {
       if (ch.chatId) envLines.push(`  Chat ID: ${ch.chatId}`)
       if (ch.senderName) envLines.push(`  User: ${ch.senderName}`)
       else if (ch.senderId) envLines.push(`  Sender ID: ${ch.senderId}`)
-    } else if (session?.endpoint?.kind === "holos") {
-      envLines.push(`  Session source: Holos contact`)
-      envLines.push(`  Contact: ${session.endpoint.agentId}`)
     } else if (endpointType) {
       envLines.push(`  Session source: ${endpointLabels[endpointType] ?? endpointType} endpoint`)
     }
@@ -106,6 +110,15 @@ export namespace SystemPrompt {
       envLines.push(`  Session created: ${formatLocalDateTime(session.time.created)}`)
       if (session.parentID) {
         envLines.push(`  Parent session: ${session.parentID}`)
+        const parent = await Session.get(session.parentID).catch(() => undefined)
+        if (parent) {
+          const parentWs = (parent as any).workspace
+          const childWs = Instance.workspace
+          if (parentWs && childWs && parentWs.path !== childWs.path) {
+            envLines.push(`  Parent workspace type: ${parentWs.type}`)
+            envLines.push(`  Parent workspace path: ${parentWs.path}`)
+          }
+        }
       }
     }
 

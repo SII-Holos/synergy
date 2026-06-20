@@ -4,7 +4,7 @@ import { LSP } from "../lsp"
 import { FileWatcher } from "../file/watcher"
 import { File } from "../file"
 import { Bus } from "../bus"
-import { Command } from "../skill/command"
+import { Command } from "../command/command"
 import { Instance } from "@/scope/instance"
 import { Scope } from "@/scope"
 import { Vcs } from "./vcs"
@@ -19,11 +19,18 @@ export async function InstanceBootstrap() {
   File.init()
   Vcs.init()
 
-  Bus.subscribe(Command.Event.Executed, async (payload) => {
-    if (payload.properties.name === Command.Default.INIT) {
-      await Scope.setInitialized(Instance.scope.id)
-    }
-  })
+  const commandState = Instance.state(
+    () => {
+      const unsub = Bus.subscribe(Command.Event.Executed, async (payload) => {
+        if (payload.properties.name === Command.Default.INIT) {
+          await Scope.setInitialized(Instance.scope.id)
+        }
+      })
+      return { unsub }
+    },
+    async (s) => s.unsub(),
+  )
+  void commandState()
 }
 
 export async function ChannelBootstrap() {

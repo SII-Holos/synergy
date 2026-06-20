@@ -1,0 +1,199 @@
+import type {
+  ControlProfile,
+  ProfileApproval,
+  ProfileId,
+  ProfileIdInput,
+  ResolutionContext,
+  ResolvedProfile,
+} from "./types"
+
+export const PROFILE_IDS: readonly ProfileId[] = ["manual", "guarded", "autonomous", "full_access"]
+
+const CAPABILITY_PERMISSIONS = [
+  "file_read",
+  "file_write",
+  "shell_read",
+  "shell",
+  "shell_destructive",
+  "shell_hardline",
+  "network_request",
+  "file_external",
+  "mcp_invoke",
+  "plugin_invoke",
+  "identity_act",
+  "communication_email",
+  "channel_outbound",
+  "platform_control",
+]
+
+const HIGH_RISK_PERMISSIONS = [
+  "shell_hardline",
+  "shell_destructive",
+  "file_external",
+  "mcp_invoke",
+  "plugin_invoke",
+  "identity_act",
+  "communication_email",
+  "channel_outbound",
+  "platform_control",
+]
+
+function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
+  return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }
+}
+
+function rulesFor(actions: {
+  low: "allow" | "deny" | "ask"
+  medium: "allow" | "deny" | "ask"
+  high: "allow" | "deny" | "ask"
+}) {
+  return CAPABILITY_PERMISSIONS.map((permission) => {
+    if (permission === "shell_hardline") return rule(permission, "deny", true)
+    if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
+    if (permission === "file_read" || permission === "shell_read") return rule(permission, actions.low)
+    return rule(permission, actions.medium)
+  })
+}
+
+function workspaceFs(workspace: string) {
+  return {
+    readRoots: [workspace],
+    writeRoots: [workspace],
+    protectedPaths: [],
+  }
+}
+
+function workspacePolicy(workspace: string) {
+  return {
+    filesystem: workspaceFs(workspace),
+    network: { mode: "restricted" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
+  }
+}
+
+function fullAccessPolicy() {
+  return {
+    filesystem: {
+      readRoots: ["/"],
+      writeRoots: ["/"],
+      protectedPaths: [],
+    },
+    network: { mode: "enabled" as const },
+    sandbox: { mode: "none" as const, fallback: "allow" as const },
+  }
+}
+
+function approval(mode: ProfileApproval["mode"]): ProfileApproval {
+  switch (mode) {
+    case "manual":
+      return { mode, lowRisk: "ask", mediumRisk: "ask", highRisk: "ask" }
+    case "guarded":
+      return { mode, lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" }
+    case "autonomous":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" }
+    case "full_access":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "allow" }
+  }
+}
+
+function summary(
+  id: ProfileId,
+  profile: Omit<ControlProfile, "ruleset" | "filesystem" | "network">,
+  deniedCapabilities: string[],
+  workspace: string,
+) {
+  return {
+    profileId: id,
+    sandbox: profile.sandbox,
+    label: profile.label,
+    brief: profile.description,
+    approval: profile.approval,
+    deniedCapabilities,
+    workspaceRoot: workspace,
+  }
+}
+
+export function normalizeProfileId(id: string | undefined): ProfileId {
+  if (!id) return "guarded"
+  if ((PROFILE_IDS as readonly string[]).includes(id)) return id as ProfileId
+  return "guarded"
+}
+
+export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): ResolvedProfile {
+  const id = normalizeProfileId(idInput)
+  const { workspace, interactionMode } = ctx
+
+  switch (id) {
+    case "manual": {
+      const policy = workspacePolicy(workspace)
+      const profile = {
+        valid: true,
+        label: "Manual Approval",
+        description: "Ask before every tool request. Best when you are present and want to review each action.",
+        ruleset: rulesFor({ low: "ask", medium: "ask", high: "ask" }),
+        ...policy,
+        approval: approval("manual"),
+      }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
+    }
+
+    case "guarded": {
+      const policy = workspacePolicy(workspace)
+      const profile = {
+        valid: true,
+        label: "Guarded",
+        description: "Auto-allow safe read-only work. Ask before shell, write, network, or external actions.",
+        ruleset: rulesFor({ low: "allow", medium: "ask", high: "ask" }),
+        ...policy,
+        approval: approval("guarded"),
+      }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
+    }
+
+    case "autonomous": {
+      const policy = workspacePolicy(workspace)
+      const profile = {
+        valid: true,
+        label: "Autonomous",
+        description: "Keep working unattended. High-risk actions are denied with guidance instead of prompting.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
+        ...policy,
+        approval: approval("autonomous"),
+      }
+      return {
+        ...profile,
+        summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace),
+      }
+    }
+
+    case "full_access": {
+      if (interactionMode === "unattended") {
+        return {
+          valid: false,
+          reason: "full_access profile is forbidden in unattended mode",
+          label: "Full Access",
+          description: "Unrestricted local access. Disabled for unattended sessions.",
+          ruleset: [],
+          filesystem: { readRoots: [], writeRoots: [], protectedPaths: [] },
+          network: { mode: "disabled" },
+          sandbox: { mode: "read_only", fallback: "deny" },
+          approval: approval("full_access"),
+        }
+      }
+      const policy = fullAccessPolicy()
+      const profile = {
+        valid: true,
+        label: "Full Access",
+        description: "Allow all tool requests without workspace, shell, or network approval prompts.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "allow" }),
+        ...policy,
+        approval: approval("full_access"),
+      }
+      return { ...profile, summary: summary(id, profile, [], workspace) }
+    }
+  }
+}
+
+export function getProfileLabel(id: string): string {
+  return buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" }).label
+}

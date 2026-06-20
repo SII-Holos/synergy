@@ -204,13 +204,18 @@
   background: var(--sb-active-bg);
 }
 
-/* ===== Projects section ===== */
+/* ===== Unified scroll region ===== */
 
-.sb-projects {
+.sb-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 0 4px;
+}
+
+.sb-projects {
+  padding: 0;
 }
 
 /* Collapsed projects — just the icon trigger */
@@ -252,9 +257,14 @@
   font-weight: 500;
   color: var(--text-weak);
   letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.sb-projects-header-spacer {
   flex: 1;
 }
 
+.sb-projects-header-expand-all,
 .sb-projects-header-plus {
   display: flex;
   align-items: center;
@@ -269,6 +279,7 @@
     background-color 150ms;
 }
 
+.sb-projects-header-expand-all:hover,
 .sb-projects-header-plus:hover {
   color: var(--icon-base);
   background: var(--sb-control-hover-bg);
@@ -411,7 +422,7 @@
   background: var(--sb-control-hover-bg);
 }
 
-/* ===== Sessions under project (expanded) ===== */
+/* ===== Sessions ===== */
 
 .sb-sessions {
   display: flex;
@@ -449,12 +460,35 @@
 
 .sb-session-active .sb-session-icon,
 .sb-session-active .sb-flyout-session-icon {
-  color: var(--text-base);
+  color: currentColor;
+}
+
+.sb-session-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--icon-weak);
 }
 
 .sb-session-icon {
-  color: var(--icon-weak);
-  flex-shrink: 0;
+  color: currentColor;
+}
+
+.sb-session-icon-active-tone {
+  color: var(--icon-base);
+}
+
+.sb-session-icon-waiting-tone {
+  color: var(--icon-critical-base);
+}
+
+.sb-session-icon-worktree-tone {
+  color: var(--icon-success-base);
+}
+
+.sb-session-icon-muted-tone {
+  color: var(--text-weaker);
 }
 
 .sb-session-title {
@@ -530,8 +564,6 @@
 .sb-menu-item-danger:hover:not(:disabled) {
   background: var(--surface-critical-base);
 }
-
-/* ===== Spacer ===== */
 
 /* ===== Bottom ===== */
 
@@ -680,4 +712,64 @@
   flex: 1;
   min-width: 0;
   text-align: left;
+}
+
+/* ===== Root section (Home / Channel / Background) ===== */
+
+.sb-root-section {
+  padding: 0;
+}
+
+.sb-root-section .sb-sessions {
+  padding-left: 0;
+}
+
+/* ===== Session group (category grouping) ===== */
+
+.sb-session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 0;
+  margin-bottom: 4px;
+}
+
+.sb-session-group-header {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weak);
+}
+
+/* ===== Recent section ===== */
+
+.sb-section-empty {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+/* ===== Load more button ===== */
+
+.sb-load-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-weak);
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.sb-load-more-btn:hover {
+  color: var(--text-base);
+  background: var(--sb-hover-bg);
 }

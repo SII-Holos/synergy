@@ -4,7 +4,6 @@ import type { BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
 import { buildCompactionPrompt } from "./prompt/compaction/builder"
-import PROMPT_GENESIS from "./prompt/genesis.txt"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
@@ -72,8 +71,6 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
           note_search: "allow",
           note_write: "allow",
           note_edit: "allow",
-          profile_get: "allow",
-          profile_update: "allow",
           session_list: "allow",
           session_read: "allow",
           session_send: "allow",
@@ -133,29 +130,6 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_REWARD,
       model: ctx.role("mini"),
-    },
-    genesis: {
-      name: "genesis",
-      mode: "primary",
-      native: true,
-      hidden: true,
-      temperature: 0.7,
-      prompt: PROMPT_GENESIS,
-      model: ctx.role("mini"),
-      permission: PermissionNext.merge(
-        ctx.defaults,
-        PermissionNext.fromConfig({
-          "*": "deny",
-          memory_write: "allow",
-          memory_edit: "allow",
-          memory_search: "allow",
-          memory_get: "allow",
-          profile_get: "allow",
-          profile_update: "allow",
-        }),
-        ctx.user,
-      ),
-      options: {},
     },
     anima: {
       name: "anima",

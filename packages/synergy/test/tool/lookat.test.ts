@@ -165,7 +165,7 @@ describe("tool.look_at", () => {
   })
 
   describe("external_directory permission", () => {
-    test("asks for permission when file is outside project directory", async () => {
+    test("does not emit external_directory directly when file is outside project directory", async () => {
       await using outerTmp = await tmpdir({
         init: async (dir) => {
           const png = Buffer.from(
@@ -193,8 +193,7 @@ describe("tool.look_at", () => {
             .catch(() => {})
 
           const extDirReq = requests.find((r) => r.permission === "external_directory")
-          expect(extDirReq).toBeDefined()
-          expect(extDirReq!.patterns.some((p) => p.includes(outerTmp.path))).toBe(true)
+          expect(extDirReq).toBeUndefined()
         },
       })
     })

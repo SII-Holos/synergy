@@ -34,6 +34,7 @@ import { BasicTool } from "./basic-tool"
 import { GenericTool, SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { Icon } from "./icon"
+import { Tooltip } from "./tooltip"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
@@ -45,6 +46,7 @@ import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/syner
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
+import { getApprovalAudit } from "../utils/approval-audit"
 
 interface Diagnostic {
   range: {
@@ -780,12 +782,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
             title: input.reply === "reject" ? "Deny Permission" : "Approve Permission",
             subtitle: input.target,
           }
-        case "set_allow_all":
-          return {
-            icon: input.enabled ? "shield-check" : "shield-alert",
-            title: input.enabled ? "Enable Allow All" : "Disable Allow All",
-            subtitle: input.target,
-          }
         default:
           return {
             icon: "radar",
@@ -1022,6 +1018,38 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "rotate-cw",
         title: "Runtime Reload",
         subtitle: target || input.reason,
+      }
+    }
+    case "worktree_enter": {
+      const args: string[] = []
+      pushArg(args, input?.target)
+      pushArg(args, input?.baseRef !== "current" ? input?.baseRef : undefined)
+      pushArg(args, input?.force ? "force" : undefined)
+      return {
+        icon: "worktree-enter",
+        title: "Enter Worktree",
+        subtitle: (input?.target as string) ?? "New worktree",
+        args,
+      }
+    }
+    case "worktree_leave": {
+      const args: string[] = []
+      pushArg(args, input?.cleanup === "remove_if_clean" ? "remove if clean" : undefined)
+      return {
+        icon: "worktree-leave",
+        title: "Leave Worktree",
+        subtitle: metadata?.previous?.name ?? metadata?.previous?.path ?? "",
+        args,
+      }
+    }
+    case "worktree_list": {
+      const args: string[] = []
+      pushArg(args, metadata?.worktrees ? `${metadata.worktrees.length} total` : undefined)
+      return {
+        icon: "worktree-list",
+        title: "Worktrees",
+        subtitle: metadata?.active?.name ?? "",
+        args,
       }
     }
     case "connect":
@@ -1563,6 +1591,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   }
   // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
   const metadata = () => part().state?.metadata ?? {}
+  const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
+  const audit = createMemo(() => getApprovalAudit(approval()))
 
   const render = createMemo(() => ToolRegistry.render(part().tool))
 
@@ -1591,57 +1621,76 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
-      <Switch>
-        <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-          {(error) => {
-            const cleaned = error().replace("Error: ", "")
-            const [title, ...rest] = cleaned.split(": ")
-            return (
-              <Card variant="error">
-                <div data-component="tool-error">
-                  <Icon name="ban" size="small" />
-                  <Switch>
-                    <Match when={title && title.length < 30}>
-                      <div data-slot="message-part-tool-error-content">
-                        <div data-slot="message-part-tool-error-title">{title}</div>
-                        <span data-slot="message-part-tool-error-message">{rest.join(": ")}</span>
-                      </div>
-                    </Match>
-                    <Match when={true}>
-                      <span data-slot="message-part-tool-error-message">{cleaned}</span>
-                    </Match>
-                  </Switch>
-                </div>
-              </Card>
-            )
-          }}
-        </Match>
-        <Match when={true}>
-          <Dynamic
-            component={component()}
-            input={input()}
-            tool={part().tool}
-            metadata={metadata()}
-            title={part().state.status === "completed" ? (part().state as ToolStateCompleted).title : undefined}
-            // @ts-expect-error — output exists on completed state
-            output={part().state.output}
-            status={part().state.status}
-            raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
-            charsReceived={charsAnimated()}
-            hideDetails={props.hideDetails}
-            defaultOpen={props.defaultOpen}
-          />
-        </Match>
-      </Switch>
-      <Show
-        when={
-          part().tool !== "attach" &&
-          part().state.status === "completed" &&
-          (part().state as ToolStateCompleted).attachments?.length
-        }
-      >
-        <ToolAttachments attachments={(part().state as ToolStateCompleted).attachments!} />
+      <Show when={audit().icon}>
+        <Tooltip
+          placement="right"
+          value={
+            <div class="max-w-72">
+              <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
+              <Show when={audit().tooltip.includes("\n")}>
+                <div class="mt-1 text-11-regular text-text-weak">{audit().tooltip.split("\n").slice(1).join("\n")}</div>
+              </Show>
+            </div>
+          }
+        >
+          <div data-component="tool-audit-icon">
+            <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
+          </div>
+        </Tooltip>
       </Show>
+      <div data-component="tool-card-area">
+        <Switch>
+          <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
+            {(error) => {
+              const cleaned = error().replace("Error: ", "")
+              const [title, ...rest] = cleaned.split(": ")
+              return (
+                <Card variant="error">
+                  <div data-component="tool-error">
+                    <Icon name="ban" size="small" />
+                    <Switch>
+                      <Match when={title && title.length < 30}>
+                        <div data-slot="message-part-tool-error-content">
+                          <div data-slot="message-part-tool-error-title">{title}</div>
+                          <span data-slot="message-part-tool-error-message">{rest.join(": ")}</span>
+                        </div>
+                      </Match>
+                      <Match when={true}>
+                        <span data-slot="message-part-tool-error-message">{cleaned}</span>
+                      </Match>
+                    </Switch>
+                  </div>
+                </Card>
+              )
+            }}
+          </Match>
+          <Match when={true}>
+            <Dynamic
+              component={component()}
+              input={input()}
+              tool={part().tool}
+              metadata={metadata()}
+              title={part().state.status === "completed" ? (part().state as ToolStateCompleted).title : undefined}
+              // @ts-expect-error — output exists on completed state
+              output={part().state.output}
+              status={part().state.status}
+              raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
+              charsReceived={charsAnimated()}
+              hideDetails={props.hideDetails}
+              defaultOpen={props.defaultOpen}
+            />
+          </Match>
+        </Switch>
+        <Show
+          when={
+            part().tool !== "attach" &&
+            part().state.status === "completed" &&
+            (part().state as ToolStateCompleted).attachments?.length
+          }
+        >
+          <ToolAttachments attachments={(part().state as ToolStateCompleted).attachments!} />
+        </Show>
+      </div>
     </div>
   )
 }

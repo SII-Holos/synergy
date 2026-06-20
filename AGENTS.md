@@ -51,7 +51,9 @@ Current work commonly touches these domains:
 - `channel/` — external messaging/channel integrations
 - `cli/` — CLI commands, startup flows, and user-facing entrypoints
 - `config/` — config loading, merging, resolution, setup
+- `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
+- `enforcement/` — capability classification and centralized tool boundary gate
 - `engram/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
 - `note/` — notes system
@@ -59,6 +61,7 @@ Current work commonly touches these domains:
 - `process/` and `pty/` — process/runtime plumbing
 - `provider/` — LLM provider integration
 - `scope/` — scope resolution and context
+- `sandbox/` — OS sandbox backend wrappers for process execution
 - `server/` — HTTP server and API routes
 - `session/` — session lifecycle, prompting, recall, summaries, progress
 - `skill/` — skill loading and built-ins
@@ -129,6 +132,16 @@ bun test --watch
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.
+
+### Frontend API calls
+
+Frontend code should use the generated SDK for Synergy server APIs instead of hand-written `fetch()` calls.
+
+- Use `createSynergyClient()` / existing SDK contexts for internal Synergy routes.
+- If a server route is needed by the frontend but is missing from the SDK, add OpenAPI metadata to the route, run `./script/generate.ts`, and call the generated SDK method.
+- Do not duplicate route URLs, query parsing, response shapes, or error handling in app code when an SDK method can represent the same contract.
+- Keep raw browser APIs only for cases the SDK should not abstract: WebSocket/EventSource streams, external URLs, browser downloads/uploads where no SDK route exists, local file/blob handling, and platform-provided `fetch` injection into the SDK client.
+- When replacing raw `fetch()` with SDK calls, preserve auth behavior, directory/scope parameters, error semantics, and response URL formats such as asset URLs.
 
 ## Code Style
 
@@ -248,6 +261,7 @@ If you change:
 - `.synergy/` conventions
 - MCP config shape
 - channel config shape
+- control profile or sandbox config behavior
 
 then review both `README.md` and any related setup/help text.
 

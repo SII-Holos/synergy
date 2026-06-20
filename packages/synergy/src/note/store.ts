@@ -8,11 +8,12 @@ import { NoteTypes } from "./types"
 import { NoteError } from "./error"
 import { Log } from "../util/log"
 import { Plugin } from "../plugin"
+import { NoteMarkdown } from "./markdown"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
 
-  export type Metadata = Omit<NoteTypes.Info, "content">
+  export type Metadata = NoteTypes.MetaInfo
 
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
@@ -21,8 +22,9 @@ export namespace NoteStore {
   }
 
   function toMetadata(note: NoteTypes.Info): Metadata {
-    const { content: _, ...meta } = note
-    return meta
+    const { content, ...meta } = note
+    const searchParts = [note.title, ...(note.tags ?? []), NoteMarkdown.toMarkdown(content)].filter(Boolean)
+    return { ...meta, searchText: searchParts.join("\n") }
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -135,7 +137,6 @@ export namespace NoteStore {
       id,
       title: create.note.title,
       content: create.note.content ?? { type: "doc", content: [] },
-      contentText: create.note.contentText ?? "",
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
@@ -225,7 +226,6 @@ export namespace NoteStore {
       }
       if (update.patch.title !== undefined) draft.title = update.patch.title
       if (update.patch.content !== undefined) draft.content = update.patch.content
-      if (update.patch.contentText !== undefined) draft.contentText = update.patch.contentText
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
       if (update.patch.global !== undefined) draft.global = update.patch.global
@@ -292,6 +292,28 @@ export namespace NoteStore {
       result = mergeSorted(result, list, comparePinTime)
     }
     return result
+  }
+
+  export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
+    const scopeIDs = await Storage.scan(["notes"])
+    const currentScopeID = Instance.scope.id
+    scopeIDs.sort((a, b) => {
+      if (a === currentScopeID) return -1
+      if (b === currentScopeID) return 1
+      return a.localeCompare(b)
+    })
+    const groups = await Promise.all(
+      scopeIDs.map(async (sid): Promise<NoteTypes.MetaScopeGroup | undefined> => {
+        const metaList = await listMeta(sid)
+        if (metaList.length === 0) return undefined
+        return {
+          scopeID: sid,
+          scopeType: sid === "global" ? "global" : "project",
+          notes: metaList,
+        }
+      }),
+    )
+    return groups.filter((group): group is NoteTypes.MetaScopeGroup => group !== undefined)
   }
 
   // --- Public API: scope-agnostic access ---

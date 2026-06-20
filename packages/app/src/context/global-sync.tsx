@@ -86,6 +86,12 @@ type State = {
   }
 }
 
+export interface NoteUpdateSignal {
+  id: string
+  version: number
+  type: "created" | "updated" | "deleted"
+}
+
 function createGlobalSync() {
   const globalSDK = useGlobalSDK()
   const [globalStore, setGlobalStore] = createStore<{
@@ -108,10 +114,57 @@ function createGlobalSync() {
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
+  const instanceRequestConcurrency = 2
+  const bootstrapQueue: string[] = []
+  const bootstrapQueued = new Set<string>()
+  const bootstrapActive = new Set<string>()
   const [noteVersion, setNoteVersion] = createSignal(0)
+  const [noteUpdate, setNoteUpdate] = createSignal<NoteUpdateSignal | null>(null, { equals: false })
   function bumpNoteVersion() {
     setNoteVersion((v) => v + 1)
   }
+
+  async function runInstanceRequests<T>(
+    items: T[],
+    run: (item: T) => Promise<unknown>,
+    concurrency = instanceRequestConcurrency,
+  ) {
+    let index = 0
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (index < items.length) {
+        const item = items[index]
+        index++
+        if (item === undefined) continue
+        await run(item)
+      }
+    })
+    await Promise.all(workers)
+  }
+
+  function scheduleBootstrap(directory: string) {
+    if (!directory || !children[directory]) return
+    if (bootstrapActive.has(directory) || bootstrapQueued.has(directory)) return
+    bootstrapQueued.add(directory)
+    bootstrapQueue.push(directory)
+    pumpBootstrapQueue()
+  }
+
+  function pumpBootstrapQueue() {
+    while (bootstrapActive.size < instanceRequestConcurrency) {
+      const directory = bootstrapQueue.shift()
+      if (!directory) return
+      bootstrapQueued.delete(directory)
+      if (!children[directory]) continue
+      bootstrapActive.add(directory)
+      void bootstrapInstance(directory)
+        .catch((e) => setGlobalStore("error", e))
+        .finally(() => {
+          bootstrapActive.delete(directory)
+          pumpBootstrapQueue()
+        })
+    }
+  }
+
   function child(directory: string) {
     if (!directory) console.error("No directory provided")
     if (!children[directory]) {
@@ -139,7 +192,7 @@ function createGlobalSync() {
         message: {},
         part: {},
       })
-      bootstrapInstance(directory)
+      scheduleBootstrap(directory)
     }
     return children[directory]
   }
@@ -149,6 +202,7 @@ function createGlobalSync() {
     // if a late event arrives for this directory. The recreated store stays
     // empty (no bootstrapInstance) and will be collected on the next release.
     delete children[directory]
+    bootstrapQueued.delete(directory)
   }
 
   async function loadAgenda(directory: string) {
@@ -253,8 +307,8 @@ function createGlobalSync() {
           Promise.all([
             loadConfigSets(),
             loadGlobalProviders(),
-            ...directories.map((directory) => refreshConfig(directory)),
-          ] as Promise<void>[])
+            runInstanceRequests(directories, (directory) => refreshConfig(directory)),
+          ])
             .then(() => resolve())
             .catch(() => resolve())
             .finally(() => {
@@ -295,14 +349,13 @@ function createGlobalSync() {
     const directories = Object.keys(children)
 
     const globalPromises: Promise<unknown>[] = []
-    const perScopePromises: Promise<unknown>[] = []
 
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
       globalPromises.push(loadConfigSets())
     }
 
-    for (const directory of directories) {
+    const perScopePromise = runInstanceRequests(directories, async (directory) => {
       const [_, setStore] = child(directory)
       const sdk = createSynergyClient({
         baseUrl: globalSDK.url,
@@ -349,10 +402,10 @@ function createGlobalSync() {
         )
       }
 
-      perScopePromises.push(Promise.all(scopePromises))
-    }
+      await Promise.all(scopePromises)
+    })
 
-    await Promise.all([...globalPromises, ...perScopePromises])
+    await Promise.all([...globalPromises, perScopePromise])
   }
 
   async function loadSessions(directory: string, sdk?: ReturnType<typeof createSynergyClient>) {
@@ -362,7 +415,9 @@ function createGlobalSync() {
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
-        const [, setStore] = children[directory]
+        const childStore = children[directory]
+        if (!childStore) return
+        const [, setStore] = childStore
         batch(() => {
           setStore("session", reconcile(sessions, { key: "id" }))
           setStore("sessionTotal", result.total)
@@ -372,7 +427,7 @@ function createGlobalSync() {
         console.error("Failed to load sessions", err)
         if (!sdk) {
           const project = getFilename(directory)
-          showToast({ title: `Failed to load sessions for ${project}`, description: err.message })
+          showToast({ type: "error", title: `Failed to load sessions for ${project}`, description: err.message })
         }
       })
   }
@@ -562,6 +617,17 @@ function createGlobalSync() {
     }
     if (event?.type === "note.created" || event?.type === "note.updated" || event?.type === "note.deleted") {
       bumpNoteVersion()
+      if (event.type === "note.deleted") {
+        const props = event.properties as { id: string; scopeID: string }
+        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
+      } else {
+        const props = event.properties as { note: { id: string; version: number } }
+        setNoteUpdate({
+          id: props.note.id,
+          version: props.note.version,
+          type: event.type as "created" | "updated",
+        })
+      }
     }
 
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
@@ -608,7 +674,7 @@ function createGlobalSync() {
     const [store, setStore] = child(directory)
     switch (event.type) {
       case "server.instance.disposed": {
-        bootstrapInstance(directory)
+        scheduleBootstrap(directory)
         break
       }
       case "session.updated": {
@@ -649,6 +715,7 @@ function createGlobalSync() {
         setStore("dag", (event as any).properties.sessionID, reconcile((event as any).properties.nodes, { key: "id" }))
         break
       case "session.status": {
+        // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
@@ -760,28 +827,6 @@ function createGlobalSync() {
           event.properties.sessionID,
           produce((draft) => {
             draft.splice(result.index, 1)
-          }),
-        )
-        break
-      }
-      case "permission.allowAll.changed": {
-        const updates = (
-          event.properties as {
-            sessions?: Array<{
-              sessionID: string
-              enabled: boolean
-            }>
-          }
-        ).sessions
-        if (!updates) break
-        setStore(
-          "session",
-          produce((draft) => {
-            for (const update of updates) {
-              const result = Binary.search(draft, update.sessionID, (session) => session.id)
-              if (!result.found) continue
-              ;(draft[result.index] as (typeof draft)[number] & { allowAll?: boolean }).allowAll = update.enabled
-            }
           }),
         )
         break
@@ -947,82 +992,24 @@ function createGlobalSync() {
   })
   onCleanup(unsub)
 
-  // Track sessions that were busy at disconnect time so we can reconcile
-  // their parts on reconnect — WS events during disconnect are lost.
-  const disconnectedBusy = new Map<string, Set<string>>()
+  let resyncInstancesPromise: Promise<void> | undefined
+  function resyncInstances(directories: string[]) {
+    if (resyncInstancesPromise) return resyncInstancesPromise
+    resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
+      resyncInstance(directory).catch(() => undefined),
+    ).finally(() => {
+      resyncInstancesPromise = undefined
+    })
+    return resyncInstancesPromise
+  }
 
-  let wasConnected = false
   createEffect(() => {
     const isConnected = globalSDK.connected()
 
-    if (!isConnected && wasConnected) {
-      for (const [directory, [store]] of Object.entries(children)) {
-        const busyIds = new Set<string>()
-        for (const s of store.session) {
-          const status = store.session_status[s.id]
-          if (status?.type === "busy" || status?.type === "retry") busyIds.add(s.id)
-        }
-        if (busyIds.size > 0) disconnectedBusy.set(directory, busyIds)
-      }
+    if (isConnected && globalStore.ready) {
+      void resyncInstances(Object.keys(children))
+      void loadGlobalAgenda()
     }
-
-    if (isConnected && !wasConnected && globalStore.ready) {
-      for (const directory of Object.keys(children)) {
-        // Full resync of volatile state to recover from lost WS events.
-        resyncInstance(directory).catch(() => {})
-
-        // Additionally reconcile message parts for sessions that were busy
-        // at disconnect time — resyncInstance doesn't cover message/part data.
-        const [store, setStore] = children[directory]
-        const busyIds = disconnectedBusy.get(directory)
-        disconnectedBusy.delete(directory)
-        if (!busyIds || busyIds.size === 0) continue
-
-        // resyncInstance already fetched session_status into the store.
-        // Merge sessions that were busy at disconnect + sessions busy now.
-        const toReconcile = new Set(busyIds)
-        for (const [id, status] of Object.entries(store.session_status)) {
-          if (status?.type === "busy" || status?.type === "retry") toReconcile.add(id)
-        }
-        if (toReconcile.size === 0) continue
-
-        const scopeSdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
-        for (const sessionID of toReconcile) {
-          scopeSdk.session
-            .messages({ sessionID, limit: 2 })
-            .then((result) => {
-              const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-              const latest = items
-                .filter((x) => x.info.role === "assistant")
-                .sort((a, b) => b.info.id.localeCompare(a.info.id))[0]
-              if (!latest) return
-              batch(() => {
-                setStore(
-                  "message",
-                  sessionID,
-                  produce((draft) => {
-                    const idx = draft.findIndex((m) => m.id === latest.info.id)
-                    if (idx === -1) draft.push(latest.info)
-                    else draft[idx] = latest.info
-                  }),
-                )
-                setStore(
-                  "part",
-                  latest.info.id,
-                  reconcile(
-                    latest.parts.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
-                )
-              })
-            })
-            .catch(() => {})
-        }
-      }
-      loadGlobalAgenda()
-    }
-
-    wasConnected = isConnected
   })
 
   async function bootstrap() {
@@ -1099,6 +1086,7 @@ function createGlobalSync() {
     releaseChild,
     bootstrap,
     noteVersion,
+    noteUpdate,
     get agenda() {
       return globalStore.agenda
     },

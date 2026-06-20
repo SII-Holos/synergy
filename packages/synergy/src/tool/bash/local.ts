@@ -1,6 +1,4 @@
 import { spawn } from "child_process"
-import path from "path"
-import { realpathSync } from "fs"
 import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
@@ -11,6 +9,10 @@ import { Instance } from "@/scope/instance"
 import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
+import { SandboxBackend } from "@/sandbox/backend"
+import { SandboxDetector } from "@/enforcement/sandbox-detector"
+import { EnforcementError } from "@/enforcement/errors"
+import { ShellSafety } from "@/enforcement/shell-safety"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -71,8 +73,6 @@ export const LocalBashBackend: BashBackend = {
     if (!tree) {
       throw new Error("Failed to parse command")
     }
-    const directories = new Set<string>()
-    if (!Instance.contains(cwd)) directories.add(cwd)
     const patterns = new Set<string>()
 
     try {
@@ -94,26 +94,6 @@ export const LocalBashBackend: BashBackend = {
           command.push(child.text)
         }
 
-        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
-          for (const arg of command.slice(1)) {
-            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-            let resolved: string | undefined
-            try {
-              resolved = realpathSync(path.resolve(cwd, arg))
-            } catch {
-              // path doesn't exist — skip
-            }
-            log.info("resolved path", { arg, resolved })
-            if (resolved) {
-              const normalized =
-                process.platform === "win32" && resolved.match(/^\/[a-z]\//)
-                  ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
-                  : resolved
-              if (!Instance.contains(normalized)) directories.add(normalized)
-            }
-          }
-        }
-
         if (command.length && command[0] !== "cd") {
           patterns.add(command.join(" "))
         }
@@ -122,31 +102,60 @@ export const LocalBashBackend: BashBackend = {
       tree.delete()
     }
 
-    if (directories.size > 0) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: Array.from(directories),
-        metadata: {},
-      })
-    }
-
-    if (patterns.size > 0) {
+    if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
-        metadata: {},
+        metadata: {
+          capability: ShellSafety.capability(params.command),
+        },
       })
     }
 
-    const child = spawn(params.command, {
-      shell,
-      cwd,
-      env: {
-        ...process.env,
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    })
+    const sandboxWrapper =
+      (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
+    const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
+
+    let child: ReturnType<typeof spawn>
+    if (sandboxWrapper) {
+      if (sandboxWrapper.skipReason) {
+        if (sandboxFallback === "deny") {
+          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+        }
+        log.warn("sandbox unavailable, running unsandboxed", {
+          reason: sandboxWrapper.skipReason,
+          fallback: sandboxFallback,
+        })
+        child = spawn(params.command, {
+          shell,
+          cwd,
+          env: {
+            ...process.env,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        })
+      } else {
+        child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+          cwd,
+          env: {
+            ...process.env,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        })
+      }
+    } else {
+      child = spawn(params.command, {
+        shell,
+        cwd,
+        env: {
+          ...process.env,
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    }
 
     const regProc = ProcessRegistry.create({
       command: params.command,
@@ -203,6 +212,9 @@ export const LocalBashBackend: BashBackend = {
         ProcessRegistry.markExited(regProc, code, signal)
       } else {
         ProcessRegistry.remove(regProc.id)
+      }
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
     })
 
@@ -281,6 +293,10 @@ export const LocalBashBackend: BashBackend = {
       child.once("error", (error) => {
         exited = true
         cleanup()
+        ProcessRegistry.remove(regProc.id)
+        if (sandboxWrapper?.tempPath) {
+          SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+        }
         reject(error)
       })
     })
@@ -309,6 +325,23 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const output = regProc.output
+    // ── Sandbox denial detection ──────────────────────────────────
+    // When the sandbox is active and the command fails, scan output
+    // for OS-level permission denial patterns. If matched, throw a
+    // structured SandboxBlocked error that tells the model this is
+    // a boundary, not a transient technical failure.
+    const sandboxActive = sandboxWrapper?.sandboxed === true && !sandboxWrapper?.skipReason
+    if (sandboxActive && child.exitCode !== null && child.exitCode !== 0) {
+      const matches = SandboxDetector.scan(output)
+      if (matches.length > 0) {
+        throw new EnforcementError.SandboxBlocked(
+          SandboxDetector.explain(matches),
+          child.exitCode,
+          matches[0]?.label ?? null,
+          output,
+        )
+      }
+    }
 
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`

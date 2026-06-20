@@ -1,1 +1,0 @@
-Read your current profile. Returns the profile if one exists, or indicates that no profile has been created yet.

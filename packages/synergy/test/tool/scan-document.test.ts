@@ -250,7 +250,7 @@ describe("tool.scan_document", () => {
   })
 
   describe("external_directory permission", () => {
-    test("asks for external_directory permission when reading outside project", async () => {
+    test("does not emit external_directory directly when reading outside project", async () => {
       await using outerTmp = await tmpdir({
         init: async (dir) => {
           await Bun.write(path.join(dir, "external.csv"), "a,b\n1,2\n")
@@ -270,7 +270,7 @@ describe("tool.scan_document", () => {
           }
           await tool.execute({ filePath: path.join(outerTmp.path, "external.csv") }, testCtx as any)
           const extDirReq = requests.find((r) => r.permission === "external_directory")
-          expect(extDirReq).toBeDefined()
+          expect(extDirReq).toBeUndefined()
         },
       })
     })

@@ -1232,11 +1232,10 @@ export namespace Provider {
   //   thinking    → thinking_model → model
   //   long        → long_context_model → model
   //   creative    → creative_model → model
-  //   holos_friend_reply → holos_friend_reply_model → model
   //   vision      → vision_model                        (no fallback — required)
   // ---------------------------------------------------------------------------
 
-  export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative" | "holos_friend_reply"
+  export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
 
   type ModelRef = { providerID: string; modelID: string }
 
@@ -1248,7 +1247,6 @@ export namespace Provider {
     thinking: ["thinking_model", "model"],
     long: ["long_context_model", "model"],
     creative: ["creative_model", "model"],
-    holos_friend_reply: ["holos_friend_reply_model", "model"],
   }
 
   export async function resolveRoleModel(role: ModelRole): Promise<ModelRef | undefined> {

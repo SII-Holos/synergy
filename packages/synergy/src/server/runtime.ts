@@ -357,6 +357,8 @@ export function getDevRestartFlagFile(cwd?: string) {
   return path.join(Global.Path.state, `dev-restart-${hash}.flag`)
 }
 export async function run(options: RuntimeOptions) {
+  await ensureMigrations()
+
   // If user asked for a restart policy, spawn a child and act as a watchdog
   if (options.restartPolicy === "always" || options.restartPolicy === "dev") {
     return runWithRestartPolicyAlways(options)
@@ -364,9 +366,9 @@ export async function run(options: RuntimeOptions) {
 
   // Normal path (unchanged)
   await SingleInstance.acquire()
-  await ensureMigrations()
 
-  // TODO: redesign CLI Holos login so it does not conflict with Web UI onboarding.
+  // Holos login: intentionally skipped at CLI startup.
+  // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
   // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.
   // try {
   //   await HolosStartup.resolveIdentity(options.interactive)
@@ -589,17 +591,31 @@ async function printConnectionStatusSurfaces() {
 
   await printHolosStatus()
 
-  Bus.subscribe(Channel.Event.Connected, (event) => {
-    const channel = event.properties.channelType + ":" + event.properties.accountId
-    Bun.stderr.write(DIM + "    " + GREEN + "●" + RESET + " " + channel + " " + DIM + "reconnected" + RESET + EOL)
-  })
-  Bus.subscribe(Channel.Event.Disconnected, (event) => {
-    const channel = event.properties.channelType + ":" + event.properties.accountId
-    const reason = event.properties.reason ? ": " + event.properties.reason : ""
-    Bun.stderr.write(
-      DIM + "    " + WARN + "●" + RESET + " " + channel + " " + DIM + "disconnected" + reason + RESET + EOL,
-    )
-  })
+  const channelState = Instance.state(
+    () => {
+      const unsubs: Array<() => void> = []
+      unsubs.push(
+        Bus.subscribe(Channel.Event.Connected, (event) => {
+          const channel = event.properties.channelType + ":" + event.properties.accountId
+          Bun.stderr.write(DIM + "    " + GREEN + "●" + RESET + " " + channel + " " + DIM + "reconnected" + RESET + EOL)
+        }),
+      )
+      unsubs.push(
+        Bus.subscribe(Channel.Event.Disconnected, (event) => {
+          const channel = event.properties.channelType + ":" + event.properties.accountId
+          const reason = event.properties.reason ? ": " + event.properties.reason : ""
+          Bun.stderr.write(
+            DIM + "    " + WARN + "●" + RESET + " " + channel + " " + DIM + "disconnected" + reason + RESET + EOL,
+          )
+        }),
+      )
+      return { unsubs }
+    },
+    async (s) => {
+      for (const unsub of s.unsubs) unsub()
+    },
+  )
+  void channelState()
 }
 
 function registerShutdown(server: { stop: (closeActiveConnections?: boolean) => Promise<void> }) {

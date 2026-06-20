@@ -1,0 +1,52 @@
+[data-component="command-result-output"] {
+  min-width: 0;
+  width: 100%;
+
+  [data-slot="command-result-container"] {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  [data-slot="command-result-header"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  [data-slot="command-result-source"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-weak);
+    font-size: 0.8125rem;
+  }
+
+  [data-slot="command-result-label"] {
+    color: var(--color-text-weak);
+  }
+
+  [data-slot="command-result-time"] {
+    color: var(--color-text-weak);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  [data-slot="command-result-body"] {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-text-base);
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  [data-slot="command-result-markdown"] {
+    & > *:first-child {
+      margin-top: 0;
+    }
+    & > *:last-child {
+      margin-bottom: 0;
+    }
+  }
+}

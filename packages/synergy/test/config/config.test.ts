@@ -972,6 +972,131 @@ test("removes legacy channel holos config when top-level holos already exists", 
   }
 })
 
+test("migrates legacy identity config to valid engram config", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "$schema": "file:///test/config.schema.json",
+  "identity": {
+    "embedding": {
+      "baseURL": "https://embedding.example/v1",
+      "apiKey": "embedding-token",
+      "model": "embed-model"
+    },
+    "rerank": {
+      "baseURL": "https://rerank.example/v1",
+      "apiKey": "rerank-token",
+      "model": "rerank-model"
+    },
+    "evolution": {
+      "active": {
+        "retrieve": {
+          "simThreshold": 0.6,
+          "topK": 5,
+          "categories": {
+            "coding": {
+              "topK": 2
+            }
+          }
+        },
+        "memoryDedupThreshold": 0.8
+      },
+      "passive": {
+        "encode": false,
+        "retrieve": {
+          "topK": 9
+        },
+        "learning": {
+          "alpha": 0.4
+        }
+      }
+    },
+    "autonomy": false
+  }
+}`,
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.identity).toBeUndefined()
+    expect(migrated.embedding).toEqual({
+      baseURL: "https://embedding.example/v1",
+      apiKey: "embedding-token",
+      model: "embed-model",
+    })
+    expect(migrated.rerank).toEqual({
+      baseURL: "https://rerank.example/v1",
+      apiKey: "rerank-token",
+      model: "rerank-model",
+    })
+    expect(migrated.engram.memory.retrieval.simThreshold).toBe(0.6)
+    expect(migrated.engram.memory.retrieval.topK).toBe(5)
+    expect(migrated.engram.memory.retrieval.categories.coding).toEqual({ topK: 2 })
+    expect(migrated.engram.memory.retrieval.categories.user).toEqual({})
+    expect(migrated.engram.memory.dedup).toEqual({ threshold: 0.8 })
+    expect(migrated.engram.experience).toEqual({
+      encode: false,
+      retrieve: {
+        topK: 9,
+      },
+      learning: {
+        alpha: 0.4,
+      },
+    })
+    expect(migrated.engram.autonomy).toBe(false)
+    expect(Config.Info.safeParse(migrated).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("repairs invalid engram shapes written by legacy identity migration", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-engram-repair-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      JSON.stringify({
+        $schema: "file:///test/config.schema.json",
+        engram: {
+          memory: {
+            retrieval: false,
+          },
+          experience: {
+            learning: true,
+          },
+        },
+      }),
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.engram.memory.enabled).toBe(false)
+    expect(migrated.engram.memory.retrieval).toBeUndefined()
+    expect(migrated.engram.experience.learning).toBeUndefined()
+    expect(Config.Info.safeParse(migrated).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 // MCP config merging tests
 
 test("project config can override MCP server enabled status", async () => {
@@ -1202,4 +1327,187 @@ test("project config overrides remote well-known config", async () => {
     globalThis.fetch = originalFetch
     Auth.all = originalAuthAll
   }
+})
+
+// MCP lifecycle config tests
+
+test("MCP server config accepts new lifecycle fields", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.jsonc"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          mcp: {
+            sidebar: {
+              type: "remote",
+              url: "https://sidebar.example.com/mcp",
+              enabled: true,
+              startup: "lazy",
+              required: true,
+              connectTimeout: 10000,
+              listTimeout: 15000,
+              callTimeout: 20000,
+              retry: {
+                maxAttempts: 3,
+                backoffMs: 1000,
+                backoffMultiplier: 2,
+                cooldownMs: 30000,
+              },
+              idleShutdownMs: 600000,
+              toolFilter: { include: ["search"], exclude: ["debug"] },
+              tools: { approval: "always", maxOutputBytes: 102400 },
+              toolCache: { mode: "session", ttlMs: 300000 },
+            },
+          },
+          mcpDefaults: {
+            startup: "eager",
+            connectTimeout: 5000,
+            callTimeout: 10000,
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.get()
+      const sidebar = config.mcp?.sidebar
+      expect(sidebar).toBeDefined()
+      if (sidebar && "type" in sidebar) {
+        expect(sidebar.startup).toBe("lazy")
+        expect(sidebar.required).toBe(true)
+        expect(sidebar.connectTimeout).toBe(10000)
+        expect(sidebar.listTimeout).toBe(15000)
+        expect(sidebar.callTimeout).toBe(20000)
+        expect(sidebar.retry).toEqual({ maxAttempts: 3, backoffMs: 1000, backoffMultiplier: 2, cooldownMs: 30000 })
+        expect(sidebar.idleShutdownMs).toBe(600000)
+        expect(sidebar.toolFilter).toEqual({ include: ["search"], exclude: ["debug"] })
+        expect(sidebar.tools).toEqual({ approval: "always", maxOutputBytes: 102400 })
+        expect(sidebar.toolCache).toEqual({ mode: "session", ttlMs: 300000 })
+      }
+      expect(config.mcpDefaults).toEqual({
+        startup: "eager",
+        connectTimeout: 5000,
+        callTimeout: 10000,
+      })
+    },
+  })
+})
+
+test("normalizeMcp applies legacy timeout to granular timeouts", () => {
+  const server = { type: "remote" as const, url: "https://test.example.com", timeout: 3000 }
+  const result = Config.normalizeMcp(server)
+  expect(result.connectTimeout).toBe(3000)
+  expect(result.listTimeout).toBe(3000)
+  expect(result.callTimeout).toBe(3000)
+  expect(result.startup).toBe("eager")
+})
+
+test("normalizeMcp does not override explicit granular timeouts with legacy", () => {
+  const server = {
+    type: "remote" as const,
+    url: "https://test.example.com",
+    timeout: 3000,
+    callTimeout: 5000,
+  }
+  const result = Config.normalizeMcp(server)
+  expect(result.connectTimeout).toBe(3000)
+  expect(result.listTimeout).toBe(3000)
+  expect(result.callTimeout).toBe(5000)
+})
+
+test("normalizeMcp applies defaultCallTimeoutMs when callTimeout is missing", () => {
+  const server = { type: "remote" as const, url: "https://test.example.com" }
+  const result = Config.normalizeMcp(server, undefined, 8000)
+  expect(result.callTimeout).toBe(8000)
+})
+
+test("normalizeMcp does not override explicit callTimeout with defaultCallTimeoutMs", () => {
+  const server = { type: "remote" as const, url: "https://test.example.com", callTimeout: 12000 }
+  const result = Config.normalizeMcp(server, undefined, 8000)
+  expect(result.callTimeout).toBe(12000)
+})
+
+test("normalizeMcp applies mcpDefaults for missing fields", () => {
+  const server = { type: "remote" as const, url: "https://test.example.com" }
+  const defaults = {
+    startup: "lazy" as const,
+    required: true,
+    connectTimeout: 10000,
+    callTimeout: 15000,
+  }
+  const result = Config.normalizeMcp(server, defaults)
+  expect(result.startup).toBe("lazy")
+  expect(result.required).toBe(true)
+  expect(result.connectTimeout).toBe(10000)
+  expect(result.callTimeout).toBe(15000)
+})
+
+test("normalizeMcp preserves explicit values over defaults", () => {
+  const server = { type: "remote" as const, url: "https://test.example.com", startup: "manual" as const }
+  const defaults = { startup: "lazy" as const }
+  const result = Config.normalizeMcp(server, defaults)
+  expect(result.startup).toBe("manual")
+})
+
+test("MCP config preserves backward compatibility with old timeout-only shape", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.jsonc"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          mcp: {
+            oldserver: {
+              type: "local",
+              command: ["node", "server.js"],
+              timeout: 5000,
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.mcp?.oldserver).toBeDefined()
+      if (config.mcp?.oldserver && "type" in config.mcp.oldserver) {
+        expect(config.mcp.oldserver.timeout).toBe(5000)
+      }
+    },
+  })
+})
+
+test("experimental.mcp_timeout does not break config loading", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.jsonc"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          experimental: {
+            mcp_timeout: 60000,
+          },
+          mcp: {
+            mymcp: {
+              type: "remote",
+              url: "https://mcp.example.com",
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.mcp?.mymcp).toBeDefined()
+      expect(config.experimental?.mcp_timeout).toBe(60000)
+    },
+  })
 })

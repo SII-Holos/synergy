@@ -3,6 +3,7 @@ import {
   Message as MessageType,
   Part as PartType,
   type PermissionRequest,
+  ReasoningPart,
   TextPart,
   ToolPart,
   type UserMessage,
@@ -238,6 +239,18 @@ export function SessionTurn(
     }
     return undefined
   })
+  const lastReasoningPart = createMemo(() => {
+    const msgs = assistantMessages()
+    for (let mi = msgs.length - 1; mi >= 0; mi--) {
+      const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
+      for (let pi = msgParts.length - 1; pi >= 0; pi--) {
+        const part = msgParts[pi]
+        if (part?.type === "reasoning") return part as ReasoningPart
+        if (part?.type === "tool") return undefined
+      }
+    }
+    return undefined
+  })
 
   const hasSteps = createMemo(() => {
     for (const m of assistantMessages()) {
@@ -328,7 +341,17 @@ export function SessionTurn(
   })
 
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
-  const working = createMemo(() => status().type !== "idle" && isLastUserMessage())
+  const working = createMemo(() => {
+    if (!isLastUserMessage()) return false
+    // Canonical truth: the last assistant message is incomplete
+    const last = lastAssistantMessage()
+    if (last?.time.completed == null) return true
+    // Runtime overlay — for the brief window where a new turn has started
+    // but the assistant message hasn't been created in the store yet
+    const s = data.store.session_status[props.sessionID]
+    if (s && s.type !== "idle") return true
+    return false
+  })
   const statusDescription = createMemo(() => {
     const s = status()
     if (s.type === "busy") return s.description
@@ -341,7 +364,7 @@ export function SessionTurn(
     return s
   })
 
-  const response = createMemo(() => lastTextPart()?.text)
+  const response = createMemo(() => lastTextPart()?.text ?? lastReasoningPart()?.text)
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
   const hideResponsePart = createMemo(() => !working() && !!responsePartId())
@@ -391,21 +414,34 @@ export function SessionTurn(
     duration: duration(),
   })
 
+  function computeDuration(fromMs: number, toMs?: number): string {
+    const from = DateTime.fromMillis(fromMs)
+    const to = toMs != null ? DateTime.fromMillis(toMs) : DateTime.now()
+    const interval = Interval.fromDateTimes(from, to)
+    const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
+    return interval
+      .toDuration(unit)
+      .normalize()
+      .mapUnits((x) => Math.round(x))
+      .toHuman({
+        notation: "compact",
+        unitDisplay: "narrow",
+        compactDisplay: "short",
+        showZeros: false,
+      })
+  }
+
   function duration() {
     const msg = message()
     if (!msg) return ""
+    if (working()) {
+      return computeDuration(msg.time.created)
+    }
     const completed = lastAssistantMessage()?.time.completed
-    const from = DateTime.fromMillis(msg.time.created)
-    const to = completed ? DateTime.fromMillis(completed) : DateTime.now()
-    const interval = Interval.fromDateTimes(from, to)
-    const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
-
-    return interval.toDuration(unit).normalize().toHuman({
-      notation: "compact",
-      unitDisplay: "narrow",
-      compactDisplay: "short",
-      showZeros: false,
-    })
+    if (completed != null) {
+      return computeDuration(msg.time.created, completed)
+    }
+    return ""
   }
 
   createEffect(
@@ -445,11 +481,25 @@ export function SessionTurn(
   )
 
   createEffect(() => {
+    if (!working()) return
     const timer = setInterval(() => {
       setStore("duration", duration())
     }, 1000)
     onCleanup(() => clearInterval(timer))
   })
+
+  createEffect(
+    on(
+      () => {
+        const completed = lastAssistantMessage()?.time.completed
+        return completed != null && !working()
+      },
+      () => {
+        setStore("duration", duration())
+      },
+      { defer: true },
+    ),
+  )
 
   createEffect(
     on(permissionCount, (count, prev) => {

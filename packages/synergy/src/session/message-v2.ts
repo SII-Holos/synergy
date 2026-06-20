@@ -43,6 +43,14 @@ export namespace MessageV2 {
     }),
   )
   export type APIError = z.infer<typeof APIError.Schema>
+  export const SessionTerminalError = NamedError.create(
+    "SessionTerminalError",
+    z.object({
+      message: z.string(),
+      errorName: z.string(),
+    }),
+  )
+  export type SessionTerminalError = z.infer<typeof SessionTerminalError.Schema>
 
   const PartBase = z.object({
     id: z.string(),
@@ -450,12 +458,21 @@ export namespace MessageV2 {
     return options?.maxLength ? joined.slice(0, options.maxLength) : joined
   }
 
+  export function isPromptVisible(msg: WithParts) {
+    const metadata = msg.info.metadata
+    if (metadata?.promptVisible === false) return false
+    const command = metadata?.command
+    if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
+      return false
+    return true
+  }
+
   export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
     for (const msg of input) {
-      if (msg.info.role !== "user") continue
+      if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
       for (const part of msg.parts) {
         if (part.type !== "file") continue
         if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
@@ -483,7 +500,7 @@ export namespace MessageV2 {
     const result: UIMessage[] = []
 
     for (const msg of input) {
-      if (msg.parts.length === 0) continue
+      if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
 
       if (msg.info.role === "user") {
         const userMessage: UIMessage = {
@@ -653,6 +670,11 @@ export namespace MessageV2 {
       const results = await Storage.readMany<MessageV2.Part>(keys)
       const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
+      for (const part of parts) {
+        if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
+          part.state.output = ""
+        }
+      }
       return parts
     },
   )

@@ -2,8 +2,6 @@ import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { Instance } from "../../src/scope/instance"
 import { Storage } from "../../src/storage/storage"
-import { Session } from "../../src/session"
-import { Bus } from "../../src/bus"
 import { tmpdir } from "../fixture/fixture"
 
 // fromConfig tests
@@ -565,52 +563,6 @@ test("reply - reject cancels all pending for same session", async () => {
   })
 })
 
-test("setAllowAll publishes affected session states", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const root = await Session.create({ title: "root" })
-      const child = await Session.create({ title: "child", parentID: root.id })
-      const eventPromise = Promise.withResolvers<{
-        sessionID: string
-        enabled: boolean
-        sessions: { sessionID: string; enabled: boolean }[]
-      }>()
-      const unsub = Bus.subscribe(PermissionNext.Event.AllowAllChanged, (event) => {
-        eventPromise.resolve(event.properties)
-      })
-
-      await PermissionNext.setAllowAll(root.id, true)
-      const payload = await eventPromise.promise
-      unsub()
-
-      expect(payload.sessionID).toBe(root.id)
-      expect(payload.enabled).toBe(true)
-      expect(payload.sessions).toEqual(
-        expect.arrayContaining([
-          { sessionID: root.id, enabled: true },
-          { sessionID: child.id, enabled: true },
-        ]),
-      )
-    },
-  })
-})
-
-test("isAllowingAll resolves inherited parent state from stored sessions", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const root = await Session.create({ title: "root inherited" })
-      const child = await Session.create({ title: "child inherited", parentID: root.id })
-
-      await PermissionNext.setAllowAll(root.id, true)
-      expect(await PermissionNext.isAllowingAll(child.id)).toBe(true)
-    },
-  })
-})
-
 test("ask - checks all patterns and stops on first deny", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
@@ -673,4 +625,176 @@ test("sessionRuleset - unattended sessions deny question", () => {
   })
 
   expect(PermissionNext.evaluate("question", "*", result).action).toBe("deny")
+})
+
+// === Workspace boundary / non-bypassable tests ===
+
+test("ask - nonBypassable metadata stays pending for ask rules", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const promise = PermissionNext.ask({
+        id: "permission_nonbypass_1",
+        sessionID: "session_test_nonbypass",
+        permission: "bash",
+        patterns: ["cat /etc/shadow"],
+        metadata: { nonBypassable: true, workspaceBoundary: true },
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      expect(promise).toBeInstanceOf(Promise)
+
+      const pending = await PermissionNext.list()
+      const nonBypassableRequest = pending.find((r) => r.sessionID === "session_test_nonbypass")
+      expect(nonBypassableRequest).toBeDefined()
+
+      // Clean up
+      if (nonBypassableRequest) {
+        await PermissionNext.reply({ requestID: nonBypassableRequest.id, reply: "once" })
+      }
+      await expect(promise).resolves.toBeUndefined()
+    },
+  })
+})
+
+test("ask - workspaceBoundary metadata prevents unattended auto-approve", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      // Request with workspaceBoundary metadata and unattended mode
+      // should NOT be auto-approved
+      const promise = PermissionNext.ask({
+        sessionID: "session_test_workspace_boundary",
+        permission: "bash",
+        patterns: ["rm /outside/file"],
+        metadata: {
+          sessionInteractionMode: "unattended",
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+        },
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      // Should still be pending (not resolved by unattended auto-approve)
+      expect(promise).toBeInstanceOf(Promise)
+
+      // Resolve to clean up without leaking an unhandled rejection into the next test.
+      const request = await PermissionNext.list()
+      const pendingId = request.find((r) => r.sessionID === "session_test_workspace_boundary")
+      expect(pendingId).toBeDefined()
+      if (pendingId) {
+        await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
+      }
+      await expect(promise).resolves.toBeUndefined()
+    },
+  })
+})
+
+test("ask - nonBypassable metadata keeps edit ask pending", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const promise = PermissionNext.ask({
+        sessionID: "session_test_nonbypass2",
+        permission: "edit",
+        patterns: ["/outside/workspace/file.ts"],
+        metadata: { nonBypassable: true },
+        ruleset: [{ permission: "edit", pattern: "*", action: "ask" }],
+      })
+
+      expect(promise).toBeInstanceOf(Promise)
+
+      // Clean up
+      const request = await PermissionNext.list()
+      const pendingId = request.find((r) => r.sessionID === "session_test_nonbypass2")
+      if (pendingId) {
+        await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
+      }
+      await expect(promise).resolves.toBeUndefined()
+    },
+  })
+})
+
+test("ask - nonBypassable workspace boundary metadata keeps bash ask pending", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const promise = PermissionNext.ask({
+        sessionID: "session_test_nonbypass_base",
+        permission: "bash",
+        patterns: ["cat /outside/file"],
+        metadata: { nonBypassable: true, workspaceBoundary: true },
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      expect(promise).toBeInstanceOf(Promise)
+
+      const request = await PermissionNext.list()
+      const pendingId = request.find((r) => r.sessionID === "session_test_nonbypass_base")
+      if (pendingId) {
+        await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
+      }
+      await expect(promise).resolves.toBeUndefined()
+    },
+  })
+})
+
+// === Rule ordering preservation ===
+
+test("evaluate - rule ordering unchanged with nonBypassable metadata present", () => {
+  const ruleset: PermissionNext.Ruleset = [
+    { permission: "edit", pattern: "src/*", action: "allow" },
+    { permission: "edit", pattern: "src/secret/*", action: "deny" },
+    { permission: "edit", pattern: "src/secret/ok.ts", action: "allow" },
+  ]
+
+  // Verify the existing last-match-wins ordering is unchanged
+  expect(PermissionNext.evaluate("edit", "src/secret/ok.ts", ruleset).action).toBe("allow")
+  expect(PermissionNext.evaluate("edit", "src/secret/other.ts", ruleset).action).toBe("deny")
+  expect(PermissionNext.evaluate("edit", "src/foo.ts", ruleset).action).toBe("allow")
+})
+
+test("evaluate - general allow followed by specific deny works with nonBypassable context", () => {
+  // This pattern must remain: general allow then specific deny = deny (last match wins)
+  const ruleset: PermissionNext.Ruleset = [
+    { permission: "bash", pattern: "*", action: "allow" },
+    { permission: "bash", pattern: "rm /outside/*", action: "deny" },
+  ]
+
+  expect(PermissionNext.evaluate("bash", "ls", ruleset).action).toBe("allow")
+  expect(PermissionNext.evaluate("bash", "rm /outside/passwd", ruleset).action).toBe("deny")
+})
+
+test("evaluate - wildcard permission ordering preserved with new permission types", () => {
+  const ruleset: PermissionNext.Ruleset = [
+    { permission: "*", pattern: "*", action: "ask" },
+    { permission: "mcp_*", pattern: "*", action: "allow" },
+    { permission: "mcp_dangerous", pattern: "*", action: "deny" },
+  ]
+
+  // Wildcard permission fallback, then glob permission, then specific — last wins
+  expect(PermissionNext.evaluate("mcp_dangerous", "anything", ruleset).action).toBe("deny")
+  expect(PermissionNext.evaluate("mcp_safe", "anything", ruleset).action).toBe("allow")
+  expect(PermissionNext.evaluate("bash", "anything", ruleset).action).toBe("ask")
+})
+
+test("evaluate - merge preserves rule ordering needed for workspace boundary rules", () => {
+  const base: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
+  const overlay: PermissionNext.Ruleset = [
+    { permission: "bash", pattern: "/outside/*", action: "deny" },
+    { permission: "bash", pattern: "/outside/safe/*", action: "allow" },
+  ]
+
+  const merged = PermissionNext.merge(base, overlay)
+
+  // overlay's deny should win after merge (last match wins)
+  expect(PermissionNext.evaluate("bash", "/outside/dangerous", merged).action).toBe("deny")
+  // overlay's allow exception should win after merge
+  expect(PermissionNext.evaluate("bash", "/outside/safe/ok.sh", merged).action).toBe("allow")
+  // base's allow should apply for normal paths
+  expect(PermissionNext.evaluate("bash", "src/build.sh", merged).action).toBe("allow")
 })

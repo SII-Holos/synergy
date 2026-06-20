@@ -335,6 +335,76 @@
   text-decoration: underline;
 }
 
+/* ===== Control profile cards ===== */
+
+.ds-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ds-profile-card {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 42%, transparent);
+  background: color-mix(in srgb, var(--surface-raised-base) 90%, var(--background-base));
+  color: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.ds-profile-card:hover {
+  border-color: color-mix(in oklch, var(--border-base) 70%, transparent);
+  background: var(--surface-raised-base-hover);
+}
+
+.ds-profile-card-active {
+  border-color: color-mix(in oklch, var(--accent-base) 70%, var(--border-base));
+  background: color-mix(in oklch, var(--accent-base) 10%, var(--surface-raised-stronger-non-alpha));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent-base) 22%, transparent);
+}
+
+.ds-profile-name {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.ds-profile-description {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-weak);
+}
+
+.ds-sandbox-status {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--border-base) 12%, transparent);
+}
+
+.ds-sandbox-status-ok {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--icon-success-base) 12%, transparent);
+}
+
+@media (max-width: 840px) {
+  .ds-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ===== MCP card ===== */
 
 .ds-mcp-card {

@@ -8,6 +8,7 @@ import { Filesystem } from "../util/filesystem"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
+import { MEMORY_CATEGORIES } from "./schema"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -147,6 +148,32 @@ async function migrateSchemaUrl(filepath: string): Promise<boolean> {
   return true
 }
 
+async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const present = keys.filter((key) => key in config)
+  if (present.length === 0) return false
+
+  let text = raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  for (const key of present) {
+    text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+  }
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("removed deprecated top-level config keys", { path: filepath, keys: present })
+  return true
+}
+
 async function migrateSiiAuthToPlugin(): Promise<boolean> {
   const home = process.env.HOME || process.env.USERPROFILE || "~"
   const oldInspirePath = path.join(home, ".synergy", "data", "auth", "inspire.json")
@@ -256,6 +283,204 @@ async function migrateSiiToPluginConfig(filepath: string): Promise<boolean> {
     path: filepath,
     movedKeys: Object.keys(defaults),
   })
+  return true
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+}
+
+function mergeMissing(existing: unknown, migrated: unknown): unknown {
+  if (!isRecord(existing) || !isRecord(migrated)) return existing ?? migrated
+
+  const result: Record<string, unknown> = { ...existing }
+  for (const [key, value] of Object.entries(migrated)) {
+    result[key] = key in result ? mergeMissing(result[key], value) : value
+  }
+  return result
+}
+
+function sanitizeRetrieval(input: Record<string, unknown>): Record<string, unknown> {
+  const retrieval: Record<string, unknown> = {}
+  if (typeof input.simThreshold === "number") retrieval.simThreshold = input.simThreshold
+  if (typeof input.topK === "number") retrieval.topK = input.topK
+  if (isRecord(input.categories)) {
+    const categories: Record<string, unknown> = {}
+    for (const category of MEMORY_CATEGORIES) {
+      const value = input.categories[category]
+      const sanitized: Record<string, unknown> = {}
+      if (isRecord(value)) {
+        if (typeof value.simThreshold === "number") sanitized.simThreshold = value.simThreshold
+        if (typeof value.topK === "number") sanitized.topK = value.topK
+      }
+      categories[category] = sanitized
+    }
+    retrieval.categories = categories
+  }
+  return retrieval
+}
+
+function engramFromLegacyEvolution(evolution: unknown): Record<string, unknown> {
+  if (typeof evolution === "boolean") {
+    return {
+      memory: { enabled: evolution },
+      experience: { encode: evolution, retrieve: evolution },
+    }
+  }
+
+  if (!isRecord(evolution)) return {}
+
+  const engram: Record<string, unknown> = {}
+  const memory: Record<string, unknown> = {}
+  const experience: Record<string, unknown> = {}
+
+  const active = evolution.active
+  if (typeof active === "boolean") {
+    memory.enabled = active
+  } else if (isRecord(active)) {
+    const retrieve = active.retrieve
+    if (retrieve === false) {
+      memory.enabled = false
+    } else if (isRecord(retrieve)) {
+      const sanitized = sanitizeRetrieval(retrieve)
+      if (Object.keys(sanitized).length > 0) memory.retrieval = sanitized
+    }
+    if (typeof active.memoryDedupThreshold === "number") {
+      memory.dedup = { threshold: active.memoryDedupThreshold }
+    }
+  }
+
+  const passive = evolution.passive
+  if (typeof passive === "boolean") {
+    experience.encode = passive
+    experience.retrieve = passive
+  } else if (isRecord(passive)) {
+    if (typeof passive.encode === "boolean") experience.encode = passive.encode
+    if (typeof passive.retrieve === "boolean" || isRecord(passive.retrieve)) {
+      experience.retrieve = passive.retrieve
+    }
+    if (isRecord(passive.learning)) experience.learning = passive.learning
+  }
+
+  if (Object.keys(memory).length > 0) engram.memory = memory
+  if (Object.keys(experience).length > 0) engram.experience = experience
+  return engram
+}
+
+async function migrateIdentityToEngram(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const identity = isRecord(config.identity) ? config.identity : undefined
+
+  if (!identity) return false
+
+  let text = raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  if (isRecord(identity.embedding) && config.embedding === undefined) {
+    text = applyEdits(text, modify(text, ["embedding"], identity.embedding, { formattingOptions }))
+  }
+
+  if (isRecord(identity.rerank) && config.rerank === undefined) {
+    text = applyEdits(text, modify(text, ["rerank"], identity.rerank, { formattingOptions }))
+  }
+
+  let migratedEngram: Record<string, unknown> = {}
+  if (identity.evolution !== undefined) {
+    migratedEngram = mergeMissing(migratedEngram, engramFromLegacyEvolution(identity.evolution)) as Record<
+      string,
+      unknown
+    >
+  }
+
+  if (identity.autonomy !== undefined) {
+    migratedEngram = mergeMissing(migratedEngram, { autonomy: identity.autonomy }) as Record<string, unknown>
+  }
+
+  if (Object.keys(migratedEngram).length > 0) {
+    text = applyEdits(
+      text,
+      modify(text, ["engram"], mergeMissing(config.engram, migratedEngram), { formattingOptions }),
+    )
+  }
+
+  text = applyEdits(text, modify(text, ["identity"], undefined, { formattingOptions }))
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("migrated identity config to embedding/rerank/engram", { path: filepath })
+  return true
+}
+
+async function repairEngramLegacyShapes(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  const engram = isRecord(config.engram) ? config.engram : undefined
+  const memory = isRecord(engram?.memory) ? engram.memory : undefined
+  const experience = isRecord(engram?.experience) ? engram.experience : undefined
+  if (!memory && !experience) return false
+
+  let text = raw
+  let changed = false
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  if (typeof memory?.retrieval === "boolean") {
+    if (memory.retrieval === false && memory.enabled === undefined) {
+      text = applyEdits(text, modify(text, ["engram", "memory", "enabled"], false, { formattingOptions }))
+    }
+    text = applyEdits(text, modify(text, ["engram", "memory", "retrieval"], undefined, { formattingOptions }))
+    changed = true
+  }
+
+  const retrieval = isRecord(memory?.retrieval) ? memory.retrieval : undefined
+  const categories = isRecord(retrieval?.categories) ? retrieval.categories : undefined
+  if (categories) {
+    const repairedCategories: Record<string, unknown> = {}
+    let needsCategoryRepair = false
+    for (const category of MEMORY_CATEGORIES) {
+      const value = categories[category]
+      if (!isRecord(value)) needsCategoryRepair = true
+      const sanitized: Record<string, unknown> = {}
+      if (isRecord(value)) {
+        if (typeof value.simThreshold === "number") sanitized.simThreshold = value.simThreshold
+        if (typeof value.topK === "number") sanitized.topK = value.topK
+      }
+      repairedCategories[category] = sanitized
+    }
+    if (needsCategoryRepair) {
+      text = applyEdits(
+        text,
+        modify(text, ["engram", "memory", "retrieval", "categories"], repairedCategories, { formattingOptions }),
+      )
+      changed = true
+    }
+  }
+
+  if (typeof experience?.learning === "boolean") {
+    text = applyEdits(text, modify(text, ["engram", "experience", "learning"], undefined, { formattingOptions }))
+    changed = true
+  }
+
+  if (!changed) return false
+
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("repaired legacy engram config shapes", { path: filepath })
   return true
 }
 
@@ -392,6 +617,59 @@ export const migrations: Migration[] = [
 
         await Bun.write(filepath, text)
         log.info("removed deprecated keys from pluginConfig.inspire", { path: filepath })
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+
+  {
+    id: "20260617-config-identity-to-engram",
+    description: "Migrate identity config to embedding/rerank/engram fields",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        try {
+          await migrateIdentityToEngram(filepath)
+        } catch (err) {
+          log.warn("failed to migrate identity config", {
+            path: filepath,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260618-config-repair-legacy-engram-shapes",
+    description: "Repair invalid engram config shapes from legacy identity migration",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await repairEngramLegacyShapes(filepath)
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260619-config-remove-holos-friend-reply-model",
+    description: "Remove deprecated Holos friend reply model config",
+    async up(progress) {
+      const files = await findConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await removeTopLevelConfigKeys(filepath, ["holos_friend_reply_model"])
         done++
         progress(done, files.length)
       }
