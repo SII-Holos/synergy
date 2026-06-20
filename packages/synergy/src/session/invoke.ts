@@ -17,8 +17,8 @@ import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
-import { Command } from "../skill/command"
 import { WorktreeCommand } from "../project/worktree-command"
+import { Command } from "../command/command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -73,9 +73,8 @@ export namespace SessionInvoke {
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-    SessionManager.release(sessionID).catch((err) => {
-      log.error("release failed", { sessionID, error: err })
-    })
+    PermissionNext.clearForSession(sessionID)
+    SessionManager.signalAbort(sessionID)
   }
 
   export const invoke = fn(InvokeInput, async (input) => {
@@ -147,13 +146,12 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession && !isGenesis) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.get()
-      return withTimeout(
-        buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
-        RECALL_TIMEOUT_MS,
-      ).catch((err: any) => {
-        log.warn("recall failed or timed out", { sessionID, error: err })
-        return undefined
-      })
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
+        (err: any) => {
+          log.warn("recall failed or timed out", { sessionID, error: err })
+          return undefined
+        },
+      )
     }
     // Keep the recalled memory/experience in the system prompt for every step
     // so the prefix stays stable (maximizing cache hits) and the agent retains
@@ -164,8 +162,8 @@ export namespace SessionInvoke {
     }
     if (step === 1 && !isTopSession) {
       const cfg = await Config.get()
-      const evo = Config.resolveEvolution(cfg.identity?.evolution)
-      if (evo.active) {
+      const engram = cfg.engram
+      if (engram?.autonomy !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }
@@ -183,7 +181,11 @@ export namespace SessionInvoke {
       })
     }
 
-    using _ = defer(() => cancel(sessionID))
+    using _ = defer(() => {
+      SessionManager.release(sessionID).catch((err) => {
+        log.error("release failed", { sessionID, error: err })
+      })
+    })
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
@@ -275,9 +277,8 @@ export namespace SessionInvoke {
           hasExternal: !!agent.external,
           adapter: agent.external?.adapter,
         })
-
         if (agent.external) {
-          const allowAll = await PermissionNext.isAllowingAll(sessionID)
+          const profile = session.controlProfile
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -290,7 +291,7 @@ export namespace SessionInvoke {
               ...agent.external.config,
             },
             adapter.name,
-            allowAll,
+            profile,
           )
           const nativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
           const override = nativeAuth ? undefined : await resolveExternalModelOverride(lastUser.model, adapter.name)
@@ -987,19 +988,19 @@ export namespace SessionInvoke {
   export function applyExternalPermissionMode(
     config: Record<string, unknown>,
     adapterName: string,
-    allowAll: boolean,
+    profile: string,
   ): Record<string, unknown> {
+    const allowAll = profile === "full_access"
+    config.controlProfile = profile
     config.allowAll = allowAll
 
     if (adapterName === "claude-code") {
       delete config.skipPermissions
       config.permissionMode = allowAll ? "bypassPermissions" : "default"
-      return config
     }
 
     return config
   }
-
   function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
     switch (adapterName) {
       case "codex":
@@ -1106,7 +1107,7 @@ export namespace SessionInvoke {
       time: { created: Date.now() },
       agent: agentName,
       model: parsedModel,
-      metadata: { command: input.command },
+      metadata: { command: input.command, promptVisible: false },
     })
     await Session.updatePart({
       id: Identifier.ascending("part"),
@@ -1115,7 +1116,6 @@ export namespace SessionInvoke {
       type: "text",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
     })
-
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -1133,6 +1133,7 @@ export namespace SessionInvoke {
       finish: "stop",
       modelID: parsedModel.modelID,
       providerID: parsedModel.providerID,
+      metadata: { promptVisible: false },
     }
     await Session.updateMessage(msg)
     await Session.updatePart({
