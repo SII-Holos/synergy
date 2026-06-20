@@ -121,13 +121,13 @@
    triggers style recalc or layout. */
 .session-progress-island-panel-wrap {
   position: relative;
-  max-height: 0;
+  height: 0;
   overflow: hidden;
-  transition: max-height 240ms cubic-bezier(0.2, 0, 0, 1);
+  transition: height 240ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
-  max-height: min(68vh, 720px);
+  height: min(68vh, 720px);
 }
 
 .session-progress-island-panel {
