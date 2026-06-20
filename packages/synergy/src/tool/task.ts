@@ -21,7 +21,15 @@ const parameters = z.object({
         "Recommend also specifying what NOT to do (scope boundaries, forbidden actions) to prevent scope creep.",
     ),
   subagent_type: z.string().describe("The type of specialized agent to use for this task"),
-  session_id: z.string().describe("Existing Task session to continue").optional(),
+  session_id: z
+    .string()
+    .describe(
+      "Reuse an existing session for this task instead of creating a new one. " +
+        "The session must be idle (not currently running) and must have been created by the same parent. " +
+        "If the session is busy, the call will fail with an error — wait or use a different session. " +
+        "Omit to create a new session (default).",
+    )
+    .optional(),
   command: z.string().describe("The command that triggered this task").optional(),
   dag_node_id: z.string().optional().describe("DAG node ID to auto-update when this task completes"),
   background: z
@@ -136,8 +144,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       let sessionID: string | undefined
       if (params.session_id) {
-        const found = await Session.get(params.session_id).catch(() => undefined)
-        if (found) sessionID = found.id
+        sessionID = params.session_id
       }
 
       const { Cortex } = await import("../cortex")
@@ -176,7 +183,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
             background: true,
             summary: [],
           },
-          output: `Background task launched.
+          output: `Background task dispatched.
 
 Task ID: ${task.id}
 Session ID: ${task.sessionID}

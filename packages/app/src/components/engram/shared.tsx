@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js"
+import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
@@ -186,6 +186,21 @@ export function SelectionBar(props: {
         </button>
       </div>
     </div>
+  )
+}
+export function EngramFilterChip(props: { active: boolean; onClick: () => void; children: any }) {
+  return (
+    <button
+      type="button"
+      classList={{
+        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
+        "bg-surface-raised-base-hover text-text-strong": props.active,
+        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
+      }}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
   )
 }
 

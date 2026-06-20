@@ -26,7 +26,6 @@ import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
-import "katex/dist/katex.min.css"
 
 function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
   const title = note.title || "Untitled"
@@ -52,8 +51,9 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
 }
 
 function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () => void }) {
-  const previewText = createMemo(() => props.note.searchText ?? "")
-  const hasContent = createMemo(() => previewText().length > 0)
+  const previewHtml = createMemo(() => props.note.previewHtml ?? null)
+  const searchPreview = createMemo(() => props.note.searchText ?? "")
+  const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
 
   return (
     <button
@@ -77,7 +77,19 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () 
           </div>
         }
       >
-        <div class="px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-3">{previewText()}</div>
+        <Show
+          when={previewHtml()}
+          fallback={
+            <div class="px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-4 whitespace-pre-line">
+              {searchPreview()}
+            </div>
+          }
+        >
+          <div
+            class="note-preview-content px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-4"
+            innerHTML={previewHtml()!}
+          />
+        </Show>
       </Show>
 
       <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
@@ -108,6 +120,23 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () 
         <span class="mt-2 block text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
       </div>
     </button>
+  )
+}
+
+/** Skeleton placeholder matching NoteCard shape, shown during list loading */
+function NoteCardSkeleton() {
+  return (
+    <div class="flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
+      <div class="px-3.5 py-4 space-y-2">
+        <div class="h-2.5 w-full rounded bg-surface-inset-base/70" />
+        <div class="h-2.5 w-3/4 rounded bg-surface-inset-base/70" />
+        <div class="h-2.5 w-1/2 rounded bg-surface-inset-base/70" />
+      </div>
+      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
+        <div class="h-3 w-2/3 rounded bg-surface-inset-base/70" />
+        <div class="mt-3 h-2.5 w-1/3 rounded bg-surface-inset-base/70" />
+      </div>
+    </div>
   )
 }
 
@@ -254,7 +283,10 @@ function ScopeSection(props: {
           when={props.group.notes.length > 0}
           fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
-          <div class="mt-2 flex flex-col gap-2.5 px-1 mb-1">
+          <div
+            class="mt-2 grid gap-2.5 px-1 mb-1"
+            style="grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr))"
+          >
             <For each={props.group.notes}>
               {(note) => (
                 <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
@@ -482,8 +514,16 @@ export function NotePanel() {
 
           <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Show when={rawGroups.loading}>
-              <div class="flex items-center justify-center py-16">
-                <Spinner class="size-5" />
+              <div
+                class="grid gap-3 py-4"
+                style="grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr))"
+              >
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
               </div>
             </Show>
             <Show when={!rawGroups.loading}>
@@ -1265,5 +1305,73 @@ const TIPTAP_STYLES = `
   }
   .note-bubble-menu {
     z-index: 100;
+  }
+  .note-preview-content p,
+  .note-preview-content ul,
+  .note-preview-content ol,
+  .note-preview-content blockquote,
+  .note-preview-content pre {
+    margin-bottom: 0.4em;
+  }
+  .note-preview-content ul,
+  .note-preview-content ol {
+    padding-left: 1.2em;
+  }
+  .note-preview-content ul { list-style-type: disc; }
+  .note-preview-content ol { list-style-type: decimal; }
+  .note-preview-content h1,
+  .note-preview-content h2,
+  .note-preview-content h3 {
+    font-weight: 600;
+    margin-bottom: 0.3em;
+    color: var(--text-base);
+  }
+  .note-preview-content h1 { font-size: 1rem; }
+  .note-preview-content h2 { font-size: 0.9375rem; }
+  .note-preview-content h3 { font-size: 0.875rem; }
+  .note-preview-content code {
+    background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
+    border-radius: 0.3rem;
+    padding: 0.05em 0.3em;
+    font-size: 0.85em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  .note-preview-content pre {
+    background: var(--surface-inset-base);
+    border-radius: 0.5rem;
+    padding: 0.5em 0.65em;
+    overflow-x: auto;
+    font-size: 0.8em;
+  }
+  .note-preview-content pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+  }
+  .note-preview-content blockquote {
+    border-left: 2px solid color-mix(in srgb, var(--border-weak-base) 80%, transparent);
+    padding-left: 0.6em;
+    color: var(--text-weaker);
+  }
+  .note-preview-content .note-preview-task-list {
+    list-style: none;
+    padding-left: 0;
+  }
+  .note-preview-content .note-preview-task-list li {
+    display: flex;
+    gap: 0.4em;
+    align-items: flex-start;
+  }
+  .note-preview-content .note-preview-task-list input[type="checkbox"] {
+    margin-top: 0.2em;
+  }
+  .note-preview-content strong {
+    font-weight: 600;
+  }
+  .note-preview-content em {
+    font-style: italic;
+  }
+  .note-preview-content s {
+    text-decoration: line-through;
   }
 `

@@ -3,6 +3,7 @@ import { Dynamic } from "solid-js/web"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
+import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
 import "./workspace-drawer.css"
 
 export function WorkspaceDrawer() {
@@ -44,17 +45,22 @@ export function WorkspaceDrawer() {
   })
 
   // Resize
-  const maxWidth = () => Math.min(900, window.innerWidth * 0.45)
+  const maxWidth = () => computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH })
   const handleResize = (w: number) => {
-    workspace.setWidth(Math.max(300, Math.min(w, maxWidth())))
+    workspace.setWidth(w)
   }
 
   return (
-    <>
+    <div
+      class="workspace-drawer relative shrink-0 h-full"
+      classList={{ "workspace-drawer--closing": !workspace.opened() && closing() }}
+      style={{ width: workspace.opened() ? `${workspace.width()}px` : "0px" }}
+    >
       <ResizeHandle
         direction="horizontal"
+        edge="start"
         size={workspace.width()}
-        min={300}
+        min={WORKSPACE_MIN_WIDTH}
         max={maxWidth()}
         onResize={handleResize}
         collapseThreshold={200}
@@ -65,16 +71,9 @@ export function WorkspaceDrawer() {
       />
       <aside
         ref={drawerEl}
-        class="shrink-0 h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
-        classList={{
-          "workspace-drawer": true,
-          "workspace-drawer--closing": !workspace.opened() && closing(),
-        }}
+        class="w-full h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
         role="complementary"
         aria-label="Session workspace"
-        style={{
-          width: workspace.opened() ? `${workspace.width()}px` : "0px",
-        }}
       >
         <div class="flex-1 min-h-0 overflow-hidden">
           <Show
@@ -95,6 +94,6 @@ export function WorkspaceDrawer() {
           </Show>
         </div>
       </aside>
-    </>
+    </div>
   )
 }

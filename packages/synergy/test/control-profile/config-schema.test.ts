@@ -3,10 +3,15 @@ import { ControlProfileId } from "../../src/config/schema"
 
 describe("ControlProfileId schema", () => {
   test("valid profile ids parse successfully", () => {
-    for (const id of ["manual", "guarded", "autonomous", "full_access"]) {
+    for (const id of ["guarded", "autonomous", "full_access"]) {
       const result = ControlProfileId.safeParse(id)
       expect(result.success).toBe(true)
     }
+  })
+
+  test("removed manual profile id fails validation", () => {
+    const result = ControlProfileId.safeParse("manual")
+    expect(result.success).toBe(false)
   })
 
   test("invalid profile id fails validation", () => {
@@ -31,11 +36,11 @@ describe("Config schema accepts controlProfile", () => {
   test("top-level controlProfile accepts valid value", () => {
     const result = Info.safeParse({
       $schema: "file:///test/schema.json",
-      controlProfile: "manual",
+      controlProfile: "guarded",
     })
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.controlProfile).toBe("manual")
+      expect(result.data.controlProfile).toBe("guarded")
     }
   })
 

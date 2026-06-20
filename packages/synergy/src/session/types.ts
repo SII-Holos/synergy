@@ -55,7 +55,7 @@ const CortexDelegationInfoInner = z.object({
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
-const ControlProfileId = z.enum(["manual", "guarded", "autonomous", "full_access"])
+const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
 export const WorkingInfo = z
   .union([

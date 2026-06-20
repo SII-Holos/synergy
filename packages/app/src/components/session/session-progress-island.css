@@ -1,5 +1,15 @@
 .session-progress-island {
-  position: relative;
+  /* Absolutely positioned above the prompt input so that expanding the
+     island does NOT change the prompt dock's height. Previously the island
+     was in normal flow inside the dock, so expanding it grew the dock,
+     which changed the --prompt-height CSS var, which re-laid-out the
+     entire message list (~7000 elements, 60-80ms per expand). Now the
+     island floats as an overlay: visually it covers messages above, but
+     the dock height (and thus --prompt-height) stays constant. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
   z-index: 2;
   display: flex;
   width: 100%;
@@ -16,18 +26,15 @@
   color: var(--color-text-base);
   background: color-mix(in srgb, var(--color-surface-raised-stronger) 74%, transparent);
   transition:
-    width 260ms cubic-bezier(0.2, 0, 0, 1),
-    max-width 260ms cubic-bezier(0.2, 0, 0, 1),
-    border-radius 260ms cubic-bezier(0.2, 0, 0, 1),
-    transform 220ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 180ms ease-out;
-  animation: session-progress-island-enter 220ms cubic-bezier(0.2, 0, 0, 1) both;
+    max-width 240ms cubic-bezier(0.2, 0, 0, 1),
+    border-radius 240ms cubic-bezier(0.2, 0, 0, 1);
+  animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .session-progress-island[data-expanded="true"] .session-progress-island-surface {
   width: 100%;
-  max-width: min(760px, calc(100vw - 24px));
-  border-radius: 24px;
+  max-width: min(900px, calc(100vw - 24px));
+  border-radius: 22px;
 }
 
 .session-progress-island-header {
@@ -110,13 +117,54 @@
   transform: rotate(180deg);
 }
 
+/* Expand/collapse with the panel taken out of normal flow.
+
+   5 Chrome traces showed the DAG panel's ~7000 DOM elements make any height
+   animation expensive when the panel is in flow (grid 0fr→1fr, max-height,
+   contain, content-visibility all recalc'd thousands of elements per frame),
+   and display:none caused a 60ms cold-layout on each toggle.
+
+   Solution: position:absolute the panel so it never participates in the
+   wrapper's layout. The wrapper animates its own height via max-height (cheap
+   — it's an empty container). The panel is always rendered (no cold layout),
+   animating only opacity + a compositor-friendly transform. Neither property
+   triggers style recalc or layout. */
+.session-progress-island-panel-wrap {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  transition: height 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] {
+  height: min(52vh, 560px);
+}
+
 .session-progress-island-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  max-height: min(52vh, 560px);
-  min-height: 280px;
+  height: min(52vh, 560px);
   flex-direction: column;
+  overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
-  animation: session-progress-island-panel-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    opacity 220ms ease-out 40ms,
+    transform 240ms cubic-bezier(0.2, 0, 0, 1) 40ms;
 }
 
 .session-progress-island-panel-topline {
@@ -125,7 +173,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px 16px 6px;
+  padding: 7px 12px 5px;
   color: var(--color-text-subtle);
   font-size: 12px;
 }
@@ -134,7 +182,7 @@
   display: flex;
   flex: 0 0 auto;
   gap: 4px;
-  padding: 0 16px 8px;
+  padding: 0 12px 6px;
 }
 
 .session-progress-island-tab {
@@ -161,7 +209,7 @@
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  padding: 0 10px 10px;
+  padding: 0 6px;
 }
 
 @keyframes session-progress-island-enter {
@@ -172,17 +220,6 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes session-progress-island-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -200,12 +237,12 @@
   .session-progress-island-surface,
   .session-progress-island-header,
   .session-progress-island-chevron,
-  .session-progress-island-tab {
+  .session-progress-island-tab,
+  .session-progress-island-panel-wrap {
     transition: none;
   }
 
   .session-progress-island-surface,
-  .session-progress-island-panel,
   .session-progress-island[data-tone="running"]
     .session-progress-island-indicator
     [data-slot="progress-circle-progress"] {

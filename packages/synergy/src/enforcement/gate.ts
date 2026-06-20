@@ -1,3 +1,4 @@
+import path from "node:path"
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier } from "./classify"
@@ -76,11 +77,20 @@ const DESTRUCTIVE_PATTERNS = [
   "git push --delete",
   "git stash clear",
   "git stash drop",
+  "git stash pop",
   // Git history rewriting
   "git rebase ",
   "git filter-branch",
   "git reflog expire",
   "git reflog delete",
+  // Git refined classifications — defense-in-depth
+  "git push ",
+  "git pull --rebase",
+  "git pull -r",
+  "git revert ",
+  "git rm ",
+  "git commit --amend",
+  "git reset ",
 ]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
@@ -135,28 +145,18 @@ const SAFE_PSEUDO_PATHS = new Set([
 
 const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 
-const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
+// const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
+//
+// const AGORA_STATEFUL_TOOLS = new Set([
+//   "agora_post",
+//   "agora_comment",
+//   "agora_submit",
+//   "agora_sync",
+//   "agora_join",
+//   "agora_accept",
+// ])
 
-const AGORA_STATEFUL_TOOLS = new Set([
-  "agora_post",
-  "agora_comment",
-  "agora_submit",
-  "agora_sync",
-  "agora_join",
-  "agora_accept",
-])
-
-const INSPIRE_STATEFUL_TOOLS = new Set([
-  "inspire_login",
-  "inspire_submit",
-  "inspire_submit_hpc",
-  "inspire_stop",
-  "inspire_image_push",
-  "inspire_notebook",
-  "inspire_inference",
-])
-
-const PLATFORM_CONTROL_TOOLS = new Set([
+const AGENT_ORCHESTRATION_TOOLS = new Set([
   "runtime_reload",
   "session_control",
   "agenda_schedule",
@@ -264,7 +264,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
+      paths.push(path.isAbsolute(raw) ? raw : path.join(cwd, raw))
     }
   }
   return paths
@@ -370,22 +370,22 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Agora is external collaboration I/O. Join/accept also touch local
-      // directories, so they keep the file path classification in addition to
-      // network/platform capabilities.
-      if (AGORA_NETWORK_TOOLS.has(toolName) || AGORA_STATEFUL_TOOLS.has(toolName)) {
-        caps.push({ class: "network_request", nonBypassable: true })
-        if (AGORA_STATEFUL_TOOLS.has(toolName)) {
-          caps.push({ class: "platform_control", nonBypassable: true })
-        }
-        if (toolName === "agora_join" || toolName === "agora_accept") {
-          const dir = args.directory ?? ""
-          if (dir) {
-            classifyPathCapability(caps, dir, { activeWorkspace, originalCheckout, write: true })
-          }
-        }
-        return { capabilities: caps }
-      }
+      //       // Agora is external collaboration I/O. Join/accept also touch local
+      //       // directories, so they keep the file path classification in addition to
+      //       // network/platform capabilities.
+      //       if (AGORA_NETWORK_TOOLS.has(toolName) || AGORA_STATEFUL_TOOLS.has(toolName)) {
+      //         caps.push({ class: "network_request", nonBypassable: true })
+      //         if (AGORA_STATEFUL_TOOLS.has(toolName)) {
+      //           caps.push({ class: "platform_control", nonBypassable: true })
+      //         }
+      //         if (toolName === "agora_join" || toolName === "agora_accept") {
+      //           const dir = args.directory ?? ""
+      //           if (dir) {
+      //             classifyPathCapability(caps, dir, { activeWorkspace, originalCheckout, write: true })
+      //           }
+      //         }
+      //         return { capabilities: caps }
+      //       }
 
       // Shell operations
       if (toolName === "bash") {
@@ -436,18 +436,14 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // SII Inspire tools call external compute infrastructure. Stateful tools
-      // additionally control platform resources and must stay non-bypassable.
+      // SII Inspire tools call external compute infrastructure.
       if (toolName.startsWith("inspire_")) {
         caps.push({ class: "network_request", nonBypassable: true })
-        if (INSPIRE_STATEFUL_TOOLS.has(toolName)) {
-          caps.push({ class: "platform_control", nonBypassable: true })
-        }
         return { capabilities: caps }
       }
 
-      if (PLATFORM_CONTROL_TOOLS.has(toolName)) {
-        caps.push({ class: "platform_control", nonBypassable: true })
+      if (AGENT_ORCHESTRATION_TOOLS.has(toolName)) {
+        caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }
 
@@ -503,6 +499,85 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // Read-only orchestration tools — internal agent coordination, no side effects
+      if (toolName === "dagread" || toolName === "todoread" || toolName === "task_list" || toolName === "task_output") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Stateful orchestration tools — create/mutate internal state
+      if (
+        toolName === "dagwrite" ||
+        toolName === "dagpatch" ||
+        toolName === "todowrite" ||
+        toolName === "task" ||
+        toolName === "task_cancel" ||
+        toolName === "batch"
+      ) {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Internal communication / knowledge tools — read-only user/model interactions
+      if (toolName === "question" || toolName === "skill" || toolName === "render" || toolName === "diagram") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Agenda read tools
+      if (toolName === "agenda_list" || toolName === "agenda_logs") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Filesystem listing / AST-aware search — file_read with path classification
+      if (toolName === "list" || toolName === "ast_grep" || toolName === "lsp") {
+        if (toolName === "ast_grep") {
+          const paths: string[] = Array.isArray(args.paths) ? args.paths : []
+          for (const p of paths) {
+            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, readRoots })
+          }
+          if (paths.length === 0) {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        } else {
+          const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
+          if (filePath) {
+            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          } else {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        }
+        return { capabilities: caps }
+      }
+
+      // Process management — action-based classification
+      if (toolName === "process") {
+        const action = args.action ?? ""
+        if (
+          action === "write" ||
+          action === "send-keys" ||
+          action === "kill" ||
+          action === "clear" ||
+          action === "remove"
+        ) {
+          caps.push({ class: "shell", nonBypassable: false })
+        } else {
+          caps.push({ class: "file_read", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
+
+      // Remote connection — action-based classification
+      if (toolName === "connect") {
+        const action = args.action ?? ""
+        if (action === "open" || action === "close") {
+          caps.push({ class: "network_request", nonBypassable: true })
+        } else {
+          caps.push({ class: "file_read", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

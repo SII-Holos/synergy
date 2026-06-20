@@ -78,12 +78,12 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("manual profile asks for MCP tool invocations", () => {
+  test("guarded profile asks for MCP tool invocations", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
-      profileId: "manual",
+      profileId: "guarded",
     })
 
     const envelope = gate.evaluate("mcp__github__list_repos", {

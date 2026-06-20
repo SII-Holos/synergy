@@ -5,6 +5,7 @@ import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
+import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
@@ -71,6 +72,7 @@ function SessionPageContent() {
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const workspace = createMemo(() => layout.workspace(sessionKey()))
+  const workspaceOpen = createMemo(() => workspace().opened())
   const view = createMemo(() => layout.view(sessionKey()))
 
   if (import.meta.env.DEV) {
@@ -182,9 +184,7 @@ function SessionPageContent() {
   const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
-  const [resolvingHome, setResolvingHome] = createSignal(false)
   const isNewSession = createMemo(() => {
-    if (resolvingHome()) return false
     if (!params.id) return true
     if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
     return false
@@ -360,19 +360,6 @@ function SessionPageContent() {
     if (!sdk.connected()) return
     const id = params.id
     if (id) sync.session.sync(id)
-  })
-
-  createEffect(() => {
-    if (params.id) return
-    if (!isGlobalScope(sdk.directory)) return
-    setResolvingHome(true)
-    sdk.client.channel.app.session().then((res) => {
-      const session = res.data
-      if (session) {
-        navigate(`/${params.dir}/session/${session.id}`, { replace: true })
-      }
-      setResolvingHome(false)
-    })
   })
 
   createEffect(() => {
@@ -837,11 +824,20 @@ function SessionPageContent() {
             </Tabs>
           </Show>
 
-          {/* Session panel */}
           <div
-            class="@container relative flex-1 min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
+            class="@container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
+            classList={{
+              "flex-none": isDesktop() && workspaceOpen(),
+              "flex-1": !(isDesktop() && workspaceOpen()),
+            }}
             style={{
-              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
+              width:
+                isDesktop() && workspaceOpen()
+                  ? `max(${WORKSPACE_SESSION_MIN_WIDTH}px, calc(100% - ${workspace().width()}px))`
+                  : isDesktop() && showTabs()
+                    ? `${layout.session.width()}px`
+                    : undefined,
+              "min-width": isDesktop() && workspaceOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
           >
@@ -911,6 +907,7 @@ function SessionPageContent() {
                           scrollToMessage={scrollToMessage}
                           anchor={anchor}
                           terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
+                          workspaceOpen={workspaceOpen}
                         />
                       </Show>
                     </Show>
@@ -919,7 +916,6 @@ function SessionPageContent() {
                 </Switch>
               </div>
             </div>
-
             <PromptDock
               ref={(el) => (promptDock = el)}
               inputRef={(el) => {
@@ -942,9 +938,9 @@ function SessionPageContent() {
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}
+              workspaceOpen={workspaceOpen}
             />
-
-            <Show when={isDesktop() && showTabs()}>
+            <Show when={isDesktop() && showTabs() && !workspaceOpen()}>
               <ResizeHandle
                 direction="horizontal"
                 size={layout.session.width()}

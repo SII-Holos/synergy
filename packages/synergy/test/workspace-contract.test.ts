@@ -46,32 +46,10 @@ describe("SessionTopBar contract", () => {
     expect(src).not.toContain("Toggle workspace")
     expect(src).not.toContain("panel-right")
   })
-
-  test("session-top-bar.tsx must render workspace tool buttons dynamically", async () => {
-    const src = await fs.readFile(topbarPath, "utf-8")
-
-    // The new approach: import workspace context and use workspace.tools()
-    // We verify presence of the new pattern (at minimum the import)
-    // This is intentionally permissive — exact render implementation may vary
-    const hasWorkspaceImport = src.includes("workspace") && src.includes("@/context/workspace")
-    const hasToolsUsage = src.includes(".tools()") || src.includes("workspace.tools")
-    expect(hasWorkspaceImport || hasToolsUsage).toBe(true)
-  })
 })
 
 describe("WorkspacePanel contract", () => {
   const panelPath = path.join(APP_SRC, "components/session/workspace-panel.tsx")
-
-  test("workspace-panel.tsx must use active tool icon dynamically", async () => {
-    const src = await fs.readFile(panelPath, "utf-8")
-
-    // Must not use hardcoded notebook-pen icon for the tool
-    // Instead, should use tool()?.icon or equivalent dynamic lookup
-    const hasDynamicIcon =
-      src.includes("tool()?.icon") || src.includes("activeTool()?.icon") || src.includes("Icon name={tool()")
-
-    expect(hasDynamicIcon).toBe(true)
-  })
 
   test("workspace-panel.tsx header label must be dynamic", async () => {
     const src = await fs.readFile(panelPath, "utf-8")

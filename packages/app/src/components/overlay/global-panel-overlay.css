@@ -2,8 +2,10 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.4);
-  animation: gpoFadeIn 150ms ease-out both;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: gpoFadeIn 180ms ease-out both;
 }
 
 .gpo-container {
@@ -11,23 +13,41 @@
   z-index: 101;
   display: flex;
   flex-direction: column;
-  background: var(--bg-surface-stronger);
-  border: 1px solid var(--border-weaker-base);
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
+  border: 1px solid color-mix(in srgb, var(--border-base) 62%, transparent);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
+    0 28px 90px rgba(0, 0, 0, 0.48),
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.055) inset;
+  border-radius: 18px;
   overflow: hidden;
-  animation: gpoSlideIn 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: gpoSlideIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.gpo-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.12) 20%,
+    rgba(255, 255, 255, 0.1) 80%,
+    transparent
+  );
+  z-index: 1;
+  pointer-events: none;
 }
 
 .gpo-desktop {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 70vw;
-  max-width: 900px;
-  height: 80vh;
+  width: min(calc(100vw - 48px), 1280px);
+  height: min(calc(100vh - 56px), 860px);
 }
 
 .gpo-mobile {
@@ -38,10 +58,10 @@
 }
 
 .gpo-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px;
-  flex-shrink: 0;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
 }
 
 .gpo-close {
@@ -52,6 +72,8 @@
   height: 32px;
   border-radius: 8px;
   color: var(--icon-weak);
+  background: var(--surface-raised-stronger-non-alpha, #1f2023);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   transition:
     color 150ms,
     background-color 150ms;
@@ -80,7 +102,7 @@
 @keyframes gpoSlideIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(0.97);
+    transform: translate(-50%, -48%) scale(0.98);
   }
   to {
     opacity: 1;

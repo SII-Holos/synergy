@@ -82,7 +82,7 @@ describe("tool.look_at", () => {
       })
     })
 
-    test("creates unattended child sessions for analysis work", async () => {
+    test("creates a single unattended child session for analysis", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
@@ -106,6 +106,124 @@ describe("tool.look_at", () => {
         })
       } finally {
         ;(Agent.getAvailableModel as any) = originalGetAvailableModel
+      }
+    })
+
+    test("rejects more than 5 images", async () => {
+      ;(Session.create as any) = originalSessionCreate
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const png = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+            "base64",
+          )
+          for (let i = 1; i <= 6; i++) {
+            await Bun.write(path.join(dir, `img${i}.png`), png)
+          }
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const lookat = await LookAtTool.init()
+          const paths = Array.from({ length: 6 }, (_, i) => path.join(tmp.path, `img${i + 1}.png`))
+          const result = await lookat.execute({ file_path: paths, goal: "describe" }, ctx)
+          expect(result.metadata.error).toBe("too_many_files")
+          expect(result.metadata.fileCount).toBe(6)
+          expect(result.output).toContain("At most 5 images")
+        },
+      })
+    })
+
+    test("allows exactly 5 images", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const png = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+            "base64",
+          )
+          for (let i = 1; i <= 5; i++) {
+            await Bun.write(path.join(dir, `img${i}.png`), png)
+          }
+        },
+      })
+      await Instance.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const lookat = await LookAtTool.init()
+          const paths = Array.from({ length: 5 }, (_, i) => path.join(tmp.path, `img${i + 1}.png`))
+          const result = await lookat.execute({ file_path: paths, goal: "describe" }, ctx).catch(() => {})
+          // Should not have too_many_files error — it passes validation and reaches Session.create
+          expect(result?.metadata?.error).not.toBe("too_many_files")
+        },
+      })
+    })
+
+    test("multiple images create exactly one child session with multiple file parts", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const png = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+            "base64",
+          )
+          await Bun.write(path.join(dir, "a.png"), png)
+          await Bun.write(path.join(dir, "b.png"), png)
+          await Bun.write(path.join(dir, "c.png"), png)
+        },
+      })
+
+      const originalAgentGet = Agent.get
+      const originalGetAvailableModel = Agent.getAvailableModel
+      const originalCancel = SessionInvoke.cancel
+      let invokeParts: Array<{ type: string; filename?: string }> = []
+
+      ;(Agent.get as any) = mock(async () => ({ name: "multimodal-looker" }))
+      ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test", modelID: "model" }))
+      ;(Session.create as any) = mock(async (input?: Parameters<typeof Session.create>[0]) => {
+        sessionCreateCalls.push(input)
+        return { id: "ses_batch" }
+      })
+      ;(SessionInvoke.invoke as any) = mock(async (input: { parts?: Array<{ type: string; filename?: string }> }) => {
+        invokeParts = input.parts ?? []
+        return { parts: [{ type: "text", text: "## a.png\n...\n\n## b.png\n...\n\n## c.png\n..." }] }
+      })
+      ;(SessionInvoke.cancel as any) = mock(() => {})
+
+      try {
+        await Instance.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const lookat = await LookAtTool.init()
+            const result = await lookat.execute(
+              {
+                file_path: [path.join(tmp.path, "a.png"), path.join(tmp.path, "b.png"), path.join(tmp.path, "c.png")],
+                goal: "describe each",
+              },
+              ctx,
+            )
+
+            // Exactly one session was created
+            expect(sessionCreateCalls).toHaveLength(1)
+
+            // It contains one text part + three file parts
+            const textParts = invokeParts.filter((p) => p.type === "text")
+            const fileParts = invokeParts.filter((p) => p.type === "file")
+            expect(textParts).toHaveLength(1)
+            expect(fileParts).toHaveLength(3)
+            expect(fileParts.map((p) => p.filename)).toEqual(["a.png", "b.png", "c.png"])
+
+            expect(result.title).toBe("Analyzed 3 files")
+            expect(result.output).toContain("## a.png")
+          },
+        })
+      } finally {
+        ;(Agent.get as any) = originalAgentGet
+        ;(Agent.getAvailableModel as any) = originalGetAvailableModel
+        ;(SessionInvoke.invoke as any) = mock(() => {})
+        ;(SessionInvoke.cancel as any) = originalCancel
       }
     })
   })

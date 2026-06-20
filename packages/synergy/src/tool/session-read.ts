@@ -7,11 +7,10 @@ import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { AppChannel } from "../channel/app"
 import DESCRIPTION from "./session-read.txt"
 
 const parameters = z.object({
-  target: z.string().describe("Session to read. A session ID (ses_xxx), 'home' for the app home session."),
+  target: z.string().describe("Session to read. A session ID (ses_xxx)."),
   limit: z.coerce.number().default(20).describe("Number of messages to return."),
   offset: z.coerce.number().default(0).describe("Number of messages to skip (0 = most recent)."),
   around: z
@@ -23,13 +22,10 @@ const parameters = z.object({
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
-  if (target === "home") {
-    return AppChannel.session()
-  }
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  throw new Error(`Unknown target "${target}". Use a session ID (ses_xxx) or 'home'.`)
+  throw new Error(`Unknown target "${target}". Use a session ID (ses_xxx).`)
 }
 
 function extractMessageText(parts: MessageV2.Part[]): string {

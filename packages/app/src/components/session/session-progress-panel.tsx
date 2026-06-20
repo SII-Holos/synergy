@@ -6,6 +6,7 @@ import {
   computeDagSummary,
   computeProgressIslandSnapshot,
   computeTodoSummary,
+  type ProgressLifecycle,
   type ProgressMode,
 } from "./session-progress-summary"
 import { SessionProgressDag } from "./session-progress-dag"
@@ -48,7 +49,28 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
   const mode = createMemo<ProgressMode>(() => computeProgressMode(hasDag(), hasTodo()))
   const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagNodes()) : undefined))
   const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todos()) : undefined))
-  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary()))
+  const dagLifecycle = createMemo<ProgressLifecycle>(() => {
+    const summary = dagSummary()
+    if (!summary) return "active"
+    if (summary.total === 0) return "settled"
+    if (summary.completed >= summary.total) return "settled"
+
+    // If the session is idle with no active background tasks, the DAG is no
+    // longer making progress — treat it as settled so the panel can dismiss
+    // even when the agent forgot to mark every node terminal.
+    const sessionStatus = sync.data.session_status[props.sessionID]?.type ?? "idle"
+    if (sessionStatus === "idle") {
+      const hasActiveTask = sync.data.cortex.some(
+        (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
+      )
+      if (!hasActiveTask) return "settled"
+    }
+
+    if (summary.failed > 0 || summary.blocked > 0) return "active"
+    if (summary.running > 0) return "active"
+    return "active"
+  })
+  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary(), dagLifecycle()))
 
   const activeLabel = createMemo(() => {
     const runningNode = dagNodes().find((node) => node.status === "running")
@@ -120,21 +142,22 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
       <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} />
     ) : null
   }
-
   return (
     <Show when={state.visible && mode() !== "none"}>
-      <SessionProgressIsland
-        mode={mode() as Exclude<ProgressMode, "none">}
-        snapshot={snapshot()}
-        activeLabel={activeLabel()}
-        activeTab={state.activeTab}
-        expanded={state.expanded}
-        onExpandedChange={setExpanded}
-        onTabChange={(tab) => setState("activeTab", tab)}
-        class={props.class}
-      >
-        {renderChild()}
-      </SessionProgressIsland>
+      <div class="relative w-full">
+        <SessionProgressIsland
+          mode={mode() as Exclude<ProgressMode, "none">}
+          snapshot={snapshot()}
+          activeLabel={activeLabel()}
+          activeTab={state.activeTab}
+          expanded={state.expanded}
+          onExpandedChange={setExpanded}
+          onTabChange={(tab) => setState("activeTab", tab)}
+          class={props.class}
+        >
+          {renderChild()}
+        </SessionProgressIsland>
+      </div>
     </Show>
   )
 }

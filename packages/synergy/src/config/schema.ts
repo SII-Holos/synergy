@@ -204,6 +204,22 @@ export const SandboxConfig = z
       .enum(["warn", "allow", "deny"])
       .optional()
       .describe("How to proceed when the requested sandbox runtime is unavailable"),
+    backend: z
+      .enum(["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"])
+      .optional()
+      .describe(
+        "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. " +
+          "Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), " +
+          "'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+      ),
+    windows: z
+      .object({
+        level: z.enum(["disabled", "restricted-token", "elevated"]).optional(),
+        helperPath: z.string().optional(),
+        verifyHelperHash: z.boolean().optional(),
+      })
+      .optional()
+      .describe("Windows-specific sandbox settings"),
   })
   .strict()
   .meta({ ref: "SandboxConfig" })
@@ -261,9 +277,7 @@ export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
 })
 export type PermissionAction = z.infer<typeof PermissionAction>
 
-export const ControlProfileId = z
-  .enum(["manual", "guarded", "autonomous", "full_access"])
-  .meta({ ref: "ControlProfileId" })
+export const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"]).meta({ ref: "ControlProfileId" })
 export type ControlProfileId = z.infer<typeof ControlProfileId>
 
 export const PermissionObject = z.record(z.string(), PermissionAction).meta({
@@ -1143,18 +1157,17 @@ export const Info = z
         url: z.string().optional().describe("Enterprise URL"),
       })
       .optional(),
-    agora: z
-      .object({
-        url: z.string().optional().describe("Agora API base URL (defaults to https://agora.holosai.io)"),
-        tokenUrl: z
-          .string()
-          .optional()
-          .describe("Holos API URL for Agora token exchange (defaults to https://www.holosai.io)"),
-        giteaSSHHost: z.string().optional().describe("Override SSH hostname used for Agora's Gitea remote"),
-      })
-
-      .optional()
-      .describe("Agora Q&A platform configuration"),
+    //     agora: z
+    //       .object({
+    //         url: z.string().optional().describe("Agora API base URL (defaults to https://agora.holosai.io)"),
+    //         tokenUrl: z
+    //           .string()
+    //           .optional()
+    //           .describe("Holos API URL for Agora token exchange (defaults to https://www.holosai.io)"),
+    //         giteaSSHHost: z.string().optional().describe("Override SSH hostname used for Agora's Gitea remote"),
+    //       })
+    //       .optional()
+    //       .describe("Agora Q&A platform configuration"),
     question: z
       .object({
         timeout: z

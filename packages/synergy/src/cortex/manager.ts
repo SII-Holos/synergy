@@ -1,5 +1,6 @@
 import { $ } from "bun"
 
+import { BusyError } from "../session/error"
 import { Worktree } from "../project/worktree"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
@@ -55,32 +56,55 @@ export namespace Cortex {
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
 
-    const session = await Session.create({
-      scope: parent.scope as import("@/scope").Scope,
-      parentID: input.parentSessionID,
-      title: `[Cortex] ${input.description} (@${input.agent})`,
-      permission: [
-        { permission: "question", pattern: "*", action: "deny" },
-        ...(executionRole === "delegated_subagent"
-          ? blockedTools.map((tool) => ({
-              pattern: "*",
-              action: "deny" as const,
-              permission: tool,
-            }))
-          : []),
-      ],
-      cortex: {
-        parentSessionID: input.parentSessionID,
-        parentMessageID: input.parentMessageID,
-        description: input.description,
-        agent: input.agent,
-        executionRole,
-        status: "queued",
-        startedAt: Date.now(),
-      },
-      workspace: (parent as import("../session/types").Info).workspace,
-    })
+    let session: import("../session/types").Info
 
+    if (input.sessionID) {
+      const existing = await Session.get(input.sessionID)
+      if (!existing) {
+        throw new Error(`Session ${input.sessionID} not found`)
+      }
+      if (existing.parentID !== input.parentSessionID) {
+        throw new Error(
+          `Session ${input.sessionID} does not belong to parent session ${input.parentSessionID}. ` +
+            `Reuse is only allowed for sessions created by the same parent.`,
+        )
+      }
+      if (SessionManager.isRunning(input.sessionID)) {
+        throw new BusyError(input.sessionID)
+      }
+      session = existing
+      log.info("reusing existing session", {
+        taskID,
+        sessionID: existing.id,
+        description: input.description,
+      })
+    } else {
+      session = await Session.create({
+        scope: parent.scope as import("@/scope").Scope,
+        parentID: input.parentSessionID,
+        title: `[Cortex] ${input.description} (@${input.agent})`,
+        permission: [
+          { permission: "question", pattern: "*", action: "deny" },
+          ...(executionRole === "delegated_subagent"
+            ? blockedTools.map((tool) => ({
+                pattern: "*",
+                action: "deny" as const,
+                permission: tool,
+              }))
+            : []),
+        ],
+        cortex: {
+          parentSessionID: input.parentSessionID,
+          parentMessageID: input.parentMessageID,
+          description: input.description,
+          agent: input.agent,
+          executionRole,
+          status: "queued",
+          startedAt: Date.now(),
+        },
+        workspace: (parent as import("../session/types").Info).workspace,
+      })
+    }
     if (input.worktree?.create) {
       const parentWorkspace = (parent as import("../session/types").Info).workspace
       if (parentWorkspace?.type !== "git_worktree") {

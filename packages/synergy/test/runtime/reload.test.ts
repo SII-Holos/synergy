@@ -158,7 +158,7 @@ describe("runtime.reload", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const warning = RuntimeReload.builtinSourceEditWarning(
-          path.join(tmp.path, "packages", "synergy", "src", "tool", "agora-read.ts"),
+          path.join(tmp.path, "packages", "synergy", "src", "tool", "webfetch.ts"),
         )
         expect(warning).toContain("restarting the backend process")
       },

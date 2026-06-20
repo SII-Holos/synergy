@@ -155,9 +155,9 @@ export type NavGroup = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Core",
-    icon: "settings",
+    icon: "sliders-horizontal",
     items: [
-      { id: "general", label: "General", icon: "settings" },
+      { id: "general", label: "General", icon: "sliders-horizontal" },
       { id: "models", label: "Models", icon: "cpu" },
     ],
   },

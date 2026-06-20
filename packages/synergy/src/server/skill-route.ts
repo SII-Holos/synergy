@@ -15,7 +15,7 @@ function resolveScope(skill: Skill.Info): Skill.Scope {
   if (skill.scope) return skill.scope
   if (skill.builtin) return "builtin"
   const projectDir = Instance.directory
-  if (skill.location.startsWith(projectDir + "/")) return "project"
+  if (skill.location.startsWith(projectDir + path.sep)) return "project"
   return "global"
 }
 

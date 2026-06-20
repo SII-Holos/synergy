@@ -46,7 +46,7 @@ After editing code:
 
 ```bash
 bun dev build          # rebuild frontend (after app changes)
-bun dev restart        # restart the server
+bun dev server        # restart the server
 ```
 
 See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.

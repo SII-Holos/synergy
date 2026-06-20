@@ -9,7 +9,6 @@ import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { SessionInteraction } from "../session/interaction"
-import { AppChannel } from "../channel/app"
 import { Instance } from "../scope/instance"
 import { Scope } from "../scope"
 import DESCRIPTION from "./session-control.txt"
@@ -17,7 +16,7 @@ import DESCRIPTION from "./session-control.txt"
 const Action = z.enum(["status", "compact", "abort", "question_reply", "question_reject", "permission_reply"])
 
 const parameters = z.object({
-  target: z.string().describe("Target session. A session ID (ses_xxx) or 'home' for the app home session."),
+  target: z.string().describe("Target session ID (ses_xxx)."),
   action: Action.describe("The control action to perform on the target session."),
   requestID: z
     .string()
@@ -39,13 +38,10 @@ const parameters = z.object({
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
-  if (target === "home") {
-    return AppChannel.session()
-  }
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  throw new Error(`Invalid session target: "${target}". Use 'home' or a session ID (ses_xxx).`)
+  throw new Error(`Invalid session target: "${target}". Use a session ID (ses_xxx).`)
 }
 
 export const SessionControlTool = Tool.define("session_control", {

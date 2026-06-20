@@ -42,7 +42,7 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
       activeTool,
       active: () => ws().active(),
       opened: () => ws().opened() ?? false,
-      width: () => ws().width() ?? 400,
+      width: () => ws().width(),
       openPanel: () => ws().open(),
       closePanel: () => ws().close(),
       setActive: (id: string | null) => ws().setActive(id),

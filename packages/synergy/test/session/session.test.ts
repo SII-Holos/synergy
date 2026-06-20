@@ -76,14 +76,14 @@ describe("session lifecycle events", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
-          controlProfile: "manual",
+          controlProfile: "autonomous",
         })
         const child = await Session.create({
           parentID: parent.id,
           controlProfile: "full_access",
         })
 
-        expect(child.controlProfile).toBe("manual")
+        expect(child.controlProfile).toBe("autonomous")
 
         await Session.remove(parent.id)
       },

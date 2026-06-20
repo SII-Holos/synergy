@@ -48,7 +48,7 @@ export interface TabsPanelProps {
 
 export function TabsPanel(props: TabsPanelProps) {
   return (
-    <div class="relative flex-1 min-w-0 h-full border-l border-border-weak-base">
+    <div class="relative flex-1 min-w-0 min-w-[200px] h-full border-l border-border-weak-base">
       <DragDropProvider
         onDragStart={props.handleDragStart}
         onDragEnd={props.handleDragEnd}

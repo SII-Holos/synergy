@@ -202,7 +202,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
           id: `txt-${i}`,
           messageID: msgID,
           filename: `doc-${i}.txt`,
-          url: `data:text/plain;base64,${Buffer.from(`text content ${i}`).toString("base64")}`,
+          url: `https://example.com/doc-${i}.txt`,
         }),
       ])
     })

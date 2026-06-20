@@ -27,8 +27,8 @@ describe("SandboxBackend isPlatformSupported", () => {
     expect(SandboxBackend.isPlatformSupported("linux")).toBe(true)
   })
 
-  test("win32 is not supported", () => {
-    expect(SandboxBackend.isPlatformSupported("win32")).toBe(false)
+  test("win32 is supported", () => {
+    expect(SandboxBackend.isPlatformSupported("win32")).toBe(true)
   })
 
   test("macos alias is supported", () => {

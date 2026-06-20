@@ -8,7 +8,7 @@ type ApprovalStatus =
   | "policy_denied"
   | "sandbox_blocked"
 type RiskLevel = "low" | "medium" | "high"
-type ApprovalMode = "manual" | "guarded" | "autonomous" | "full_access"
+type ApprovalMode = "guarded" | "autonomous" | "full_access"
 
 interface ApprovalMeta {
   status?: ApprovalStatus | string
@@ -74,11 +74,9 @@ function explain(status: string, mode?: string, risk?: string, reason?: string):
     return "This tool requires sandboxing which was unavailable."
   }
   switch (mode) {
-    case "manual":
-      return "Manual approval mode asks before every tool request."
     case "guarded": {
       if (risk !== "low") {
-        return "Guarded mode requires approval before shell, write, or external actions."
+        return "Guarded mode applies capability-specific approval rules before shell, external, identity, platform, or extension actions."
       }
       return "Guarded mode allowed this automatically."
     }
@@ -120,6 +118,9 @@ export function getApprovalAudit(approval: ApprovalMeta | null | undefined): App
     iconClass = STATUS_COLOR[status] ?? "text-icon-base"
   }
 
+  // Hide icon for low-risk auto-approvals (expected, not noteworthy)
+  // and for full_access mode (everything is auto-allowed by design).
+  if (status === "auto_allowed" && (risk === "low" || mode === "full_access")) return empty
   if (!icon) return empty
 
   const label = STATUS_LABEL[status] ?? status

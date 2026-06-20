@@ -57,6 +57,7 @@ import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import "../engram/chronicler"
 import { ExperienceEncoder } from "../engram/experience-encoder"
+import { GitHealth } from "../project/git-health"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -269,26 +270,6 @@ export namespace SessionInvoke {
           const result = await LoopJob.execute(preJobs, jobCtx)
           if (result === "stop") break
           if (result === "continue") continue
-        }
-
-        // Drain user mails that arrived while the agent was working.
-        const userMails = SessionManager.drainMails(sessionID, "user")
-        if (userMails.length > 0) {
-          const userModel = await lastModel(sessionID).catch(() => undefined)
-          for (const mail of userMails) {
-            const mailModel = mail.model ?? userModel
-            if (!mailModel) continue
-            const created = await createUserMessage({
-              sessionID,
-              agent: mail.agent,
-              model: mailModel,
-              parts: partsFromMail(mail),
-              noReply: mail.noReply,
-              summary: mail.summary,
-            })
-            msgs.push(created)
-          }
-          log.info("drained user mails into session", { sessionID, count: userMails.length })
         }
 
         const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
@@ -518,6 +499,10 @@ export namespace SessionInvoke {
         // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
         systemParts.push(...envParts)
 
+        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        const gitHealthBlock = GitHealth.injectCached(Instance.directory)
+        if (gitHealthBlock) systemParts.push(gitHealthBlock)
+
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
         if (agendaReminder) systemParts.push(agendaReminder)
 
@@ -622,9 +607,21 @@ export namespace SessionInvoke {
         processTimer.stop()
 
         // post-LLM jobs
-        const postJobs = LoopJob.collect("post", jobCtx)
+        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+        const postCtx: LoopJob.Context = {
+          ...jobCtx,
+          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+          lastAssistant: processor.message,
+          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+            ? processor.message
+            : jobCtx.lastFinished,
+          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+            ? postParts
+            : jobCtx.lastFinishedParts,
+        }
+        const postJobs = LoopJob.collect("post", postCtx)
         if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, jobCtx)
+          const postResult = await LoopJob.execute(postJobs, postCtx)
           if (postResult === "stop") break
         }
 
@@ -679,6 +676,7 @@ export namespace SessionInvoke {
             parts: partsFromMail(mail),
             noReply: !needsReply,
             summary: mail.summary,
+            metadata: mail.metadata,
           })
         }
         if (needsReply) continue outer

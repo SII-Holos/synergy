@@ -36,14 +36,14 @@ import { AgendaUpdateTool } from "./agenda-update"
 import { AgendaCancelTool } from "./agenda-cancel"
 import { AgendaTriggerTool } from "./agenda-trigger"
 import { AgendaLogsTool } from "./agenda-logs"
-import { AgoraSearchTool } from "./agora-search"
-import { AgoraReadTool } from "./agora-read"
-import { AgoraPostTool } from "./agora-post"
-import { AgoraJoinTool } from "./agora-join"
-import { AgoraSyncTool } from "./agora-sync"
-import { AgoraSubmitTool } from "./agora-submit"
-import { AgoraAcceptTool } from "./agora-accept"
-import { AgoraCommentTool } from "./agora-comment"
+// import { AgoraSearchTool } from "./agora-search"
+// import { AgoraReadTool } from "./agora-read"
+// import { AgoraPostTool } from "./agora-post"
+// import { AgoraJoinTool } from "./agora-join"
+// import { AgoraSyncTool } from "./agora-sync"
+// import { AgoraSubmitTool } from "./agora-submit"
+// import { AgoraAcceptTool } from "./agora-accept"
+// import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 
 import { InvalidTool } from "./invalid"
@@ -224,14 +224,14 @@ export namespace ToolRegistry {
       AgendaCancelTool,
       AgendaTriggerTool,
       AgendaLogsTool,
-      AgoraSearchTool,
-      AgoraReadTool,
-      AgoraPostTool,
-      AgoraJoinTool,
-      AgoraSyncTool,
-      AgoraSubmitTool,
-      AgoraAcceptTool,
-      AgoraCommentTool,
+      //       AgoraSearchTool,
+      //       AgoraReadTool,
+      //       AgoraPostTool,
+      //       AgoraJoinTool,
+      //       AgoraSyncTool,
+      //       AgoraSubmitTool,
+      //       AgoraAcceptTool,
+      //       AgoraCommentTool,
       AttachTool,
       // 🔇 DiagramTool,  — 已注释，待重构
       RenderTool,
@@ -242,6 +242,7 @@ export namespace ToolRegistry {
       WorktreeLeaveTool,
       WorktreeListTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
+      ...custom,
     ]
   }
 

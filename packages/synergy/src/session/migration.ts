@@ -476,5 +476,34 @@ export const migrations: Migration[] = [
       log.info("snapshot per-session migration complete", { scopesHandled: scopeIDs.length })
     },
   },
+  {
+    id: "20260619-remove-home-endpoint",
+    description: "Strip endpoint from global-scope app-channel sessions and rebuild global nav index",
+    async up(progress) {
+      const scope = Identifier.asScopeID("global")
+      const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+      if (sessionIDs.length === 0) return
+
+      let done = 0
+      for (const sessionID of sessionIDs) {
+        const sID = Identifier.asSessionID(sessionID)
+        const info = await Storage.read<any>(StoragePath.sessionInfo(scope, sID)).catch(() => undefined)
+
+        // Strip endpoint from app-channel sessions
+        if (info?.endpoint?.channel?.type === "app") {
+          const { endpoint, ...rest } = info
+          await Storage.write(StoragePath.sessionInfo(scope, sID), rest)
+        }
+
+        done++
+        progress(done, sessionIDs.length)
+      }
+
+      // Rebuild global nav index so categories are correct
+      await SessionNav.buildNavIndex("global").catch((error) => {
+        // Log but don't fail — nav index rebuilds lazily
+      })
+    },
+  },
 ]
 MigrationRegistry.register("session", migrations)

@@ -5,7 +5,7 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { VList, type VListHandle } from "virtua/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import { absoluteDate, relativeTime } from "@/utils/time"
 import type {
   ExperienceDetailInfo,
@@ -27,6 +27,7 @@ import {
   engramInsetClass,
   engramMenuClass,
   engramMetaLabelClass,
+  EngramFilterChip,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -375,8 +376,8 @@ export function ExperienceView(props: {
   }
 
   return (
-    <>
-      <Panel.SubHeader>
+    <div class="h-full flex flex-col -mx-6">
+      <div class="shrink-0 px-6 mb-3">
         <Show
           when={!selecting()}
           fallback={
@@ -392,18 +393,18 @@ export function ExperienceView(props: {
         >
           <div class="flex items-center gap-1.5 flex-wrap">
             <Show when={scopeAvailable() || sessionAvailable()}>
-              <Panel.FilterChip active={effectiveFilter() === "all"} onClick={() => setFilter("all")}>
+              <EngramFilterChip active={effectiveFilter() === "all"} onClick={() => setFilter("all")}>
                 All
-              </Panel.FilterChip>
+              </EngramFilterChip>
               <Show when={scopeAvailable()}>
-                <Panel.FilterChip active={effectiveFilter() === "scope"} onClick={() => setFilter("scope")}>
+                <EngramFilterChip active={effectiveFilter() === "scope"} onClick={() => setFilter("scope")}>
                   Scope
-                </Panel.FilterChip>
+                </EngramFilterChip>
               </Show>
               <Show when={sessionAvailable()}>
-                <Panel.FilterChip active={effectiveFilter() === "session"} onClick={() => setFilter("session")}>
+                <EngramFilterChip active={effectiveFilter() === "session"} onClick={() => setFilter("session")}>
                   Session
-                </Panel.FilterChip>
+                </EngramFilterChip>
               </Show>
             </Show>
             <div class="ml-auto flex items-center gap-1">
@@ -444,18 +445,18 @@ export function ExperienceView(props: {
             </div>
           </div>
         </Show>
-      </Panel.SubHeader>
+      </div>
 
-      <Panel.Body class="overflow-hidden">
+      <div class="flex-1 min-h-0 px-6 overflow-hidden">
         <Show when={loading()}>
-          <Panel.Loading />
+          <AppPanel.Loading />
         </Show>
 
         <Show when={!loading()}>
           <Show
             when={!pageError() || displayedItems().length > 0 || props.isSearching}
             fallback={
-              <Panel.Empty
+              <AppPanel.Empty
                 icon="brain"
                 title="Failed to load experiences"
                 description="Try refreshing the panel to load the latest experience records."
@@ -465,7 +466,7 @@ export function ExperienceView(props: {
             <Show
               when={!empty()}
               fallback={
-                <Panel.Empty
+                <AppPanel.Empty
                   icon="brain"
                   title="No experiences yet"
                   description="Experiences are recorded as you work with the agent and capture behavioral patterns."
@@ -548,8 +549,8 @@ export function ExperienceView(props: {
             </Show>
           </Show>
         </Show>
-      </Panel.Body>
-    </>
+      </div>
+    </div>
   )
 }
 

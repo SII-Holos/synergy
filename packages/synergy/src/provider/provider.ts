@@ -11,7 +11,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { Instance } from "../scope/instance"
-import { SYNERGY_REFERER } from "../holos/constants"
+import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
 
@@ -281,7 +281,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": SYNERGY_REFERER,
+            "HTTP-Referer": "https://synergy.holosai.io/",
             "X-Title": "synergy",
           },
         },
@@ -292,7 +292,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "http-referer": SYNERGY_REFERER,
+            "http-referer": "https://synergy.holosai.io/",
             "x-title": "synergy",
           },
         },
@@ -359,7 +359,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": SYNERGY_REFERER,
+            "HTTP-Referer": "https://synergy.holosai.io/",
             "X-Title": "synergy",
           },
         },
@@ -391,7 +391,7 @@ export namespace Provider {
             // Cloudflare AI Gateway uses cf-aig-authorization for authenticated gateways
             // This enables Unified Billing where Cloudflare handles upstream provider auth
             ...(apiToken ? { "cf-aig-authorization": `Bearer ${apiToken}` } : {}),
-            "HTTP-Referer": SYNERGY_REFERER,
+            "HTTP-Referer": "https://synergy.holosai.io/",
             "X-Title": "synergy",
           },
           // Custom fetch to strip Authorization header - AI Gateway uses cf-aig-authorization instead

@@ -1,5 +1,6 @@
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
+import { HolosAccounts } from "./accounts"
 import { Log } from "@/util/log"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration"
@@ -34,6 +35,17 @@ function hasLegacyFields(contact: Record<string, unknown>): boolean {
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20260620-migrate-holos-legacy-credentials",
+    description: "Migrate legacy holos credentials from api-key.json to the multi-account holos-accounts.json store.",
+    domain: "holos",
+    async up() {
+      const result = await HolosAccounts.migrateFromLegacy()
+      if (result.migrated) {
+        log.info("migrated legacy holos credentials to multi-account store")
+      }
+    },
+  },
   {
     id: "20260619-holos-mailbox-cleanup",
     description:

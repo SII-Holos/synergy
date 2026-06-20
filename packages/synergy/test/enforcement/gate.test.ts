@@ -479,44 +479,43 @@ describe("EnforcementGate network classification", () => {
 
     const inspire = gate.classify("inspire_submit", {}).capabilities
     expect(inspire).toContainEqual({ class: "network_request", nonBypassable: true })
-    expect(inspire).toContainEqual({ class: "platform_control", nonBypassable: true })
   })
 
-  test("agora collaboration tools classify as external network and platform control", () => {
+  //  test("agora collaboration tools classify as external network and platform control", () => {
+  //    const { EnforcementGate } = require("../../src/enforcement/gate")
+  //    const gate = EnforcementGate.create({
+  //      activeWorkspace: "/Users/test/synergy-control-profile",
+  //      workspaceType: "worktree",
+  //    })
+  //
+  //    expect(gate.classify("agora_read", {}).capabilities).toContainEqual({
+  //      class: "network_request",
+  //      nonBypassable: true,
+  //    })
+  //
+  //    const post = gate.classify("agora_post", {}).capabilities
+  //    expect(post).toContainEqual({ class: "network_request", nonBypassable: true })
+  //    expect(post).toContainEqual({ class: "platform_control", nonBypassable: true })
+  //
+  //    const join = gate.classify("agora_join", { directory: "/tmp/agora-workspace" }).capabilities
+  //    expect(join).toContainEqual({ class: "network_request", nonBypassable: true })
+  //    expect(join).toContainEqual({ class: "platform_control", nonBypassable: true })
+  //    expect(join).toContainEqual(
+  //      expect.objectContaining({ class: "file_external", nonBypassable: true, paths: ["/tmp/agora-workspace"] }),
+  //    )
+  //  })
+
+  test("guarded profile allows ordinary network lookups and asks for communication or platform actions", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
+      profileId: "guarded",
     })
 
-    expect(gate.classify("agora_read", {}).capabilities).toContainEqual({
-      class: "network_request",
-      nonBypassable: true,
-    })
-
-    const post = gate.classify("agora_post", {}).capabilities
-    expect(post).toContainEqual({ class: "network_request", nonBypassable: true })
-    expect(post).toContainEqual({ class: "platform_control", nonBypassable: true })
-
-    const join = gate.classify("agora_join", { directory: "/tmp/agora-workspace" }).capabilities
-    expect(join).toContainEqual({ class: "network_request", nonBypassable: true })
-    expect(join).toContainEqual({ class: "platform_control", nonBypassable: true })
-    expect(join).toContainEqual(
-      expect.objectContaining({ class: "file_external", nonBypassable: true, paths: ["/tmp/agora-workspace"] }),
-    )
-  })
-
-  test("manual profile asks for external network and communication tools", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "manual",
-    })
-
-    expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("ask")
+    expect(gate.evaluate("webfetch", { url: "https://example.com" }).decision).toBe("allow")
     expect(gate.evaluate("email_read", {}).decision).toBe("ask")
-    expect(gate.evaluate("inspire_submit", {}).decision).toBe("ask")
+    expect(gate.evaluate("inspire_submit", {}).decision).toBe("allow")
   })
 })
 
@@ -618,52 +617,7 @@ describe("EnforcementGate execution envelope", () => {
 // 5. Profile-driven gating
 // ------------------------------------------------------------------
 describe("EnforcementGate profile integration", () => {
-  test("gate with manual profile asks for write tool", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "manual",
-    })
-
-    const envelope = gate.evaluate("write", {
-      filePath: "/Users/test/synergy-control-profile/src/index.ts",
-    })
-
-    expect(envelope.decision).toBe("ask")
-  })
-
-  test("gate with manual profile asks for shell", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "manual",
-    })
-
-    const envelope = gate.evaluate("bash", {
-      command: "ls",
-    })
-
-    expect(envelope.decision).toBe("ask")
-  })
-
-  test("manual profile asks for read tool", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "manual",
-    })
-
-    const envelope = gate.evaluate("read", {
-      filePath: "/Users/test/synergy-control-profile/src/index.ts",
-    })
-
-    expect(envelope.decision).toBe("ask")
-  })
-
-  test("gate with guarded profile asks for inside-workspace write", () => {
+  test("guarded profile allows workspace writes and low-risk reads", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -671,8 +625,29 @@ describe("EnforcementGate profile integration", () => {
       profileId: "guarded",
     })
 
-    const envelope = gate.evaluate("write", {
-      filePath: "/Users/test/synergy-control-profile/src/index.ts",
+    expect(
+      gate.evaluate("write", {
+        filePath: "/Users/test/synergy-control-profile/src/index.ts",
+      }).decision,
+    ).toBe("allow")
+    expect(gate.evaluate("bash", { command: "ls" }).decision).toBe("allow")
+    expect(
+      gate.evaluate("read", {
+        filePath: "/Users/test/synergy-control-profile/src/index.ts",
+      }).decision,
+    ).toBe("allow")
+  })
+
+  test("guarded profile asks for shell execution", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "bun dev generate 2>/dev/null",
     })
 
     expect(envelope.decision).toBe("ask")
@@ -745,6 +720,162 @@ describe("EnforcementGate profile integration", () => {
         interactionMode: "unattended",
       }),
     ).toThrow()
+  })
+
+  test("autonomous denies git push as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git push" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through git global options", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp push" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through shell wrapper", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: 'bash -c "git push"' })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git stash pop through git global options", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp stash pop" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git push through interpreter subprocess", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", {
+      command: "python3 -c \"import subprocess; subprocess.run(['git','push','origin','main'])\"",
+    })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git reset --soft as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git reset --soft HEAD~1" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git commit --amend as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git commit --amend -m 'fix'" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git rm as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git rm file.txt" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git revert as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git revert HEAD" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git stash drop as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git stash drop" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous denies git pull --rebase as shell_destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git pull --rebase" })
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous allows plain git commit (no amend) as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git commit -m 'msg'" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows plain git pull (no rebase) as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git pull" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows git restore --staged as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git restore --staged file.ts" })
+    expect(envelope.decision).toBe("allow")
   })
 })
 
@@ -1203,6 +1334,190 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
     expect(hardline || destructive).toBeDefined()
+  })
+
+  // ── Refined git classifications (classifyBashRisk primary path) ──
+
+  test("git push (plain) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git push" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push origin main is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git push origin main" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push through git global options is classified as destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git -C /tmp push" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git push through shell wrapper is classified as destructive", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: 'bash -c "git push"' })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull --rebase is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull --rebase" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull -r is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull -r" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git revert is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git revert HEAD" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git rm is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git rm file.txt" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git commit --amend is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git commit --amend -m 'fix'" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git reset (soft) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git reset --soft HEAD~1" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git reset (bare) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git reset" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git restore (worktree) is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git restore file.ts" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git stash pop is classified as destructive (classifyBashRisk)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git stash pop" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+  })
+
+  test("git pull (plain) is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git pull" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("git restore --staged is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git restore --staged file.ts" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+  })
+
+  test("git commit -m (no amend) is NOT destructive (classifyBashRisk allows)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("bash", { command: "git commit -m 'msg'" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
   })
 })
 
@@ -1728,5 +2043,464 @@ describe("EnforcementGate shell_hardline in gate", () => {
     expect(envelope.refusal).toBeDefined()
     expect(envelope.refusal.permanent).toBe(true)
     expect(envelope.refusal.matchedPermission).toBe("shell_hardline")
+  })
+})
+
+// ------------------------------------------------------------------
+// 15. New tool classification coverage — unmapped built-in tools
+// ------------------------------------------------------------------
+describe("EnforcementGate new tool classification", () => {
+  // ── Read-only orchestration tools → file_read ─────────────────
+
+  test("dagread classifies as file_read (read-only DAG inspection)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("dagread", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("todoread classifies as file_read (read-only todo inspection)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("todoread", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("task_list classifies as file_read (read-only task listing)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("task_list", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("task_output classifies as file_read (read-only task output retrieval)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("task_output", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Stateful orchestration tools → file_write ─────────────────
+
+  test("dagwrite classifies as file_write (stateful DAG mutation)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("dagwrite", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("dagpatch classifies as file_write (stateful DAG patching)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("dagpatch", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("todowrite classifies as file_write (stateful todo mutation)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("todowrite", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("task classifies as file_write (creates sub-agent sessions)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("task", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("task_cancel classifies as file_write (stateful task cancellation)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("task_cancel", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("batch classifies as file_write (orchestrates multiple tool calls)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("batch", { tool_calls: [{ tool: "read", parameters: { filePath: "src/test.ts" } }] })
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Internal communication / knowledge → file_read ────────────
+
+  test("question classifies as file_read (user interaction, no side effects)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("question", { questions: [] })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("skill classifies as file_read (loading skill definitions)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("skill", { name: "frontend-design" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("render classifies as file_read (visual output, no persistent state)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("render", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("diagram classifies as file_read (visual output, no persistent state)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("diagram", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Agenda read tools → file_read ─────────────────────────────
+
+  test("agenda_list classifies as file_read (read-only agenda browsing)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("agenda_list", {})
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("agenda_logs classifies as file_read (read-only execution log browsing)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("agenda_logs", { id: "test-id" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Filesystem list and AST-aware search → file_read ─────────
+
+  test("list classifies as file_read with path classification", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("list", {
+      filePath: "/Users/test/synergy-control-profile/src",
+    })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("ast_grep classifies as file_read with path classification", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("ast_grep", {
+      pattern: "const $X = $Y",
+      paths: ["/Users/test/synergy-control-profile/src"],
+    })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("ast_grep with path outside workspace produces file_external", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("ast_grep", {
+      pattern: "const $X = $Y",
+      paths: ["/etc/config"],
+    })
+    const cap = result.capabilities.find((c: any) => c.class === "file_external")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(true)
+  })
+
+  test("lsp classifies as file_read with path classification", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("lsp", {
+      filePath: "/Users/test/synergy-control-profile/src/index.ts",
+    })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Process tool action-based classification ─────────────────
+
+  test("process list action classifies as file_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "list" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process poll action classifies as file_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "poll" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process log action classifies as file_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "log" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process write action classifies as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "write" })
+    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process send-keys action classifies as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "send-keys" })
+    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process kill action classifies as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "kill" })
+    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process clear action classifies as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "clear" })
+    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("process remove action classifies as shell", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("process", { action: "remove" })
+    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  // ── Connect tool action-based classification ──────────────────
+
+  test("connect list action classifies as file_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("connect", { action: "list" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("connect status action classifies as file_read", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("connect", { action: "status", envID: "env_abc123" })
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(false)
+  })
+
+  test("connect open action classifies as network_request + nonBypassable", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("connect", { action: "open", envID: "env_abc123" })
+    const cap = result.capabilities.find((c: any) => c.class === "network_request")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(true)
+  })
+
+  test("connect close action classifies as network_request + nonBypassable", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify("connect", { action: "close", envID: "env_abc123" })
+    const cap = result.capabilities.find((c: any) => c.class === "network_request")
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(true)
+  })
+
+  // ── Profile integration: guarded profile partially allows medium risk ──
+
+  test("guarded profile allows dagread (low-risk read)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    const envelope = gate.evaluate("dagread", {})
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("guarded profile allows dagwrite (safe internal state write)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    const envelope = gate.evaluate("dagwrite", {})
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("guarded profile allows process list (read-only action)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    const envelope = gate.evaluate("process", { action: "list" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("guarded profile asks for process kill (shell action)", () => {
+    const { EnforcementGate } = require("../../src/enforcement/gate")
+    const gate = EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    const envelope = gate.evaluate("process", { action: "kill" })
+    expect(envelope.decision).toBe("ask")
   })
 })

@@ -42,6 +42,7 @@ import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { FileIcon } from "./file-icon"
 import { AttachmentList } from "./attachment-card"
+import { ErrorCard } from "./error-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
@@ -913,54 +914,54 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Agenda Logs",
         subtitle: input.id,
       }
-    case "agora_search":
-      return {
-        icon: "compass",
-        title: "Agora Search",
-        subtitle: input.keyword,
-      }
-    case "agora_read":
-      return {
-        icon: "compass",
-        title: "Agora Read",
-        subtitle: input.post_id,
-      }
-    case "agora_post":
-      return {
-        icon: "megaphone",
-        title: "Agora Post",
-        subtitle: input.title,
-      }
-    case "agora_join":
-      return {
-        icon: "log-in",
-        title: "Agora Join",
-        subtitle: input.post_id,
-      }
-    case "agora_sync":
-      return {
-        icon: "arrow-down-to-line",
-        title: "Agora Sync",
-        subtitle: input.directory,
-      }
-    case "agora_submit":
-      return {
-        icon: "upload",
-        title: "Agora Submit",
-        subtitle: input.comment,
-      }
-    case "agora_accept":
-      return {
-        icon: "git-merge",
-        title: "Agora Accept",
-        subtitle: input.answer_id,
-      }
-    case "agora_comment":
-      return {
-        icon: "compass",
-        title: "Agora Comment",
-        subtitle: input.post_id,
-      }
+    //    case "agora_search":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Search",
+    //        subtitle: input.keyword,
+    //      }
+    //    case "agora_read":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Read",
+    //        subtitle: input.post_id,
+    //      }
+    //    case "agora_post":
+    //      return {
+    //        icon: "megaphone",
+    //        title: "Agora Post",
+    //        subtitle: input.title,
+    //      }
+    //    case "agora_join":
+    //      return {
+    //        icon: "log-in",
+    //        title: "Agora Join",
+    //        subtitle: input.post_id,
+    //      }
+    //    case "agora_sync":
+    //      return {
+    //        icon: "arrow-down-to-line",
+    //        title: "Agora Sync",
+    //        subtitle: input.directory,
+    //      }
+    //    case "agora_submit":
+    //      return {
+    //        icon: "upload",
+    //        title: "Agora Submit",
+    //        subtitle: input.comment,
+    //      }
+    //    case "agora_accept":
+    //      return {
+    //        icon: "git-merge",
+    //        title: "Agora Accept",
+    //        subtitle: input.answer_id,
+    //      }
+    //    case "agora_comment":
+    //      return {
+    //        icon: "compass",
+    //        title: "Agora Comment",
+    //        subtitle: input.post_id,
+    //      }
     case "memory_search":
       return {
         icon: "brain",
@@ -1641,28 +1642,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       <div data-component="tool-card-area">
         <Switch>
           <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-            {(error) => {
-              const cleaned = error().replace("Error: ", "")
-              const [title, ...rest] = cleaned.split(": ")
-              return (
-                <Card variant="error">
-                  <div data-component="tool-error">
-                    <Icon name="ban" size="small" />
-                    <Switch>
-                      <Match when={title && title.length < 30}>
-                        <div data-slot="message-part-tool-error-content">
-                          <div data-slot="message-part-tool-error-title">{title}</div>
-                          <span data-slot="message-part-tool-error-message">{rest.join(": ")}</span>
-                        </div>
-                      </Match>
-                      <Match when={true}>
-                        <span data-slot="message-part-tool-error-message">{cleaned}</span>
-                      </Match>
-                    </Switch>
-                  </div>
-                </Card>
-              )
-            }}
+            {(error) => <ErrorCard error={error()} />}
           </Match>
           <Match when={true}>
             <Dynamic

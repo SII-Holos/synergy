@@ -5,11 +5,11 @@
   --font-family-mono--font-feature-settings: "ss01" 1;
   --font-feature-settings-mono: "liga" 0, "calt" 0;
 
-  --font-size-small: 13px;
-  --font-size-base: 14px;
-  --font-size-large: 16px;
-  --font-size-x-large: 20px;
-  --font-size-x-small: 11px;
+  --font-size-small: 14px;
+  --font-size-base: 16px;
+  --font-size-large: 18px;
+  --font-size-x-large: 24px;
+  --font-size-x-small: 12px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;

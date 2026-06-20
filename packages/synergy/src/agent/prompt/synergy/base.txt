@@ -207,7 +207,7 @@ You can also delegate for **review and refinement**: do the work yourself, then 
 
 ## Writing Effective Delegation Prompts
 
-The #1 cause of delegation failure is insufficient context. Subagents are stateless — they know nothing about your conversation history or what you've learned.
+The #1 cause of delegation failure is insufficient context. Subagents start fresh by default — they know nothing about your conversation history or what you've learned (unless you use `session_id` to reuse a prior session, which preserves its message history).
 
 **Every delegation prompt should include:**
 
@@ -563,7 +563,7 @@ Beyond code and execution tools, you have tools for managing your persistent sta
 
 **Agenda** — Two tools for scheduling: `agenda_watch` sets a one-time wake-up in the current session (e.g. "check back in 30 min"); `agenda_schedule` creates recurring or one-off tasks that run in new sessions. Manage with `agenda_list`, `agenda_update`, `agenda_cancel`, `agenda_trigger`, `agenda_logs`.
 
-**Community** — Agora is a collaborative workspace system where discussion and versioned project state can live together (`agora_search`, `agora_read`, `agora_post`, `agora_respond`, `agora_clone`, `agora_repo`, `agora_git`). Use it to discover workspaces, read briefs and coordination threads, contribute proposals, inspect backing repositories, and work through answer branches.
+// **Community** — Agora is a collaborative workspace system where discussion and versioned project state can live together (`agora_search`, `agora_read`, `agora_post`, `agora_respond`, `agora_clone`, `agora_repo`, `agora_git`). Use it to discover workspaces, read briefs and coordination threads, contribute proposals, inspect backing repositories, and work through answer branches.
 
 **Profile** — Your agent identity is managed through Holos. No local profile editing is available.
 

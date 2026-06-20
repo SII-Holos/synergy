@@ -25,7 +25,7 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
-import { Card } from "./card"
+import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
 import { Spinner } from "./spinner"
@@ -112,15 +112,11 @@ function MailboxSourceBadge(props: { message: UserMessage }) {
       <Icon name="message-square" size="small" />
       <span>
         From{" "}
-        <button
-          data-slot="session-turn-mailbox-link"
-          onClick={() => {
-            const id = sourceID()
-            if (id) data.navigateToSession?.(id)
-          }}
-        >
-          {label()}
-        </button>
+        <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
+          <button data-slot="session-turn-mailbox-link" onClick={() => data.navigateToSession?.(sourceID()!)}>
+            {label()}
+          </button>
+        </Show>
       </span>
     </div>
   )
@@ -343,11 +339,12 @@ export function SessionTurn(
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
   const working = createMemo(() => {
     if (!isLastUserMessage()) return false
-    // Canonical truth: the last assistant message is incomplete
     const last = lastAssistantMessage()
-    if (last?.time.completed == null) return true
-    // Runtime overlay — for the brief window where a new turn has started
-    // but the assistant message hasn't been created in the store yet
+    if (last?.time.completed == null) {
+      const s = data.store.session_status[props.sessionID]
+      if (s && s.type === "idle") return false
+      return true
+    }
     const s = data.store.session_status[props.sessionID]
     if (s && s.type !== "idle") return true
     return false
@@ -681,9 +678,7 @@ export function SessionTurn(
                           )}
                         </For>
                         <Show when={error()}>
-                          <Card variant="error" class="error-card">
-                            {error()?.data?.message as string}
-                          </Card>
+                          <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                         </Show>
                       </div>
                     </Show>
@@ -773,9 +768,7 @@ export function SessionTurn(
                     </Show>
                     {/* Error (when expanded steps section is not showing it) */}
                     <Show when={error() && !(working() || (props.stepsExpanded && hasSteps()))}>
-                      <Card variant="error" class="error-card">
-                        {error()?.data?.message as string}
-                      </Card>
+                      <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                     </Show>
                   </Match>
                 </Switch>

@@ -33,8 +33,8 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["merge", "shell"],
   ["pull", "shell"],
   ["push", "shell"],
-  ["revert", "shell"],
-  ["rm", "shell"],
+  ["revert", "shell_destructive"],
+  ["rm", "shell_destructive"],
   // ── destructive ───────────────────────────────────────────
   ["filter-branch", "shell_destructive"],
   ["update-ref", "shell_destructive"],
@@ -51,10 +51,27 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
   if (words[idx] !== "git") return null
 
-  const sub = words[idx + 1]
+  let subIndex = idx + 1
+  while (subIndex < words.length && words[subIndex]?.startsWith("-")) {
+    const word = words[subIndex]
+    if (
+      word === "-C" ||
+      word === "-c" ||
+      word === "--git-dir" ||
+      word === "--work-tree" ||
+      word === "--namespace" ||
+      word === "--exec-path"
+    ) {
+      subIndex += 2
+      continue
+    }
+    subIndex++
+  }
+
+  const sub = words[subIndex]
   if (!sub) return null
 
-  const flags = words.filter((w) => w.startsWith("-"))
+  const flags = words.slice(subIndex + 1).filter((w) => w.startsWith("-"))
   const hasExact = (f: string) => flags.some((fl) => fl === f)
 
   // ── branch ─────────────────────────────────────────────────
@@ -82,31 +99,42 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── commit ─────────────────────────────────────────────────
   if (sub === "commit") {
-    if (hasExact("--amend") || flags.some((f) => f.startsWith("--amend"))) return "shell" // warn
+    if (hasExact("--amend") || flags.some((f) => f.startsWith("--amend"))) return "shell_destructive"
     return "shell" // safe_write
+  }
+
+  // ── pull ──────────────────────────────────────────────────
+  if (sub === "pull") {
+    if (flags.some((f) => f.startsWith("--rebase") || f === "-r")) return "shell_destructive"
+    return "shell" // plain pull → warn
   }
 
   // ── push ───────────────────────────────────────────────────
   if (sub === "push") {
-    if (hasExact("--mirror")) return "shell_destructive" // critical
-    if (hasExact("--force") || hasExact("-f")) return "shell_destructive"
-    if (hasExact("--force-with-lease")) return "shell_destructive"
-    if (hasExact("--delete") || hasExact("-d")) return "shell_destructive"
-    return "shell" // normal push → warn
+    return "shell_destructive" // any push → destructive
   }
 
   // ── reset ──────────────────────────────────────────────────
   if (sub === "reset") {
-    if (hasExact("--hard")) return "shell_destructive"
-    return "shell" // --soft / --mixed / default → warn
+    return "shell_destructive" // all forms → destructive
+  }
+
+  // ── restore ────────────────────────────────────────────────
+  if (sub === "restore") {
+    const shortChars = flags.filter((f) => f.startsWith("-") && !f.startsWith("--")).join("")
+    const hasStaged = flags.some((f) => f.startsWith("--staged")) || shortChars.includes("S")
+    const hasWorktree = flags.some((f) => f.startsWith("--worktree")) || shortChars.includes("W")
+    const hasSource = flags.some((f) => f.startsWith("--source")) || shortChars.includes("s")
+    if (hasStaged && !hasWorktree && !hasSource) return "shell" // safe local stage reversion
+    return "shell_destructive" // worktree overwrite → destructive
   }
 
   // ── stash ──────────────────────────────────────────────────
   if (sub === "stash") {
-    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "clear") return "shell_destructive"
-    if (subsub === "drop") return "shell" // warn
-    if (subsub === "pop") return "shell" // warn
+    if (subsub === "drop") return "shell_destructive"
+    if (subsub === "pop") return "shell_destructive"
     if (subsub === "apply" || subsub === "push" || subsub === "save" || subsub === "branch") return "shell" // safe_write
     if (subsub === "list" || subsub === "show") return "shell_read"
     return "shell" // stash without subcommand → safe_write
@@ -122,7 +150,7 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── reflog ─────────────────────────────────────────────────
   if (sub === "reflog") {
-    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "delete") return "shell_destructive"
     if (subsub === "expire") return "shell_destructive"
     return "shell_read" // show (default) → read_only
@@ -130,7 +158,7 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── remote ─────────────────────────────────────────────────
   if (sub === "remote") {
-    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "add" || subsub === "set-url") return "shell"
     if (subsub === "remove") return "shell" // warn
     return "shell_read" // show / -v → read_only
@@ -140,14 +168,14 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   if (sub === "tag") {
     if (hasExact("-d") || hasExact("--delete")) return "shell"
     if (hasExact("-l") || hasExact("--list")) return "shell_read"
-    const tagArg = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const tagArg = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (tagArg && tagArg !== "tag") return "shell"
     return "shell_read"
   }
 
   // ── worktree ───────────────────────────────────────────────
   if (sub === "worktree") {
-    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "remove" && (hasExact("--force") || hasExact("-f"))) return "shell_destructive"
     if (subsub === "remove") return "shell" // warn
     if (subsub === "add") return "shell"
@@ -163,7 +191,7 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── bisect sub-subcommand ──────────────────────────────────
   if (sub === "bisect") {
-    const subsub = words.find((w, i) => i > idx + 1 && !w.startsWith("-"))
+    const subsub = words.find((w, i) => i > subIndex && !w.startsWith("-"))
     if (subsub === "run") return "shell_destructive"
     return "shell_read"
   }
@@ -332,6 +360,20 @@ const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = 
   { pattern: /\bgit\s+show\b.*--output=/, reason: "git show writing to custom output file" },
   { pattern: /\bgit\s+grep\b.*--open-files-in-pager/, reason: "git grep with custom pager" },
   { pattern: /\bgit\s+config\b.*(?:--global|--system)/, reason: "git config modifying global/system settings" },
+  {
+    pattern: /\b(?:bash|sh|zsh|dash)\s+-c\s+(['"])[^'"]*\bgit\s+(?:[^'"]*\s)?push\b[^'"]*\1/,
+    reason: "shell wrapper around git push",
+  },
+  {
+    pattern:
+      /\b(?:bash|sh|zsh|dash)\s+-c\s+(['"])[^'"]*\bgit\s+(?:[^'"]*\s)?(?:revert|rm|reset|rebase|clean)\b[^'"]*\1/,
+    reason: "shell wrapper around destructive git command",
+  },
+  {
+    pattern:
+      /\b(?:python3?|python2|node|ruby|perl)\s+-(?:c|e)\b.*(?:subprocess\.|child_process|system\s*\(|exec\s*\(|spawn\s*\(|`)[\s\S]*\bgit\b[\s\S]*(?:push|revert|\brm\b|reset|rebase|clean|restore|stash[\s\S]*(?:pop|drop|clear)|commit[\s\S]*--amend|pull[\s\S]*(?:--rebase|-r))\b/,
+    reason: "interpreter subprocess around destructive git command",
+  },
 ]
 
 function normalizeCommand(command: string): string {

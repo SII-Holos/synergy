@@ -4,11 +4,10 @@ import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
-import { AppChannel } from "../channel/app"
 import DESCRIPTION from "./session-send.txt"
 
 const parameters = z.object({
-  target: z.string().describe("Target session. A session ID (ses_xxx) or 'home' for the app home session."),
+  target: z.string().describe("Target session. A session ID (ses_xxx)."),
   content: z.string().describe("The text content to send."),
   role: z
     .enum(["user", "assistant"])
@@ -24,13 +23,10 @@ const parameters = z.object({
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
-  if (target === "home") {
-    return AppChannel.session()
-  }
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  throw new Error(`Unknown session target "${target}". Expected a session ID (ses_xxx) or 'home'.`)
+  throw new Error(`Unknown session target "${target}". Expected a session ID (ses_xxx).`)
 }
 
 export const SessionSendTool = Tool.define("session_send", {

@@ -1,4 +1,4 @@
-import { For, Show, onMount } from "solid-js"
+import { For, Show, createMemo, onMount } from "solid-js"
 import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
@@ -21,6 +21,7 @@ export function SessionConversation(props: {
   expanded: Record<string, boolean>
   onToggleExpanded: (id: string) => void
   showTabs: Accessor<boolean>
+  workspaceOpen?: Accessor<boolean>
   isWorking: Accessor<boolean>
   turnStart: number
   turnBatch: number
@@ -39,6 +40,7 @@ export function SessionConversation(props: {
   anchor: (id: string) => string
   terminalHeight: Accessor<number>
 }) {
+  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <ConversationViewport
       scrolledUp={props.scrolledUp()}
@@ -57,13 +59,16 @@ export function SessionConversation(props: {
               currentMessage={props.activeMessage}
               onMessageSelect={props.scrollToMessage}
               bottomOffset={props.terminalHeight}
+              compressed={workspaceOpen}
             />
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 max-w-full flex-col items-start justify-start gap-4 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pb-[calc(var(--prompt-height,10rem)+96px)]"
+      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-4 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:pb-[calc(var(--prompt-height,10rem)+96px)]"
       contentClassList={{
-        "md:max-w-[54rem]": !props.showTabs(),
+        "max-w-full": true,
+        "md:max-w-[54rem]": !props.showTabs() && !workspaceOpen(),
+        "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
         "mt-0": props.showTabs(),
       }}
     >
@@ -101,6 +106,7 @@ export function SessionConversation(props: {
           }
 
           const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
+          const hasTabs = props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1
 
           if (msg.role === "assistant") {
             const assistantMsg = msg as AssistantMessage
@@ -108,8 +114,7 @@ export function SessionConversation(props: {
             const isCommand = source === "command"
             const Component = isCommand ? CommandResultOutput : MailboxMessage
             const borderClass = index() > 0 ? "border-t border-border-base pt-2 " : ""
-            const tabClass =
-              props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1 ? "md:pr-6 md:pl-18" : ""
+            const tabClass = hasTabs ? (workspaceOpen() ? "md:pr-3 md:pl-10" : "md:pr-6 md:pl-18") : ""
 
             return (
               <div
@@ -150,9 +155,13 @@ export function SessionConversation(props: {
                     "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
                     (index() > 0 ? "border-t border-border-base pt-2 " : "") +
                     (!props.showTabs()
-                      ? "md:max-w-200 md:mx-auto"
-                      : (props.visibleUserMessages()?.length ?? 0) > 1
-                        ? "md:pr-6 md:pl-18"
+                      ? workspaceOpen()
+                        ? "md:max-w-[34rem] md:mx-auto"
+                        : "md:max-w-[50rem] md:mx-auto"
+                      : hasTabs
+                        ? workspaceOpen()
+                          ? "md:pr-3 md:pl-10"
+                          : "md:pr-6 md:pl-18"
                         : ""),
                 }}
               />

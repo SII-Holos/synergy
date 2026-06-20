@@ -117,3 +117,7 @@
     transform: scale(1);
   }
 }
+
+[data-component="session-timeline"][data-compressed="true"]:hover {
+  width: min(200px, calc(100vw - 40px));
+}

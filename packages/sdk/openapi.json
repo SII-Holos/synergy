@@ -191,8 +191,8 @@
       },
       "delete": {
         "operationId": "holos.logout",
-        "summary": "Clear Holos credentials",
-        "description": "Remove stored Holos credentials and stop the Holos runtime. Used for sign-out.",
+        "summary": "Clear active Holos credentials",
+        "description": "Remove the active Holos account credentials and stop the Holos runtime. Used for sign-out.",
         "responses": {
           "200": {
             "description": "Credentials cleared",
@@ -2679,7 +2679,7 @@
                   },
                   "controlProfile": {
                     "type": "string",
-                    "enum": ["manual", "guarded", "autonomous", "full_access"]
+                    "enum": ["guarded", "autonomous", "full_access"]
                   }
                 }
               }
@@ -2935,7 +2935,7 @@
                   },
                   "controlProfile": {
                     "type": "string",
-                    "enum": ["manual", "guarded", "autonomous", "full_access"]
+                    "enum": ["guarded", "autonomous", "full_access"]
                   },
                   "time": {
                     "type": "object",
@@ -3153,6 +3153,89 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.dag({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/agenda": {
+      "get": {
+        "operationId": "session.agenda",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 6,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "summary": "Get session agenda wakeups",
+        "description": "Retrieve agenda items that can wake the specified session.",
+        "responses": {
+          "200": {
+            "description": "Session agenda wakeups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAgendaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.agenda({\n  ...\n})"
           }
         ]
       }
@@ -9237,9 +9320,9 @@
         ]
       }
     },
-    "/holos/profile": {
+    "/holos/accounts": {
       "get": {
-        "operationId": "holos.profile.get",
+        "operationId": "holos.accounts.list",
         "parameters": [
           {
             "in": "query",
@@ -9249,15 +9332,15 @@
             }
           }
         ],
-        "summary": "Get profile",
-        "description": "Retrieve the current agent profile.",
+        "summary": "List Holos accounts",
+        "description": "List all stored Holos accounts. Secrets are never included in the response.",
         "responses": {
           "200": {
-            "description": "Agent profile",
+            "description": "Account list",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HolosProfileResponse"
+                  "$ref": "#/components/schemas/HolosAccountsListResponse"
                 }
               }
             }
@@ -9266,12 +9349,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.list({\n  ...\n})"
           }
         ]
-      },
-      "put": {
-        "operationId": "holos.profile.update",
+      }
+    },
+    "/holos/accounts/switch": {
+      "post": {
+        "operationId": "holos.accounts.switch",
         "parameters": [
           {
             "in": "query",
@@ -9281,15 +9366,15 @@
             }
           }
         ],
-        "summary": "Update profile",
-        "description": "Update the current agent profile.",
+        "summary": "Switch active Holos account",
+        "description": "Switch the active Holos account and reload the runtime to connect with new credentials.",
         "responses": {
           "200": {
-            "description": "Updated profile",
+            "description": "Account switched",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HolosProfile"
+                  "$ref": "#/components/schemas/HolosAccountsSwitchResponse"
                 }
               }
             }
@@ -9303,6 +9388,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -9311,14 +9406,12 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "bio": {
-                    "type": "string"
+                  "agentId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
-                "required": ["name", "bio"]
+                "required": ["agentId"]
               }
             }
           }
@@ -9326,14 +9419,66 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.update({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.switch({\n  ...\n})"
           }
         ]
       }
     },
-    "/holos/profile/reset": {
-      "post": {
-        "operationId": "holos.profile.reset",
+    "/holos/accounts/{agentId}": {
+      "delete": {
+        "operationId": "holos.accounts.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "agentId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove a Holos account",
+        "description": "Remove a stored Holos account. If the account is active, stops the runtime and clears the active state.",
+        "responses": {
+          "200": {
+            "description": "Account removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAccountsRemoveResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.accounts.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/holos/status": {
+      "get": {
+        "operationId": "holos.status",
         "parameters": [
           {
             "in": "query",
@@ -9343,15 +9488,15 @@
             }
           }
         ],
-        "summary": "Reset profile initialization",
-        "description": "Set the profile initialized flag to false, allowing the user to re-run the onboarding setup flow.",
+        "summary": "Get Holos connection status",
+        "description": "Return the current connection status for the active account. Non-active accounts show as disconnected.",
         "responses": {
           "200": {
-            "description": "Profile reset",
+            "description": "Connection status",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/HolosStatusResponse"
                 }
               }
             }
@@ -9360,41 +9505,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.reset({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/holos/profile/skip-genesis": {
-      "post": {
-        "operationId": "holos.profile.skipGenesis",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Skip genesis and create default profile",
-        "description": "Creates a default profile, skipping the onboarding chat. No-ops if profile is already initialized.",
-        "responses": {
-          "200": {
-            "description": "Profile",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HolosProfile"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.skipGenesis({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.status({\n  ...\n})"
           }
         ]
       }
@@ -11279,81 +11390,6 @@
         ]
       }
     },
-    "/channel/genesis/session": {
-      "get": {
-        "operationId": "channel.genesis.session",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get or create genesis channel session",
-        "description": "Returns the active Genesis setup session, creating one if none exists.",
-        "responses": {
-          "200": {
-            "description": "Genesis channel session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.session({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/channel/genesis/reset": {
-      "post": {
-        "operationId": "channel.genesis.reset",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Reset genesis channel session",
-        "description": "Archives the current Genesis session. The next call to get session will create a fresh one.",
-        "responses": {
-          "200": {
-            "description": "Session archived",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["success"]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.genesis.reset({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/experimental/resource": {
       "get": {
         "operationId": "experimental.resource.list",
@@ -11830,7 +11866,8 @@
         },
         "required": ["type", "chatId"]
       },
-      "SessionChannelEndpoint": {
+      "SessionEndpoint": {
+        "description": "Endpoint context if created from a session endpoint",
         "type": "object",
         "properties": {
           "kind": {
@@ -11842,30 +11879,6 @@
           }
         },
         "required": ["kind", "channel"]
-      },
-      "SessionHolosEndpoint": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "holos"
-          },
-          "agentId": {
-            "type": "string"
-          }
-        },
-        "required": ["kind", "agentId"]
-      },
-      "SessionEndpoint": {
-        "description": "Endpoint context if created from a session endpoint",
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/SessionChannelEndpoint"
-          },
-          {
-            "$ref": "#/components/schemas/SessionHolosEndpoint"
-          }
-        ]
       },
       "AgendaOrigin": {
         "description": "Context captured at creation time",
@@ -12852,7 +12865,7 @@
       "ControlProfileId": {
         "description": "Default control profile applied to all agents",
         "type": "string",
-        "enum": ["manual", "guarded", "autonomous", "full_access"]
+        "enum": ["guarded", "autonomous", "full_access"]
       },
       "AgentConfig": {
         "type": "object",
@@ -13946,6 +13959,27 @@
             "description": "How to proceed when the requested sandbox runtime is unavailable",
             "type": "string",
             "enum": ["warn", "allow", "deny"]
+          },
+          "backend": {
+            "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+            "type": "string",
+            "enum": ["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"]
+          },
+          "windows": {
+            "description": "Windows-specific sandbox settings",
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["disabled", "restricted-token", "elevated"]
+              },
+              "helperPath": {
+                "type": "string"
+              },
+              "verifyHelperHash": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -14537,24 +14571,6 @@
             "properties": {
               "url": {
                 "description": "Enterprise URL",
-                "type": "string"
-              }
-            }
-          },
-          "agora": {
-            "description": "Agora Q&A platform configuration",
-            "type": "object",
-            "properties": {
-              "url": {
-                "description": "Agora API base URL (defaults to https://agora.holosai.io)",
-                "type": "string"
-              },
-              "tokenUrl": {
-                "description": "Holos API URL for Agora token exchange (defaults to https://www.holosai.io)",
-                "type": "string"
-              },
-              "giteaSSHHost": {
-                "description": "Override SSH hostname used for Agora's Gitea remote",
                 "type": "string"
               }
             }
@@ -15191,7 +15207,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "label": {
             "type": "string"
@@ -15743,7 +15759,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "pendingReply": {
             "type": "boolean"
@@ -15926,6 +15942,113 @@
           }
         },
         "required": ["id", "content", "status", "deps"]
+      },
+      "SessionAgendaTrigger": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+          },
+          "interval": {
+            "description": "Interval for every triggers, e.g. '30m'",
+            "type": "string"
+          },
+          "delay": {
+            "description": "Delay for delay triggers, e.g. '2h'",
+            "type": "string"
+          }
+        },
+        "required": ["type"]
+      },
+      "SessionAgendaItem": {
+        "type": "object",
+        "properties": {
+          "itemID": {
+            "description": "Agenda item ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "Agenda item title",
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "pending"]
+          },
+          "nextRunAt": {
+            "description": "Next scheduled activation time, or null for open-ended triggers",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "triggerTypes": {
+            "description": "Trigger types that can activate this agenda item",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+            }
+          },
+          "triggers": {
+            "description": "Display-safe trigger details for client-side formatting",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionAgendaTrigger"
+            }
+          },
+          "global": {
+            "description": "Whether this agenda item is globally visible",
+            "type": "boolean"
+          }
+        },
+        "required": ["itemID", "title", "status", "nextRunAt", "triggerTypes", "triggers", "global"]
+      },
+      "SessionAgendaResponse": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hasActiveAgenda": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionAgendaItem"
+            }
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
       },
       "UserMessage": {
         "type": "object",
@@ -18512,6 +18635,9 @@
           },
           "searchText": {
             "type": "string"
+          },
+          "previewHtml": {
+            "type": "string"
           }
         },
         "required": ["id", "title", "pinned", "global", "tags", "version", "time", "searchText"]
@@ -19184,6 +19310,31 @@
         },
         "required": ["exists"]
       },
+      "HolosAccountMeta": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["agentId", "label", "createdAt", "updatedAt"]
+      },
       "HolosIdentityState": {
         "type": "object",
         "properties": {
@@ -19199,9 +19350,25 @@
                 "type": "null"
               }
             ]
+          },
+          "activeAccount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HolosAccountMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HolosAccountMeta"
+            }
           }
         },
-        "required": ["loggedIn", "agentId"]
+        "required": ["loggedIn", "agentId", "activeAccount", "accounts"]
       },
       "HolosConnectionState": {
         "type": "object",
@@ -19228,24 +19395,6 @@
           }
         },
         "required": ["ready"]
-      },
-      "HolosProfile": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "bio": {
-            "type": "string"
-          },
-          "initialized": {
-            "type": "boolean"
-          },
-          "initializedAt": {
-            "type": "number"
-          }
-        },
-        "required": ["name", "bio", "initialized"]
       },
       "Contact": {
         "type": "object",
@@ -19276,7 +19425,19 @@
           "profile": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/HolosProfile"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "bio": {
+                    "type": "string"
+                  },
+                  "initialized": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["name", "bio", "initialized"]
               },
               {
                 "type": "null"
@@ -19333,7 +19494,69 @@
         },
         "required": ["valid", "agentId"]
       },
-      "HolosProfileResponse": {
+      "HolosAccountsListResponse": {
+        "type": "object",
+        "properties": {
+          "activeAccountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HolosAccountMeta"
+            }
+          }
+        },
+        "required": ["activeAccountId", "accounts"]
+      },
+      "HolosAccountsSwitchResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "activeAccountId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"]
+          }
+        },
+        "required": ["success", "activeAccountId", "status"]
+      },
+      "HolosAccountsRemoveResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "activeAccountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wasActive": {
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "activeAccountId", "wasActive"]
+      },
+      "HolosStatusResponse": {
         "type": "object",
         "properties": {
           "agentId": {
@@ -19346,10 +19569,17 @@
               }
             ]
           },
-          "profile": {
+          "status": {
+            "type": "string",
+            "enum": ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"]
+          },
+          "error": {
+            "type": "string"
+          },
+          "peerId": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/HolosProfile"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -19357,7 +19587,7 @@
             ]
           }
         },
-        "required": ["agentId", "profile"]
+        "required": ["agentId", "status", "peerId"]
       },
       "HolosPresenceMap": {
         "type": "object",
@@ -19463,7 +19693,7 @@
           },
           "controlProfile": {
             "type": "string",
-            "enum": ["manual", "guarded", "autonomous", "full_access"]
+            "enum": ["guarded", "autonomous", "full_access"]
           },
           "model": {
             "type": "object",
@@ -20716,57 +20946,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.holos.profile.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.profile.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "profile": {
-                "$ref": "#/components/schemas/HolosProfile"
-              }
-            },
-            "required": ["profile"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.app.push": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "app.push"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["agenda.result", "notification"]
-              },
-              "title": {
-                "type": "string"
-              },
-              "body": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string"
-              },
-              "itemID": {
-                "type": "string"
-              }
-            },
-            "required": ["type"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -21363,12 +21542,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.profile.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.app.push"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"

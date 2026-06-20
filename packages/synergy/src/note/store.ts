@@ -23,8 +23,10 @@ export namespace NoteStore {
 
   function toMetadata(note: NoteTypes.Info): Metadata {
     const { content, ...meta } = note
-    const searchParts = [note.title, ...(note.tags ?? []), NoteMarkdown.toMarkdown(content)].filter(Boolean)
-    return { ...meta, searchText: searchParts.join("\n") }
+    const markdown = NoteMarkdown.toMarkdown(content)
+    const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
+    const previewHtml = NoteMarkdown.toPreviewHtml(content) || undefined
+    return { ...meta, searchText: searchParts.join("\n"), previewHtml }
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {

@@ -51,6 +51,8 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
 
     const clickHandler = (event: MouseEvent) => {
       if (!props.expanded || !rootRef) return
+      const target = event.target as HTMLElement | undefined
+      if (target?.closest('[data-slot="dag-node-preview"]')) return
       if (!rootRef.contains(event.target as Node)) setExpanded(false)
     }
 
@@ -112,15 +114,22 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
           />
         </button>
 
-        <Show when={props.expanded}>
+        <div
+          class="session-progress-island-panel-wrap"
+          data-expanded={props.expanded ? "true" : "false"}
+          aria-hidden={!props.expanded}
+        >
           <div id="session-progress-island-panel" class="session-progress-island-panel">
             <div class="session-progress-island-panel-topline">
-              <span>{label()}</span>
-              <Show when={props.snapshot.status !== "complete"}>
-                <span class="text-text-weaker">
-                  {props.snapshot.active > 0 ? `${props.snapshot.active} active` : `${props.snapshot.pending} waiting`}
-                </span>
-              </Show>
+              <span>Current work</span>
+              <span class="text-text-weaker">
+                {props.snapshot.completed}/{props.snapshot.total} complete
+                <Show when={props.snapshot.status !== "complete"}>
+                  {props.snapshot.active > 0
+                    ? ` · ${props.snapshot.active} active`
+                    : ` · ${props.snapshot.pending} waiting`}
+                </Show>
+              </span>
             </div>
 
             <Show when={props.mode === "both"}>
@@ -132,7 +141,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
 
             <div class="session-progress-island-body">{props.children}</div>
           </div>
-        </Show>
+        </div>
       </div>
     </div>
   )

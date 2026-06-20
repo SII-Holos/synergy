@@ -83,7 +83,6 @@ Inspect or manage the background service when needed:
 
 ```bash
 synergy status
-synergy restart
 synergy stop
 synergy logs
 ```
@@ -96,7 +95,7 @@ Background service management currently supports:
 
 `synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
 
-Start and restart print a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+Start prints a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 
@@ -134,7 +133,7 @@ bun dev send "hello"
 ```bash
 synergy start              # Start the background service, optionally with Holos login
 synergy stop               # Stop the background service
-synergy restart            # Restart the background service
+synergy stop && synergy start            # Stop then start the background service
 synergy status             # Show background service status
 synergy server             # Start the Synergy server in foreground mode
 synergy web                # Open the web UI and attach to a server
@@ -285,29 +284,56 @@ Control profiles are configured in `synergy.jsonc`:
 
 ```jsonc
 {
-  "controlProfile": "workspace",
-  "agents": {
+  "controlProfile": "guarded",
+  "agent": {
     "synergy-max": {
-      "controlProfile": "auto_review",
+      "controlProfile": "autonomous",
     },
   },
 }
 ```
 
-**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `workspace`.
+**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
 
 Built-in profiles:
 
-| Config value  | UI label     | File scope                  | Shell/network                                                                   | Sandbox                            |
-| ------------- | ------------ | --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------- |
-| `review`      | 审阅         | Read-only active workspace  | Denied                                                                          | `read_only`, fallback `deny`       |
-| `workspace`   | 工作区       | Read/write active workspace | Ask/restricted                                                                  | `workspace_write`, fallback `deny` |
-| `auto_review` | 自动审查     | Same as `workspace`         | Same boundary as `workspace`; low-risk requests can be reviewed automatically   | `workspace_write`, fallback `deny` |
-| `full_access` | 完全访问权限 | Full local filesystem       | Allowed, while identity/outbound communication still requires explicit approval | none, fallback `allow`             |
+| Config value  | UI label    | Behavior                                                                                                                                                                               |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Guarded     | Default protected mode. Auto-allows safe reads, workspace-local edits, and ordinary network lookups; asks before shell, external filesystem, identity, platform, or extension actions. |
+| `autonomous`  | Autonomous  | Unattended mode. Never asks; allows low/medium-risk work and denies high-risk boundaries.                                                                                              |
+| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing.                                                                                                             |
 
 `full_access` is blocked in unattended execution mode. It is only available in attended sessions.
 
-Sandbox behavior is driven by the active control profile. The older `sandbox.enabled` and `sandbox.fallbackPolicy` config fields are currently reserved for compatibility and do not override profile behavior.
+### Sandbox
+
+Synergy sandboxes shell command execution at the OS level for security. Sandbox support per platform:
+
+| Platform | Backend                        | Status         |
+| -------- | ------------------------------ | -------------- |
+| macOS    | `sandbox-exec` (Seatbelt)      | Production     |
+| Linux    | `bwrap` (Bubblewrap)           | Available      |
+| Windows  | Restricted Token (Rust helper) | In development |
+
+Sandbox mode is driven by the active control profile (`guarded`, `autonomous`, `full_access`), not by global config. The built-in profiles resolve sandbox as follows:
+
+| Profile       | Sandbox mode      | Fallback |
+| ------------- | ----------------- | -------- |
+| `guarded`     | `workspace_write` | `deny`   |
+| `autonomous`  | `workspace_write` | `deny`   |
+| `full_access` | `none`            | `allow`  |
+
+The global `sandbox` config fields control backend selection and fallback behavior. Current supported fields:
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": true, // Enable/disable sandbox globally
+    "fallbackPolicy": "deny", // "deny" | "warn" | "allow" — when backend is unavailable
+    // "backend": "auto",   // Planned: force a specific backend
+  },
+}
+```
 
 #### Where Synergy stores worktrees
 
@@ -436,15 +462,15 @@ bun install
 Then start the dev server:
 
 ```bash
-bun dev server   # start the server (watchdog wraps it for auto-restart)
+bun dev server   # start the server
 bun dev web --dev  # open the web UI (separate terminal)
 ```
 
-The dev server runs with `--restart=dev`, which wraps it in a watchdog. After editing code:
+After editing code:
 
 ```bash
 bun dev build      # rebuild frontend (after app changes)
-bun dev restart    # restart the server
+bun dev server      # restart the server
 ```
 
 > **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.

@@ -57,7 +57,7 @@ export function MobileDrawer() {
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
                 src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-                alt="Holos"
+                alt="Synergy"
                 class="size-6 shrink-0"
               />
               <span class="text-14-medium text-text-strong">Synergy</span>

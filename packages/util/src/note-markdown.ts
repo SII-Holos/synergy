@@ -442,4 +442,106 @@ export namespace NoteMarkdown {
 
     return nodes.length > 0 ? nodes : [{ type: "text", text }]
   }
+
+  // --- Safe HTML preview (for metadata thumbnail generation) ---
+
+  function escapeHtml(text: string): string {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  }
+
+  function renderPreviewInline(nodes: TipTapNode[]): string {
+    let result = ""
+    for (const node of nodes) {
+      if (node.type === "text") {
+        let text = escapeHtml(node.text ?? "")
+        if (node.marks) {
+          for (const mark of node.marks) {
+            switch (mark.type) {
+              case "bold":
+                text = `<strong>${text}</strong>`
+                break
+              case "italic":
+                text = `<em>${text}</em>`
+                break
+              case "code":
+                text = `<code>${text}</code>`
+                break
+              case "strike":
+                text = `<s>${text}</s>`
+                break
+            }
+          }
+        }
+        result += text
+      } else if (node.type === "hardBreak") {
+        result += "<br>"
+      }
+    }
+    return result
+  }
+
+  function renderPreviewBlock(node: TipTapNode): string {
+    switch (node.type) {
+      case "paragraph":
+        return `<p>${renderPreviewInline(node.content ?? [])}</p>`
+      case "heading": {
+        const level = Math.min(node.attrs?.level ?? 1, 6)
+        return `<h${level}>${renderPreviewInline(node.content ?? [])}</h${level}>`
+      }
+      case "bulletList":
+        return `<ul>${(node.content ?? [])
+          .map(
+            (item: TipTapNode) =>
+              `<li>${renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })}</li>`,
+          )
+          .join("")}</ul>`
+      case "orderedList":
+        return `<ol>${(node.content ?? [])
+          .map(
+            (item: TipTapNode) =>
+              `<li>${renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })}</li>`,
+          )
+          .join("")}</ol>`
+      case "taskList":
+        return `<ul class="note-preview-task-list">${(node.content ?? [])
+          .map((item: TipTapNode) => {
+            const checked = item.attrs?.checked ? " checked" : ""
+            const inner = renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })
+            return `<li><input type="checkbox"${checked} disabled>${inner}</li>`
+          })
+          .join("")}</ul>`
+      case "blockquote":
+        return `<blockquote>${renderPreviewHtml(node.content ?? [], 10)}</blockquote>`
+      case "codeBlock": {
+        const code = escapeHtml((node.content ?? ([] as TipTapNode[])).map((c: TipTapNode) => c.text ?? "").join("\n"))
+        return `<pre><code>${code}</code></pre>`
+      }
+      default:
+        if (node.content) return renderPreviewHtml(node.content, 10)
+        return ""
+    }
+  }
+
+  function renderPreviewHtml(nodes: TipTapNode[], maxBlocks: number): string {
+    let count = 0
+    let result = ""
+    for (const node of nodes) {
+      if (count >= maxBlocks) break
+      const html = renderPreviewBlock(node)
+      if (html) count++
+      result += html
+    }
+    return result
+  }
+
+  /** Generate safe, escaped HTML snippet from Tiptap JSON for note card thumbnails.
+   *  Produces up to 3 top-level blocks. All text is HTML-escaped, only known inline
+   *  marks (bold, italic, code, strike) produce tags. No external HTML is rendered.
+   */
+  export function toPreviewHtml(content: any): string {
+    if (!content || typeof content !== "object") return ""
+    const doc = content as TipTapNode
+    if (doc.type !== "doc") return ""
+    return renderPreviewHtml(doc.content ?? [], 3)
+  }
 }

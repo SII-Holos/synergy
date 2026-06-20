@@ -212,4 +212,46 @@ describe("computeProgressIslandSnapshot", () => {
     expect(snapshot.tone).toBe("ready")
     expect(formatProgressIslandLabel(snapshot)).toBe("Ready · 0/2")
   })
+
+  test("paused pending-only work is hidden instead of shown as active", () => {
+    const dag = computeDagSummary([n("a", "pending"), n("b", "pending")])
+    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "paused")
+
+    expect(snapshot.status).toBe("hidden")
+    expect(snapshot.total).toBe(0)
+  })
+
+  test("paused work with attention still stays visible", () => {
+    const dag = computeDagSummary([n("a", "completed"), n("b", "blocked"), n("c", "pending")])
+    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "paused")
+
+    expect(snapshot.status).toBe("attention")
+    expect(snapshot.tone).toBe("blocked")
+  })
+
+  test("settled work with non-terminal nodes is hidden (orphaned frame fix)", () => {
+    const dag = computeDagSummary([n("a", "completed"), n("b", "pending"), n("c", "pending")])
+    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+
+    expect(snapshot.status).toBe("hidden")
+    expect(snapshot.total).toBe(0)
+  })
+
+  test("settled work with running nodes is hidden (agent forgot to mark final node)", () => {
+    // The classic orphan: agent left a self-executed node in "running" state
+    // but the session went idle. settled means the work is finished even if
+    // node statuses weren't cleaned up.
+    const dag = computeDagSummary([n("a", "completed"), n("b", "running"), n("c", "pending")])
+    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+
+    expect(snapshot.status).toBe("hidden")
+    expect(snapshot.total).toBe(0)
+  })
+
+  test("settled fully-completed work shows complete (not hidden)", () => {
+    const dag = computeDagSummary([n("a", "completed"), n("b", "completed")])
+    const snapshot = computeProgressIslandSnapshot("dag", dag, undefined, "settled")
+
+    expect(snapshot.status).toBe("complete")
+  })
 })

@@ -1,235 +1,78 @@
-import * as os from "os"
-import * as path from "path"
-import * as fs from "fs"
-
 // ---------------------------------------------------------------------------
-// SandboxBackend — real sandbox execution backend
+// SandboxBackend — unified dispatch layer
 //
-// macOS:  sandbox-exec + Seatbelt profile (argv-based, not shell string)
-// Linux:  bwrap (bubblewrap), individual bind mounts, no --ro-bind /
-// Windows: unsupported
+// Platform-specific logic lives in sibling modules:
+//   macos.ts   — macOS sandbox-exec + Seatbelt profile generation
+//   linux.ts   — Linux bwrap (bubblewrap)
+//   windows.ts — Windows sandbox (Phase 1 skeleton, Phase 3 full)
+//   policy.ts  — shared policy constants and helpers
+//   platform.ts — platform detection and temp dir resolution
+//   types.ts   — all shared interfaces and type aliases
+//
+// This file imports from those modules and provides:
+//   1. Re-exports of all public types (backward compat)
+//   2. SandboxBackend namespace with platform dispatch
+//   3. The shared execute() function
 //
 // Design invariants:
-// - prepareWrapper writes a temp .sb profile; execute cleans it in finally.
-// - Seatbelt uses allow-default for OS viability, then explicitly denies user-data roots
-//   and re-allows the active workspace / controlled temp paths.
-// - Protected paths (deny file-write*) follow write-allow rules (last-match-wins).
-// - bwrap never --ro-bind /; only runtime roots + workspace + controlled tmp.
+//   - prepareWrapper writes a temp .sb profile; execute cleans it in finally.
+//   - Seatbelt uses allow-default for OS viability, then explicitly denies user-data roots
+//     and re-allows the active workspace / controlled temp paths.
+//   - Protected paths (deny file-write*) follow write-allow rules (last-match-wins).
+//   - bwrap never --ro-bind /; only runtime roots + workspace + controlled tmp.
 // ---------------------------------------------------------------------------
 
-// ------------------------------------------------------------------
-// Public types
-// ------------------------------------------------------------------
-
-export interface PlatformInfo {
-  platform: string
-  available: boolean
-  backend: string | null
-}
-
-export interface PrepareWrapperOpts {
-  command: string
-  args: string[]
-  workspace: string
-  executionCwd?: string
-  sandboxMode: "none" | "read_only" | "workspace_write"
-  forcePlatform?: string
-  runtimeReadRoots?: string[]
-  extraReadRoots?: string[]
-  writableRoots?: string[]
-  extraWritableRoots?: string[]
-  protectedPaths?: string[]
-  dataDenyRoots?: string[]
-}
-
-export interface PrepareLinuxWrapperOpts {
-  command: string
-  args: string[]
-  workspace: string
-  sandboxMode: "none" | "read_only" | "workspace_write"
-  runtimeReadRoots?: string[]
-  forcePlatform?: string
-}
-
-export interface SeatbeltProfileOpts {
-  workspace: string
-  sandboxMode: "read_only" | "workspace_write"
-  runtimeReadRoots: string[]
-  literalReadRoots?: string[]
-  writableRoots: string[]
-  protectedPaths: string[]
-  dataDenyRoots?: string[]
-}
-export interface SandboxExecutionWrapper {
-  command: string
-  args: string[]
-  sandboxed: boolean
-  skipReason?: string
-  tempPath?: string
-}
-
-export interface ExecuteOpts {
-  fallbackPolicy?: "warn" | "allow" | "deny"
-}
-
-export interface ExecuteResult {
-  exitCode: number | null
-  stdout: string
-}
+import type {
+  PlatformInfo,
+  PrepareWrapperOpts,
+  PrepareLinuxWrapperOpts,
+  SeatbeltProfileOpts,
+  SandboxExecutionWrapper,
+  ExecuteOpts,
+  ExecuteResult,
+} from "./types"
 
 // ------------------------------------------------------------------
-// Constants
+// Type re-exports (backward compat)
 // ------------------------------------------------------------------
 
-const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
-
-const DEFAULT_USER_RUNTIME_READ_ROOTS = (homedir: string): string[] => [
-  path.join(homedir, ".gitconfig"),
-  path.join(homedir, ".config", "git"),
-  path.join(homedir, ".bun"),
-  path.join(homedir, ".synergy", "cache"),
-  path.join(homedir, "Library", "Caches", "bun"),
-  path.join(homedir, "Library", "Caches", "com.oven-sh.bun"),
-]
-
-function defaultRuntimeReadRoots(homedir: string): string[] {
-  return [...DEFAULT_SYSTEM_RUNTIME_READ_ROOTS, ...DEFAULT_USER_RUNTIME_READ_ROOTS(homedir)]
-}
-
-function uniqueRoots(roots: string[]): string[] {
-  return [...new Set(roots.filter(Boolean))]
-}
-
-function ancestorLiterals(root: string): string[] {
-  const resolved = path.resolve(root)
-  const result: string[] = []
-  let current = resolved
-  while (current && current !== path.dirname(current)) {
-    result.push(current)
-    current = path.dirname(current)
-  }
-  result.push(current || path.parse(resolved).root)
-  return result.reverse()
-}
-
-function traversalLiterals(roots: string[]): string[] {
-  return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
-}
-
-const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
-  path.join(workspace, ".git"),
-  path.join(homedir, ".synergy", "config"),
-  path.join(homedir, ".synergy", "data", "auth", "api-key.json"),
-]
+export type {
+  PlatformInfo,
+  PrepareWrapperOpts,
+  PrepareLinuxWrapperOpts,
+  SeatbeltProfileOpts,
+  SandboxExecutionWrapper,
+  ExecuteOpts,
+  ExecuteResult,
+} from "./types"
 
 // ------------------------------------------------------------------
-// Helpers
+// Imports from sibling modules
 // ------------------------------------------------------------------
 
-function detectPlatform(): string {
-  const p = os.platform()
-  if (p === "darwin") return "macos"
-  if (p === "linux") return "linux"
-  if (p === "win32") return "windows"
-  return p
-}
-
-function randomId(): string {
-  return Math.random().toString(36).slice(2, 10)
-}
-function writeTempProfile(profileLines: string[]): string {
-  const filePath = path.join("/tmp", `synergy-sandbox-${randomId()}.sb`)
-  fs.writeFileSync(filePath, profileLines.join("\n"), "utf-8")
-  return filePath
-}
+import { detectPlatform, isPlatformSupported as platformIsSupported, platformInfo as getPlatformInfo } from "./platform"
+import { MacBackend } from "./macos"
+import { LinuxBackend } from "./linux"
+import { WindowsBackend } from "./windows"
 
 // ------------------------------------------------------------------
-// SandboxBackend
+// SandboxBackend — unified public API
 // ------------------------------------------------------------------
 
 export namespace SandboxBackend {
-  /**
-   * Return platform detection info without side effects.
-   */
-  export function platformInfo(): PlatformInfo {
-    const platform = detectPlatform()
-    const available = platform === "macos"
-    return {
-      platform,
-      available,
-      backend: available ? "sandbox-exec" : null,
-    }
-  }
+  export const platformInfo = getPlatformInfo
+  export const generateSeatbeltProfile = MacBackend.generateSeatbeltProfile
+  export const cleanupTemp = MacBackend.cleanupTemp
 
   /**
    * Check whether a given os.platform() string is supported.
-   * "win32" → false, "darwin" → true, "linux" → true (bwrap).
+   *
+   * "darwin" / "macos" → true, "linux" → true, "win32" / "windows" → true.
+   * Use platformInfo().available to check whether a sandbox backend is
+   * actually usable on the current machine.
    */
   export function isPlatformSupported(rawPlatform: string): boolean {
-    if (rawPlatform === "darwin" || rawPlatform === "macos") return true
-    if (rawPlatform === "linux") return true
-    return false
-  }
-
-  // ----------------------------------------------------------------
-  // Profile generation
-  // ----------------------------------------------------------------
-
-  /**
-   * Generate a macOS Seatbelt profile as an ordered array of lines.
-   *
-   * macOS `sandbox-exec` is not usable for normal shell commands with a pure
-   * `(deny default)` baseline without a very large platform-specific allowlist.
-   * This backend therefore uses `(allow default)` for process viability, then
-   * denies broad user-data roots (for example the home directory) and re-allows
-   * only the active workspace / controlled temp paths. This preserves the
-   * important Synergy boundary: commands cannot read or write sibling worktrees,
-   * the original checkout, or other user data under home unless the active
-   * workspace explicitly covers them.
-   *
-   * Order matters (last-match-wins): broad user-data denies come before active
-   * workspace allows; protected write denies come last.
-   */
-  export function generateSeatbeltProfile(opts: SeatbeltProfileOpts): string[] {
-    const { workspace, sandboxMode, runtimeReadRoots, writableRoots, protectedPaths } = opts
-    const dataDenyRoots = opts.dataDenyRoots ?? []
-    const literalReadRoots =
-      opts.literalReadRoots ?? traversalLiterals([workspace, ...runtimeReadRoots, ...writableRoots])
-    const lines: string[] = []
-
-    lines.push("(version 1)")
-    lines.push("(allow default)")
-    lines.push("(allow process-exec)")
-
-    for (const root of dataDenyRoots) {
-      lines.push(`(deny file-read* file-write* (subpath "${root}"))`)
-    }
-
-    for (const root of runtimeReadRoots) {
-      lines.push(`(allow file-read* (subpath "${root}") (literal "${root}"))`)
-    }
-
-    for (const root of literalReadRoots) {
-      lines.push(`(allow file-read* (literal "${root}"))`)
-    }
-
-    lines.push(`(allow file-read* (subpath "${workspace}") (literal "${workspace}"))`)
-
-    if (sandboxMode === "workspace_write") {
-      const writeRoots = [...writableRoots]
-      writeRoots.push(path.join(workspace, ".synergy", "tmp"))
-
-      for (const root of writeRoots) {
-        lines.push(`(allow file-read* file-write* (subpath "${root}"))`)
-      }
-    }
-
-    // 6. Protected path deny rules (after allows — last-match-wins)
-    for (const pp of protectedPaths) {
-      lines.push(`(deny file-write* (subpath "${pp}"))`)
-    }
-
-    return lines
+    return platformIsSupported(rawPlatform)
   }
 
   // ----------------------------------------------------------------
@@ -239,60 +82,52 @@ export namespace SandboxBackend {
   /**
    * Prepare a sandbox execution wrapper for the current platform.
    *
-   * macOS → sandbox-exec -f <tmpProfile> <command> <args...>
-   * linux → not implemented here (use prepareLinuxWrapper)
-   * other → returns unwrapped with skipReason
-   * none  → returns unwrapped, sandboxed=false
+   * macOS   → sandbox-exec -f <tmpProfile> <command> <args...>
+   * linux   → bwrap <mounts> -- <command> <args...>
+   * windows → Phase 3: synergy-sandbox.exe --config <tmpConfig> -- <command> <args...>
+   * none    → returns unwrapped, sandboxed=false
    */
   export function prepareWrapper(opts: PrepareWrapperOpts): SandboxExecutionWrapper {
-    const { command, args, workspace, sandboxMode, forcePlatform } = opts
-
-    if (sandboxMode === "none") {
-      return { command, args, sandboxed: false }
+    if (opts.sandboxMode === "none") {
+      return { command: opts.command, args: opts.args, sandboxed: false }
     }
 
-    const platform = forcePlatform ?? detectPlatform()
+    const platform = opts.forcePlatform ?? detectPlatform()
 
-    if (platform !== "macos") {
-      return {
-        command,
-        args,
-        sandboxed: false,
-        skipReason: `Sandbox not available on platform "${platform}"`,
+    switch (platform) {
+      case "macos":
+        return MacBackend.prepare(opts)
+      case "linux": {
+        // Check bwrap availability before dispatching
+        const info = platformInfo()
+        if (!info.available) {
+          return {
+            command: opts.command,
+            args: opts.args,
+            sandboxed: false,
+            skipReason: "bwrap not found — install bubblewrap for Linux sandbox support",
+          }
+        }
+        // Convert PrepareWrapperOpts → PrepareLinuxWrapperOpts for bwrap dispatch.
+        const linuxOpts: PrepareLinuxWrapperOpts = {
+          command: opts.command,
+          args: opts.args,
+          workspace: opts.workspace,
+          sandboxMode: opts.sandboxMode,
+          runtimeReadRoots: opts.runtimeReadRoots,
+          forcePlatform: opts.forcePlatform,
+        }
+        return LinuxBackend.prepare(linuxOpts)
       }
-    }
-
-    const runtimeReadRoots = uniqueRoots([
-      ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
-      ...(opts.extraReadRoots ?? []),
-    ])
-    const writableRoots = uniqueRoots([...(opts.writableRoots ?? [workspace]), ...(opts.extraWritableRoots ?? [])])
-    const protectedPaths = opts.protectedPaths ?? DEFAULT_PROTECTED_PATHS(os.homedir(), workspace)
-    const dataDenyRoots = opts.dataDenyRoots ?? [os.homedir()]
-    const literalReadRoots = traversalLiterals([
-      workspace,
-      opts.executionCwd ?? workspace,
-      ...runtimeReadRoots,
-      ...writableRoots,
-    ])
-
-    const profile = generateSeatbeltProfile({
-      workspace,
-      sandboxMode,
-      runtimeReadRoots,
-      literalReadRoots,
-      writableRoots,
-      protectedPaths,
-      dataDenyRoots,
-    })
-
-    const tempPath = writeTempProfile(profile)
-
-    return {
-      command: "sandbox-exec",
-      args: ["-f", tempPath, command, ...args],
-      sandboxed: true,
-      tempPath,
+      case "windows":
+        return WindowsBackend.prepare(opts)
+      default:
+        return {
+          command: opts.command,
+          args: opts.args,
+          sandboxed: false,
+          skipReason: `Sandbox not available on platform "${platform}"`,
+        }
     }
   }
 
@@ -307,65 +142,11 @@ export namespace SandboxBackend {
    * - Final args: bwrap <mounts> -- <command> <args...>
    */
   export function prepareLinuxWrapper(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrapper {
-    const { command, args, workspace, sandboxMode, runtimeReadRoots, forcePlatform } = opts
-
-    if (sandboxMode === "none") {
-      return { command, args, sandboxed: false }
-    }
-
-    const platform = forcePlatform ?? detectPlatform()
-    if (platform !== "linux") {
-      return {
-        command,
-        args,
-        sandboxed: false,
-        skipReason: `Linux sandbox (bwrap) not available on platform "${platform}"`,
-      }
-    }
-
-    const roots = runtimeReadRoots ?? []
-    const bwrapArgs: string[] = []
-
-    // Bind each runtime root
-    for (const root of roots) {
-      bwrapArgs.push("--bind", root, root)
-    }
-
-    // Bind workspace (read-write)
-    bwrapArgs.push("--bind", workspace, workspace)
-
-    // Controlled tmp
-    const tmpDir = path.join(workspace, ".synergy", "tmp")
-    bwrapArgs.push("--bind", tmpDir, "/tmp")
-
-    // Separator for command
-    bwrapArgs.push("--")
-
-    return {
-      command: "bwrap",
-      args: [...bwrapArgs, command, ...args],
-      sandboxed: true,
-    }
+    return LinuxBackend.prepare(opts)
   }
 
   // ----------------------------------------------------------------
-  // Cleanup
-  // ----------------------------------------------------------------
-
-  /**
-   * Clean up a sandbox temp profile file by exact path.
-   * Best-effort; errors are silently swallowed.
-   */
-  export function cleanupTemp(tempPath: string): void {
-    try {
-      fs.unlinkSync(tempPath)
-    } catch {
-      // best-effort cleanup
-    }
-  }
-
-  // ----------------------------------------------------------------
-  // Execution
+  // Execution (shared, platform-agnostic)
   // ----------------------------------------------------------------
 
   /**

@@ -52,6 +52,10 @@ export const Instance = {
   get workspace(): import("../session/types").Workspace | undefined {
     return workspaceContext.tryUse()
   },
+  refreshWorkspace(workspace: import("../session/types").Workspace): void {
+    if (workspaceContext.tryUse() === undefined) return
+    workspaceContext.update(workspace)
+  },
   get worktree() {
     return scopeContext.use().worktree
   },

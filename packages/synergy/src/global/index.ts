@@ -1,6 +1,7 @@
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
+import { pathToFileURL } from "url"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 
@@ -45,8 +46,14 @@ export namespace Global {
     get engramDB() {
       return path.join(root(), "data", "engram.db")
     },
+    get auth() {
+      return path.join(root(), "data", "auth")
+    },
     get authApiKey() {
       return path.join(root(), "data", "auth", "api-key.json")
+    },
+    get authHolosAccounts() {
+      return path.join(root(), "data", "auth", "holos-accounts.json")
     },
     get authMcp() {
       return path.join(root(), "data", "auth", "mcp.json")
@@ -94,7 +101,7 @@ export namespace Global {
       return path.join(root(), "schema", "config.schema.json")
     },
     get configSchemaUrl() {
-      return "file://" + path.join(root(), "schema", "config.schema.json")
+      return pathToFileURL(path.join(root(), "schema", "config.schema.json")).href
     },
   }
 }
@@ -102,6 +109,7 @@ export namespace Global {
 await Promise.all([
   fs.mkdir(Global.Path.root, { recursive: true }),
   fs.mkdir(Global.Path.data, { recursive: true }),
+  fs.mkdir(Global.Path.auth, { recursive: true }),
   fs.mkdir(Global.Path.config, { recursive: true }),
   fs.mkdir(Global.Path.state, { recursive: true }),
   fs.mkdir(Global.Path.log, { recursive: true }),
