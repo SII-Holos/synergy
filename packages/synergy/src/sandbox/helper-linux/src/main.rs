@@ -39,7 +39,7 @@ fn main() {
         });
 
     if helper_args.apply_seccomp_then_exec {
-        run_stage_two(helper_args).unwrap_or_else(|message| {
+        run_stage_two(helper_args, profile).unwrap_or_else(|message| {
             log::error!("{message}");
             exit(1);
         });
@@ -157,8 +157,15 @@ fn bwrap_binary() -> String {
     std::env::var("SYNERGY_BWRAP").unwrap_or_else(|_| "bwrap".into())
 }
 
-fn run_stage_two(args: HelperArgs) -> Result<(), String> {
+fn run_stage_two(args: HelperArgs, profile: config::PermissionProfile) -> Result<(), String> {
     seccomp::apply_no_new_privs().map_err(|e| e.to_string())?;
+    let seccomp_mode = match profile.network.mode.as_str() {
+        "full" => seccomp::NetworkSeccompMode::Full,
+        "proxy_only" => seccomp::NetworkSeccompMode::ProxyOnly,
+        _ => seccomp::NetworkSeccompMode::Restricted,
+    };
+    let seccomp_plan = seccomp::build_seccomp_plan(seccomp_mode);
+    seccomp::load_seccomp_filter(&seccomp_plan).map_err(|e| e.to_string())?;
     exec_child(&args.child_command, &args.sandbox_policy_cwd)
 }
 

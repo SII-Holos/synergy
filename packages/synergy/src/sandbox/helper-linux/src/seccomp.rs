@@ -64,6 +64,153 @@ pub fn build_seccomp_plan(mode: NetworkSeccompMode) -> SeccompPlan {
     SeccompPlan { rules }
 }
 
+/// Load the seccomp filter represented by `plan` into the current Linux task.
+///
+/// On non-Linux platforms this is a no-op so unit tests can run on developer
+/// machines. On Linux this compiles a simple BPF deny-list filter with default
+/// allow semantics and EPERM for denied syscalls.
+pub fn load_seccomp_filter(plan: &SeccompPlan) -> Result<(), HelperError> {
+    load_seccomp_filter_impl(plan)
+}
+
+#[cfg(target_os = "linux")]
+fn load_seccomp_filter_impl(plan: &SeccompPlan) -> Result<(), HelperError> {
+    use libc::{sock_filter, sock_fprog};
+
+    const BPF_LD: u16 = 0x00;
+    const BPF_W: u16 = 0x00;
+    const BPF_ABS: u16 = 0x20;
+    const BPF_JMP: u16 = 0x05;
+    const BPF_JEQ: u16 = 0x10;
+    const BPF_K: u16 = 0x00;
+    const BPF_RET: u16 = 0x06;
+    const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+    const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+    const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
+    const SECCOMP_DATA_NR_OFFSET: u32 = 0;
+    const SECCOMP_DATA_ARCH_OFFSET: u32 = 4;
+
+    let mut filters = Vec::<sock_filter>::new();
+    // Validate architecture first. Unknown architecture kills the process.
+    filters.push(stmt(BPF_LD | BPF_W | BPF_ABS, SECCOMP_DATA_ARCH_OFFSET));
+    filters.push(jump(BPF_JMP | BPF_JEQ | BPF_K, audit_arch(), 1, 0));
+    filters.push(stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS));
+    filters.push(stmt(BPF_LD | BPF_W | BPF_ABS, SECCOMP_DATA_NR_OFFSET));
+
+    for rule in &plan.rules {
+        let syscall = match rule {
+            SeccompRule::AlwaysDeny { syscall } | SeccompRule::NetworkDeny { syscall } => syscall,
+        };
+        if let Some(number) = syscall_number(syscall) {
+            filters.push(jump(BPF_JMP | BPF_JEQ | BPF_K, number as u32, 0, 1));
+            filters.push(stmt(
+                BPF_RET | BPF_K,
+                SECCOMP_RET_ERRNO | libc::EPERM as u32,
+            ));
+        }
+    }
+    filters.push(stmt(BPF_RET | BPF_K, SECCOMP_RET_ALLOW));
+
+    let mut program = sock_fprog {
+        len: filters.len() as u16,
+        filter: filters.as_mut_ptr(),
+    };
+    let rc = unsafe {
+        libc::prctl(
+            libc::PR_SET_SECCOMP,
+            libc::SECCOMP_MODE_FILTER,
+            &mut program as *mut sock_fprog,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(HelperError::Seccomp(format!(
+            "PR_SET_SECCOMP failed: {}",
+            std::io::Error::last_os_error()
+        )))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn load_seccomp_filter_impl(_plan: &SeccompPlan) -> Result<(), HelperError> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn stmt(code: u16, k: u32) -> libc::sock_filter {
+    libc::sock_filter {
+        code,
+        jt: 0,
+        jf: 0,
+        k,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn jump(code: u16, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
+    libc::sock_filter { code, jt, jf, k }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn audit_arch() -> u32 {
+    0xc000_003e
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+fn audit_arch() -> u32 {
+    0xc000_00b7
+}
+
+#[cfg(all(
+    target_os = "linux",
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+fn audit_arch() -> u32 {
+    0
+}
+
+#[cfg(target_os = "linux")]
+fn syscall_number(name: &str) -> Option<i64> {
+    match name {
+        "init_module" => Some(libc::SYS_init_module),
+        "finit_module" => Some(libc::SYS_finit_module),
+        "delete_module" => Some(libc::SYS_delete_module),
+        "mount" => Some(libc::SYS_mount),
+        "umount2" => Some(libc::SYS_umount2),
+        "pivot_root" => Some(libc::SYS_pivot_root),
+        "swapon" => Some(libc::SYS_swapon),
+        "swapoff" => Some(libc::SYS_swapoff),
+        "reboot" => Some(libc::SYS_reboot),
+        "kexec_load" => Some(libc::SYS_kexec_load),
+        "bpf" => Some(libc::SYS_bpf),
+        "perf_event_open" => Some(libc::SYS_perf_event_open),
+        "ptrace" => Some(libc::SYS_ptrace),
+        "process_vm_readv" => Some(libc::SYS_process_vm_readv),
+        "process_vm_writev" => Some(libc::SYS_process_vm_writev),
+        "io_uring_setup" => Some(libc::SYS_io_uring_setup),
+        "io_uring_enter" => Some(libc::SYS_io_uring_enter),
+        "io_uring_register" => Some(libc::SYS_io_uring_register),
+        "socket" => Some(libc::SYS_socket),
+        "connect" => Some(libc::SYS_connect),
+        "accept" => Some(libc::SYS_accept),
+        "accept4" => Some(libc::SYS_accept4),
+        "bind" => Some(libc::SYS_bind),
+        "listen" => Some(libc::SYS_listen),
+        "shutdown" => Some(libc::SYS_shutdown),
+        "getsockname" => Some(libc::SYS_getsockname),
+        "getpeername" => Some(libc::SYS_getpeername),
+        "socketpair" => Some(libc::SYS_socketpair),
+        "sendto" => Some(libc::SYS_sendto),
+        "sendmsg" => Some(libc::SYS_sendmsg),
+        "recvfrom" => Some(libc::SYS_recvfrom),
+        "recvmsg" => Some(libc::SYS_recvmsg),
+        "setsockopt" => Some(libc::SYS_setsockopt),
+        "getsockopt" => Some(libc::SYS_getsockopt),
+        _ => None,
+    }
+}
+
 /// Syscalls denied regardless of network mode.
 pub fn always_denied_syscalls() -> Vec<&'static str> {
     vec![

@@ -316,12 +316,18 @@ export namespace LinuxBackend {
         protectedPaths: DEFAULT_PROTECTED_PATHS(homedir, workspace),
         includePlatformDefaults: true,
       },
+      network: {
+        mode: "restricted",
+        allowLocalBinding: false,
+        allowedUnixSockets: [],
+      },
     }
 
-    // Write profile to temp file
+    // Write profile to a private temp file. The helper consumes this path before
+    // entering bwrap; keep the file unpredictable and owner-readable only.
     const tmpDir = os.tmpdir()
-    const profilePath = path.join(tmpDir, `synergy-sandbox-linux-${Math.random().toString(36).slice(2, 10)}.json`)
-    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf-8")
+    const profilePath = path.join(tmpDir, `synergy-sandbox-linux-${crypto.randomBytes(8).toString("hex")}.json`)
+    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), { encoding: "utf-8", mode: 0o600 })
 
     return {
       command: helper.path,

@@ -1,6 +1,6 @@
 use crate::config::PermissionProfile;
 use crate::error::HelperError;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Mount operation in the bubblewrap plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,9 +17,9 @@ pub enum MountOp {
     Proc { target: String },
 }
 
-/// Planned bubblewrap invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BwrapPlan {
+    pub flags: Vec<String>,
     pub mounts: Vec<MountOp>,
     pub unshare_net: bool,
     pub command: Vec<String>,
@@ -27,7 +27,7 @@ pub struct BwrapPlan {
 
 impl BwrapPlan {
     pub fn args(&self) -> Vec<String> {
-        let mut args = Vec::new();
+        let mut args = self.flags.clone();
         for mount in &self.mounts {
             match mount {
                 MountOp::Tmpfs { target } => {
@@ -77,6 +77,12 @@ pub fn build_bwrap_plan(
         return Err(HelperError::Bwrap("missing child command".into()));
     }
 
+    let flags = vec![
+        "--new-session".into(),
+        "--die-with-parent".into(),
+        "--unshare-user".into(),
+        "--unshare-pid".into(),
+    ];
     let mut mounts = Vec::new();
     mounts.push(MountOp::Tmpfs { target: "/".into() });
     mounts.push(MountOp::Dev {
@@ -141,6 +147,7 @@ pub fn build_bwrap_plan(
     let _allowed_unix_sockets = &profile.network.allowed_unix_sockets;
 
     Ok(BwrapPlan {
+        flags,
         mounts,
         unshare_net,
         command: command.to_vec(),
@@ -173,11 +180,6 @@ fn push_ro_bind(mounts: &mut Vec<MountOp>, source: &str, target: &str) {
         source: source.into(),
         target: target.into(),
     });
-}
-
-#[allow(dead_code)]
-fn normalize_path(path: &str) -> String {
-    PathBuf::from(path).to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -324,5 +326,16 @@ mod tests {
         assert!(args.contains(&"--".to_string()));
         assert_eq!(args[args.len() - 2], "echo");
         assert_eq!(args[args.len() - 1], "ok");
+    }
+
+    #[test]
+    fn args_include_namespace_and_lifecycle_flags() {
+        let profile = make_profile("/ws", "restricted", vec![], vec![], vec![]);
+        let args = plan(&profile, "/ws").args();
+        assert!(args.contains(&"--new-session".to_string()));
+        assert!(args.contains(&"--die-with-parent".to_string()));
+        assert!(args.contains(&"--unshare-user".to_string()));
+        assert!(args.contains(&"--unshare-pid".to_string()));
+        assert!(args.contains(&"--unshare-net".to_string()));
     }
 }
