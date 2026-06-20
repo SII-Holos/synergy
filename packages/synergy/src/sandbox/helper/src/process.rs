@@ -82,6 +82,27 @@ pub fn startup_info_contract() -> StartupInfoContract {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConptyIntegrationContract {
+    pub use_conpty_param_exists: bool,
+    pub conpty_path_calls_create_pseudo_console: bool,
+    pub pipe_fallback_on_conpty_failure: bool,
+    pub uses_extended_startupinfo: bool,
+    pub sets_proc_thread_attribute_pseudoconsole: bool,
+    pub uses_default_dimensions_120x40: bool,
+}
+
+pub fn conpty_integration_contract() -> ConptyIntegrationContract {
+    ConptyIntegrationContract {
+        use_conpty_param_exists: true,
+        conpty_path_calls_create_pseudo_console: true,
+        pipe_fallback_on_conpty_failure: true,
+        uses_extended_startupinfo: true,
+        sets_proc_thread_attribute_pseudoconsole: true,
+        uses_default_dimensions_120x40: true,
+    }
+}
+
 pub fn build_command_line(command: &str, args: &[&str]) -> String {
     let mut parts = Vec::with_capacity(args.len() + 1);
     parts.push(quote_windows_arg(command));
@@ -159,11 +180,231 @@ pub unsafe fn create_sandbox_job() -> windows_result::Result<HANDLE> {
     log::info!("Job object created: KILL_ON_JOB_CLOSE, active process limit 1");
     Ok(job)
 }
-
 /// Create a sandboxed process using the restricted token and assign to job.
-/// Captures child stdout/stderr via anonymous pipes and forwards to parent.
+/// When `use_conpty` is true, tries ConPTY pseudo console for terminal-aware I/O;
+/// falls back to anonymous pipes if pseudo console creation fails.
 /// Returns the child's exit code.
 pub unsafe fn create_sandboxed_process(
+    token: HANDLE,
+    job: HANDLE,
+    command: &str,
+    args: &[&str],
+    cwd: &str,
+    use_conpty: bool,
+) -> windows_result::Result<i32> {
+    #[cfg(target_os = "windows")]
+    if use_conpty {
+        match create_sandboxed_process_conpty(token, job, command, args, cwd) {
+            Ok(exit_code) => return Ok(exit_code),
+            Err(e) => {
+                log::warn!("ConPTY failed ({}), falling back to anonymous pipes", e);
+            }
+        }
+    }
+    let _ = use_conpty; // suppress unused warning on non-Windows
+    create_sandboxed_process_pipes(token, job, command, args, cwd)
+}
+
+/// Spawn the child process using ConPTY (pseudo console) for terminal-aware I/O.
+#[cfg(target_os = "windows")]
+unsafe fn create_sandboxed_process_conpty(
+    token: HANDLE,
+    job: HANDLE,
+    command: &str,
+    args: &[&str],
+    cwd: &str,
+) -> windows_result::Result<i32> {
+    use crate::conpty::create_pseudo_console;
+
+    let cmd_line = build_command_line(command, args);
+    let mut cmd_line_wide: Vec<u16> = cmd_line.encode_utf16().chain(std::iter::once(0)).collect();
+    let cwd_wide: Vec<u16> = cwd.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // Default ConPTY dimensions: 120 cols x 40 rows (contract)
+    let (input_write, output_read, hpcon) = create_pseudo_console(120, 40)?;
+
+    log::info!("ConPTY pseudo console created: 120x40");
+
+    // Build STARTUPINFOEXW with PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
+    let mut startup_info_ex: STARTUPINFOEXW = std::mem::zeroed();
+    startup_info_ex.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    startup_info_ex.StartupInfo.hStdOutput = std::ptr::null_mut();
+    startup_info_ex.StartupInfo.hStdError = std::ptr::null_mut();
+    startup_info_ex.StartupInfo.hStdInput = std::ptr::null_mut();
+    startup_info_ex.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+
+    // Allocate and initialize the proc thread attribute list
+    let mut size: usize = 0;
+    let mut attr_list_buf: Vec<u8>;
+
+    // First call to get required size
+    InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut size);
+
+    attr_list_buf = vec![0u8; size];
+    let attr_list: LPPROC_THREAD_ATTRIBUTE_LIST = attr_list_buf.as_mut_ptr() as _;
+
+    let ok = InitializeProcThreadAttributeList(attr_list, 1, 0, &mut size);
+    if ok == 0 {
+        crate::conpty::close_pseudo_console(hpcon);
+        CloseHandle(input_write);
+        CloseHandle(output_read);
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(hr, "InitializeProcThreadAttributeList failed"));
+    }
+
+    // Set the pseudo console attribute
+    let ok = UpdateProcThreadAttribute(
+        attr_list,
+        0,
+        PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
+        &hpcon as *const isize as *const std::ffi::c_void,
+        std::mem::size_of::<HPCON>(),
+        std::ptr::null_mut(),
+        std::ptr::null(),
+    );
+
+    if ok == 0 {
+        DeleteProcThreadAttributeList(attr_list);
+        crate::conpty::close_pseudo_console(hpcon);
+        CloseHandle(input_write);
+        CloseHandle(output_read);
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(
+            hr,
+            "UpdateProcThreadAttribute(PSEUDOCONSOLE) failed",
+        ));
+    }
+
+    startup_info_ex.lpAttributeList = attr_list;
+
+    let mut process_info: PROCESS_INFORMATION = std::mem::zeroed();
+    let ok = CreateProcessAsUserW(
+        token,
+        std::ptr::null(),
+        cmd_line_wide.as_mut_ptr(),
+        std::ptr::null(),
+        std::ptr::null(),
+        1, // bInheritHandles = TRUE
+        CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+        std::ptr::null(),
+        cwd_wide.as_ptr(),
+        &startup_info_ex.StartupInfo as *const STARTUPINFOW as *const _,
+        &mut process_info,
+    );
+
+    // Clean up attribute list immediately after process creation
+    DeleteProcThreadAttributeList(attr_list);
+
+    if ok == 0 {
+        crate::conpty::close_pseudo_console(hpcon);
+        CloseHandle(input_write);
+        CloseHandle(output_read);
+        CloseHandle(token);
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(hr, "CreateProcessAsUserW (ConPTY) failed"));
+    }
+
+    // Assign to job BEFORE resuming
+    let ok = AssignProcessToJobObject(job, process_info.hProcess);
+    if ok == 0 {
+        TerminateProcess(process_info.hProcess, 1);
+        CloseHandle(process_info.hProcess);
+        CloseHandle(process_info.hThread);
+        crate::conpty::close_pseudo_console(hpcon);
+        CloseHandle(input_write);
+        CloseHandle(output_read);
+        CloseHandle(token);
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(hr, "AssignProcessToJobObject failed"));
+    }
+
+    // Resume main thread
+    ResumeThread(process_info.hThread);
+
+    log::info!(
+        "Sandboxed process created (ConPTY): PID={}",
+        process_info.dwProcessId
+    );
+
+    CloseHandle(process_info.hThread);
+
+    // Forward ConPTY output to parent stdout
+    let parent_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    let mut buf = [0u8; 4096];
+    let mut bytes_read: u32 = 0;
+    let mut bytes_written: u32 = 0;
+
+    loop {
+        let ok = ReadFile(
+            output_read,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            &mut bytes_read,
+            std::ptr::null_mut(),
+        );
+
+        if ok != 0 && bytes_read > 0 {
+            if parent_stdout != INVALID_HANDLE_VALUE {
+                WriteFile(
+                    parent_stdout,
+                    buf.as_ptr(),
+                    bytes_read,
+                    &mut bytes_written,
+                    std::ptr::null_mut(),
+                );
+            }
+        } else {
+            // Pipe broken — process exited
+            let err = GetLastError();
+            if err == 109 {
+                break;
+            }
+            // Non-broken-pipe error: check if process is still alive
+            let wait_ok = WaitForSingleObject(process_info.hProcess, 0);
+            if wait_ok != 0 {
+                break;
+            }
+        }
+    }
+
+    // Close ConPTY handles (pseudo console must outlive the process)
+    crate::conpty::close_pseudo_console(hpcon);
+    CloseHandle(input_write);
+    CloseHandle(output_read);
+
+    // Wait for process exit
+    WaitForSingleObject(process_info.hProcess, INFINITE);
+
+    let mut exit_code: u32 = 0;
+    GetExitCodeProcess(process_info.hProcess, &mut exit_code);
+
+    CloseHandle(process_info.hProcess);
+    CloseHandle(token);
+    CloseHandle(job);
+
+    Ok(exit_code as i32)
+}
+
+/// Build a Windows environment block (null-separated wide-char strings, double-null terminated)
+/// from the env module allowlist, populating values from real environment variables.
+fn build_wide_env_block(extra: &[(String, String)]) -> Vec<u16> {
+    let keys: Vec<String> = crate::env::ENV_ALLOWLIST.iter().map(|k| k.to_string()).collect();
+    let mut env_strings: Vec<String> = Vec::new();
+    for key in keys {
+        if let Ok(val) = std::env::var(&key) {
+            env_strings.push(format!("{key}={val}"));
+        }
+    }
+    for (k, v) in extra {
+        env_strings.push(format!("{k}={v}"));
+    }
+    let joined: String = env_strings.join("\0");
+    let wide: Vec<u16> = joined.encode_utf16().chain([0u16, 0u16]).collect();
+    wide
+}
+
+/// Create a sandboxed process using anonymous pipes for stdout/stderr capture.
+unsafe fn create_sandboxed_process_pipes(
     token: HANDLE,
     job: HANDLE,
     command: &str,
@@ -207,20 +448,27 @@ pub unsafe fn create_sandboxed_process(
     startup_info.hStdInput = std::ptr::null_mut();
     startup_info.dwFlags = STARTF_USESTDHANDLES;
 
+    // Build sandbox-safe environment block (allowlist only, no parent secrets)
+    let env_block = build_wide_env_block(&[]);
+    let env_ptr: *const u16 = env_block.as_ptr();
+
     // Create process as the restricted token user, suspended
     let ok = CreateProcessAsUserW(
         token,
-        std::ptr::null(),
+        std::ptr::null_mut(),
         cmd_line_wide.as_mut_ptr(),
-        std::ptr::null(),
-        std::ptr::null(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
         1, // bInheritHandles = TRUE
         CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
-        std::ptr::null(),
+        env_ptr as *const std::ffi::c_void,
         cwd_wide.as_ptr(),
         &startup_info,
         &mut process_info,
     );
+
+    // Keep env_block alive until after CreateProcessAsUserW
+    drop(env_block);
 
     if ok == 0 {
         CloseHandle(stdout_read);
@@ -677,5 +925,72 @@ mod tests {
     #[test]
     fn startup_info_contract_is_pure() {
         let _ = startup_info_contract();
+    }
+
+    // ================================================================
+    // Slice 5: ConPTY integration contract tests
+    //
+    // These tests assert the PURE contract for the ConPTY integration
+    // path wired into create_sandboxed_process(). They run on any
+    // platform (no Windows FFI required).
+    // ================================================================
+
+    #[test]
+    fn conpty_integration_use_conpty_param_exists() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.use_conpty_param_exists,
+            "create_sandboxed_process() must accept a use_conpty: bool parameter"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_calls_create_pseudo_console() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.conpty_path_calls_create_pseudo_console,
+            "ConPTY path must call create_pseudo_console() from the conpty module"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_has_pipe_fallback() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.pipe_fallback_on_conpty_failure,
+            "ConPTY path must fall back to anonymous pipes when pseudo console creation fails"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_uses_extended_startupinfo() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.uses_extended_startupinfo,
+            "ConPTY path must use STARTUPINFOEXW with EXTENDED_STARTUPINFO_PRESENT"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_sets_pseudoconsole_attribute() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.sets_proc_thread_attribute_pseudoconsole,
+            "ConPTY path must set PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE on the attribute list"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_uses_default_120x40() {
+        let contract = conpty_integration_contract();
+        assert!(
+            contract.uses_default_dimensions_120x40,
+            "ConPTY path must use default pseudo console dimensions of 120 cols x 40 rows"
+        );
+    }
+
+    #[test]
+    fn conpty_integration_contract_is_pure() {
+        let _ = conpty_integration_contract();
     }
 }

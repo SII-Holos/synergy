@@ -279,7 +279,13 @@ export namespace MacOSPolicy {
       lines.push(MacOSSbpl.networkingPolicy(profile.network.mode))
     }
 
-    // 8. Protected metadata names — deny writes to critical dirs
+    // 8. Unix socket policy
+    const unixSocketRules = MacOSSbpl.unixSocketPolicy(profile.network.allowedUnixSockets)
+    if (unixSocketRules.length > 0) {
+      lines.push(unixSocketRules)
+    }
+
+    // 8a. Protected metadata names — deny writes to critical dirs
     for (const name of fs.protectedMetadataNames) {
       // Skip empty strings
       if (name.length > 0) {

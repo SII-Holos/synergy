@@ -1,0 +1,17 @@
+# bwrap placeholder directory
+
+This directory holds a static bwrap binary (`bwrap`) that is bundled with
+the Linux sandbox helper in CI/release builds.
+
+The Rust helper (`helper-linux/src/main.rs`) discovers it automatically via
+`bwrap_binary()` — it checks for `bwrap/bwrap` relative to the helper
+executable's directory.
+
+## Development
+
+This `.gitkeep` file keeps the directory in version control so the CI
+packaging step can place the binary here. Do not remove.
+
+For local testing without a bundled binary:
+- Ensure `bwrap` is available on `PATH`, or
+- Set `SYNERGY_BWRAP=/path/to/bwrap` as an environment variable

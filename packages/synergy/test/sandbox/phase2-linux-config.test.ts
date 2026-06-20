@@ -549,3 +549,164 @@ describe("Phase 2: protectedMetadataUnderWritableRoot", () => {
     expect(result).toEqual([])
   })
 })
+
+// ==================================================================
+// 10. Metadata write intercept — buildPermissionProfile blocks
+//    approved write paths that target protected metadata directories
+// ==================================================================
+describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
+  test("approved write path to .git directly is excluded from writableRoots", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.git`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.git`)
+    expect(profile.fileSystem.writableRoots).toContain(workspace)
+  })
+
+  test("approved write path to .git/config is excluded from writableRoots", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.git/config`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.git/config`)
+  })
+
+  test("approved write path to .codex is excluded", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.codex`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.codex`)
+  })
+
+  test("approved write path to .synergy/data is excluded", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.synergy/data`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.synergy/data`)
+  })
+
+  test("approved write path to .agents is excluded", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.agents`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).not.toContain(`${workspace}/.agents`)
+  })
+
+  test("approved write path to a protected area under a non-workspace writable root", () => {
+    const workspace = "/home/user/project"
+    const extraWriteRoot = "/data/output"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [extraWriteRoot, `${extraWriteRoot}/.git`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    // extraWriteRoot itself is fine
+    expect(profile.fileSystem.writableRoots).toContain(extraWriteRoot)
+    // .git subdir under it is blocked
+    expect(profile.fileSystem.writableRoots).not.toContain(`${extraWriteRoot}/.git`)
+  })
+
+  test("non-protected write paths are NOT excluded", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: ["/tmp/output", "/var/cache/build"],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.writableRoots).toContain("/tmp/output")
+    expect(profile.fileSystem.writableRoots).toContain("/var/cache/build")
+  })
+
+  test("read_only mode: no write paths to intercept", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "read_only",
+      approvedReadPaths: [],
+      approvedWritePaths: [`${workspace}/.git`],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    // read_only mode has no writable roots at all
+    expect(profile.fileSystem.writableRoots.length).toBe(0)
+  })
+
+  test("protectedMetadataNames includes all four default names", () => {
+    const workspace = "/home/user/project"
+
+    const profile = buildPermissionProfile({
+      workspace,
+      executionCwd: workspace,
+      sandboxMode: "workspace_write",
+      approvedReadPaths: [],
+      approvedWritePaths: [],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
+
+    expect(profile.fileSystem.protectedMetadataNames).toContain(".git")
+    expect(profile.fileSystem.protectedMetadataNames).toContain(".agents")
+    expect(profile.fileSystem.protectedMetadataNames).toContain(".codex")
+    expect(profile.fileSystem.protectedMetadataNames).toContain(".synergy")
+    expect(profile.fileSystem.protectedMetadataNames.length).toBe(4)
+  })
+})

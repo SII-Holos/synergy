@@ -30,6 +30,7 @@ import {
   type SandboxExecutionWrapper,
   type SandboxExecuteOpts,
   type SandboxExecuteResult,
+  type SandboxNetworkMode,
 } from "./types"
 
 // ------------------------------------------------------------------
@@ -173,7 +174,13 @@ export namespace SandboxBackend {
     "GIT_EXEC_PATH",
   ]
 
-  function buildSandboxEnv(requestedEnv?: Record<string, string>): Record<string, string> {
+  /** Env var injected to tell the agent that network is unavailable. */
+  export const NETWORK_DISABLED_ENV_VAR = "SYNERGY_SANDBOX_NETWORK_DISABLED"
+
+  function buildSandboxEnv(
+    requestedEnv?: Record<string, string>,
+    networkMode?: SandboxNetworkMode,
+  ): Record<string, string> {
     const env: Record<string, string> = {}
     const processEnv = process.env
 
@@ -182,6 +189,12 @@ export namespace SandboxBackend {
       if (val !== undefined) {
         env[key] = val
       }
+    }
+
+    // Signal network unavailability to the child process when the
+    // sandbox profile restricts or proxies network access.
+    if (networkMode === "restricted" || networkMode === "proxy_only") {
+      env[NETWORK_DISABLED_ENV_VAR] = "1"
     }
 
     // Explicitly requested env vars from the caller (e.g. approved tool paths)
@@ -225,7 +238,7 @@ export namespace SandboxBackend {
       // warn/allow: run unsandboxed with warning logged
     }
 
-    const env = buildSandboxEnv(opts.env)
+    const env = buildSandboxEnv(opts.env, opts.networkMode)
     const cwd = opts.cwd ?? process.cwd()
 
     const cmd: string[] = [wrapper.command, ...wrapper.args]
@@ -398,7 +411,7 @@ export namespace SandboxBackend {
    */
   export function execute(
     wrapper: SandboxExecutionWrapper,
-    opts?: Partial<Pick<SandboxExecuteOpts, "fallbackPolicy" | "env" | "cwd">>,
+    opts?: Partial<Pick<SandboxExecuteOpts, "fallbackPolicy" | "env" | "cwd" | "networkMode">>,
   ): ExecuteAsyncResult {
     const fallbackPolicy = opts?.fallbackPolicy ?? "warn"
 
@@ -409,7 +422,7 @@ export namespace SandboxBackend {
       // warn/allow: run unsandboxed
     }
 
-    const env = buildSandboxEnv(opts?.env)
+    const env = buildSandboxEnv(opts?.env, opts?.networkMode)
     const cwd = opts?.cwd ?? process.cwd()
 
     const cmd: string[] = [wrapper.command, ...wrapper.args]

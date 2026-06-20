@@ -31,8 +31,8 @@ export const LINUX_HELPER_SEARCH_PATHS = [
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Populated at build time with actual helper hashes.
-  // Empty map => no helper can be trusted.
+  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --generate to populate.
+  // Empty map is intentional until release — no helper will be trusted.
 }
 
 function verifyHelperHash(binaryPath: string): boolean {

@@ -14,7 +14,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Pipes",
     "Win32_System_IO",
     "Win32_System_StationsAndDesktops",
+    "Win32_System_Rpc",
     "Win32_Storage_FileSystem",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
 ]}
 windows-result = "0.4"
 serde = { version = "1", features = ["derive"] }

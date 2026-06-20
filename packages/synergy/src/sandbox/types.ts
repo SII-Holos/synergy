@@ -74,6 +74,7 @@ export interface SandboxExecuteOpts {
   onStdout?: (chunk: Buffer) => void
   onStderr?: (chunk: Buffer) => void
   after_spawn?: (pid: number) => void | Promise<void>
+  networkMode?: SandboxNetworkMode
 }
 
 export interface SandboxExecuteResult {

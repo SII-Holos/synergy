@@ -22,6 +22,51 @@ pub fn default_desktop_name() -> &'static str {
     "SynergySandbox"
 }
 
+/// Platform-aware wrapper: create a private desktop.
+///
+/// On Windows: delegates to the FFI implementation in `desktop::ffi`.
+/// On non-Windows: always returns an error.
+///
+/// Returns `(private_desktop_handle, original_desktop_handle)` as raw handles.
+/// Callers must later call `close_desktop` and `switch_to_desktop` to clean up.
+pub unsafe fn create_private_desktop(name: &str) -> Result<(isize, isize), String> {
+    #[cfg(target_os = "windows")]
+    {
+        ffi::create_private_desktop(name)
+            .map(|(h, o)| (h as isize, o as isize))
+            .map_err(|e| format!("{}", e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = name;
+        Err("Private desktop not supported on this platform".into())
+    }
+}
+
+/// Platform-aware wrapper: close a desktop handle.
+pub unsafe fn close_desktop(hdesk: isize) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = ffi::close_desktop(hdesk as ffi::HDESK);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = hdesk;
+    }
+}
+
+/// Platform-aware wrapper: switch the calling thread to a desktop.
+pub unsafe fn switch_to_desktop(hdesk: isize) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = ffi::switch_to_desktop(hdesk as ffi::HDESK);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = hdesk;
+    }
+}
+
 // ================================================================
 // Private desktop FFI implementation (Windows only)
 // ================================================================

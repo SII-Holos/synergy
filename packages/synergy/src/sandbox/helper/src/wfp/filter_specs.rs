@@ -9,6 +9,7 @@ pub struct FilterSpec {
     pub name: &'static str,
     pub description: &'static str,
     pub user_condition: &'static str,
+    pub layer_id: u16,
 }
 
 /// A WFP condition discriminator used in layered filter logic.
@@ -46,12 +47,14 @@ pub static FILTER_SPECS: &[FilterSpec] = &[
         name: "allow-icmpv4-ale-connect",
         description: "Allow ICMPv4 (ping) outbound via ALE connect layer",
         user_condition: "ip_protocol == 1 && remote_port == 0",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
     FilterSpec {
         key: "10000000-0001-0001-0001-000000000002",
         name: "allow-icmpv4-ale-assign",
         description: "Allow ICMPv4 resource assignment",
         user_condition: "ip_protocol == 1 && remote_port == 0",
+        layer_id: layer::ALE_RESOURCE_ASSIGNMENT_V4,
     },
     // --- ICMPv6 ---
     FilterSpec {
@@ -59,12 +62,14 @@ pub static FILTER_SPECS: &[FilterSpec] = &[
         name: "allow-icmpv6-ale-connect",
         description: "Allow ICMPv6 (ping6) outbound via ALE connect layer",
         user_condition: "ip_protocol == 58 && remote_port == 0",
+        layer_id: layer::ALE_AUTH_CONNECT_V6,
     },
     FilterSpec {
         key: "10000000-0001-0001-0001-000000000004",
         name: "allow-icmpv6-ale-assign",
         description: "Allow ICMPv6 resource assignment",
         user_condition: "ip_protocol == 58 && remote_port == 0",
+        layer_id: layer::ALE_RESOURCE_ASSIGNMENT_V6,
     },
     // --- DNS resolution (port 53) ---
     FilterSpec {
@@ -72,24 +77,28 @@ pub static FILTER_SPECS: &[FilterSpec] = &[
         name: "allow-dns-udp-v4-out",
         description: "Allow DNS over UDP port 53 (IPv4) outbound",
         user_condition: "remote_port == 53 && ip_protocol == 17",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
     FilterSpec {
         key: "10000000-0002-0001-0001-000000000002",
         name: "allow-dns-tcp-v4-out",
         description: "Allow DNS over TCP port 53 (IPv4) outbound",
         user_condition: "remote_port == 53 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
     FilterSpec {
         key: "10000000-0002-0001-0001-000000000003",
         name: "allow-dns-udp-v6-out",
         description: "Allow DNS over UDP port 53 (IPv6) outbound",
         user_condition: "remote_port == 53 && ip_protocol == 17",
+        layer_id: layer::ALE_AUTH_CONNECT_V6,
     },
     FilterSpec {
         key: "10000000-0002-0001-0001-000000000004",
         name: "allow-dns-tcp-v6-out",
         description: "Allow DNS over TCP port 53 (IPv6) outbound",
         user_condition: "remote_port == 53 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V6,
     },
     // --- DNS over TLS (port 853) ---
     FilterSpec {
@@ -97,12 +106,14 @@ pub static FILTER_SPECS: &[FilterSpec] = &[
         name: "allow-dns-tls-v4-out",
         description: "Allow DNS over TLS port 853 (IPv4) outbound",
         user_condition: "remote_port == 853 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
     FilterSpec {
         key: "10000000-0002-0002-0001-000000000002",
         name: "allow-dns-tls-v6-out",
         description: "Allow DNS over TLS port 853 (IPv6) outbound",
         user_condition: "remote_port == 853 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V6,
     },
     // --- SMB file sharing ---
     FilterSpec {
@@ -110,12 +121,14 @@ pub static FILTER_SPECS: &[FilterSpec] = &[
         name: "allow-smb-139-out",
         description: "Allow SMB over NetBIOS port 139 outbound",
         user_condition: "remote_port == 139 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
     FilterSpec {
         key: "10000000-0003-0001-0001-000000000002",
         name: "allow-smb-445-out",
         description: "Allow SMB over TCP port 445 outbound",
         user_condition: "remote_port == 445 && ip_protocol == 6",
+        layer_id: layer::ALE_AUTH_CONNECT_V4,
     },
 ];
 
@@ -158,6 +171,12 @@ pub fn validate_filter_specs() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Returns all filter specs for iteration during filter installation.
+#[allow(dead_code)]
+pub fn get_filter_specs() -> &'static [FilterSpec] {
+    FILTER_SPECS
 }
 
 // ================================================================

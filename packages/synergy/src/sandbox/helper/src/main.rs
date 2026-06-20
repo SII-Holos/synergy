@@ -3,10 +3,12 @@ mod cleanup;
 mod config;
 mod conpty;
 mod desktop;
+mod elevated;
 mod env;
 mod ipc_framed;
 mod path;
 mod process;
+mod setup;
 mod sid;
 mod token;
 mod wfp;
@@ -78,6 +80,13 @@ fn main() {
         command
     );
 
+    // Check if elevated backend is required (deny-read DACL or WFP filters)
+    if profile.file_system.data_deny_roots.len() > 0 || profile.network.wfp_enabled {
+        log::info!(
+            "Deny-read or WFP requested, elevated backend required (not yet fully implemented)"
+        );
+    }
+
     // Step 1: Canonicalize paths
     let canonical_workspace = path::canonicalize_win_path(&profile.file_system.workspace)
         .unwrap_or_else(|e| {
@@ -104,6 +113,20 @@ fn main() {
         exit(1);
     });
 
+    // Step 3a: Create private desktop (isolates clipboard, UI, and user input)
+    let desktop_handles: Option<(isize, isize)> = unsafe {
+        match desktop::create_private_desktop(desktop::default_desktop_name()) {
+            Ok((private, original)) => {
+                log::info!("Private desktop created successfully");
+                Some((private, original))
+            }
+            Err(e) => {
+                log::warn!("Private desktop creation failed (non-fatal): {}", e);
+                None
+            }
+        }
+    };
+
     // Step 4: Apply DACL to protected paths
     if !profile.file_system.protected_paths.is_empty() {
         let saved_acls = unsafe { acl::protect_paths(&profile.file_system.protected_paths) }
@@ -113,6 +136,18 @@ fn main() {
             });
 
         cleanup::register_dacl_cleanup(saved_acls);
+    }
+
+    // Step 4b: Apply deny-read DACL to dataDenyRoots
+    if !profile.file_system.data_deny_roots.is_empty() {
+        let saved_read_acls =
+            unsafe { acl::protect_paths_deny_read(&profile.file_system.data_deny_roots) }
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to apply deny-read DACL: {}", e);
+                    exit(1);
+                });
+
+        cleanup::register_dacl_cleanup(saved_read_acls);
     }
 
     // Step 4a: Install WFP filters (network sandboxing via Windows Filtering Platform)
@@ -138,6 +173,7 @@ fn main() {
             &command,
             &cmd_args,
             &canonical_cwd,
+            false,
         )
     }
     .unwrap_or_else(|e| {
@@ -145,7 +181,16 @@ fn main() {
         exit(1);
     });
 
-    // Step 6: Cleanup (DACL restore)
+    // Step 6: Desktop cleanup — restore original and close private desktop
+    if let Some((private, original)) = desktop_handles {
+        unsafe {
+            desktop::switch_to_desktop(original);
+            desktop::close_desktop(private);
+        }
+        log::info!("Private desktop closed, original desktop restored");
+    }
+
+    // Step 7: Cleanup (DACL restore)
     cleanup::restore_all();
 
     log::info!("Sandbox helper exiting with code: {}", exit_code);

@@ -98,3 +98,20 @@ rustup target add x86_64-pc-windows-msvc
 cargo install --locked cargo-xwin
 cargo xwin build --target x86_64-pc-windows-msvc --release
 ```
+
+**Bundled bwrap binary:** The Linux sandbox helper can discover a bundled
+bwrap binary placed at `helper-linux/bwrap/bwrap` relative to the helper
+executable. In CI/release builds, the bwrap binary is placed here during
+the packaging step.
+
+To build with bundled bwrap:
+
+1. Obtain a static bwrap binary for the target architecture
+2. Place it at `src/sandbox/helper-linux/bwrap/bwrap`
+3. The Rust helper will discover it automatically via `bwrap_binary()`
+
+Discovery order (in `bwrap_binary()`):
+
+1. `SYNERGY_BWRAP` environment variable (if set and non-empty)
+2. Bundled `bwrap/bwrap` relative to the helper binary's directory
+3. `bwrap` from system `PATH` (fallback)

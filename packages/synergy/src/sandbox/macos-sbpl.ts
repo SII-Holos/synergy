@@ -71,7 +71,8 @@ export namespace MacOSSbpl {
 (allow ipc-posix-sem)
 (allow ipc-posix-shm
   (ipc-posix-name-prefix "apple.cfprefs.")
-  (ipc-posix-name-regex #"^/__KMP_REGISTERED_LIB_[0-9]+$"))
+  (ipc-posix-name-regex #"^/__KMP_REGISTERED_LIB_[0-9]+$")
+  (ipc-posix-name-regex #"^/tmp/ompt_"))
 (allow file-read* file-write*
   (subpath "/dev/ptmx"))
 (allow file-read* file-write*
@@ -81,11 +82,62 @@ export namespace MacOSSbpl {
   (subpath "/dev/shm")
   (regex #"^/tmp/.com.apple.csseed.*")
   (regex #"^/private/tmp/.com.apple.csseed.*"))
+; ── Core OS libraries ──
 (allow file-read*
   (subpath "/usr/lib")
-  (subpath "/System/Library")
-  (subpath "/Library")
-  (subpath "/Applications/Xcode.app"))
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/usr/include")
+  (subpath "/usr/standalone"))
+; ── System frameworks ──
+(allow file-read*
+  (subpath "/System/Library/Frameworks")
+  (subpath "/System/Library/PrivateFrameworks")
+  (subpath "/System/Library/CoreServices")
+  (subpath "/System/Library/Extensions")
+  (subpath "/System/Library/LaunchDaemons"))
+; ── Library frameworks ──
+(allow file-read*
+  (subpath "/Library/Frameworks")
+  (subpath "/Library/Frameworks/Python.framework")
+  (subpath "/Library/Developer/CommandLineTools"))
+; ── Xcode ──
+(allow file-read*
+  (subpath "/Applications/Xcode.app/Contents/Developer"))
+; ── Homebrew Apple Silicon ──
+(allow file-read*
+  (subpath "/opt/homebrew/Cellar")
+  (subpath "/opt/homebrew/opt")
+  (subpath "/opt/homebrew/lib")
+  (subpath "/opt/homebrew/include")
+  (subpath "/opt/homebrew/share")
+  (subpath "/opt/homebrew/bin"))
+; ── Homebrew Intel ──
+(allow file-read*
+  (subpath "/usr/local/Cellar")
+  (subpath "/usr/local/opt")
+  (subpath "/usr/local/lib")
+  (subpath "/usr/local/include")
+  (subpath "/usr/local/share")
+  (subpath "/usr/local/bin"))
+; ── Python ──
+(allow file-read*
+  (subpath "/Library/Frameworks/Python.framework")
+  (subpath "/usr/local/lib/python")
+  (subpath "/opt/homebrew/lib/python")
+  (subpath "/opt/homebrew/Cellar/python")
+  (subpath "/usr/local/Cellar/python")
+  (subpath "/opt/homebrew/Cellar/python@")
+  (subpath "/usr/local/Cellar/python@"))
+; ── Node.js ──
+(allow file-read*
+  (subpath "/usr/local/lib/node_modules")
+  (subpath "/opt/homebrew/lib/node_modules"))
+; ── Ruby ──
+(allow file-read*
+  (subpath "/System/Library/Frameworks/Ruby.framework")
+  (subpath "/usr/local/lib/ruby")
+  (subpath "/opt/homebrew/lib/ruby"))
 (allow user-preference-read)`
 
   // ------------------------------------------------------------------
@@ -103,14 +155,31 @@ export namespace MacOSSbpl {
     "/usr/local/bin",
     "/usr/local/lib",
     "/usr/local/opt",
+    "/usr/local/Cellar",
+    "/usr/local/lib/python",
+    "/usr/local/lib/node_modules",
+    "/usr/local/lib/ruby",
     "/usr/share",
     "/usr/standalone",
+    "/usr/include",
     "/System/Library",
+    "/System/Library/Frameworks",
+    "/System/Library/PrivateFrameworks",
+    "/System/Library/CoreServices",
+    "/System/Library/Extensions",
     "/Library",
+    "/Library/Frameworks",
+    "/Library/Frameworks/Python.framework",
+    "/Library/Frameworks/Ruby.framework",
+    "/Library/Developer/CommandLineTools",
+    "/Applications/Xcode.app/Contents/Developer",
     "/opt/homebrew",
     "/opt/homebrew/bin",
     "/opt/homebrew/lib",
     "/opt/homebrew/opt",
+    "/opt/homebrew/Cellar",
+    "/opt/homebrew/include",
+    "/opt/homebrew/share",
     "/var/db/timezone",
     "/private/var/db/timezone",
     "/private/var/run",
@@ -133,6 +202,21 @@ export namespace MacOSSbpl {
         return `(allow network-inbound)
 (allow network-outbound (remote tcp "127.0.0.1:*"))`
     }
+  }
+  // ------------------------------------------------------------------
+  // Unix socket policy
+  // ------------------------------------------------------------------
+
+  /** SBPL rules to allow Unix domain socket access for each allowed socket path */
+  export function unixSocketPolicy(sockets: string[]): string {
+    if (sockets.length === 0) return ""
+    const lines: string[] = []
+    lines.push("(allow system-socket AF_UNIX)")
+    for (const socket of sockets) {
+      const escaped = socket.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+      lines.push(`(allow file-read* file-write* (subpath "${escaped}"))`)
+    }
+    return lines.join("\n")
   }
 
   // ------------------------------------------------------------------

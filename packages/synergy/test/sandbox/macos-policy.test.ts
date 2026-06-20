@@ -180,3 +180,35 @@ describe("compileProfile with unreadableGlobs", () => {
     }
   })
 })
+
+// ------------------------------------------------------------------
+// 3. Unix socket policy
+// ------------------------------------------------------------------
+describe("compileProfile with unix sockets", () => {
+  test("no unix sockets → no unix socket rules", () => {
+    const profile = buildProfile([])
+    const sbpl = MacOSPolicy.compileProfile(profile)
+    expect(sbpl).not.toContain("(allow system-socket")
+  })
+
+  test("single unix socket → produces (allow system-socket AF_UNIX) and file-read* file-write* rule", () => {
+    const profile = buildProfile([])
+    profile.network.allowedUnixSockets = ["/var/run/docker.sock"]
+    const sbpl = MacOSPolicy.compileProfile(profile)
+    expect(sbpl).toContain("(allow system-socket AF_UNIX)")
+    expect(sbpl).toContain('(allow file-read* file-write* (subpath "/var/run/docker.sock"))')
+  })
+
+  test("multiple unix sockets → produces single AF_UNIX allow and multiple file rules", () => {
+    const profile = buildProfile([])
+    profile.network.allowedUnixSockets = ["/var/run/docker.sock", "/tmp/agent.sock"]
+    const sbpl = MacOSPolicy.compileProfile(profile)
+    // Only one AF_UNIX header
+    const afMatches = sbpl.match(/\(allow system-socket AF_UNIX\)/g)
+    expect(afMatches).not.toBeNull()
+    expect(afMatches!.length).toBe(1)
+    // Both paths present
+    expect(sbpl).toContain('(allow file-read* file-write* (subpath "/var/run/docker.sock"))')
+    expect(sbpl).toContain('(allow file-read* file-write* (subpath "/tmp/agent.sock"))')
+  })
+})

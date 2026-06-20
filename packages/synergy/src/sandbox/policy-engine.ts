@@ -1,5 +1,14 @@
 import * as os from "os"
-import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots, protectedMetadataUnderWritableRoot } from "./policy"
+import {
+  DEFAULT_PROTECTED_PATHS,
+  defaultRuntimeReadRoots,
+  protectedMetadataUnderWritableRoot,
+  PROTECTED_METADATA_PATH_NAMES,
+  isMetadataWriteDenied,
+} from "./policy"
+import { Log } from "@/util/log"
+
+const log = Log.create({ service: "sandbox-policy-engine" })
 
 export type SandboxNetworkMode = "full" | "restricted" | "proxy_only"
 
@@ -44,7 +53,7 @@ export interface SandboxPolicyInput {
  */
 export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandboxPermissionProfile {
   const homedir = os.homedir()
-  const protectedNames = [".git", ".agents", ".codex", ".synergy"]
+  const protectedNames = PROTECTED_METADATA_PATH_NAMES
 
   // Network policy
   const network: SynergyNetworkSandboxPolicy = input.approvedNetwork
@@ -81,6 +90,14 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
 
     // Approved write paths from permission system
     for (const p of input.approvedWritePaths) {
+      const denied = isMetadataWriteDenied(writableRoots.concat([input.workspace]), p)
+      if (denied.denied) {
+        log.warn("Denied write access to protected metadata", {
+          path: denied.path,
+          metadataName: denied.metadataName,
+        })
+        continue
+      }
       if (!writableRoots.includes(p)) {
         writableRoots.push(p)
       }

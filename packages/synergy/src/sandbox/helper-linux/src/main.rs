@@ -8,8 +8,7 @@
 
 use std::path::Path;
 use std::process::exit;
-use synergy_sandbox_linux::{bwrap, config, seccomp};
-
+use synergy_sandbox_linux::{bwrap, config, protected_create, seccomp};
 #[derive(Debug, Clone)]
 struct HelperArgs {
     sandbox_policy_cwd: String,
@@ -73,6 +72,22 @@ fn main() {
         helper_args.child_command[0]
     );
 
+    let watch_dirs: Vec<String> = profile
+        .file_system
+        .writable_roots
+        .iter()
+        .cloned()
+        .collect();
+    let mut create_monitor = protected_create::ProtectedCreateMonitor::new(
+        profile.file_system.protected_metadata_names.clone(),
+    );
+
+    if !watch_dirs.is_empty() {
+        if let Err(e) = create_monitor.start_monitoring(&watch_dirs) {
+            log::warn!("Failed to start protected create monitoring: {e}");
+        }
+    }
+
     let status = std::process::Command::new(bwrap_binary())
         .args(plan.args())
         .status()
@@ -80,6 +95,23 @@ fn main() {
             log::error!("Failed to execute bwrap: {e}");
             exit(1);
         });
+
+    let violations = create_monitor.stop_monitoring().unwrap_or_else(|e| {
+        log::error!("Failed to stop protected create monitoring: {e}");
+        0
+    });
+
+    if violations > 0 {
+        log::error!(
+            "Protected create violation: {} protected metadata entries created inside sandbox and removed",
+            violations
+        );
+        eprintln!(
+            "Protected create violation: {} protected metadata entries created inside sandbox and removed",
+            violations
+        );
+        exit(2);
+    }
 
     exit(status.code().unwrap_or(1));
 }
