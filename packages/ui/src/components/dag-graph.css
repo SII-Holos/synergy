@@ -395,7 +395,8 @@
   contain: layout style paint;
 
   [data-slot="dag-graph-viewport"] {
-    height: clamp(360px, 52vh, 620px);
+    height: 100%;
+    min-height: clamp(280px, 44vh, 520px);
   }
 }
 
