@@ -272,26 +272,6 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
-        // Drain user mails that arrived while the agent was working.
-        const userMails = SessionManager.drainMails(sessionID, "user")
-        if (userMails.length > 0) {
-          const userModel = await lastModel(sessionID).catch(() => undefined)
-          for (const mail of userMails) {
-            const mailModel = mail.model ?? userModel
-            if (!mailModel) continue
-            const created = await createUserMessage({
-              sessionID,
-              agent: mail.agent,
-              model: mailModel,
-              parts: partsFromMail(mail),
-              noReply: mail.noReply,
-              summary: mail.summary,
-            })
-            msgs.push(created)
-          }
-          log.info("drained user mails into session", { sessionID, count: userMails.length })
-        }
-
         const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
 
         let agentName = lastUser.agent
@@ -696,6 +676,7 @@ export namespace SessionInvoke {
             parts: partsFromMail(mail),
             noReply: !needsReply,
             summary: mail.summary,
+            metadata: mail.metadata,
           })
         }
         if (needsReply) continue outer
