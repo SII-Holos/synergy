@@ -18,14 +18,41 @@ export namespace Embedding {
   let localModelError: Error | undefined
 
   async function getLocalExtractor() {
+    // Already loaded — fast path.
     if (localExtractor) return localExtractor
-    if (localModelError) throw localModelError
+
+    // Previous attempt failed — clear the error so we can retry.
+    // This handles the case where the user downloads the model via
+    // `synergy embed download` after the server has already started.
+    if (localModelError) {
+      log.info("retrying local embedding model load (previous attempt failed)")
+      localModelError = undefined
+    }
+
+    // First attempt: allow network (for auto-download on first use).
     try {
       localExtractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" })
       localModelReady = true
       return localExtractor
-    } catch (err) {
-      localModelError = err instanceof Error ? err : new Error(String(err))
+    } catch (networkErr) {
+      log.warn("local embedding model: network load failed, trying from disk cache", {
+        error: networkErr instanceof Error ? networkErr.message : String(networkErr),
+      })
+    }
+
+    // Second attempt: local cache only — no network required.
+    // If the model was downloaded earlier (via CLI or a previous session),
+    // this will succeed even without internet access.
+    try {
+      localExtractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+        dtype: "q8",
+        local_files_only: true,
+      })
+      localModelReady = true
+      log.info("local embedding model loaded from disk cache (offline)")
+      return localExtractor
+    } catch (cacheErr) {
+      localModelError = cacheErr instanceof Error ? cacheErr : new Error(String(cacheErr))
       throw localModelError
     }
   }
