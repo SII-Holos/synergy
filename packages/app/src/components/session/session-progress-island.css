@@ -137,7 +137,7 @@
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
-  height: min(68vh, 720px);
+  height: min(52vh, 560px);
 }
 
 .session-progress-island-panel {
@@ -146,7 +146,7 @@
   left: 0;
   right: 0;
   display: flex;
-  height: min(68vh, 720px);
+  height: min(52vh, 560px);
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
