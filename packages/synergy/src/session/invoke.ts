@@ -988,7 +988,7 @@ export namespace SessionInvoke {
   export function applyExternalPermissionMode(
     config: Record<string, unknown>,
     adapterName: string,
-    profile: string,
+    profile: string | undefined,
   ): Record<string, unknown> {
     const allowAll = profile === "full_access"
     config.controlProfile = profile
@@ -1167,7 +1167,7 @@ export namespace SessionInvoke {
     const raw = input.arguments.match(argsRegex) ?? []
     const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
 
-    const templateCommand = await command.template
+    const templateCommand = (await command.template) ?? ""
 
     const placeholders = templateCommand.match(placeholderRegex) ?? []
     let last = 0
