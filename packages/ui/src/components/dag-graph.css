@@ -383,8 +383,17 @@
   }
 }
 
-/* Panel variant — compact enough for embedded session progress surfaces */
+/* Panel variant — compact enough for embedded session progress surfaces.
+   contain:layout style paint isolates the DAG's ~400 nodes (~8000 DOM
+   elements) into a self-contained layout/paint context so that size changes
+   in the parent (the island panel) don't trigger style/layout recalc of the
+   DAG subtree. (Not using contain:strict/size because the DAG's height
+   depends on its content via the viewport's clamp().)
+   Verified necessary via Chrome trace: without it, the panel's height
+   transition cascaded a full-page UpdateLayoutTree (8352 elements, ~65ms). */
 .dag-graph[data-variant="panel"] {
+  contain: layout style paint;
+
   [data-slot="dag-graph-viewport"] {
     height: clamp(360px, 52vh, 620px);
   }
