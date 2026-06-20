@@ -209,10 +209,12 @@ export function computeProgressIslandSnapshot(
     }
   }
 
-  // When the DAG is settled or paused with no active work and no attention
-  // items, the panel is no longer making progress — hide it so orphaned
-  // frames (agent forgot to mark final nodes) don't linger.
-  if ((lifecycle === "paused" || lifecycle === "settled") && !dagHasAttention && active === 0) {
+  // When the DAG is settled (session idle, no active tasks), the work is
+  // finished even if the agent left nodes in non-terminal states. Hide the
+  // panel so orphaned frames don't linger. The `active === 0` guard applies
+  // only to the "paused" case (session busy but DAG waiting on deps), where
+  // running nodes genuinely indicate in-flight work.
+  if (!dagHasAttention && (lifecycle === "settled" || (lifecycle === "paused" && active === 0))) {
     return {
       status: "hidden",
       tone: "neutral",
