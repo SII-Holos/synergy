@@ -142,21 +142,22 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
       <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} />
     ) : null
   }
-
   return (
     <Show when={state.visible && mode() !== "none"}>
-      <SessionProgressIsland
-        mode={mode() as Exclude<ProgressMode, "none">}
-        snapshot={snapshot()}
-        activeLabel={activeLabel()}
-        activeTab={state.activeTab}
-        expanded={state.expanded}
-        onExpandedChange={setExpanded}
-        onTabChange={(tab) => setState("activeTab", tab)}
-        class={props.class}
-      >
-        {renderChild()}
-      </SessionProgressIsland>
+      <div class="relative w-full">
+        <SessionProgressIsland
+          mode={mode() as Exclude<ProgressMode, "none">}
+          snapshot={snapshot()}
+          activeLabel={activeLabel()}
+          activeTab={state.activeTab}
+          expanded={state.expanded}
+          onExpandedChange={setExpanded}
+          onTabChange={(tab) => setState("activeTab", tab)}
+          class={props.class}
+        >
+          {renderChild()}
+        </SessionProgressIsland>
+      </div>
     </Show>
   )
 }
