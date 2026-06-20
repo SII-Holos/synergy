@@ -63,11 +63,39 @@ impl BwrapPlan {
     }
 }
 
+/// Platform default paths that are always ro-bound under a full-read bwrap
+/// plan. These mirror the conservative Codex full-read baseline.
+const FULL_READ_PLATFORM_DEFAULTS: &[&str] = &[
+    "/bin",
+    "/sbin",
+    "/usr",
+    "/etc",
+    "/lib",
+    "/lib64",
+    "/var/db/timezone",
+    "/usr/share",
+    "/usr/libexec",
+];
+
+/// Returns true when the permission profile indicates a full-disk-read policy.
+///
+/// Full-read profiles include "/" in readable_roots. In this case the bwrap
+/// plan starts with `--ro-bind / /` instead of `--tmpfs /`, offering a
+/// complete read-only view of the host filesystem.
+fn is_full_read(profile: &PermissionProfile) -> bool {
+    profile
+        .file_system
+        .readable_roots
+        .iter()
+        .any(|root| root == "/")
+}
+
 /// Build a pure bwrap plan from a Synergy permission profile.
 ///
-/// The plan intentionally starts with `--tmpfs /` for the restricted/default
-/// filesystem view. Synergy does not use `--ro-bind / /` in this helper path;
-/// every readable/writable root must be explicit.
+/// When the profile indicates a full-disk-read policy (readable_roots includes
+/// "/"), the plan starts with `--ro-bind / /` followed by platform-default
+/// ro-binds. Otherwise the plan starts with `--tmpfs /` for the restricted
+/// default view.
 pub fn build_bwrap_plan(
     profile: &PermissionProfile,
     policy_cwd: &Path,
@@ -84,13 +112,29 @@ pub fn build_bwrap_plan(
         "--unshare-pid".into(),
     ];
     let mut mounts = Vec::new();
-    mounts.push(MountOp::Tmpfs { target: "/".into() });
-    mounts.push(MountOp::Dev {
-        target: "/dev".into(),
-    });
-    mounts.push(MountOp::Proc {
-        target: "/proc".into(),
-    });
+    if is_full_read(profile) {
+        mounts.push(MountOp::RoBind {
+            source: "/".into(),
+            target: "/".into(),
+        });
+        for root in FULL_READ_PLATFORM_DEFAULTS {
+            push_ro_bind(&mut mounts, root, root);
+        }
+        mounts.push(MountOp::Dev {
+            target: "/dev".into(),
+        });
+        mounts.push(MountOp::Proc {
+            target: "/proc".into(),
+        });
+    } else {
+        mounts.push(MountOp::Tmpfs { target: "/".into() });
+        mounts.push(MountOp::Dev {
+            target: "/dev".into(),
+        });
+        mounts.push(MountOp::Proc {
+            target: "/proc".into(),
+        });
+    }
 
     for root in &profile.file_system.readable_roots {
         push_ro_bind(&mut mounts, root, root);
@@ -124,11 +168,18 @@ pub fn build_bwrap_plan(
         }
     }
 
+    // Mount tmpfs over resolved glob paths to deny read access.
+    // WARNING: mounting tmpfs over a path makes its children invisible;
+    // ro-bind individual subpaths first if they need to remain visible.
     for glob in &profile.file_system.unreadable_globs {
-        if glob.starts_with('/') {
+        let has_wildcard =
+            glob.contains('*') || glob.contains('?') || glob.contains('[') || glob.contains('{');
+        if glob.starts_with('/') && !has_wildcard {
             mounts.push(MountOp::Tmpfs {
                 target: glob.clone(),
             });
+        } else {
+            log::debug!("skipping unreadable glob mount: glob patterns cannot be directly mounted as tmpfs ({glob})");
         }
     }
 
@@ -214,6 +265,31 @@ mod tests {
         }
     }
 
+    fn make_full_read_profile(
+        workspace: &str,
+        network_mode: &str,
+        writable_roots: Vec<&str>,
+    ) -> PermissionProfile {
+        PermissionProfile {
+            file_system: FileSystemPolicy {
+                workspace: workspace.to_string(),
+                readable_roots: vec!["/".to_string(), "/usr".to_string(), "/lib".to_string()],
+                writable_roots: writable_roots.iter().map(|s| s.to_string()).collect(),
+                read_only_subpaths: vec![],
+                unreadable_globs: vec![],
+                protected_metadata_names: vec![],
+                protected_paths: vec![],
+                data_deny_roots: vec![],
+                include_platform_defaults: true,
+            },
+            network: NetworkPolicy {
+                mode: network_mode.to_string(),
+                allow_local_binding: false,
+                allowed_unix_sockets: vec![],
+            },
+        }
+    }
+
     fn plan(profile: &PermissionProfile, workspace: &str) -> BwrapPlan {
         build_bwrap_plan(profile, Path::new(workspace), &["echo".into(), "ok".into()]).unwrap()
     }
@@ -229,6 +305,71 @@ mod tests {
             },
             "first mount must be --tmpfs /, not --ro-bind / /"
         );
+    }
+
+    #[test]
+    fn full_read_plan_starts_with_ro_bind_root() {
+        let profile = make_full_read_profile("/ws", "full", vec![]);
+        let plan = plan(&profile, "/ws");
+        assert_eq!(
+            plan.mounts[0],
+            MountOp::RoBind {
+                source: "/".into(),
+                target: "/".into(),
+            },
+            "full-read plan must start with --ro-bind / /, not --tmpfs /"
+        );
+    }
+
+    #[test]
+    fn full_read_plan_includes_platform_defaults() {
+        let profile = make_full_read_profile("/ws", "full", vec![]);
+        let plan = plan(&profile, "/ws");
+        for root in FULL_READ_PLATFORM_DEFAULTS {
+            assert!(
+                plan.mounts.iter().any(|m| {
+                    matches!(m, MountOp::RoBind { source, target } if source == *root && target == *root)
+                }),
+                "full-read plan must ro-bind platform default {root}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_read_plan_includes_dev_proc() {
+        let profile = make_full_read_profile("/ws", "full", vec![]);
+        let plan = plan(&profile, "/ws");
+        assert!(plan.mounts.contains(&MountOp::Dev {
+            target: "/dev".into()
+        }));
+        assert!(plan.mounts.contains(&MountOp::Proc {
+            target: "/proc".into()
+        }));
+    }
+
+    #[test]
+    fn full_read_plan_includes_controlled_tmp() {
+        let profile = make_full_read_profile("/ws", "full", vec![]);
+        let plan = plan(&profile, "/ws");
+        assert!(plan.mounts.iter().any(|m| {
+            matches!(m, MountOp::Bind { source, target }
+                if source.ends_with(".synergy/tmp") && target == "/tmp")
+        }));
+    }
+
+    #[test]
+    fn full_read_plan_does_not_have_tmpfs_root() {
+        let profile = make_full_read_profile("/ws", "full", vec![]);
+        let plan = plan(&profile, "/ws");
+        assert!(!plan.mounts.contains(&MountOp::Tmpfs { target: "/".into() }));
+    }
+
+    #[test]
+    fn is_full_read_detects_ro_root() {
+        let full = make_full_read_profile("/ws", "full", vec![]);
+        let restricted = make_profile("/ws", "full", vec![], vec![], vec![]);
+        assert!(is_full_read(&full));
+        assert!(!is_full_read(&restricted));
     }
 
     #[test]
@@ -337,5 +478,64 @@ mod tests {
         assert!(args.contains(&"--unshare-user".to_string()));
         assert!(args.contains(&"--unshare-pid".to_string()));
         assert!(args.contains(&"--unshare-net".to_string()));
+    }
+
+    // --- unreadable_globs tests ---
+
+    fn make_profile_with_globs(globs: Vec<&str>) -> PermissionProfile {
+        PermissionProfile {
+            file_system: FileSystemPolicy {
+                workspace: "/ws".to_string(),
+                readable_roots: vec!["/usr".to_string(), "/lib".to_string()],
+                writable_roots: vec![],
+                read_only_subpaths: vec![],
+                unreadable_globs: globs.iter().map(|s| s.to_string()).collect(),
+                protected_metadata_names: vec![],
+                protected_paths: vec![],
+                data_deny_roots: vec![],
+                include_platform_defaults: true,
+            },
+            network: NetworkPolicy {
+                mode: "full".to_string(),
+                allow_local_binding: false,
+                allowed_unix_sockets: vec![],
+            },
+        }
+    }
+
+    #[test]
+    fn unreadable_glob_no_wildcard_mounts_tmpfs() {
+        let profile = make_profile_with_globs(vec!["/tmp/cache"]);
+        let plan = plan(&profile, "/ws");
+        assert!(
+            plan.mounts.contains(&MountOp::Tmpfs {
+                target: "/tmp/cache".to_string()
+            }),
+            "absolute glob without wildcards should produce --tmpfs mount"
+        );
+    }
+
+    #[test]
+    fn unreadable_glob_non_absolute_skipped() {
+        let profile = make_profile_with_globs(vec!["**/node_modules/**"]);
+        let plan = plan(&profile, "/ws");
+        assert!(
+            !plan.mounts.contains(&MountOp::Tmpfs {
+                target: "**/node_modules/**".to_string()
+            }),
+            "non-absolute glob should not produce a mount"
+        );
+    }
+
+    #[test]
+    fn unreadable_glob_with_wildcard_skipped() {
+        let profile = make_profile_with_globs(vec!["/var/log/*.log"]);
+        let plan = plan(&profile, "/ws");
+        assert!(
+            !plan.mounts.contains(&MountOp::Tmpfs {
+                target: "/var/log/*.log".to_string()
+            }),
+            "absolute glob with wildcards should not produce a mount"
+        );
     }
 }

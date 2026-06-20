@@ -61,6 +61,121 @@ function metadataDenyRegex(name: string): string {
 function escapeSbpl(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
 }
+// ------------------------------------------------------------------
+// Glob → Seatbelt regex compilation
+// ------------------------------------------------------------------
+
+/**
+ * Escape a single character for use in an SBPL regex.
+ */
+function escapeRegexChar(c: string): string {
+  const specials = new Set([".", "+", "^", "$", "(", ")", "[", "]", "|", "\\"])
+  return specials.has(c) ? "\\" + c : c
+}
+
+/**
+ * Find the matching closing brace for a brace expansion starting at `start`.
+ */
+function findMatchingBrace(s: string, start: number): number {
+  let depth = 1
+  for (let i = start + 1; i < s.length; i++) {
+    if (s[i] === "{") depth++
+    else if (s[i] === "}") {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/**
+ * Split a brace expansion body on top-level commas, respecting nesting.
+ * e.g. "a,b,{c,d}" → ["a", "b", "{c,d}"]
+ */
+function splitBraceAlternatives(s: string): string[] {
+  const result: string[] = []
+  let depth = 0
+  let current = ""
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === "{") depth++
+    else if (c === "}") depth--
+    else if (c === "," && depth === 0) {
+      result.push(current)
+      current = ""
+      continue
+    }
+    current += c
+  }
+  result.push(current)
+  return result
+}
+
+/**
+ * Compile a git-style glob pattern into a Seatbelt-compatible regex string.
+ *
+ * Glob semantics:
+ *   **  → .*  (any directory depth including zero)
+ *   *   → [^/]*  (single path component, non-slash)
+ *   ?   → [^/]
+ *   {a,b} → (a|b)
+ *
+ * Patterns that do not start with ** are prefixed with (.\x2a/)? to match
+ * at any directory depth, consistent with gitignore default semantics.
+ */
+export function compileGlobToSeatbeltRegex(glob: string): string {
+  const startsWithGlobstar = glob.startsWith("**")
+  const body = compileGlobBody(glob)
+  const anchored = startsWithGlobstar ? body : "(.*/)?" + body
+  return "^" + anchored + "$"
+}
+
+/**
+ * Compile the body of a glob (without anchors or depth prefix).
+ */
+function compileGlobBody(glob: string): string {
+  let result = ""
+  let i = 0
+
+  while (i < glob.length) {
+    const c = glob[i]
+
+    if (c === "*" && i + 1 < glob.length && glob[i + 1] === "*") {
+      // ** — any directory depth
+      result += ".*"
+      i += 2
+      // If ** is followed by /, consume it — .* already covers the /
+      if (i < glob.length && glob[i] === "/") {
+        result += "/"
+        i += 1
+      }
+    } else if (c === "*") {
+      result += "[^/]*"
+      i += 1
+    } else if (c === "?") {
+      result += "[^/]"
+      i += 1
+    } else if (c === "{") {
+      const closing = findMatchingBrace(glob, i)
+      if (closing === -1) {
+        // Unbalanced brace — treat as literal
+        result += escapeRegexChar(c)
+        i += 1
+        continue
+      }
+      const inner = glob.slice(i + 1, closing)
+      const alternatives = splitBraceAlternatives(inner)
+      const compiled = alternatives.map((a) => compileGlobBody(a))
+      result += "(" + compiled.join("|") + ")"
+      i = closing + 1
+    } else {
+      result += escapeRegexChar(c)
+      i += 1
+    }
+  }
+
+  return result
+}
 
 // ------------------------------------------------------------------
 // Path normalization helpers
@@ -170,6 +285,13 @@ export namespace MacOSPolicy {
       if (name.length > 0) {
         lines.push(metadataDenyRegex(name))
       }
+    }
+
+    // 9. Unreadable globs — deny file-read* and file-read-data via compiled regex
+    for (const glob of fs.unreadableGlobs) {
+      const regex = compileGlobToSeatbeltRegex(glob)
+      lines.push(`(deny file-read* (regex #"${regex}"))`)
+      lines.push(`(deny file-read-data (regex #"${regex}"))`)
     }
 
     return lines.join("\n") + "\n"

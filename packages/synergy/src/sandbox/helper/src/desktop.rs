@@ -22,6 +22,74 @@ pub fn default_desktop_name() -> &'static str {
     "SynergySandbox"
 }
 
+// ================================================================
+// Private desktop FFI implementation (Windows only)
+// ================================================================
+#[cfg(target_os = "windows")]
+pub mod ffi {
+    use windows_result::*;
+    use windows_sys::Win32::Foundation::{GetLastError, GENERIC_ALL, HDESK};
+    use windows_sys::Win32::System::StationsAndDesktops::*;
+    use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+
+    /// Create a private desktop and switch the calling thread to it.
+    ///
+    /// Calls `CreateDesktopW` with `GENERIC_ALL` access and no `DF_ALLOWOTHERACCOUNTHOOK`
+    /// flag, ensuring clipboard and UI isolation from the default desktop.
+    /// After creation, `SetThreadDesktop` switches the calling thread.
+    ///
+    /// Returns `(new_desktop_handle, original_desktop_handle)`.
+    pub unsafe fn create_private_desktop(name: &str) -> windows_result::Result<(HDESK, HDESK)> {
+        let name_wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let original = GetThreadDesktop(GetCurrentThreadId());
+        if original.is_null() {
+            let hr = HRESULT::from_win32(GetLastError());
+            return Err(Error::new(hr, "GetThreadDesktop failed"));
+        }
+
+        let hdesk = CreateDesktopW(
+            name_wide.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0, // dwFlags: private desktop (no DF_ALLOWOTHERACCOUNTHOOK)
+            GENERIC_ALL,
+            std::ptr::null(),
+        );
+
+        if hdesk.is_null() {
+            let hr = HRESULT::from_win32(GetLastError());
+            return Err(Error::new(hr, "CreateDesktopW failed"));
+        }
+
+        if SetThreadDesktop(hdesk) == 0 {
+            CloseDesktop(hdesk);
+            let hr = HRESULT::from_win32(GetLastError());
+            return Err(Error::new(hr, "SetThreadDesktop failed"));
+        }
+
+        Ok((hdesk, original))
+    }
+
+    /// Switch the calling thread to a different desktop.
+    pub unsafe fn switch_to_desktop(hdesk: HDESK) -> windows_result::Result<()> {
+        if SetThreadDesktop(hdesk) == 0 {
+            let hr = HRESULT::from_win32(GetLastError());
+            return Err(Error::new(hr, "SetThreadDesktop failed"));
+        }
+        Ok(())
+    }
+
+    /// Close a desktop handle.
+    pub unsafe fn close_desktop(hdesk: HDESK) -> windows_result::Result<()> {
+        if CloseDesktop(hdesk) == 0 {
+            let hr = HRESULT::from_win32(GetLastError());
+            return Err(Error::new(hr, "CloseDesktop failed"));
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // ================================================================

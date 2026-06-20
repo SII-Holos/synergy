@@ -86,3 +86,22 @@ export const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): str
   path.join(workspace, ".synergy"),
   ...CREDENTIAL_PATHS(homedir),
 ]
+/**
+ * Returns the subset of protectedPaths that fall under any writableRoot.
+ *
+ * These paths need explicit read-only subpath overrides because otherwise
+ * they would be writable by virtue of being inside a writable root mount.
+ */
+export function protectedMetadataUnderWritableRoot(
+  writableRoots: string[],
+  protectedPaths: string[],
+  workspace: string,
+): string[] {
+  return protectedPaths.filter((pp) => {
+    const resolved = path.resolve(pp)
+    return writableRoots.some((root) => {
+      const resolvedRoot = path.resolve(root)
+      return resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot
+    })
+  })
+}

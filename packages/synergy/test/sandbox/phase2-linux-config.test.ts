@@ -23,7 +23,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
-import { DEFAULT_PROTECTED_PATHS } from "../../src/sandbox/policy"
+import { DEFAULT_PROTECTED_PATHS, protectedMetadataUnderWritableRoot } from "../../src/sandbox/policy"
 import * as os from "os"
 
 // ==================================================================
@@ -234,7 +234,7 @@ describe("Phase 2: fileSystem.writableRoots", () => {
 // 4. fileSystem.readOnlySubpaths — protected paths as read-only
 // ==================================================================
 describe("Phase 2: fileSystem.readOnlySubpaths", () => {
-  test("includes all protected paths as readOnlySubpaths", () => {
+  test("includes workspace-protected paths as readOnlySubpaths when workspace is writable", () => {
     const homedir = os.homedir()
     const workspace = "/home/user/project"
     const protectedPaths = DEFAULT_PROTECTED_PATHS(homedir, workspace)
@@ -249,9 +249,13 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
       approvedUnixSockets: [],
     })
 
-    // Every protected path must appear in readOnlySubpaths
+    // Only protected paths under the writable workspace root should be in readOnlySubpaths
     for (const p of protectedPaths) {
-      expect(profile.fileSystem.readOnlySubpaths).toContain(p)
+      if (p.startsWith(workspace + "/")) {
+        expect(profile.fileSystem.readOnlySubpaths).toContain(p)
+      } else {
+        expect(profile.fileSystem.readOnlySubpaths).not.toContain(p)
+      }
     }
   })
 
@@ -274,7 +278,7 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
     expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.synergy`)
   })
 
-  test("credential paths appear in readOnlySubpaths", () => {
+  test("credential paths appear in readOnlySubpaths when homedir is writable", () => {
     const homedir = os.homedir()
 
     const profile = buildPermissionProfile({
@@ -282,12 +286,12 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
       executionCwd: "/home/user/project",
       sandboxMode: "workspace_write",
       approvedReadPaths: [],
-      approvedWritePaths: [],
+      approvedWritePaths: [homedir],
       approvedNetwork: false,
       approvedUnixSockets: [],
     })
 
-    // Key credential paths must be read-only
+    // Key credential paths must be read-only when homedir is a writable root
     expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.ssh`)
     expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.aws`)
     expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.netrc`)
@@ -480,5 +484,68 @@ describe("Phase 2: profile JSON serialization", () => {
     expect(fs2.writableRoots).toContain("/tmp/output")
     expect(net.mode).toBe("restricted")
     expect(net.allowLocalBinding).toBe(true)
+  })
+})
+
+// ==================================================================
+// 9. protectedMetadataUnderWritableRoot — policy-layer write intercept
+// ==================================================================
+describe("Phase 2: protectedMetadataUnderWritableRoot", () => {
+  test("identifies .git when workspace is writable", () => {
+    const workspace = "/home/user/project"
+    const protectedPaths = [`${workspace}/.git`, `${workspace}/.synergy`]
+    const writableRoots = [workspace]
+
+    const result = protectedMetadataUnderWritableRoot(writableRoots, protectedPaths, workspace)
+
+    expect(result).toContain(`${workspace}/.git`)
+    expect(result).toContain(`${workspace}/.synergy`)
+    expect(result.length).toBe(2)
+  })
+
+  test("identifies ~/.ssh when homedir is writable", () => {
+    const homedir = "/home/testuser"
+    const workspace = "/home/user/project"
+    const protectedPaths = [`${homedir}/.ssh`, `${homedir}/.aws`, `${workspace}/.git`]
+    const writableRoots = [homedir]
+
+    const result = protectedMetadataUnderWritableRoot(writableRoots, protectedPaths, workspace)
+
+    expect(result).toContain(`${homedir}/.ssh`)
+    expect(result).toContain(`${homedir}/.aws`)
+    expect(result).not.toContain(`${workspace}/.git`)
+    expect(result.length).toBe(2)
+  })
+
+  test("paths outside writable roots are not included", () => {
+    const workspace = "/home/user/project"
+    const protectedPaths = [`${workspace}/.git`, "/home/user/.ssh", "/etc/passwd"]
+    const writableRoots = [workspace]
+
+    const result = protectedMetadataUnderWritableRoot(writableRoots, protectedPaths, workspace)
+
+    expect(result).toContain(`${workspace}/.git`)
+    expect(result).not.toContain("/home/user/.ssh")
+    expect(result).not.toContain("/etc/passwd")
+    expect(result.length).toBe(1)
+  })
+
+  test("returns empty array when no writable roots", () => {
+    const workspace = "/home/user/project"
+    const protectedPaths = [`${workspace}/.git`, `/home/user/.ssh`]
+
+    const result = protectedMetadataUnderWritableRoot([], protectedPaths, workspace)
+
+    expect(result).toEqual([])
+  })
+
+  test("returns empty array when no protected paths under writable roots", () => {
+    const workspace = "/home/user/project"
+    const writableRoots = ["/tmp/scratch"]
+    const protectedPaths = [`${workspace}/.git`, `/home/user/.ssh`]
+
+    const result = protectedMetadataUnderWritableRoot(writableRoots, protectedPaths, workspace)
+
+    expect(result).toEqual([])
   })
 })

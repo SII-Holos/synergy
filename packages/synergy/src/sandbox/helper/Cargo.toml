@@ -13,6 +13,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Console",
     "Win32_System_Pipes",
     "Win32_System_IO",
+    "Win32_System_StationsAndDesktops",
     "Win32_Storage_FileSystem",
 ]}
 windows-result = "0.4"

@@ -1,5 +1,5 @@
 import * as os from "os"
-import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
+import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots, protectedMetadataUnderWritableRoot } from "./policy"
 
 export type SandboxNetworkMode = "full" | "restricted" | "proxy_only"
 
@@ -87,8 +87,11 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     }
   }
 
-  // Read-only subpaths: protect critical files inside writable roots
-  for (const p of protectedPaths) {
+  // Read-only subpaths: protect critical files inside writable roots.
+  // For each writable root, ensure its protected metadata subpaths
+  // become read-only subpaths in the profile.
+  const writableProtectedPaths = protectedMetadataUnderWritableRoot(writableRoots, protectedPaths, input.workspace)
+  for (const p of writableProtectedPaths) {
     readOnlySubpaths.push(p)
   }
 
