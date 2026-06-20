@@ -571,12 +571,57 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     })
 
+    // Supplemental project scopes: server-side projects that are NOT in the
+    // local server.scopes store. These are shown so the sidebar reflects all
+    // projects (not just manually-opened ones), but their expand state lives
+    // in-memory (not persisted) and their sessions load lazily via an
+    // explicit "Load sessions" action rather than auto-loading on expand.
+    // This keeps initial load light even when the server has dozens of
+    // projects.
+    const [supplementalExpanded, setSupplementalExpanded] = createSignal<Set<string>>(new Set())
+
+    function toggleSupplementalExpand(directory: string) {
+      setSupplementalExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(directory)) next.delete(directory)
+        else next.add(directory)
+        return next
+      })
+    }
     const enriched = createMemo(() => server.scopes.list().flatMap(enrich))
 
     const list = createMemo(() => {
-      const raw = enriched().flatMap(colorize)
+      // Locally-tracked scopes (user-opened, persisted in localStorage).
+      const local = enriched().flatMap(colorize)
       const index = scopeIndex()
-      if (index.length === 0) return raw
+      if (index.length === 0) return local
+
+      // Supplement server-side projects that are NOT locally tracked, so the
+      // sidebar reflects all projects (not just manually-opened ones). These
+      // use a separate in-memory expanded set (not persisted) and load their
+      // sessions lazily via an explicit "Load sessions" action rather than
+      // auto-loading on expand — keeping initial load light even when the
+      // server has dozens of projects.
+      const seenDirectories = new Set(local.map((s) => s.worktree))
+      const seenIDs = new Set(local.map((s) => s.id).filter(Boolean))
+      const expandedSet = supplementalExpanded()
+      const supplemented: LocalScope[] = []
+      for (const entry of index) {
+        if (entry.scopeType !== "project") continue
+        if (entry.directory && seenDirectories.has(entry.directory)) continue
+        if (entry.scopeID && seenIDs.has(entry.scopeID)) continue
+        const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID || s.worktree === entry.directory)
+        supplemented.push({
+          ...(metadata ?? {}),
+          id: entry.scopeID,
+          worktree: entry.directory,
+          expanded: expandedSet.has(entry.directory),
+          icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
+        })
+      }
+
+      const raw = [...local, ...supplemented.flatMap(colorize)]
+
       const order = new Map(index.map((e, i) => [e.scopeID, i]))
       return raw.toSorted((a, b) => {
         const aIdx = order.get(a.id ?? "")
@@ -587,6 +632,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return 0
       })
     })
+
+    // Whether a project is supplemental (not locally tracked). Supplemental
+    // projects manage expand state in-memory and load sessions lazily.
+    function isSupplementalScope(scope: { worktree: string }): boolean {
+      return !server.scopes.list().some((s) => s.worktree === scope.worktree)
+    }
 
     onMount(() => {
       loadScopeIndex().then(() => {
@@ -848,6 +899,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
+        isSupplemental: isSupplementalScope,
+        toggleSupplementalExpand,
         async open(directory: string) {
           const root = roots().get(directory) ?? directory
           if (server.scopes.list().find((x) => x.worktree === root)) return
