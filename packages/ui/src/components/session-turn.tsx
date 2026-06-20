@@ -339,11 +339,12 @@ export function SessionTurn(
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
   const working = createMemo(() => {
     if (!isLastUserMessage()) return false
-    // Canonical truth: the last assistant message is incomplete
     const last = lastAssistantMessage()
-    if (last?.time.completed == null) return true
-    // Runtime overlay — for the brief window where a new turn has started
-    // but the assistant message hasn't been created in the store yet
+    if (last?.time.completed == null) {
+      const s = data.store.session_status[props.sessionID]
+      if (s && s.type === "idle") return false
+      return true
+    }
     const s = data.store.session_status[props.sessionID]
     if (s && s.type !== "idle") return true
     return false
