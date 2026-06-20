@@ -15,12 +15,9 @@
   border-radius: 999px;
   color: var(--color-text-base);
   background: color-mix(in srgb, var(--color-surface-raised-stronger) 74%, transparent);
-  transform-origin: bottom center;
   transition:
-    max-width 190ms cubic-bezier(0.2, 0, 0, 1),
-    border-radius 190ms cubic-bezier(0.2, 0, 0, 1),
-    transform 190ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 160ms ease-out;
+    max-width 240ms cubic-bezier(0.2, 0, 0, 1),
+    border-radius 240ms cubic-bezier(0.2, 0, 0, 1);
   animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
@@ -110,13 +107,38 @@
   transform: rotate(180deg);
 }
 
+.session-progress-island-panel-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 200ms ease-out;
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* The panel itself sits in the single grid row. min-height: 0 lets the row
+   collapse to 0fr cleanly; overflow hidden clips content while collapsing. */
 .session-progress-island-panel {
   display: flex;
+  min-height: 0;
   max-height: min(68vh, 720px);
-  min-height: min(280px, 50vh);
   flex-direction: column;
+  overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
-  animation: session-progress-island-panel-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* When expanded, let the panel settle to a comfortable min height */
+.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
+  min-height: min(280px, 50vh);
 }
 
 .session-progress-island-panel-topline {
@@ -176,15 +198,14 @@
 }
 
 @keyframes session-progress-island-panel-in {
+  /* Reserved — panel visibility is now driven by the grid-rows transition
+     on .session-progress-island-panel-wrap. Kept as a no-op so any external
+     references don't break. */
   from {
-    opacity: 0;
-    transform: translateY(10px) scaleY(0.985);
-    clip-path: inset(0 0 10px 0 round 22px);
+    opacity: 1;
   }
   to {
     opacity: 1;
-    transform: translateY(0) scaleY(1);
-    clip-path: inset(0 0 0 0 round 22px);
   }
 }
 
@@ -202,12 +223,12 @@
   .session-progress-island-surface,
   .session-progress-island-header,
   .session-progress-island-chevron,
-  .session-progress-island-tab {
+  .session-progress-island-tab,
+  .session-progress-island-panel-wrap {
     transition: none;
   }
 
   .session-progress-island-surface,
-  .session-progress-island-panel,
   .session-progress-island[data-tone="running"]
     .session-progress-island-indicator
     [data-slot="progress-circle-progress"] {

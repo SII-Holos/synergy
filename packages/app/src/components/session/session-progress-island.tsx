@@ -114,7 +114,11 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
           />
         </button>
 
-        <Show when={props.expanded}>
+        <div
+          class="session-progress-island-panel-wrap"
+          data-expanded={props.expanded ? "true" : "false"}
+          aria-hidden={!props.expanded}
+        >
           <div id="session-progress-island-panel" class="session-progress-island-panel">
             <div class="session-progress-island-panel-topline">
               <span>Current work</span>
@@ -137,7 +141,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
 
             <div class="session-progress-island-body">{props.children}</div>
           </div>
-        </Show>
+        </div>
       </div>
     </div>
   )
