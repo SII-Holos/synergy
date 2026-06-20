@@ -67,18 +67,14 @@ function guardedRules() {
     return rule(permission, "ask")
   })
 }
+
 function autonomousRules() {
   return CAPABILITY_PERMISSIONS.map((permission) => {
-    // Hardline is NEVER allowed — absolute bottom line
     if (permission === "shell_hardline") return rule(permission, "deny", true)
-
-    // These are safe for autonomous development
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (permission === "file_write") return rule(permission, "allow")
     if (permission === "shell") return rule(permission, "allow")
     if (permission === "network_request") return rule(permission, "allow")
-
-    // These were previously blocked in autonomous — now ALLOWED
     if (permission === "file_external") return rule(permission, "allow")
     if (permission === "mcp_invoke") return rule(permission, "allow")
     if (permission === "plugin_invoke") return rule(permission, "allow")
@@ -86,10 +82,7 @@ function autonomousRules() {
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")
     if (permission === "platform_control") return rule(permission, "allow")
-
-    // Shell destructive: keep as ask (agent should be aware)
     if (permission === "shell_destructive") return rule(permission, "ask")
-
     return rule(permission, "allow")
   })
 }
@@ -101,6 +94,7 @@ function workspaceFs(workspace: string) {
     protectedPaths: [],
   }
 }
+
 function autonomousFs(workspace: string) {
   return {
     readRoots: ["/"],
@@ -181,8 +175,14 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
   }
   const profile = { ...defaults[profileId] }
 
-  const cfg = await Config.get()
-  const sandboxCfg = cfg.sandbox
+  let sandboxCfg: any = null
+  try {
+    const cfg = await Config.get()
+    sandboxCfg = cfg.sandbox
+  } catch {
+    LOG.debug("no config context available for sandbox resolution, using profile defaults", { profile: profileId })
+  }
+
   if (!sandboxCfg) {
     LOG.debug("no sandbox config found, using profile defaults", { profile: profileId, defaults: profile })
     return profile
