@@ -72,12 +72,7 @@ fn main() {
         helper_args.child_command[0]
     );
 
-    let watch_dirs: Vec<String> = profile
-        .file_system
-        .writable_roots
-        .iter()
-        .cloned()
-        .collect();
+    let watch_dirs: Vec<String> = profile.file_system.writable_roots.iter().cloned().collect();
     let mut create_monitor = protected_create::ProtectedCreateMonitor::new(
         profile.file_system.protected_metadata_names.clone(),
     );

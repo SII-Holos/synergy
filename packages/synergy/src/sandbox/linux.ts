@@ -31,7 +31,7 @@ export const LINUX_HELPER_SEARCH_PATHS = [
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --generate to populate.
+  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
   // Empty map is intentional until release — no helper will be trusted.
 }
 

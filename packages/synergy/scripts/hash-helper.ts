@@ -29,7 +29,7 @@ console.log(`export const ${constName}: Record<string, string> = {`)
 console.log(`  path.join(homedir, ".synergy", "sandbox-helper", "${helperName}"): "${digest}",`)
 console.log(`}`)
 
-if (process.argv.includes("--generate")) {
+if (process.argv.includes("--auto-update")) {
   const sourceFile = path.resolve(import.meta.dir, "..", "src", "sandbox", targetModule)
   let content = fs.readFileSync(sourceFile, "utf-8")
   const pattern = new RegExp(`export const ${constName}: Record<string, string> = \\{[^}]*\\}`, "s")
@@ -38,7 +38,7 @@ if (process.argv.includes("--generate")) {
 }`
   content = content.replace(pattern, replacement)
   fs.writeFileSync(sourceFile, content)
-  console.log(`Updated ${sourceFile} with new hash entry`)
+  console.log(`Updated ${sourceFile}`)
 }
 
 // Also output the JSON format for potential future release automation

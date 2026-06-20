@@ -388,7 +388,10 @@ unsafe fn create_sandboxed_process_conpty(
 /// Build a Windows environment block (null-separated wide-char strings, double-null terminated)
 /// from the env module allowlist, populating values from real environment variables.
 fn build_wide_env_block(extra: &[(String, String)]) -> Vec<u16> {
-    let keys: Vec<String> = crate::env::ENV_ALLOWLIST.iter().map(|k| k.to_string()).collect();
+    let keys: Vec<String> = crate::env::ENV_ALLOWLIST
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
     let mut env_strings: Vec<String> = Vec::new();
     for key in keys {
         if let Ok(val) = std::env::var(&key) {

@@ -32,9 +32,14 @@ export namespace MacOSSbpl {
   (sysctl-name "net.*")
   (sysctl-name "debug.*")
   (sysctl-name "security.mac.*")
+  (sysctl-name "user.*")
   (sysctl-name "machdep.*"))
 (allow iokit-open
   (iokit-connection "IOKit")
+  (iokit-user-client-class "IOAudioControlUserClient")
+  (iokit-user-client-class "IOAudioEngineUserClient")
+  (iokit-user-client-class "IOHIDLibUserClient")
+  (iokit-user-client-class "IOSurfaceRootUserClient")
   (iokit-user-client-class "RootDomainUserClient"))
 (allow mach-lookup
   (global-name "com.apple.distributed_notifications")
@@ -81,6 +86,7 @@ export namespace MacOSSbpl {
   (subpath "/var/tmp")
   (subpath "/dev/shm")
   (regex #"^/tmp/.com.apple.csseed.*")
+  (regex #"^/var/tmp/.*\.sem\..*")
   (regex #"^/private/tmp/.com.apple.csseed.*"))
 ; ── Core OS libraries ──
 (allow file-read*

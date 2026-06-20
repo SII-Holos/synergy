@@ -154,7 +154,9 @@ mod platform {
             );
         }
         if sid_size == 0 {
-            return Err(format!("LookupAccountNameW failed to get size for '{username}'"));
+            return Err(format!(
+                "LookupAccountNameW failed to get size for '{username}'"
+            ));
         }
 
         let mut sid_buf: Vec<u8> = vec![0u8; sid_size as usize];
@@ -312,7 +314,8 @@ mod platform {
                 },
             };
 
-            let status = unsafe { FwpmFilterAdd0(engine, &filter, ptr::null_mut(), ptr::null_mut()) };
+            let status =
+                unsafe { FwpmFilterAdd0(engine, &filter, ptr::null_mut(), ptr::null_mut()) };
 
             drop(desc_wide);
             drop(name_wide);

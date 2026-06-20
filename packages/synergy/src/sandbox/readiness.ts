@@ -1,3 +1,5 @@
+import * as path from "path"
+import * as os from "os"
 import * as fs from "fs"
 import { detectPlatform } from "./detect"
 import { platformInfo, isBwrapAvailable } from "./platform"
@@ -269,6 +271,23 @@ export async function getSandboxReadiness(sandboxCfg?: SandboxReadinessConfig): 
         label: "bwrap version",
         status: bwrapVersion ? "pass" : "warn",
         detail: bwrapVersion ?? "Could not determine bwrap version",
+      })
+
+      const bundledBwrapPath = path.join(os.homedir(), ".synergy", "sandbox-helper", "bwrap")
+      const bundledBwrapExists = (() => {
+        try {
+          return fs.existsSync(bundledBwrapPath)
+        } catch {
+          return false
+        }
+      })()
+      checks.push({
+        id: "linux_bundled_bwrap",
+        label: "Bundled bwrap",
+        status: bundledBwrapExists ? "pass" : "warn",
+        detail: bundledBwrapExists
+          ? `Bundled bwrap found at ${bundledBwrapPath}`
+          : "No bundled bwrap found. Using system bwrap or manual install.",
       })
 
       const landlockAvailable = (() => {

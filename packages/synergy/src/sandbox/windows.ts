@@ -32,7 +32,7 @@ export const HELPER_SEARCH_PATHS = [
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts windows --generate to populate.
+  // Hash entries for verified helper binaries. Run scripts/build-helper.ts windows --auto-update to populate.
   // Empty map is intentional until release — no helper will be trusted.
 }
 

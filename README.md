@@ -83,7 +83,6 @@ Inspect or manage the background service when needed:
 
 ```bash
 synergy status
-synergy restart
 synergy stop
 synergy logs
 ```
@@ -96,7 +95,7 @@ Background service management currently supports:
 
 `synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
 
-Start and restart print a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+Start prints a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 
@@ -132,13 +131,14 @@ bun dev send "hello"
 ### Core runtime
 
 ```bash
-synergy start              # Start the background service, optionally with Holos login
-synergy stop               # Stop the background service
-synergy restart            # Restart the background service
-synergy status             # Show background service status
-synergy server             # Start the Synergy server in foreground mode
-synergy web                # Open the web UI and attach to a server
-synergy send "message"     # Run a one-off prompt
+synergy start                  # Start the background service, optionally with Holos login
+synergy stop                   # Stop the background service
+synergy stop && synergy start  # Restart the background service (stop + start)
+synergy status                 # Show background service status
+synergy doctor                 # Diagnose sandbox and environment readiness
+synergy server                 # Start the Synergy server in foreground mode
+synergy web                    # Open the web UI and attach to a server
+synergy send "message"         # Run a one-off prompt
 ```
 
 ### Configuration and identity
@@ -320,18 +320,41 @@ Sandbox mode is driven by the active control profile (`guarded`, `autonomous`, `
 
 | Profile       | Sandbox mode      | Fallback |
 | ------------- | ----------------- | -------- |
-| `guarded`     | `workspace_write` | `deny`   |
-| `autonomous`  | `workspace_write` | `deny`   |
+| `guarded`     | `workspace_write` | `warn`   |
+| `autonomous`  | `workspace_write` | `warn`   |
 | `full_access` | `none`            | `allow`  |
 
-The global `sandbox` config fields control backend selection and fallback behavior. Current supported fields:
+The global `sandbox` config fields control backend selection and fallback behavior:
 
 ```jsonc
 {
   "sandbox": {
-    "enabled": true, // Enable/disable sandbox globally
-    "fallbackPolicy": "deny", // "deny" | "warn" | "allow" — when backend is unavailable
-    // "backend": "auto",   // Planned: force a specific backend
+    "enabled": true, // Enable/disable sandbox globally (default: true)
+    "fallbackPolicy": "warn", // "warn" | "allow" | "deny" — when backend is unavailable (default: "warn")
+    "backend": "auto", // Force a specific backend: "auto" (platform default),
+    // "seatbelt-deny-default" (macOS deny-default SBPL),
+    // "seatbelt-legacy-allow-default" (macOS allow-default SBPL),
+    // "synergy-sandbox-linux" (Linux bundled bwrap),
+    // "bwrap-inline-debug" (Linux in-tree bwrap debug),
+    // "windows-restricted-token" (Windows MVP),
+    // "windows-elevated" (Windows full, future)
+    "network": {
+      "mode": "restricted", // "restricted" | "proxy_only" | "full" — network access within sandbox
+    },
+    "macos": {
+      "denialLogger": true, // Log sandbox denials via macOS Seatbelt (default: true)
+    },
+    "linux": {
+      "bundledBwrap": true, // Use bundled bwrap binary instead of system bwrap (default: true)
+      "landlockFallback": true, // Fall back to Landlock LSM when bwrap is unavailable (default: true)
+    },
+    "windows": {
+      "level": "restricted-token", // "disabled" | "restricted-token" | "elevated"
+      "helperPath": "/path/to/synergy-sandbox-windows.exe",
+      "verifyHelperHash": true, // Verify helper binary SHA-256 hash before use (default: true)
+      "privateDesktop": true, // Create a private desktop for sandboxed process (default: true)
+      "conpty": true, // Use ConPTY for pseudo-terminal support (default: true)
+    },
   },
 }
 ```
@@ -463,15 +486,15 @@ bun install
 Then start the dev server:
 
 ```bash
-bun dev server   # start the server (watchdog wraps it for auto-restart)
-bun dev web --dev  # open the web UI (separate terminal)
+bun dev server      # start the server
+bun dev web --dev   # open the web UI (separate terminal)
 ```
 
-The dev server runs with `--restart=dev`, which wraps it in a watchdog. After editing code:
+After editing code:
 
 ```bash
-bun dev build      # rebuild frontend (after app changes)
-bun dev restart    # restart the server
+bun dev build       # rebuild frontend (after app changes)
+bun dev server      # restart the server
 ```
 
 > **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.

@@ -29,3 +29,16 @@ console.log(`Add to packages/synergy/src/sandbox/${targetModule}:`)
 console.log(`export const ${constName}: Record<string, string> = {`)
 console.log(`  path.join(homedir, ".synergy", "sandbox-helper", "${binaryName}"): "${hash}",`)
 console.log(`}`)
+
+const autoUpdate = process.argv.includes("--auto-update")
+if (autoUpdate) {
+  const sourceFile = path.resolve(import.meta.dir, "..", "src", "sandbox", targetModule)
+  let content = fs.readFileSync(sourceFile, "utf-8")
+  const pattern = new RegExp(`export const ${constName}: Record<string, string> = \\{[^}]*\\}`, "s")
+  const replacement = `export const ${constName}: Record<string, string> = {
+  path.join(homedir, ".synergy", "sandbox-helper", "${binaryName}"): "${hash}",
+}`
+  content = content.replace(pattern, replacement)
+  fs.writeFileSync(sourceFile, content)
+  console.log(`Updated ${sourceFile}`)
+}
