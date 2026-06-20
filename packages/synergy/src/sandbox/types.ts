@@ -20,6 +20,8 @@ export interface PrepareWrapperOpts {
   executionCwd?: string
   sandboxMode: SandboxMode
   forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "sandbox-exec", "seatbelt-deny-default") */
+  backend?: string
   runtimeReadRoots?: string[]
   extraReadRoots?: string[]
   writableRoots?: string[]

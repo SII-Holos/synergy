@@ -3,7 +3,7 @@ import * as path from "path"
 import * as fs from "fs"
 import * as crypto from "crypto"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper } from "./types"
-import { detectPlatform } from "./platform"
+import { detectPlatform } from "./detect"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "sandbox-windows" })

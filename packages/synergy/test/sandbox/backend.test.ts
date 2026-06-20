@@ -517,12 +517,8 @@ describe("SandboxBackend cross-platform support", () => {
       forcePlatform: "linux",
     })
 
-    const argsStr = wrapper.args.join(" ")
-
-    // Critical: must NOT bind-mount the entire root filesystem
-    expect(wrapper.args).not.toContain("--ro-bind")
-
-    // Must not contain a bind of "/" — that would expose everything
+    // Critical: must NOT bind-mount the entire root filesystem.
+    // Individual --ro-bind mounts (e.g. --ro-bind /usr/lib /usr/lib) are fine.
     const hasRootBind = wrapper.args.some((a: string, i: number) => a === "--ro-bind" && wrapper.args[i + 1] === "/")
     expect(hasRootBind).toBe(false)
   })
@@ -708,6 +704,8 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
 
     if (wrapper.skipReason) return
 
-    expect(() => SandboxBackend.execute(wrapper)).toThrow()
+    const result = SandboxBackend.execute(wrapper)
+    // Sandbox should prevent writing to /etc — command exits non-zero
+    expect(result.exitCode).not.toBe(0)
   })
 })

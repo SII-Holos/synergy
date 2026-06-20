@@ -1,7 +1,7 @@
 import * as path from "path"
 import * as os from "os"
 import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
-import { detectPlatform } from "./platform"
+import { detectPlatform } from "./detect"
 import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
 
 /**

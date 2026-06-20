@@ -52,7 +52,8 @@ export type {
 
 import { SandboxDetector } from "@/enforcement/sandbox-detector"
 import { EnforcementError } from "@/enforcement/errors"
-import { detectPlatform, isPlatformSupported as platformIsSupported, platformInfo as getPlatformInfo } from "./platform"
+import { detectPlatform, isPlatformSupported as platformIsSupported } from "./detect"
+import { platformInfo as getPlatformInfo } from "./platform"
 import { MacBackend } from "./macos"
 import { LinuxBackend } from "./linux"
 import { WindowsBackend } from "./windows"
@@ -357,6 +358,93 @@ export namespace SandboxBackend {
       stderr,
       timedOut,
       truncated,
+    }
+  }
+  // ----------------------------------------------------------------
+  // Execution (sync compatibility wrapper — Bun.spawnSync)
+  // ----------------------------------------------------------------
+
+  /**
+   * Synchronous sandbox execution wrapper.
+   *
+   * This is a compatibility wrapper for code that requires sync execution.
+   * Production code should prefer executeAsync() for timeout, signal,
+   * and streaming support.
+   *
+   * Inherits the same fallback policy, env allowlist, temp cleanup,
+   * and sandbox denial detection as the async version.
+   */
+  export function execute(
+    wrapper: SandboxExecutionWrapper,
+    opts?: Partial<Pick<SandboxExecuteOpts, "fallbackPolicy" | "env" | "cwd">>,
+  ): ExecuteAsyncResult {
+    const fallbackPolicy = opts?.fallbackPolicy ?? "warn"
+
+    if (wrapper.skipReason) {
+      if (fallbackPolicy === "deny") {
+        throw new Error(`Sandbox execution denied: ${wrapper.skipReason}`)
+      }
+      // warn/allow: run unsandboxed
+    }
+
+    const env = buildSandboxEnv(opts?.env)
+    const cwd = opts?.cwd ?? process.cwd()
+
+    const cmd: string[] = [wrapper.command, ...wrapper.args]
+    const { tempPath } = wrapper
+
+    try {
+      const result = Bun.spawnSync({
+        cmd,
+        cwd,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+
+      const exitCode = result.exitCode ?? -1
+      const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : ""
+      const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : ""
+
+      // ── Sandbox denial detection ──────────────────────────────────
+      // When the sandbox is active and the command fails, scan output
+      // for OS-level permission denial patterns.
+      if (wrapper.sandboxed && exitCode !== 0) {
+        const combinedOutput = stdout + stderr
+        const matches = SandboxDetector.scan(combinedOutput)
+        if (matches.length > 0) {
+          const info = platformInfo()
+          const explanation = SandboxDetector.buildBlockExplanation(matches, {
+            command: wrapper.command,
+            backend: info.backend,
+          })
+          const message = explanation
+            ? SandboxDetector.formatBlockExplanation(matches, {
+                command: wrapper.command,
+                backend: info.backend,
+              })
+            : SandboxDetector.explain(matches)
+          throw new EnforcementError.SandboxBlocked(
+            message,
+            exitCode,
+            matches[0]?.label ?? null,
+            combinedOutput,
+            explanation ?? undefined,
+          )
+        }
+      }
+
+      return {
+        exitCode,
+        stdout,
+        stderr,
+        timedOut: false,
+        truncated: false,
+      }
+    } finally {
+      if (tempPath) {
+        cleanupTemp(tempPath)
+      }
     }
   }
 }

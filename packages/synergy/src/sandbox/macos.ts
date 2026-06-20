@@ -3,7 +3,10 @@ import * as path from "path"
 import * as fs from "fs"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper, SeatbeltProfileOpts } from "./types"
 import { DEFAULT_PROTECTED_PATHS, uniqueRoots, traversalLiterals, defaultRuntimeReadRoots } from "./policy"
-import { getTempDir, detectPlatform } from "./platform"
+import { detectPlatform } from "./detect"
+import { getTempDir } from "./platform"
+import { MacOSPolicy } from "./macos-policy"
+import { buildPermissionProfile } from "./policy-engine"
 
 function randomId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -92,6 +95,36 @@ export namespace MacBackend {
       }
     }
 
+    // ── Deny-default (Codex parity) SBPL path ────────────────────────
+    // When the backend is explicitly set to "seatbelt-deny-default",
+    // use the parameterized (deny default) profile compiler instead of
+    // the legacy (allow default) approach. This produces stricter
+    // sandbox profiles that match Codex's macOS sandbox behavior.
+    if (opts.backend === "seatbelt-deny-default") {
+      const policyProfile = buildPermissionProfile({
+        workspace,
+        executionCwd: opts.executionCwd ?? workspace,
+        sandboxMode,
+        approvedReadPaths: [],
+        approvedWritePaths: [],
+        approvedNetwork: false,
+        approvedUnixSockets: [],
+      })
+      const sbplContent = MacOSPolicy.compileProfile(policyProfile)
+      const params = MacOSPolicy.generateParams(policyProfile)
+      const tempPath = writeTempString(sbplContent)
+
+      const dArgs = Object.entries(params).flatMap(([key, value]) => ["-D", `${key}=${value}`])
+
+      return {
+        command: "sandbox-exec",
+        args: ["-f", tempPath, ...dArgs, command, ...args],
+        sandboxed: true,
+        tempPath,
+      }
+    }
+
+    // ── Legacy allow-default path ─────────────────────────────────────
     const runtimeReadRoots = uniqueRoots([
       ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
       ...(opts.extraReadRoots ?? []),
@@ -141,6 +174,12 @@ export namespace MacBackend {
   function writeTempProfile(profileLines: string[]): string {
     const filePath = path.join(getTempDir(), `synergy-sandbox-${randomId()}.sb`)
     fs.writeFileSync(filePath, profileLines.join("\n"), "utf-8")
+    return filePath
+  }
+
+  function writeTempString(content: string): string {
+    const filePath = path.join(getTempDir(), `synergy-sandbox-${randomId()}.sb`)
+    fs.writeFileSync(filePath, content, "utf-8")
     return filePath
   }
 }

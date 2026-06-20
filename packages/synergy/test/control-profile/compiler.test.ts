@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { ControlProfileCompiler } from "../../src/control-profile/compiler"
+import type { ResolvedProfile } from "../../src/control-profile/types"
 
 const context = {
   workspace: "/Users/test/project",
   workspaceType: "worktree",
 }
 
-function rule(profile: ReturnType<typeof ControlProfileCompiler.resolve>, permission: string) {
+function rule(profile: ResolvedProfile, permission: string) {
   return profile.ruleset.find((r) => r.permission === permission)
 }
 
@@ -15,8 +16,13 @@ describe("ControlProfile identity", () => {
     expect(ControlProfileCompiler.profileIds).toEqual(["guarded", "autonomous", "full_access"])
   })
 
-  test("each profile has an English label", () => {
-    const labels = ControlProfileCompiler.profileIds.map((id) => ControlProfileCompiler.getProfile(id).label)
+  test("each profile has an English label", async () => {
+    const labels = await Promise.all(
+      ControlProfileCompiler.profileIds.map(async (id) => {
+        const profile = await ControlProfileCompiler.getProfile(id)
+        return profile.label
+      }),
+    )
     expect(labels).toEqual(["Guarded", "Autonomous", "Full Access"])
   })
 
@@ -26,8 +32,8 @@ describe("ControlProfile identity", () => {
 })
 
 describe("guarded profile policy", () => {
-  test("auto-allows safe reads, workspace writes, and network while asking for riskier capabilities", () => {
-    const profile = ControlProfileCompiler.resolve("guarded", context)
+  test("auto-allows safe reads, workspace writes, and network while asking for riskier capabilities", async () => {
+    const profile = await ControlProfileCompiler.resolve("guarded", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
     expect(rule(profile, "shell_read")?.action).toBe("allow")
@@ -39,8 +45,8 @@ describe("guarded profile policy", () => {
     expect(rule(profile, "shell_destructive")?.nonBypassable).toBe(true)
   })
 
-  test("keeps the workspace boundary", () => {
-    const profile = ControlProfileCompiler.resolve("guarded", context)
+  test("keeps the workspace boundary", async () => {
+    const profile = await ControlProfileCompiler.resolve("guarded", context)
     expect(profile.filesystem.writeRoots).toContain(context.workspace)
     expect(profile.sandbox.mode).toBe("workspace_write")
     expect(profile.network.mode).toBe("restricted")
@@ -48,8 +54,8 @@ describe("guarded profile policy", () => {
 })
 
 describe("autonomous profile policy", () => {
-  test("auto-allows low and medium risk work but denies high-risk capabilities", () => {
-    const profile = ControlProfileCompiler.resolve("autonomous", context)
+  test("auto-allows low and medium risk work but denies high-risk capabilities", async () => {
+    const profile = await ControlProfileCompiler.resolve("autonomous", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
     expect(rule(profile, "shell_read")?.action).toBe("allow")
@@ -59,9 +65,9 @@ describe("autonomous profile policy", () => {
     expect(rule(profile, "platform_control")?.action).toBe("deny")
   })
 
-  test("matches guarded filesystem, network, and sandbox boundaries", () => {
-    const guarded = ControlProfileCompiler.resolve("guarded", context)
-    const autonomous = ControlProfileCompiler.resolve("autonomous", context)
+  test("matches guarded filesystem, network, and sandbox boundaries", async () => {
+    const guarded = await ControlProfileCompiler.resolve("guarded", context)
+    const autonomous = await ControlProfileCompiler.resolve("autonomous", context)
     expect(autonomous.filesystem).toEqual(guarded.filesystem)
     expect(autonomous.network).toEqual(guarded.network)
     expect(autonomous.sandbox).toEqual(guarded.sandbox)
@@ -69,8 +75,8 @@ describe("autonomous profile policy", () => {
 })
 
 describe("full_access profile policy", () => {
-  test("allows all capability classes without a sandbox", () => {
-    const profile = ControlProfileCompiler.resolve("full_access", context)
+  test("allows all capability classes without a sandbox", async () => {
+    const profile = await ControlProfileCompiler.resolve("full_access", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "allow" })
     expect(profile.filesystem.readRoots).toContain("/")
     expect(profile.filesystem.writeRoots).toContain("/")
@@ -78,8 +84,8 @@ describe("full_access profile policy", () => {
     expect(rule(profile, "identity_act")?.action).toBe("allow")
   })
 
-  test("is forbidden in unattended interaction mode", () => {
-    const result = ControlProfileCompiler.resolve("full_access", {
+  test("is forbidden in unattended interaction mode", async () => {
+    const result = await ControlProfileCompiler.resolve("full_access", {
       ...context,
       interactionMode: "unattended",
     })
@@ -89,8 +95,8 @@ describe("full_access profile policy", () => {
 })
 
 describe("ControlProfile compiler output", () => {
-  test("resolved profile includes PermissionNext-compatible rules", () => {
-    const profile = ControlProfileCompiler.resolve("guarded", context)
+  test("resolved profile includes PermissionNext-compatible rules", async () => {
+    const profile = await ControlProfileCompiler.resolve("guarded", context)
     expect(Array.isArray(profile.ruleset)).toBe(true)
     for (const item of profile.ruleset) {
       expect(typeof item.permission).toBe("string")
@@ -99,15 +105,15 @@ describe("ControlProfile compiler output", () => {
     }
   })
 
-  test("resolved profile contains filesystem, network, sandbox, and summary metadata", () => {
-    const profile = ControlProfileCompiler.resolve("autonomous", context)
+  test("resolved profile contains filesystem, network, sandbox, and summary metadata", async () => {
+    const profile = await ControlProfileCompiler.resolve("autonomous", context)
     expect(Array.isArray(profile.filesystem.readRoots)).toBe(true)
     expect(["disabled", "restricted", "enabled"]).toContain(profile.network.mode)
     expect(["none", "workspace_write", "read_only"]).toContain(profile.sandbox.mode)
     expect(profile.summary?.approval.mode).toBe("autonomous")
   })
 
-  test("requires workspace context", () => {
-    expect(() => ControlProfileCompiler.resolve("guarded", {} as any)).toThrow()
+  test("requires workspace context", async () => {
+    await expect(ControlProfileCompiler.resolve("guarded", {} as any)).rejects.toThrow()
   })
 })
