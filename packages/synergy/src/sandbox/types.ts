@@ -83,8 +83,6 @@ export interface SandboxExecuteResult {
   timedOut: boolean
   truncated: boolean
 }
-import type { SandboxRecoveryAction } from "./explain"
-
 /** Recovery action for a failed readiness check. */
 export interface ReadinessRecoveryAction {
   action: string

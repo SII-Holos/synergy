@@ -32,8 +32,8 @@ impl LandlockPlan {
     pub fn read_paths(&self) -> HashSet<PathBuf> {
         self.rules
             .iter()
-            .filter_map(|r| match r {
-                LandlockRule::Read { path } | LandlockRule::Write { path } => Some(path.clone()),
+            .map(|r| match r {
+                LandlockRule::Read { path } | LandlockRule::Write { path } => path.clone(),
             })
             .collect()
     }

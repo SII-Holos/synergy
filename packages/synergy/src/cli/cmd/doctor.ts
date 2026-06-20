@@ -35,7 +35,7 @@ export const DoctorCommand = cmd({
         }
       }
     } catch (error) {
-      console.log("\n  Cannot connect to Synergy server for sandbox readiness")
+      console.log(`\n  Failed to run sandbox readiness checks: ${(error as Error).message ?? String(error)}`)
     }
 
     // Environment

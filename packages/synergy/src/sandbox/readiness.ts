@@ -3,8 +3,8 @@ import { detectPlatform } from "./detect"
 import { platformInfo, isBwrapAvailable } from "./platform"
 import { getWindowsHelperInfo } from "./windows"
 import { getLinuxHelperInfo } from "./linux"
-import { isWsl1, isWsl2 } from "./wsl"
-import type { SandboxReadinessCheck, SandboxReadiness, ReadinessRecoveryAction } from "./types"
+import { isWsl1 } from "./wsl"
+import type { SandboxReadinessCheck, SandboxReadiness } from "./types"
 
 export interface SandboxReadinessConfig {
   enabled?: boolean

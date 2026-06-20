@@ -244,7 +244,7 @@ export const LocalBashBackend: BashBackend = {
       child = spawn(params.command, {
         shell,
         cwd,
-        env: { ...process.env },
+        env: sandboxEnv,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32",
       })

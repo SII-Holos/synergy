@@ -59,7 +59,6 @@ import { LinuxBackend } from "./linux"
 import { WindowsBackend } from "./windows"
 import { startDenialLogger, type DenialLoggerSession } from "./macos-diagnostics"
 import { Log } from "@/util/log"
-import { isWsl2 } from "./wsl"
 const log = Log.create({ service: "sandbox-backend" })
 
 // ------------------------------------------------------------------
@@ -99,14 +98,7 @@ export namespace SandboxBackend {
       return { command: opts.command, args: opts.args, sandboxed: false }
     }
 
-    let platform = opts.forcePlatform ?? detectPlatform()
-
-    // WSL2 → route to Linux sandbox backend
-    if (platform === "windows" && isWsl2()) {
-      platform = "linux"
-      log.info("sandbox.wsl2_routing", { original: "windows", routed: "linux" })
-    }
-
+    const platform = opts.forcePlatform ?? detectPlatform()
     switch (platform) {
       case "macos":
         return MacBackend.prepare(opts)
