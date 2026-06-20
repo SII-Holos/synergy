@@ -219,6 +219,10 @@ export type AgendaItem = {
     modelID: string
   }
   /**
+   * Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.
+   */
+  sessionMode?: "ephemeral" | "persistent"
+  /**
    * Sessions whose content may be relevant — injected as context references
    */
   sessionRefs?: Array<AgendaSessionRef>
@@ -1413,24 +1417,79 @@ export type ChannelFeishuConfig = {
  */
 export type SandboxConfig = {
   /**
-   * Enable the sandbox runtime when available
+   * Enable the sandbox runtime when available (default: true)
    */
   enabled?: boolean
   /**
-   * How to proceed when the requested sandbox runtime is unavailable
+   * How to proceed when the requested sandbox runtime is unavailable (default: 'warn')
    */
   fallbackPolicy?: "warn" | "allow" | "deny"
   /**
-   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
+   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
    */
-  backend?: "auto" | "sandbox-exec" | "bwrap" | "windows-restricted-token" | "windows-elevated"
+  backend?:
+    | "auto"
+    | "seatbelt-deny-default"
+    | "seatbelt-legacy-allow-default"
+    | "synergy-sandbox-linux"
+    | "bwrap-inline-debug"
+    | "windows-restricted-token"
+    | "windows-elevated"
+  /**
+   * Network configuration for sandbox enforcement
+   */
+  network?: {
+    /**
+     * Network access mode within the sandbox (default: 'restricted')
+     */
+    mode?: "restricted" | "proxy_only" | "full"
+  }
+  /**
+   * macOS-specific sandbox settings
+   */
+  macos?: {
+    /**
+     * Log sandbox denials via macOS Seatbelt (default: true)
+     */
+    denialLogger?: boolean
+  }
+  /**
+   * Linux-specific sandbox settings
+   */
+  linux?: {
+    /**
+     * Use the bundled bwrap binary instead of system bwrap (default: true)
+     */
+    bundledBwrap?: boolean
+    /**
+     * Fall back to Landlock LSM when bwrap is unavailable (default: true)
+     */
+    landlockFallback?: boolean
+  }
   /**
    * Windows-specific sandbox settings
    */
   windows?: {
+    /**
+     * Windows sandbox level (default: 'restricted-token')
+     */
     level?: "disabled" | "restricted-token" | "elevated"
+    /**
+     * Path to the synergy-sandbox-windows.exe helper binary
+     */
     helperPath?: string
+    /**
+     * Verify the helper binary SHA-256 hash before use (default: true)
+     */
     verifyHelperHash?: boolean
+    /**
+     * Create a private desktop for the sandboxed process (default: true)
+     */
+    privateDesktop?: boolean
+    /**
+     * Use ConPTY for pseudo-terminal support (default: true)
+     */
+    conpty?: boolean
   }
 }
 
@@ -2043,6 +2102,26 @@ export type SandboxStatus = {
   available: boolean
   backend: string | null
   supported: boolean
+}
+
+export type SandboxReadinessCheck = {
+  id: string
+  label: string
+  status: "pass" | "warn" | "fail"
+  detail: string
+  recovery?: {
+    action: string
+    label: string
+    command: string
+  }
+}
+
+export type SandboxReadiness = {
+  platform: "macos" | "linux" | "windows" | "unsupported"
+  backend: string | null
+  ready: boolean
+  checks: Array<SandboxReadinessCheck>
+  summary: string
 }
 
 export type ToolIds = Array<string>
@@ -3208,6 +3287,7 @@ export type AgendaCreateInput = {
     providerID: string
     modelID: string
   }
+  sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
   timeout?: number
   createdBy?: "user" | "agent"
@@ -3229,7 +3309,13 @@ export type AgendaPatchInput = {
   wake?: boolean
   silent?: boolean
   agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
+  timeout?: number
 }
 
 export type NoteMetaInfo = {
@@ -5342,6 +5428,24 @@ export type SandboxStatusResponses = {
 }
 
 export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
+
+export type SandboxReadinessData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/readiness"
+}
+
+export type SandboxReadinessResponses = {
+  /**
+   * Sandbox readiness information
+   */
+  200: SandboxReadiness
+}
+
+export type SandboxReadinessResponse = SandboxReadinessResponses[keyof SandboxReadinessResponses]
 
 export type ToolIdsData = {
   body?: never

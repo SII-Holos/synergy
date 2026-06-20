@@ -2134,6 +2134,40 @@
         ]
       }
     },
+    "/sandbox/readiness": {
+      "get": {
+        "operationId": "sandbox.readiness",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get sandbox readiness",
+        "description": "Platform-specific sandbox health checks. Returns readiness status with per-check diagnostics for macOS, Linux, and Windows.",
+        "responses": {
+          "200": {
+            "description": "Sandbox readiness information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxReadiness"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.sandbox.readiness({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/tool/ids": {
       "get": {
         "operationId": "tool.ids",
@@ -12000,6 +12034,11 @@
             },
             "required": ["providerID", "modelID"]
           },
+          "sessionMode": {
+            "description": "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
+            "type": "string",
+            "enum": ["ephemeral", "persistent"]
+          },
           "sessionRefs": {
             "description": "Sessions whose content may be relevant — injected as context references",
             "type": "array",
@@ -13952,34 +13991,92 @@
         "type": "object",
         "properties": {
           "enabled": {
-            "description": "Enable the sandbox runtime when available",
+            "description": "Enable the sandbox runtime when available (default: true)",
             "type": "boolean"
           },
           "fallbackPolicy": {
-            "description": "How to proceed when the requested sandbox runtime is unavailable",
+            "description": "How to proceed when the requested sandbox runtime is unavailable (default: 'warn')",
             "type": "string",
             "enum": ["warn", "allow", "deny"]
           },
           "backend": {
-            "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+            "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
             "type": "string",
-            "enum": ["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"]
+            "enum": [
+              "auto",
+              "seatbelt-deny-default",
+              "seatbelt-legacy-allow-default",
+              "synergy-sandbox-linux",
+              "bwrap-inline-debug",
+              "windows-restricted-token",
+              "windows-elevated"
+            ]
+          },
+          "network": {
+            "description": "Network configuration for sandbox enforcement",
+            "type": "object",
+            "properties": {
+              "mode": {
+                "description": "Network access mode within the sandbox (default: 'restricted')",
+                "type": "string",
+                "enum": ["restricted", "proxy_only", "full"]
+              }
+            },
+            "additionalProperties": false
+          },
+          "macos": {
+            "description": "macOS-specific sandbox settings",
+            "type": "object",
+            "properties": {
+              "denialLogger": {
+                "description": "Log sandbox denials via macOS Seatbelt (default: true)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "linux": {
+            "description": "Linux-specific sandbox settings",
+            "type": "object",
+            "properties": {
+              "bundledBwrap": {
+                "description": "Use the bundled bwrap binary instead of system bwrap (default: true)",
+                "type": "boolean"
+              },
+              "landlockFallback": {
+                "description": "Fall back to Landlock LSM when bwrap is unavailable (default: true)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "windows": {
             "description": "Windows-specific sandbox settings",
             "type": "object",
             "properties": {
               "level": {
+                "description": "Windows sandbox level (default: 'restricted-token')",
                 "type": "string",
                 "enum": ["disabled", "restricted-token", "elevated"]
               },
               "helperPath": {
+                "description": "Path to the synergy-sandbox-windows.exe helper binary",
                 "type": "string"
               },
               "verifyHelperHash": {
+                "description": "Verify the helper binary SHA-256 hash before use (default: true)",
+                "type": "boolean"
+              },
+              "privateDesktop": {
+                "description": "Create a private desktop for the sandboxed process (default: true)",
+                "type": "boolean"
+              },
+              "conpty": {
+                "description": "Use ConPTY for pseudo-terminal support (default: true)",
                 "type": "boolean"
               }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -15267,6 +15364,72 @@
           }
         },
         "required": ["platform", "available", "backend", "supported"]
+      },
+      "SandboxReadinessCheck": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "warn", "fail"]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "recovery": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": ["action", "label", "command"]
+          }
+        },
+        "required": ["id", "label", "status", "detail"]
+      },
+      "SandboxReadiness": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["macos", "linux", "windows", "unsupported"]
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxReadinessCheck"
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": ["platform", "backend", "ready", "checks", "summary"]
       },
       "ToolIDs": {
         "type": "array",
@@ -18522,6 +18685,10 @@
             },
             "required": ["providerID", "modelID"]
           },
+          "sessionMode": {
+            "type": "string",
+            "enum": ["ephemeral", "persistent"]
+          },
           "sessionRefs": {
             "type": "array",
             "items": {
@@ -18586,11 +18753,30 @@
           "agent": {
             "type": "string"
           },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "sessionMode": {
+            "type": "string",
+            "enum": ["ephemeral", "persistent"]
+          },
           "sessionRefs": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgendaSessionRef"
             }
+          },
+          "timeout": {
+            "type": "number"
           }
         }
       },
