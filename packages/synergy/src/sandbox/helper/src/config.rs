@@ -28,6 +28,8 @@ pub struct NetworkPolicy {
     pub allow_local_binding: bool,
     #[serde(default, rename = "allowedUnixSockets")]
     pub allowed_unix_sockets: Vec<String>,
+    #[serde(default, rename = "wfpEnabled")]
+    pub wfp_enabled: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -171,5 +173,54 @@ mod tests {
         assert_eq!(profile.file_system.protected_paths.len(), 2);
         assert_eq!(profile.file_system.data_deny_roots.len(), 1);
         assert!(profile.file_system.include_platform_defaults);
+    }
+
+    // ================================================================
+    // Slice: WFP enabled config tests
+    //
+    // These tests assert the PURE contract of the `wfpEnabled` field
+    // in NetworkPolicy. It defaults to false and is explicitly parsed
+    // when present. No FFI — tests run on any platform.
+    //
+    // Expected RED failures (compile-time or assertion):
+    //   - field `wfp_enabled` not found on `NetworkPolicy`
+    //   - deserializing without wfpEnabled sets it to true (wrong default)
+    // ================================================================
+
+    #[test]
+    fn wfp_enabled_defaults_to_false() {
+        let profile: PermissionProfile = serde_json::from_str(valid_profile_json()).unwrap();
+        assert!(
+            !profile.network.wfp_enabled,
+            "wfpEnabled must default to false when absent from JSON"
+        );
+    }
+
+    #[test]
+    fn wfp_enabled_parses_true() {
+        let json = r#"{
+            "fileSystem": {
+                "workspace": "C:\\sandbox",
+                "readableRoots": [],
+                "writableRoots": [],
+                "readOnlySubpaths": [],
+                "unreadableGlobs": [],
+                "protectedMetadataNames": [],
+                "protectedPaths": [],
+                "dataDenyRoots": [],
+                "includePlatformDefaults": false
+            },
+            "network": {
+                "mode": "restricted",
+                "wfpEnabled": true,
+                "allowLocalBinding": false,
+                "allowedUnixSockets": []
+            }
+        }"#;
+        let profile: PermissionProfile = serde_json::from_str(json).unwrap();
+        assert!(
+            profile.network.wfp_enabled,
+            "wfpEnabled must parse as true when set in JSON"
+        );
     }
 }

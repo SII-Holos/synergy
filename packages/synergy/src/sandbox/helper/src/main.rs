@@ -4,10 +4,12 @@ mod config;
 mod conpty;
 mod desktop;
 mod env;
+mod ipc_framed;
 mod path;
 mod process;
 mod sid;
 mod token;
+mod wfp;
 
 use std::process::exit;
 
@@ -111,6 +113,20 @@ fn main() {
             });
 
         cleanup::register_dacl_cleanup(saved_acls);
+    }
+
+    // Step 4a: Install WFP filters (network sandboxing via Windows Filtering Platform)
+    if profile.network.wfp_enabled
+        && (profile.network.mode == "restricted" || profile.network.mode == "proxy_only")
+    {
+        if let Ok(username) = std::env::var("USERNAME") {
+            match wfp::install_wfp_filters_for_account(&username) {
+                Ok(count) => {
+                    log::info!("WFP: installed {} network filters for {}", count, username)
+                }
+                Err(e) => log::warn!("WFP: filter installation failed (non-fatal): {}", e),
+            }
+        }
     }
 
     // Step 5: Create process (suspended, assign to job, resume)

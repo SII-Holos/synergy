@@ -27,6 +27,13 @@ import { Filesystem } from "../util/filesystem"
 import { PathClassifier } from "./classify"
 import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
+import {
+  type PrefixRule,
+  evaluateCommand,
+  generateAmendment,
+  type ExecPolicyAmendment,
+  type RuleMatch,
+} from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 
 export interface Capability {
@@ -58,6 +65,8 @@ export interface Envelope {
     permanent: boolean
     matchedPermission: string
   }
+  /** Populated when execPolicy generates an amendment for "ask" decisions */
+  amendment?: ExecPolicyAmendment
 }
 
 export interface GateOptions {
@@ -71,6 +80,7 @@ export interface GateOptions {
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
+  execPolicy?: { rules: PrefixRule[] }
 }
 
 const DESTRUCTIVE_PATTERNS = [
@@ -316,6 +326,7 @@ export namespace EnforcementGate {
       registeredPluginTools = new Set<string>(),
       originalCheckout,
       readRoots,
+      execPolicy,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
@@ -615,6 +626,58 @@ export namespace EnforcementGate {
     }
 
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      // ── ExecPolicy: bash command routing ──────────────────────────────
+      let execPolicyMatch: RuleMatch | undefined
+      let amendment: ExecPolicyAmendment | undefined
+
+      if (execPolicy && toolName === "bash") {
+        const rawCmd: string = args.command ?? ""
+        const words = rawCmd.trim().split(/\s+/).filter(Boolean)
+        if (words.length > 0) {
+          execPolicyMatch = evaluateCommand(words, execPolicy.rules)
+        }
+      }
+
+      if (execPolicyMatch) {
+        // "allow" → gate passes; no capabilities needed (policy-authorised)
+        if (execPolicyMatch.action === "allow") {
+          return {
+            decision: "allow",
+            profileId,
+            opaque: false,
+            capabilities: [],
+            amendment,
+            canAutoApprove() {
+              return true
+            },
+          }
+        }
+
+        // "deny" → hardline forbid
+        if (execPolicyMatch.action === "deny") {
+          const caps: Capability[] = [{ class: "shell_hardline", nonBypassable: true }]
+          auditRecords.push({ tool: toolName, capabilities: caps, timestamp: Date.now() })
+          return {
+            decision: "deny",
+            profileId,
+            opaque: false,
+            capabilities: caps,
+            amendment,
+            refusal: {
+              reason: `ExecPolicy forbids command prefix [${execPolicyMatch.matchedRule?.prefix?.join(" ") ?? ""}]`,
+              permanent: true,
+              matchedPermission: "shell_hardline",
+            },
+            canAutoApprove() {
+              return false
+            },
+          }
+        }
+
+        // "ask" → generate amendment, then fall through to normal classify
+        amendment = generateAmendment(execPolicyMatch) ?? undefined
+      }
+
       const { capabilities } = classify(toolName, args)
 
       let decision: "allow" | "ask" | "deny" = "allow"
@@ -634,10 +697,11 @@ export namespace EnforcementGate {
           decision = "ask"
           continue // Keep checking — a later deny overrides
         }
-        // rule.action === "allow" — profile explicitly allows this capability.
-        // NonBypassable/opaque affect explicit asks and metadata, not an
-        // already-allowed profile decision.
-        // Allow stands unless overridden
+      }
+
+      // When execPolicy says "ask", override profile decision to "ask"
+      if (execPolicyMatch?.action === "ask") {
+        decision = "ask"
       }
 
       // Approval cache: if the profile says "ask" but the capability was
@@ -696,6 +760,7 @@ export namespace EnforcementGate {
         opaque,
         capabilities,
         refusal,
+        amendment,
         canAutoApprove() {
           return !capabilities.some((c) => c.nonBypassable || c.opaque)
         },
