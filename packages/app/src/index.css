@@ -113,37 +113,22 @@ a:active,
   100% {
     opacity: 1;
     box-shadow:
-      0 0 0 1px var(--color-surface-raised-base),
+      0 0 0 1px var(--surface-raised-base),
       0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
   }
   50% {
     opacity: 0.78;
     box-shadow:
-      0 0 0 1px var(--color-surface-raised-base),
+      0 0 0 1px var(--surface-raised-base),
       0 0 0 2.5px color-mix(in srgb, currentColor 8%, transparent);
   }
 }
 
 .statusbar-glass {
   position: relative;
-  isolation: isolate;
-  z-index: 0;
-  border: 1px solid color-mix(in srgb, var(--color-border-base) 24%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 20%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, black 10%, transparent),
-    0 8px 24px color-mix(in srgb, black 12%, transparent);
-}
-
-.statusbar-glass::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  background: color-mix(in srgb, var(--color-surface-raised-base) 24%, transparent);
-  backdrop-filter: blur(28px) saturate(1.25) contrast(0.92) brightness(0.86);
-  -webkit-backdrop-filter: blur(28px) saturate(1.25) contrast(0.92) brightness(0.86);
+  background: var(--surface-raised-base);
+  border: 1px solid var(--border-weaker-base);
+  box-shadow: var(--shadow-xs);
 }
 
 .statusbar-glass > * {
