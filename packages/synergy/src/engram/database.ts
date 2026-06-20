@@ -284,7 +284,10 @@ function ensureExperienceVecTable(dimensions: number) {
   if (vecExperience.ready && vecExperience.dimensions === dimensions) return
 
   if (hasVecTable(conn, "vec_experience") && vecExperience.dimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec_experience", { old: vecExperience.dimensions, new: dimensions })
+    log.info("embedding dimensions changed, rebuilding vec_experience", {
+      old: vecExperience.dimensions,
+      new: dimensions,
+    })
     conn.exec("DROP TABLE IF EXISTS vec_experience")
     vecExperience.ready = false
     vecExperience.dimensions = undefined

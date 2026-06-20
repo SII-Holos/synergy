@@ -23,7 +23,11 @@ function dimensionVector(dimensions: number, activeIndex: number): number[] {
 }
 
 function dimensionEmbedding(dimensions: number, activeIndex: number) {
-  return { id: `emb-${dimensions}-${activeIndex}`, vector: dimensionVector(dimensions, activeIndex), model: "test-model" }
+  return {
+    id: `emb-${dimensions}-${activeIndex}`,
+    vector: dimensionVector(dimensions, activeIndex),
+    model: "test-model",
+  }
 }
 
 function makeExperience(id: string, overrides: Partial<Parameters<typeof EngramDB.Experience.insert>[0]> = {}) {

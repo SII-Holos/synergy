@@ -82,7 +82,9 @@ function parseArgs(): Args {
   }
 
   if (apply && limit !== undefined) {
-    throw new Error("--limit is only allowed in dry-run mode; partial --apply would drop vec_memory and repopulate only part of it")
+    throw new Error(
+      "--limit is only allowed in dry-run mode; partial --apply would drop vec_memory and repopulate only part of it",
+    )
   }
 
   return { apply, dbPath, configPath, limit }
@@ -245,7 +247,9 @@ async function main() {
   console.log(`Memories selected for ${args.apply ? "repair" : "repair plan"}: ${rows.length}`)
 
   if (!args.apply) {
-    console.log("\nDry-run only. Re-run with --apply after stopping Synergy and backing up engram.db, engram.db-wal, and engram.db-shm.")
+    console.log(
+      "\nDry-run only. Re-run with --apply after stopping Synergy and backing up engram.db, engram.db-wal, and engram.db-shm.",
+    )
     db.close()
     return
   }
@@ -260,7 +264,9 @@ async function main() {
     const embedding = await generateEmbedding({ id: row.id, text: `${row.title}\n${row.content}` })
     dimensions ??= embedding.vector.length
     if (embedding.vector.length !== dimensions) {
-      throw new Error(`Embedding dimension changed during repair for ${row.id}: ${embedding.vector.length} != ${dimensions}`)
+      throw new Error(
+        `Embedding dimension changed during repair for ${row.id}: ${embedding.vector.length} != ${dimensions}`,
+      )
     }
     generated.push({ row, embedding })
     if (generated.length % 10 === 0) console.log(`Generated ${generated.length}/${rows.length}`)
@@ -269,7 +275,9 @@ async function main() {
   if (dimensions === undefined) throw new Error("No memory rows selected for repair")
   const experienceDimensions = tableDimensions(db, "vec_experience")
   if (experienceDimensions !== null && experienceDimensions !== dimensions) {
-    throw new Error(`Refusing to repair only memory: vec_experience is ${experienceDimensions}d but memory embeddings are ${dimensions}d`)
+    throw new Error(
+      `Refusing to repair only memory: vec_experience is ${experienceDimensions}d but memory embeddings are ${dimensions}d`,
+    )
   }
 
   createVecMemory(db, dimensions)
