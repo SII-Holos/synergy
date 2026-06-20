@@ -518,7 +518,7 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          if (part.type === "file" && Attachment.isText(part.mime)) {
+          if (part.type === "file" && Attachment.isText(part.mime) && !part.url.startsWith("data:")) {
             userMessage.parts.push({
               type: "file",
               url: part.url,
