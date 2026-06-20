@@ -340,7 +340,7 @@ export const SandboxReadinessRoute = new Hono().get(
             id: "windows_helper",
             label: "Sandbox helper binary",
             status: "fail",
-            detail: "synergy-sandbox.exe not found. Install the Synergy Windows sandbox helper.",
+            detail: "synergy-sandbox-windows.exe not found. Install the Synergy Windows sandbox helper.",
             recovery: {
               type: "install_helper",
               backend: "synergy-sandbox-windows",

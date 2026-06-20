@@ -6,6 +6,7 @@ import type { PrepareWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
 import { Log } from "@/util/log"
 import { DEFAULT_PROTECTED_PATHS } from "./policy"
+import { buildPermissionProfile } from "./policy-engine"
 
 const log = Log.create({ service: "sandbox-windows" })
 
@@ -17,20 +18,22 @@ const log = Log.create({ service: "sandbox-windows" })
  * Known search paths for the Windows sandbox helper binary.
  * Priority order: bundled with Synergy, then global bin directory.
  */
-const HELPER_SEARCH_PATHS = [
+export const WINDOWS_HELPER_BINARY_NAME = "synergy-sandbox-windows.exe"
+
+export const HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
-  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox.exe"),
+  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", WINDOWS_HELPER_BINARY_NAME),
   // Global Synergy binary directory
-  (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox.exe"),
+  (homedir: string) => path.join(homedir, ".synergy", "bin", WINDOWS_HELPER_BINARY_NAME),
 ]
 /**
  * Trusted SHA-256 hashes for helper binaries.
  * Updated with every helper binary release.
  * Never load from config — embedded at compile time.
  */
-const TRUSTED_HELPER_HASHES: Record<string, string> = {
-  // Phase 3 MVP: placeholder — will be replaced with actual hash when helper binary is built
-  // The empty string means "no trusted hash yet — helper cannot be used"
+export const TRUSTED_HELPER_HASHES: Record<string, string> = {
+  // Phase 3: replaced with actual helper hashes when Windows helper binaries
+  // are built and released. Empty map => no helper can be trusted.
 }
 
 /**
@@ -86,18 +89,8 @@ function verifyHelperHash(binaryPath: string): boolean {
 // Windows sandbox config (mirrors helper/src/config.rs)
 // ------------------------------------------------------------------
 
-interface WindowsSandboxConfig {
-  level: "restricted-token" | "elevated"
-  mode: "read_only" | "workspace_write"
-  workspace: string
-  execution_cwd: string
-  writable_roots: string[]
-  read_roots: string[]
-  protected_paths: string[]
-  data_deny_roots: string[]
-  command: string
-  args: string[]
-}
+// Windows helper consumes the same SynergySandboxPermissionProfile JSON as the
+// Linux helper. Process command/args are passed after `--` in argv.
 
 // ------------------------------------------------------------------
 // WindowsBackend
@@ -109,8 +102,7 @@ export namespace WindowsBackend {
    *
    * Phase 3: detects the Rust helper binary, builds JSON config,
    * writes it to a temp file, and returns a sandboxed wrapper that
-   * invokes synergy-sandbox.exe with the config.
-   *
+   * invokes synergy-sandbox-windows.exe with a shared PermissionProfile config.
    * Security invariants:
    * - `sandboxed: true` only when the helper binary is actually used
    * - Config is structured JSON, never a shell command string
@@ -134,14 +126,15 @@ export namespace WindowsBackend {
       }
     }
 
-    // Locate the helper binary
-    const helper = findHelperBinary()
+    const helper = opts.forceHelperPath
+      ? { path: opts.forceHelperPath, verified: opts.forceHelperVerified === true }
+      : findHelperBinary()
     if (!helper) {
       return {
         command,
         args,
         sandboxed: false,
-        skipReason: "Windows sandbox helper binary not found. Install the Synergy sandbox helper for Windows.",
+        skipReason: `Windows sandbox helper binary ${WINDOWS_HELPER_BINARY_NAME} not found. Install the Synergy sandbox helper for Windows.`,
       }
     }
 
@@ -157,28 +150,30 @@ export namespace WindowsBackend {
 
     const homedir = os.homedir()
 
-    // Build the sandbox config
-    const config: WindowsSandboxConfig = {
-      level: "restricted-token",
-      mode: sandboxMode,
+    const profile = buildPermissionProfile({
       workspace,
-      execution_cwd: opts.executionCwd ?? workspace,
-      writable_roots: [workspace, ...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])],
-      read_roots: [path.join(homedir, ".synergy"), ...(opts.runtimeReadRoots ?? []), ...(opts.extraReadRoots ?? [])],
-      protected_paths: DEFAULT_PROTECTED_PATHS(homedir, workspace),
-      data_deny_roots: opts.dataDenyRoots ?? [],
-      command,
-      args,
-    }
+      executionCwd: opts.executionCwd ?? workspace,
+      sandboxMode,
+      approvedReadPaths: [
+        path.join(homedir, ".synergy"),
+        ...(opts.runtimeReadRoots ?? []),
+        ...(opts.extraReadRoots ?? []),
+      ],
+      approvedWritePaths:
+        opts.sandboxMode === "workspace_write"
+          ? [...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])]
+          : [],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
 
-    // Write config to temp file
     const tempDir = os.tmpdir()
-    const configPath = path.join(tempDir, `synergy-sandbox-${Math.random().toString(36).slice(2, 10)}.json`)
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8")
+    const configPath = path.join(tempDir, `synergy-sandbox-windows-${crypto.randomBytes(8).toString("hex")}.json`)
+    fs.writeFileSync(configPath, JSON.stringify(profile, null, 2), { encoding: "utf-8", mode: 0o600 })
 
     return {
       command: helper.path,
-      args: ["--config", configPath, "--", command, ...args],
+      args: ["--permission-profile", configPath, "--cwd", opts.executionCwd ?? workspace, "--", command, ...args],
       sandboxed: true,
       tempPath: configPath,
     }

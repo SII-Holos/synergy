@@ -90,7 +90,10 @@ pub unsafe fn create_sandboxed_process(
     // Resume main thread — process starts running
     ResumeThread(process_info.hThread);
 
-    log::info!("Sandboxed process created: PID={}", process_info.dwProcessId);
+    log::info!(
+        "Sandboxed process created: PID={}",
+        process_info.dwProcessId
+    );
 
     // Close our thread handle (job still holds process reference)
     CloseHandle(process_info.hThread);

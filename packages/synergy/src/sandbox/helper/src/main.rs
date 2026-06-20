@@ -14,26 +14,43 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
 
-    // Parse command line: synergy-sandbox.exe --config <path> -- <cmd> <args...>
-    // OR config via stdin if no --config flag
+    // Parse command line: synergy-sandbox-windows.exe --permission-profile <path> [--cwd <path>] -- <cmd> <args...>
+    // OR config via stdin if no --permission-profile flag
     let mut config_path: Option<String> = None;
-    for (i, arg) in args.iter().enumerate().skip(1) {
-        if arg == "--config" && i + 1 < args.len() {
-            config_path = Some(args[i + 1].clone());
+    let mut cwd_arg: Option<String> = None;
+    let mut child_cmd: Option<String> = None;
+    let mut child_args: Vec<String> = Vec::new();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--permission-profile" => {
+                if i + 1 < args.len() {
+                    config_path = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--cwd" => {
+                if i + 1 < args.len() {
+                    cwd_arg = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--" => {
+                if i + 1 < args.len() {
+                    child_cmd = Some(args[i + 1].clone());
+                    child_args = args[i + 2..].to_vec();
+                }
+                break;
+            }
+            _ => {}
         }
-        if arg == "--" {
-            break;
-        }
+        i += 1;
     }
 
     // Parse config
-    let sandbox_config: config::SandboxConfig = if let Some(ref path) = config_path {
-        let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
-            log::error!("Failed to read config file {}: {}", path, e);
-            exit(1);
-        });
-        serde_json::from_str(&content).unwrap_or_else(|e| {
-            log::error!("Failed to parse config: {}", e);
+    let profile: config::PermissionProfile = if let Some(ref path) = config_path {
+        config::load_permission_profile(path).unwrap_or_else(|e| {
+            log::error!("Failed to load permission profile {}: {}", path, e);
             exit(1);
         })
     } else {
@@ -43,24 +60,28 @@ fn main() {
         })
     };
 
+    let command = child_cmd.unwrap_or_else(|| {
+        log::error!("Missing child command after -- separator");
+        exit(1);
+    });
+    let execution_cwd = cwd_arg.unwrap_or_else(|| profile.file_system.workspace.clone());
+
     log::info!(
-        "Sandbox helper starting: level={}, mode={}, command={}",
-        sandbox_config.level,
-        sandbox_config.mode,
-        sandbox_config.command
+        "Sandbox helper starting: network={}, command={}",
+        profile.network.mode,
+        command
     );
 
     // Step 1: Canonicalize paths
-    let canonical_workspace =
-        path::canonicalize_win_path(&sandbox_config.workspace).unwrap_or_else(|e| {
+    let canonical_workspace = path::canonicalize_win_path(&profile.file_system.workspace)
+        .unwrap_or_else(|e| {
             log::error!("Path canonicalization failed for workspace: {}", e);
             exit(1);
         });
-    let canonical_cwd =
-        path::canonicalize_win_path(&sandbox_config.execution_cwd).unwrap_or_else(|e| {
-            log::error!("Path canonicalization failed for cwd: {}", e);
-            exit(1);
-        });
+    let canonical_cwd = path::canonicalize_win_path(&execution_cwd).unwrap_or_else(|e| {
+        log::error!("Path canonicalization failed for cwd: {}", e);
+        exit(1);
+    });
 
     log::info!("Workspace: {}", canonical_workspace);
     log::info!("Execution CWD: {}", canonical_cwd);
@@ -78,9 +99,9 @@ fn main() {
     });
 
     // Step 4: Apply DACL to protected paths
-    if !sandbox_config.protected_paths.is_empty() {
-        let saved_acls =
-            unsafe { acl::protect_paths(&sandbox_config.protected_paths) }.unwrap_or_else(|e| {
+    if !profile.file_system.protected_paths.is_empty() {
+        let saved_acls = unsafe { acl::protect_paths(&profile.file_system.protected_paths) }
+            .unwrap_or_else(|e| {
                 log::error!("Failed to apply DACL: {}", e);
                 exit(1);
             });
@@ -89,16 +110,12 @@ fn main() {
     }
 
     // Step 5: Create process (suspended, assign to job, resume)
-    let cmd_args: Vec<&str> = sandbox_config
-        .args
-        .iter()
-        .map(|s: &String| s.as_str())
-        .collect();
+    let cmd_args: Vec<&str> = child_args.iter().map(|s: &String| s.as_str()).collect();
     let exit_code = unsafe {
         process::create_sandboxed_process(
             restricted_token,
             job,
-            &sandbox_config.command,
+            &command,
             &cmd_args,
             &canonical_cwd,
         )

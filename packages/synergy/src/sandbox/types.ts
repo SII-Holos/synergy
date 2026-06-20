@@ -28,6 +28,10 @@ export interface PrepareWrapperOpts {
   extraWritableRoots?: string[]
   protectedPaths?: string[]
   dataDenyRoots?: string[]
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
 }
 
 export interface PrepareLinuxWrapperOpts {

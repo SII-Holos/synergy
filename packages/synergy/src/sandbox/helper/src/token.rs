@@ -157,6 +157,8 @@ pub unsafe fn create_restricted_token() -> windows_result::Result<HANDLE> {
         return Err(Error::new(hr, "SetTokenInformation IntegrityLevel failed"));
     }
 
-    log::info!("Restricted token created successfully (Low IL, DISABLE_MAX_PRIVILEGE, SANDBOX_INERT)");
+    log::info!(
+        "Restricted token created successfully (Low IL, DISABLE_MAX_PRIVILEGE, SANDBOX_INERT)"
+    );
     Ok(new_token)
 }

@@ -1,7 +1,7 @@
 use windows_result::*;
 use windows_sys::Win32::Foundation::*;
-use windows_sys::Win32::Security::*;
 use windows_sys::Win32::Security::Authorization::*;
+use windows_sys::Win32::Security::*;
 
 // windows-sys 0.59 doesn't export this from the SDK headers:
 const SECURITY_WORLD_RID: u32 = 0x00000000;
@@ -80,10 +80,7 @@ pub unsafe fn protect_paths(paths: &[String]) -> windows_result::Result<Vec<Save
         if ok == 0 {
             clean_sd(saved_original);
             let hr = HRESULT::from_win32(GetLastError());
-            return Err(Error::new(
-                hr,
-                "AllocateAndInitializeSid for World failed",
-            ));
+            return Err(Error::new(hr, "AllocateAndInitializeSid for World failed"));
         }
 
         let ea = EXPLICIT_ACCESS_W {
@@ -153,7 +150,11 @@ pub unsafe fn restore_acl(saved: &SavedAcl) {
         return;
     }
 
-    let path_wide: Vec<u16> = saved.path.encode_utf16().chain(std::iter::once(0)).collect();
+    let path_wide: Vec<u16> = saved
+        .path
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     let code = SetNamedSecurityInfoW(
         path_wide.as_ptr(),
         SE_FILE_OBJECT,

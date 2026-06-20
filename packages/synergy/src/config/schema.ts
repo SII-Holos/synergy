@@ -259,7 +259,7 @@ export const SandboxConfig = z
           .enum(["disabled", "restricted-token", "elevated"])
           .optional()
           .describe("Windows sandbox level (default: 'restricted-token')"),
-        helperPath: z.string().optional().describe("Path to the synergy-sandbox.exe helper binary"),
+        helperPath: z.string().optional().describe("Path to the synergy-sandbox-windows.exe helper binary"),
         verifyHelperHash: z
           .boolean()
           .optional()

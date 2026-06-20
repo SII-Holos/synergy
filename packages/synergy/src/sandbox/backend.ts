@@ -87,8 +87,8 @@ export namespace SandboxBackend {
    * Prepare a sandbox execution wrapper for the current platform.
    *
    * macOS   → sandbox-exec -f <tmpProfile> <command> <args...>
-   * linux   → bwrap <mounts> -- <command> <args...>
-   * windows → Phase 3: synergy-sandbox.exe --config <tmpConfig> -- <command> <args...>
+   * linux   → synergy-sandbox-linux --permission-profile <tmpConfig> -- <command> <args...>
+   * windows → synergy-sandbox-windows.exe --permission-profile <tmpConfig> -- <command> <args...>
    * none    → returns unwrapped, sandboxed=false
    */
   export function prepareWrapper(opts: PrepareWrapperOpts): SandboxExecutionWrapper {
