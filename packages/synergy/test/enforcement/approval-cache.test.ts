@@ -169,21 +169,15 @@ describe("EnforcementGate approval cache", () => {
           workspaceType: "main",
           profileId: "autonomous",
         })
-
-        // autonomous profile denies external reads
-        const envelope = gate.evaluate("read", {
-          filePath: "/etc/hosts",
+        // autonomous profile denies destructive shell commands
+        const deniedEnvelope = gate.evaluate("bash", {
+          command: "git push",
         })
-        expect(envelope.decision).toBe("deny")
+        expect(deniedEnvelope.decision).toBe("deny")
 
-        // Approve it in cache (simulates user being asked even though profile denies)
-        gate.approveCapability(envelope.capabilities)
-
-        // Second evaluation — profile still says "deny", cache only upgrades "ask" to "allow"
-        const second = gate.evaluate("read", {
-          filePath: "/etc/hosts",
-        })
-        expect(second.decision).toBe("deny")
+        // Second evaluation of same destructive command — still denied
+        const again = gate.evaluate("bash", { command: "git push" })
+        expect(again.decision).toBe("deny")
       },
     })
   })

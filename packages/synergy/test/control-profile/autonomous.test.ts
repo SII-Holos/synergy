@@ -90,13 +90,13 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
-  test("autonomous has shell_destructive as ask", async () => {
+  test("autonomous has shell_destructive as deny", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(rule(profile, "shell_destructive")?.action).toBe("ask")
+        expect(rule(profile, "shell_destructive")?.action).toBe("deny")
       },
     })
   })
@@ -154,13 +154,13 @@ describe("profile isolation", () => {
 })
 
 describe("autonomous profile summary", () => {
-  test("autonomous deniedCapabilities only contains shell_hardline", async () => {
+  test("autonomous deniedCapabilities contains shell_hardline and shell_destructive", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(profile.summary?.deniedCapabilities).toEqual(["shell_hardline"])
+        expect(profile.summary?.deniedCapabilities).toEqual(["shell_hardline", "shell_destructive"])
       },
     })
   })

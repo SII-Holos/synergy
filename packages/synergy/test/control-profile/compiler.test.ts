@@ -63,7 +63,7 @@ describe("autonomous profile policy", () => {
     expect(rule(profile, "shell")?.action).toBe("allow")
     expect(rule(profile, "file_external")?.action).toBe("allow")
     expect(rule(profile, "platform_control")?.action).toBe("allow")
-    expect(rule(profile, "shell_destructive")?.action).toBe("ask")
+    expect(rule(profile, "shell_destructive")?.action).toBe("deny")
     expect(rule(profile, "shell_hardline")?.action).toBe("deny")
   })
 

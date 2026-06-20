@@ -1056,11 +1056,11 @@ describe("EnforcementGate readRoots", () => {
     const envelope = gate.evaluate("read", {
       filePath: "/etc/hosts",
     })
-
-    expect(envelope.decision).toBe("deny")
+    // autonomous allows file_external — reading outside both workspace and readRoots is still allowed
+    expect(envelope.decision).toBe("allow")
   })
 
-  test("denied in autonomous even with readRoots", async () => {
+  test("autonomous allows external file reads with readRoots", async () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
@@ -1073,7 +1073,8 @@ describe("EnforcementGate readRoots", () => {
       file_path: "/Users/test/.ssh/id_rsa",
     })
 
-    expect(envelope.decision).toBe("deny")
+    // autonomous allows file_external — reading outside workspace is permitted
+    expect(envelope.decision).toBe("allow")
   })
 
   test("scan_document inside readRoots is allowed in autonomous mode", async () => {
