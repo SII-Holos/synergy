@@ -203,6 +203,158 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ])
   })
+  test("skips text-mime FileParts with data: URLs", () => {
+    const messageID = "m-user"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "p1"),
+            type: "text",
+            text: "this is the note content",
+            synthetic: true,
+          },
+          {
+            ...basePart(messageID, "p2"),
+            type: "file",
+            mime: "text/plain",
+            filename: "note.xml",
+            url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "this is the note content" }],
+      },
+    ])
+  })
+
+  test("passes through text-mime FileParts with https: URLs", () => {
+    const messageID = "m-user"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "p1"),
+            type: "file",
+            mime: "text/plain",
+            filename: "doc.txt",
+            url: "https://example.com/doc.txt",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "file",
+            mediaType: "text/plain",
+            filename: "doc.txt",
+            data: "https://example.com/doc.txt",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("passes through text-mime FileParts with asset: URLs", () => {
+    const messageID = "m-user"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "p1"),
+            type: "file",
+            mime: "text/plain",
+            filename: "file.ts",
+            url: "asset://abc123/file.ts",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "file",
+            mediaType: "text/plain",
+            filename: "file.ts",
+            data: "asset://abc123/file.ts",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("skips data: text FileParts but keeps https: text, image, and other FileParts", () => {
+    const messageID = "m-user"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "p1"),
+            type: "text",
+            text: "hello",
+          },
+          {
+            ...basePart(messageID, "p2"),
+            type: "file",
+            mime: "text/plain",
+            filename: "note.xml",
+            url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+          },
+          {
+            ...basePart(messageID, "p3"),
+            type: "file",
+            mime: "text/plain",
+            filename: "doc.txt",
+            url: "https://example.com/doc.txt",
+          },
+          {
+            ...basePart(messageID, "p4"),
+            type: "file",
+            mime: "image/png",
+            filename: "photo.png",
+            url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "hello" },
+          {
+            type: "file",
+            mediaType: "text/plain",
+            filename: "doc.txt",
+            data: "https://example.com/doc.txt",
+          },
+          {
+            type: "file",
+            mediaType: "image/png",
+            filename: "photo.png",
+            data: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+          },
+        ],
+      },
+    ])
+  })
 
   test("converts assistant tool completion into tool-call + tool-result messages and emits attachment message", () => {
     const userID = "m-user"
