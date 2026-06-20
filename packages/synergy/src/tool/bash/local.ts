@@ -114,6 +114,8 @@ export const LocalBashBackend: BashBackend = {
     const sandboxWrapper =
       (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
+    const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
+    const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
 
     // Build sandbox-safe environment from the backend allowlist
     const sandboxEnv: Record<string, string> = {}
@@ -197,7 +199,7 @@ export const LocalBashBackend: BashBackend = {
               description: params.description,
               backend: "local",
             },
-            output: regProc.output + abortTag,
+            output: warnOutput(regProc.output + abortTag),
           }
         }
 
@@ -210,7 +212,7 @@ export const LocalBashBackend: BashBackend = {
             description: params.description,
             backend: "local",
           },
-          output: regProc.output,
+          output: warnOutput(regProc.output),
         }
       } catch (e: unknown) {
         ProcessRegistry.remove(regProc.id)
@@ -278,14 +280,15 @@ export const LocalBashBackend: BashBackend = {
           background: true,
           backend: "local",
         },
-        output:
+        output: warnOutput(
           `Command started in background.\n\n` +
-          `Process ID: ${regProc.id}\n` +
-          `Command: ${params.command}\n` +
-          `Status: running\n\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-          `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+            `Process ID: ${regProc.id}\n` +
+            `Command: ${params.command}\n` +
+            `Status: running\n\n` +
+            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+        ),
       }
     }
 
@@ -361,15 +364,16 @@ export const LocalBashBackend: BashBackend = {
           background: true,
           backend: "local",
         },
-        output:
+        output: warnOutput(
           `Command auto-backgrounded after ${yieldS}s.\n\n` +
-          `Process ID: ${regProc.id}\n` +
-          `Command: ${params.command}\n` +
-          `Status: running\n\n` +
-          `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-          `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+            `Process ID: ${regProc.id}\n` +
+            `Command: ${params.command}\n` +
+            `Status: running\n\n` +
+            `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+        ),
       }
     }
 
@@ -385,7 +389,7 @@ export const LocalBashBackend: BashBackend = {
           description: params.description,
           backend: "local",
         },
-        output: output + abortTag,
+        output: warnOutput(output + abortTag),
       }
     }
 
@@ -397,7 +401,7 @@ export const LocalBashBackend: BashBackend = {
         description: params.description,
         backend: "local",
       },
-      output,
+      output: warnOutput(output),
     }
   },
 }

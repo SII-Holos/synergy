@@ -203,7 +203,7 @@ export const SandboxConfig = z
     fallbackPolicy: z
       .enum(["warn", "allow", "deny"])
       .optional()
-      .describe("How to proceed when the requested sandbox runtime is unavailable (default: 'deny')"),
+      .describe("How to proceed when the requested sandbox runtime is unavailable (default: 'warn')"),
     backend: z
       .enum([
         "auto",

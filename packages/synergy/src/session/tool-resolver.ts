@@ -536,8 +536,13 @@ export namespace ToolResolver {
                       dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
                       backend: sandbox.backend,
                     })
-                    if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
-                      throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                    if (sandboxWrapper.skipReason) {
+                      if (sandbox.fallback === "deny") {
+                        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                      }
+                      // warn fallback: log warning and surface in context for bash tool to include in output
+                      log.warn("sandbox.unavailable", { skipReason: sandboxWrapper.skipReason })
+                      ;(toolCtx.extra as any).sandboxWarning = sandboxWrapper.skipReason
                     }
                     // Store wrapper in context for bash tool to use
                     ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper

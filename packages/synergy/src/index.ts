@@ -32,6 +32,8 @@ import { RestartCommand } from "./cli/cmd/restart"
 import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
+import { DoctorCommand } from "./cli/cmd/doctor"
+
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
@@ -156,6 +158,8 @@ const cli = yargs(hideBin(process.argv))
   .command(LogsCommand)
   .command(PluginCommand)
   .command(DataCommand)
+  .command(DoctorCommand)
+
   .command(MigrateCommand)
   .command(MigrationCommand)
 

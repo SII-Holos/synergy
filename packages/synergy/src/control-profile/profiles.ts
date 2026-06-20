@@ -80,7 +80,7 @@ function workspacePolicy(workspace: string) {
   return {
     filesystem: workspaceFs(workspace),
     network: { mode: "restricted" as const },
-    sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
   }
 }
 
@@ -134,8 +134,8 @@ const LOG = Log.create({ service: "control-profile" })
 
 export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<ProfileSandbox> {
   const defaults: Record<ProfileId, ProfileSandbox> = {
-    guarded: { mode: "workspace_write", fallback: "deny" },
-    autonomous: { mode: "workspace_write", fallback: "deny" },
+    guarded: { mode: "workspace_write", fallback: "warn" },
+    autonomous: { mode: "workspace_write", fallback: "warn" },
     full_access: { mode: "none", fallback: "allow" },
   }
   const profile = { ...defaults[profileId] }

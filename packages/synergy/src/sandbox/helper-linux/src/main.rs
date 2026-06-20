@@ -154,7 +154,23 @@ fn ensure_controlled_tmp(policy_cwd: &str) -> Result<(), std::io::Error> {
 }
 
 fn bwrap_binary() -> String {
-    std::env::var("SYNERGY_BWRAP").unwrap_or_else(|_| "bwrap".into())
+    if let Ok(val) = std::env::var("SYNERGY_BWRAP") {
+        if !val.is_empty() {
+            return val;
+        }
+    }
+    // Bundled bwrap: look relative to the helper binary's directory
+    if let Ok(exe) = std::env::current_exe() {
+        let bundled = exe
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("bwrap")
+            .join("bwrap");
+        if bundled.exists() {
+            return bundled.to_string_lossy().into_owned();
+        }
+    }
+    "bwrap".to_string()
 }
 
 fn run_stage_two(args: HelperArgs, profile: config::PermissionProfile) -> Result<(), String> {

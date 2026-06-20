@@ -83,18 +83,21 @@ export interface SandboxExecuteResult {
   timedOut: boolean
   truncated: boolean
 }
-
-// ── Readiness types ──────────────────────────────────────────────
-// Used by GET /sandbox/readiness for platform-specific health checks.
-
 import type { SandboxRecoveryAction } from "./explain"
+
+/** Recovery action for a failed readiness check. */
+export interface ReadinessRecoveryAction {
+  action: string
+  label: string
+  command: string
+}
 
 export interface SandboxReadinessCheck {
   id: string
   label: string
   status: "pass" | "warn" | "fail"
   detail: string
-  recovery?: SandboxRecoveryAction
+  recovery?: ReadinessRecoveryAction
 }
 
 export interface SandboxReadiness {

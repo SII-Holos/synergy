@@ -31,8 +31,8 @@ export const LINUX_HELPER_SEARCH_PATHS = [
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Phase 2 baseline: placeholder — will be replaced with actual hash when helper binary is built
-  // The empty map means "no trusted hash yet — helper cannot be verified"
+  // Populated at build time with actual helper hashes.
+  // Empty map => no helper can be trusted.
 }
 
 function verifyHelperHash(binaryPath: string): boolean {
