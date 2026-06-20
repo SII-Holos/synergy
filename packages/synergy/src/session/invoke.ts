@@ -303,7 +303,14 @@ export namespace SessionInvoke {
             break
           }
 
-          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
+          const runConfig = applyExternalPermissionMode(
+            {
+              ...(agent.external.path ? { path: agent.external.path } : {}),
+              ...agent.external.config,
+            },
+            adapter.name,
+            allowAll,
+          )
           const nativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
           const override = nativeAuth ? undefined : await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
