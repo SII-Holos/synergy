@@ -4,7 +4,6 @@ import { run as runServerRuntime } from "../../server/runtime"
 import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
-import { Installation } from "../../global/installation"
 import { SingleInstance } from "../../daemon/single-instance"
 
 export const ServerCommand = cmd({
@@ -25,12 +24,6 @@ export const ServerCommand = cmd({
         type: "boolean",
         default: true,
         hidden: true,
-      })
-      .option("restart", {
-        type: "string",
-        choices: ["none", "always", "dev"],
-        describe:
-          "Server restart policy. 'dev': respawn on exits + accept `synergy restart` to trigger restart; 'none': run once and exit; 'always': respawn on unexpected exits.",
       }),
   describe: "start synergy server",
   handler: async (args) => {
@@ -39,9 +32,6 @@ export const ServerCommand = cmd({
       const managedService = args.managedService
 
       await runServerRuntime({
-        restartPolicy: managedService
-          ? "none"
-          : ((args.restart as "none" | "always" | "dev" | undefined) ?? (Installation.isLocal() ? "dev" : "none")),
         interactive: !(managedService || args.nonInteractive),
         printBanner: args.banner,
         printChannelStatus: !managedService,
