@@ -9,33 +9,109 @@ import { Instance } from "../scope/instance"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
+  const SNAPSHOT_TIMEOUT_MS = 10_000
 
-  export async function track(sessionID: string) {
+  function spawnSignal(timeoutMs: number, parentSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+    const controller = new AbortController()
+    const timer = setTimeout(
+      () => controller.abort(new DOMException("Snapshot git command timed out", "TimeoutError")),
+      timeoutMs,
+    )
+    let onAbort: (() => void) | undefined
+    const cleanup = () => {
+      clearTimeout(timer)
+      if (parentSignal && onAbort) parentSignal.removeEventListener("abort", onAbort)
+    }
+    if (parentSignal) {
+      if (parentSignal.aborted) {
+        cleanup()
+        return { signal: AbortSignal.abort(parentSignal.reason), cleanup }
+      }
+      onAbort = () => {
+        cleanup()
+        controller.abort(parentSignal.reason)
+      }
+      parentSignal.addEventListener("abort", onAbort, { once: true })
+    }
+    controller.signal.addEventListener("abort", cleanup, { once: true })
+    return { signal: controller.signal, cleanup }
+  }
+
+  async function gitSpawn(
+    args: string[],
+    cwd: string,
+    env?: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<{ exitCode: number; text: string }> {
+    const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
+    try {
+      const proc = Bun.spawn(args, {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: env ? { ...process.env, ...env } : process.env,
+        signal: childSignal.signal,
+      })
+      const stdout = new Response(proc.stdout).text()
+      const stderr = new Response(proc.stderr).text().catch(() => "")
+      const [text, exitCode] = await Promise.all([stdout, proc.exited])
+      await stderr
+      return { exitCode, text }
+    } catch (err) {
+      log.debug("git spawn failed", { args, cwd, error: String(err) })
+      return { exitCode: -1, text: "" }
+    } finally {
+      childSignal.cleanup()
+    }
+  }
+
+  export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
     if (Instance.scope.type !== "project" || Instance.scope.vcs !== "git") return
     const cfg = await Config.get()
     if (cfg.snapshot === false) return
     const git = gitdir(sessionID)
     if (await fs.mkdir(git, { recursive: true })) {
-      await $`git init`
-        .env({
-          ...process.env,
-          GIT_DIR: git,
-          GIT_WORK_TREE: Instance.directory,
-        })
-        .quiet()
-        .nothrow()
-      // Configure git to not convert line endings on Windows
-      await $`git --git-dir ${git} config core.autocrlf false`.quiet().nothrow()
+      const initResult = await gitSpawn(
+        ["git", "init"],
+        Instance.directory,
+        { GIT_DIR: git, GIT_WORK_TREE: Instance.directory },
+        signal,
+      )
+      if (initResult.exitCode !== 0) {
+        log.warn("track init failed", { exitCode: initResult.exitCode })
+        return undefined
+      }
+      await gitSpawn(
+        ["git", "--git-dir", git, "config", "core.autocrlf", "false"],
+        Instance.directory,
+        undefined,
+        signal,
+      )
       log.info("initialized")
     }
-    await $`git --git-dir ${git} --work-tree ${Instance.directory} add .`.quiet().cwd(Instance.directory).nothrow()
-    const hash = await $`git --git-dir ${git} --work-tree ${Instance.directory} write-tree`
-      .quiet()
-      .cwd(Instance.directory)
-      .nothrow()
-      .text()
+    const addResult = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", Instance.directory, "add", "."],
+      Instance.directory,
+      undefined,
+      signal,
+    )
+    if (addResult.exitCode !== 0) {
+      log.warn("track add failed", { exitCode: addResult.exitCode })
+      return undefined
+    }
+    const writeResult = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", Instance.directory, "write-tree"],
+      Instance.directory,
+      undefined,
+      signal,
+    )
+    if (writeResult.exitCode !== 0 || !writeResult.text.trim()) {
+      log.warn("track write-tree failed", { exitCode: writeResult.exitCode })
+      return undefined
+    }
+    const hash = writeResult.text.trim()
     log.info("tracking", { hash, cwd: Instance.directory, git })
-    return hash.trim()
+    return hash
   }
 
   export const Patch = z.object({
@@ -44,31 +120,54 @@ export namespace Snapshot {
   })
   export type Patch = z.infer<typeof Patch>
 
-  export async function patch(hash: string, sessionID: string, opts?: { indexFresh?: boolean }): Promise<Patch> {
+  export async function patch(
+    hash: string,
+    sessionID: string,
+    opts?: { indexFresh?: boolean; signal?: AbortSignal },
+  ): Promise<Patch> {
     const git = gitdir(sessionID)
     if (!opts?.indexFresh) {
-      await $`git add .`
-        .env({ ...process.env, GIT_DIR: git, GIT_WORK_TREE: Instance.directory })
-        .quiet()
-        .cwd(Instance.directory)
-        .nothrow()
+      const addResult = await gitSpawn(
+        ["git", "--git-dir", git, "--work-tree", Instance.directory, "add", "."],
+        Instance.directory,
+        undefined,
+        opts?.signal,
+      )
+      if (addResult.exitCode !== 0) {
+        log.warn("patch add failed", { hash, exitCode: addResult.exitCode })
+        return { hash, files: [] }
+      }
     }
-    const result = await $`git -c core.autocrlf=false diff --no-ext-diff --name-only ${hash} -- .`
-      .env({ ...process.env, GIT_DIR: git, GIT_WORK_TREE: Instance.directory })
-      .quiet()
-      .cwd(Instance.directory)
-      .nothrow()
+    const diffResult = await gitSpawn(
+      [
+        "git",
+        "-c",
+        "core.autocrlf=false",
+        "--git-dir",
+        git,
+        "--work-tree",
+        Instance.directory,
+        "diff",
+        "--no-ext-diff",
+        "--name-only",
+        hash,
+        "--",
+        ".",
+      ],
+      Instance.directory,
+      undefined,
+      opts?.signal,
+    )
 
-    // If git diff fails, return empty patch
-    if (result.exitCode !== 0) {
-      log.warn("failed to get diff", { hash, exitCode: result.exitCode, stderr: result.stderr.toString() })
+    if (diffResult.exitCode !== 0) {
+      log.warn("failed to get diff", { hash, exitCode: diffResult.exitCode })
       return { hash, files: [] }
     }
 
-    const files = result.text()
+    const filesText = diffResult.text
     return {
       hash,
-      files: files
+      files: filesText
         .trim()
         .split("\n")
         .map((x) => x.trim())
