@@ -15,10 +15,24 @@ interface VecTableState {
   ready: boolean
   failAt: number | undefined
   tableName: string
+  dimensions: number | undefined
+  expectedDimensions: number | undefined
 }
 
-const vecExperience: VecTableState = { ready: false, failAt: undefined, tableName: "vec_experience" }
-const vecMemory: VecTableState = { ready: false, failAt: undefined, tableName: "vec_memory" }
+const vecExperience: VecTableState = {
+  ready: false,
+  failAt: undefined,
+  tableName: "vec_experience",
+  dimensions: undefined,
+  expectedDimensions: undefined,
+}
+const vecMemory: VecTableState = {
+  ready: false,
+  failAt: undefined,
+  tableName: "vec_memory",
+  dimensions: undefined,
+  expectedDimensions: undefined,
+}
 
 const VEC_RETRY_MS = 60_000
 
@@ -27,7 +41,7 @@ function tryRecoverVec(state: VecTableState): boolean {
   const elapsed = Date.now() - state.failAt
   if (elapsed <= VEC_RETRY_MS) return false
   const conn = open()
-  state.ready = hasVecTable(conn, state.tableName)
+  refreshVecTableState(conn, state, state.expectedDimensions)
   if (state.ready) state.failAt = undefined
   return state.ready
 }
@@ -143,6 +157,45 @@ function hasVecTable(conn: Database, name: string): boolean {
   return row !== undefined
 }
 
+function getVecTableSQL(conn: Database, name: string): string | null {
+  const row = conn.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1").get(name) as {
+    sql: string | null
+  } | null
+  return row?.sql ?? null
+}
+
+function parseVecTableDimensions(sql: string | null): number | undefined {
+  if (!sql) return undefined
+  const dimensions = [...sql.matchAll(/\bfloat\s*\[\s*(\d+)\s*\]/gi)].map((match) => Number(match[1]))
+  if (dimensions.length === 0) return undefined
+  const unique = new Set(dimensions)
+  if (unique.size !== 1) return undefined
+  return dimensions[0]
+}
+
+function getVecTableDimensions(conn: Database, name: string): number | undefined {
+  return parseVecTableDimensions(getVecTableSQL(conn, name))
+}
+
+function refreshVecTableState(conn: Database, state: VecTableState, expectedDimensions?: number): VecTableState {
+  state.expectedDimensions = expectedDimensions
+  state.dimensions = getVecTableDimensions(conn, state.tableName)
+  state.ready =
+    state.dimensions !== undefined &&
+    (state.expectedDimensions === undefined || state.dimensions === state.expectedDimensions)
+  return state
+}
+
+function vecTableRowCount(conn: Database, name: string): number | null {
+  if (!hasVecTable(conn, name)) return null
+  try {
+    const row = conn.prepare(`SELECT COUNT(*) AS count FROM ${name}`).get() as { count: number }
+    return row.count
+  } catch {
+    return null
+  }
+}
+
 function initialize(conn: Database) {
   conn.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -162,8 +215,8 @@ function initialize(conn: Database) {
     embeddingDimensions = row.embedding_dimensions
   }
 
-  vecExperience.ready = hasVecTable(conn, "vec_experience")
-  vecMemory.ready = hasVecTable(conn, "vec_memory")
+  refreshVecTableState(conn, vecExperience, embeddingDimensions)
+  refreshVecTableState(conn, vecMemory, embeddingDimensions)
 
   conn.exec(`
     CREATE TABLE IF NOT EXISTS experience (
@@ -227,12 +280,14 @@ function initialize(conn: Database) {
 
 function ensureExperienceVecTable(dimensions: number) {
   const conn = open()
-  if (embeddingDimensions === dimensions && vecExperience.ready) return
+  refreshVecTableState(conn, vecExperience, dimensions)
+  if (vecExperience.ready && vecExperience.dimensions === dimensions) return
 
-  if (embeddingDimensions !== undefined && vecExperience.ready && embeddingDimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec_experience", { old: embeddingDimensions, new: dimensions })
+  if (hasVecTable(conn, "vec_experience") && vecExperience.dimensions !== dimensions) {
+    log.info("embedding dimensions changed, rebuilding vec_experience", { old: vecExperience.dimensions, new: dimensions })
     conn.exec("DROP TABLE IF EXISTS vec_experience")
     vecExperience.ready = false
+    vecExperience.dimensions = undefined
   }
 
   try {
@@ -245,23 +300,27 @@ function ensureExperienceVecTable(dimensions: number) {
         script_embedding float[${dimensions}] distance_metric=cosine
       )
     `)
-    vecExperience.ready = true
-    vecExperience.failAt = undefined
-    log.info("vec_experience table ready", { dimensions })
+    refreshVecTableState(conn, vecExperience, dimensions)
+    if (vecExperience.ready) {
+      vecExperience.failAt = undefined
+      log.info("vec_experience table ready", { dimensions })
+    }
   } catch (e) {
-    vecExperience.ready = hasVecTable(conn, "vec_experience")
+    refreshVecTableState(conn, vecExperience, dimensions)
     log.warn("vec_experience creation failed", { error: e })
   }
 }
 
 function ensureMemoryVecTable(dimensions: number) {
   const conn = open()
-  if (embeddingDimensions === dimensions && vecMemory.ready) return
+  refreshVecTableState(conn, vecMemory, dimensions)
+  if (vecMemory.ready && vecMemory.dimensions === dimensions) return
 
-  if (embeddingDimensions !== undefined && vecMemory.ready && embeddingDimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec_memory", { old: embeddingDimensions, new: dimensions })
+  if (hasVecTable(conn, "vec_memory") && vecMemory.dimensions !== dimensions) {
+    log.info("embedding dimensions changed, rebuilding vec_memory", { old: vecMemory.dimensions, new: dimensions })
     conn.exec("DROP TABLE IF EXISTS vec_memory")
     vecMemory.ready = false
+    vecMemory.dimensions = undefined
   }
 
   try {
@@ -272,11 +331,13 @@ function ensureMemoryVecTable(dimensions: number) {
         embedding float[${dimensions}] distance_metric=cosine
       )
     `)
-    vecMemory.ready = true
-    vecMemory.failAt = undefined
-    log.info("vec_memory table ready", { dimensions })
+    refreshVecTableState(conn, vecMemory, dimensions)
+    if (vecMemory.ready) {
+      vecMemory.failAt = undefined
+      log.info("vec_memory table ready", { dimensions })
+    }
   } catch (e) {
-    vecMemory.ready = hasVecTable(conn, "vec_memory")
+    refreshVecTableState(conn, vecMemory, dimensions)
     log.warn("vec_memory creation failed", { error: e })
   }
 }
@@ -284,7 +345,12 @@ function ensureMemoryVecTable(dimensions: number) {
 function ensureVecTables(dimensions: number) {
   ensureExperienceVecTable(dimensions)
   ensureMemoryVecTable(dimensions)
-  if (vecExperience.ready || vecMemory.ready) {
+  if (
+    vecExperience.ready &&
+    vecExperience.dimensions === dimensions &&
+    vecMemory.ready &&
+    vecMemory.dimensions === dimensions
+  ) {
     embeddingDimensions = dimensions
     const conn = open()
     conn.prepare("UPDATE schema_version SET embedding_dimensions = ?1").run(dimensions)
@@ -313,6 +379,10 @@ export function closeDB() {
   vecMemory.ready = false
   vecExperience.failAt = undefined
   vecMemory.failAt = undefined
+  vecExperience.dimensions = undefined
+  vecMemory.dimensions = undefined
+  vecExperience.expectedDimensions = undefined
+  vecMemory.expectedDimensions = undefined
   log.info("closed")
 }
 
@@ -327,6 +397,42 @@ export namespace EngramDB {
 
   export function isMemoryVecReady(): boolean {
     return vecMemory.ready
+  }
+
+  export interface VecTableHealth {
+    tableName: string
+    exists: boolean
+    ready: boolean
+    dimensions: number | null
+    expectedDimensions: number | null
+    rowCount: number | null
+  }
+
+  export interface VecHealth {
+    schemaDimensions: number | null
+    experience: VecTableHealth
+    memory: VecTableHealth
+  }
+
+  function tableHealth(conn: Database, state: VecTableState): VecTableHealth {
+    refreshVecTableState(conn, state, state.expectedDimensions ?? embeddingDimensions)
+    return {
+      tableName: state.tableName,
+      exists: hasVecTable(conn, state.tableName),
+      ready: state.ready,
+      dimensions: state.dimensions ?? null,
+      expectedDimensions: state.expectedDimensions ?? null,
+      rowCount: vecTableRowCount(conn, state.tableName),
+    }
+  }
+
+  export function vecHealth(): VecHealth {
+    const conn = open()
+    return {
+      schemaDimensions: embeddingDimensions ?? null,
+      experience: tableHealth(conn, vecExperience),
+      memory: tableHealth(conn, vecMemory),
+    }
   }
 
   // ---------------------------------------------------------------------------
