@@ -48,6 +48,7 @@ import {
 import "./title"
 
 import { LLM } from "./llm"
+import { Dag } from "./dag"
 import { SessionRevert } from "./revert"
 import { Instance } from "../scope/instance"
 import { Scope } from "@/scope"
@@ -654,6 +655,69 @@ export namespace SessionInvoke {
           })
         }
         if (needsReply) continue outer
+      }
+
+      // DAG guard: if there are still pending/running DAG nodes for this session,
+      // wait on events instead of polling.
+      const dagNodes = await Dag.get(sessionID).catch(() => undefined)
+      const hasPendingDag = dagNodes?.some(
+        (n) => n.status === "pending" || n.status === "running",
+      )
+
+      if (hasPendingDag) {
+        log.info("dag still active, waiting for sub-tasks via events", {
+          pendingNodes: dagNodes?.filter(
+            (n) => n.status !== "completed" && n.status !== "cancelled" && n.status !== "failed",
+          ).length,
+        })
+
+        // Wait for either a dag update event or abort signal
+        const dagUpdated = new Promise<void>((resolve) => {
+          const unsub = Bus.subscribe(Dag.Event.Updated, (event) => {
+            if (event.properties.sessionID !== sessionID) return
+            const allTerminal = event.properties.nodes.every(
+              (n) => n.status === "completed" || n.status === "cancelled" || n.status === "failed",
+            )
+            if (allTerminal) {
+              unsub()
+              resolve()
+            }
+          })
+        })
+
+        const onAbort = new Promise<void>((resolve) => {
+          if (abort.aborted) return resolve()
+          const check = setInterval(() => {
+            if (abort.aborted) {
+              clearInterval(check)
+              resolve()
+            }
+          }, 500)
+        })
+
+        const timeout = new Promise<void>((resolve) => setTimeout(resolve, 600_000))
+
+        await Promise.race([dagUpdated, onAbort, timeout])
+
+        // After wait, re-check mails (sub-task may have sent completion mail)
+        const mail = SessionManager.drainMails(sessionID, "user")
+        if (mail.length > 0) {
+          const needsReply = mail.some((m) => !m.noReply)
+          const userModel = await lastModel(sessionID).catch(() => undefined)
+          for (const m of mail) {
+            const mailModel = m.model ?? userModel
+            if (!mailModel) continue
+            await createUserMessage({
+              sessionID,
+              agent: m.agent,
+              model: mailModel,
+              parts: partsFromMail(m),
+              noReply: !needsReply,
+              summary: m.summary,
+            })
+          }
+          if (needsReply) continue outer
+        }
       }
       break
     }
