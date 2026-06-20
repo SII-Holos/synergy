@@ -138,6 +138,10 @@ export function Sidebar(props: SidebarProps) {
 
   const handleProjectToggle = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
+    if (layout.scopes.isSupplemental(scope)) {
+      layout.scopes.toggleSupplementalExpand(scope.worktree)
+      return
+    }
     if (scope.expanded) {
       layout.scopes.collapse(scope.worktree)
     } else {
@@ -502,6 +506,8 @@ export function Sidebar(props: SidebarProps) {
                 {(scope) => {
                   const isActive = () => scope.worktree === currentDirectory()
                   const [menuOpen, setMenuOpen] = createSignal(false)
+                  const isSupplemental = layout.scopes.isSupplemental(scope)
+                  const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
 
                   return (
                     <div class="sb-project-group">
@@ -577,20 +583,33 @@ export function Sidebar(props: SidebarProps) {
                       {/* Sessions under expanded project */}
                       <Show when={scope.expanded}>
                         <div class="sb-sessions">
-                          <GroupedSessionList
-                            entries={layout.nav.projectNavEntries(scope)}
-                            scope={scope}
-                            activeID={params.id}
-                            onSessionClick={(entry) => handleSessionClick(scope, entry)}
-                          />
-                          <Show when={hasMoreForProject(scope)}>
-                            <button
-                              type="button"
-                              class="sb-load-more-btn"
-                              onClick={() => layout.nav.loadMoreNav(scope.worktree)}
-                            >
-                              Load more
-                            </button>
+                          <Show
+                            when={!isSupplemental || navLoaded()}
+                            fallback={
+                              <button
+                                type="button"
+                                class="sb-load-more-btn"
+                                onClick={() => layout.nav.loadScopeNav(scope.worktree)}
+                              >
+                                Load sessions
+                              </button>
+                            }
+                          >
+                            <GroupedSessionList
+                              entries={layout.nav.projectNavEntries(scope)}
+                              scope={scope}
+                              activeID={params.id}
+                              onSessionClick={(entry) => handleSessionClick(scope, entry)}
+                            />
+                            <Show when={hasMoreForProject(scope)}>
+                              <button
+                                type="button"
+                                class="sb-load-more-btn"
+                                onClick={() => layout.nav.loadMoreNav(scope.worktree)}
+                              >
+                                Load more
+                              </button>
+                            </Show>
                           </Show>
                         </div>
                       </Show>
@@ -702,42 +721,15 @@ function RootNavSection(props: {
   )
 }
 
-// --- GroupedSessionList: renders nav entries grouped by category (project) ---
-
-const CATEGORY_LABELS_PROJECT: Record<string, string> = {
-  background: "Background",
-  channel: "Channel",
-}
-
 function GroupedSessionList(props: {
   entries: NavEntry[]
   scope?: LocalScope
   activeID?: string
   onSessionClick: (entry: NavEntry) => void
 }) {
-  const labels = CATEGORY_LABELS_PROJECT
-
-  const memo = createMemo(() => {
-    const project: NavEntry[] = []
-    const groups = new Map<string, NavEntry[]>()
-    for (const entry of props.entries) {
-      if (entry.category === "project") {
-        project.push(entry)
-      } else if (labels[entry.category] !== undefined) {
-        const key = entry.category
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key)!.push(entry)
-      }
-    }
-    return { projectEntries: project, groupedEntries: [...groups.entries()] }
-  })
-
-  const projectEntries = () => memo().projectEntries
-  const groupedEntries = () => memo().groupedEntries
-
   return (
     <>
-      <For each={projectEntries()}>
+      <For each={props.entries.filter((e) => e.category === "project")}>
         {(entry) => (
           <button
             type="button"
@@ -753,31 +745,6 @@ function GroupedSessionList(props: {
             <SessionRowIcon entry={entry} scope={props.scope} />
             <span class="sb-session-title">{entry.title || "Untitled"}</span>
           </button>
-        )}
-      </For>
-      <For each={groupedEntries()}>
-        {([category, entries]) => (
-          <div class="sb-session-group">
-            <div class="sb-session-group-header">{labels[category]}</div>
-            <For each={entries}>
-              {(entry) => (
-                <button
-                  type="button"
-                  classList={{
-                    "sb-session-row": true,
-                    "sb-session-active": entry.id === props.activeID,
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    props.onSessionClick(entry)
-                  }}
-                >
-                  <SessionRowIcon entry={entry} scope={props.scope} />
-                  <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                </button>
-              )}
-            </For>
-          </div>
         )}
       </For>
     </>
