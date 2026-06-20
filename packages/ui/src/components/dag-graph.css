@@ -393,10 +393,11 @@
    transition cascaded a full-page UpdateLayoutTree (8352 elements, ~65ms). */
 .dag-graph[data-variant="panel"] {
   contain: layout style paint;
+  height: 100%;
 
   [data-slot="dag-graph-viewport"] {
     height: 100%;
-    min-height: clamp(280px, 44vh, 520px);
+    min-height: 0;
   }
 }
 

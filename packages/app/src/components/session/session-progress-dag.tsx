@@ -88,7 +88,7 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
 
   return (
     <Show when={nodes().length > 0} fallback={<div class="text-text-weaker text-xs px-3 py-2">No active plan</div>}>
-      <div class={props.class}>
+      <div class={props.class ? `${props.class} h-full` : "h-full"}>
         <DagGraph
           nodes={nodes()}
           ready={props.summary.ready}
