@@ -11,9 +11,8 @@
 // Phase 2 baseline: echoes args and exits 0. Full implementation lands in Phase 3/4.
 // This scaffold validates the CLI contract and JSON config parsing surface.
 
-mod config;
-
 use std::process::exit;
+use synergy_sandbox_linux::{bwrap, config};
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
@@ -78,12 +77,20 @@ fn main() {
         exit(1);
     });
 
-    // Phase 2 baseline: parse the config to validate JSON shape, then echo.
-    // Full sandbox enforcement (bwrap, Landlock, seccomp) lands in Phase 3/4.
-    let _profile = config::load_permission_profile(&profile_path).unwrap_or_else(|e| {
+    let profile = config::load_permission_profile(&profile_path).unwrap_or_else(|e| {
         log::error!("Failed to load permission profile {}: {}", profile_path, e);
         exit(1);
     });
+
+    let child_command = std::iter::once(cmd.clone())
+        .chain(child_args.iter().cloned())
+        .collect::<Vec<_>>();
+    let _plan =
+        bwrap::build_bwrap_plan(&profile, std::path::Path::new(&policy_cwd), &child_command)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to build bwrap plan: {}", e);
+                exit(1);
+            });
 
     log::info!(
         "Sandbox helper starting: workspace={}, command={}",
