@@ -83,7 +83,6 @@ Inspect or manage the background service when needed:
 
 ```bash
 synergy status
-synergy restart
 synergy stop
 synergy logs
 ```
@@ -96,7 +95,7 @@ Background service management currently supports:
 
 `synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
 
-Start and restart print a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+Start prints a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 
@@ -134,7 +133,7 @@ bun dev send "hello"
 ```bash
 synergy start              # Start the background service, optionally with Holos login
 synergy stop               # Stop the background service
-synergy restart            # Restart the background service
+synergy stop && synergy start            # Stop then start the background service
 synergy status             # Show background service status
 synergy server             # Start the Synergy server in foreground mode
 synergy web                # Open the web UI and attach to a server
@@ -463,15 +462,15 @@ bun install
 Then start the dev server:
 
 ```bash
-bun dev server   # start the server (watchdog wraps it for auto-restart)
+bun dev server   # start the server
 bun dev web --dev  # open the web UI (separate terminal)
 ```
 
-The dev server runs with `--restart=dev`, which wraps it in a watchdog. After editing code:
+After editing code:
 
 ```bash
 bun dev build      # rebuild frontend (after app changes)
-bun dev restart    # restart the server
+bun dev server      # restart the server
 ```
 
 > **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.

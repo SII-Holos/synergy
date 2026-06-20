@@ -69,7 +69,7 @@ export namespace DaemonOutput {
       UI.println(`  Detail:    ${firstLine(input.detail)}`)
     }
     printNotes(input.notes)
-    printNext(input.next ?? ["synergy status", "synergy logs", "synergy restart"])
+    printNext(input.next ?? ["synergy status", "synergy logs"])
   }
 
   export function printStopFailure(input: {
@@ -127,10 +127,10 @@ export namespace DaemonOutput {
       return ["Observed network state does not match the service manager state."]
     }
     if (status.runtime === "running" && status.drifted) {
-      return ["Current config differs from the installed service. Restart to apply the current config."]
+      return ["Current config differs from the installed service. Stop and start to apply the current config."]
     }
     if (status.runtime === "stopped" && status.drifted) {
-      return ["Current config differs from the installed service. Start or restart to apply the current config."]
+      return ["Current config differs from the installed service. Stop then start to apply the current config."]
     }
     return []
   }
@@ -145,16 +145,16 @@ export namespace DaemonOutput {
     if (status.runtime === "running") {
       const next = ["synergy logs"]
       if (status.drifted) {
-        next.push("synergy restart")
+        next.push("synergy stop", "synergy start")
       }
       next.push("synergy web", 'synergy send "your message"')
       return next
     }
     if (status.runtime === "failed") {
-      return ["synergy logs", "synergy restart", "synergy status"]
+      return ["synergy logs", "synergy stop", "synergy start", "synergy status"]
     }
     if (status.runtime === "unknown") {
-      return ["synergy logs", "synergy restart", "synergy stop"]
+      return ["synergy logs", "synergy stop", "synergy start"]
     }
     return ["synergy start", "synergy logs"]
   }
