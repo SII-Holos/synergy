@@ -5,5 +5,6 @@
 pub mod bwrap;
 pub mod config;
 pub mod error;
+pub mod landlock;
 pub mod proxy;
 pub mod seccomp;

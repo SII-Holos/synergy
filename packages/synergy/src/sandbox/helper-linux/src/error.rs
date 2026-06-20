@@ -2,7 +2,7 @@ use std::fmt;
 
 /// Unified error type for the Linux sandbox helper.
 ///
-/// Each variant maps to a distinct failure domain (config, bwrap, seccomp, proxy, I/O).
+/// Each variant maps to a distinct failure domain (config, bwrap, seccomp, proxy, landlock, I/O).
 /// Upcoming implementation phases will wire these into actual enforcement paths.
 #[derive(Debug)]
 pub enum HelperError {
@@ -14,6 +14,8 @@ pub enum HelperError {
     Seccomp(String),
     /// Proxy plan construction failure.
     Proxy(String),
+    /// Landlock ruleset construction or application failure.
+    Landlock(String),
     /// General I/O or system error.
     Io(std::io::Error),
 }
@@ -25,6 +27,7 @@ impl fmt::Display for HelperError {
             Self::Bwrap(msg) => write!(f, "bwrap error: {msg}"),
             Self::Seccomp(msg) => write!(f, "seccomp error: {msg}"),
             Self::Proxy(msg) => write!(f, "proxy error: {msg}"),
+            Self::Landlock(msg) => write!(f, "landlock error: {msg}"),
             Self::Io(err) => write!(f, "I/O error: {err}"),
         }
     }
