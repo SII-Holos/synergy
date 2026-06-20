@@ -5,6 +5,76 @@ const log = Log.create({ service: "external-agent.codex" })
 
 type QueueEntry = { event: ExternalAgent.BridgeEvent } | { done: true }
 
+const BASE_ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TERM",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_DATA_HOME",
+  "XDG_RUNTIME_DIR",
+  "CODEX_HOME",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NODE_EXTRA_CA_CERTS",
+])
+
+const CONFIG_ENV_ALLOWLIST = new Set([
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy",
+  "CODEX_HOME",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NODE_EXTRA_CA_CERTS",
+])
+
+const INJECTED_ENV_ALLOWLIST = new Set(["SYNERGY_CODEX_API_KEY"])
+const CODEX_SANDBOX_ALLOWLIST = new Set(["read-only", "workspace-write"])
+
+function copyAllowedEnv(
+  target: Record<string, string>,
+  source: Record<string, string | undefined>,
+  allowlist: Set<string>,
+) {
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined || !allowlist.has(key)) continue
+    target[key] = value
+  }
+}
+
+export function buildCodexProcessEnv(
+  processEnv: Record<string, string | undefined>,
+  injectedEnv: Record<string, string | undefined> = {},
+  configEnv: Record<string, string | undefined> = {},
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  copyAllowedEnv(env, processEnv, BASE_ENV_ALLOWLIST)
+  copyAllowedEnv(env, injectedEnv, INJECTED_ENV_ALLOWLIST)
+  copyAllowedEnv(env, configEnv, CONFIG_ENV_ALLOWLIST)
+  return env
+}
+
+export function normalizeCodexSandbox(value: unknown): "read-only" | "workspace-write" | undefined {
+  return typeof value === "string" && CODEX_SANDBOX_ALLOWLIST.has(value)
+    ? (value as "read-only" | "workspace-write")
+    : undefined
+}
+
 class CodexAdapter implements ExternalAgent.Adapter {
   readonly name = "codex"
 
@@ -30,7 +100,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!binPath) return { available: false }
 
     try {
-      const proc = Bun.spawn(["codex", "--version"], {
+      const proc = Bun.spawn([binPath, "--version"], {
         stdout: "pipe",
         stderr: "pipe",
       })
@@ -47,7 +117,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
-    this.env = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
+    this.env = { ...(opts.env ?? {}) }
     this.started = true
     log.info("codex adapter started", { cwd: opts.cwd })
   }
@@ -60,12 +130,22 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.stderrBuffer = ""
     this.gotStdoutEvents = false
 
-    const args = this.buildArgs(context)
-    log.info("spawning codex turn", { sessionID: context.sessionID, args: args.join(" ") })
+    // Re-apply configEnv every turn — adapterConfig may be updated by invoke.ts
+    // between turns (Object.assign(cfg, runConfig)). Only allowlisted env keys
+    // are forwarded to avoid leaking the Synergy process environment to Codex.
+    const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
+    const currentEnv = buildCodexProcessEnv(process.env, this.env, configEnv)
+    const prompt = composeTurnInput(context)
 
-    const proc = Bun.spawn(["codex", ...args], {
+    const command = this.commandPath()
+    const args = this.buildArgs(context)
+    const fullArgs = [...args]
+
+    log.info("spawning codex turn", { sessionID: context.sessionID, command, args: fullArgs.join(" ") })
+
+    const proc = Bun.spawn([command, ...fullArgs], {
       cwd: this.cwd,
-      env: this.env,
+      env: currentEnv,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -73,6 +153,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.currentProc = proc
 
     try {
+      proc.stdin.write(prompt)
       proc.stdin.end()
     } catch {}
 
@@ -153,8 +234,16 @@ class CodexAdapter implements ExternalAgent.Adapter {
     }
 
     const controlProfile = this.adapterConfig.controlProfile as string | undefined
+    const rawSandbox = this.adapterConfig.sandbox
+    const sandbox = normalizeCodexSandbox(rawSandbox)
+
     if (controlProfile === "full_access") {
       args.push("--dangerously-bypass-approvals-and-sandbox")
+    } else if (sandbox) {
+      args.push("--sandbox", sandbox)
+    } else if (rawSandbox !== undefined) {
+      log.warn("ignoring unsupported codex sandbox value", { sandbox: String(rawSandbox) })
+      if (!isResume) args.push("--sandbox", "read-only")
     } else if (!isResume) {
       args.push("--sandbox", "read-only")
     }
@@ -163,10 +252,14 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!isResume) {
       args.push("-C", this.cwd)
     }
-
-    const prompt = composeTurnInput(context)
-    args.push(prompt)
+    args.push("-")
     return args
+  }
+
+  private commandPath(): string {
+    const configured = this.adapterConfig.path
+    if (typeof configured === "string" && configured.trim()) return configured
+    return "codex"
   }
 
   private readStdout(proc: import("bun").Subprocess<"pipe", "pipe", "pipe">): void {
@@ -349,6 +442,13 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
 function composeTurnInput(context: ExternalAgent.TurnContext): string {
   const parts: string[] = []
+  parts.push(
+    [
+      "<handoff-guidance>",
+      "Inspect the repository in a targeted way before editing. Prefer rg and specific known files over broad scans, avoid exhaustive searches unless necessary, and avoid repeated status or log checks when one current check is enough.",
+      "</handoff-guidance>",
+    ].join("\n"),
+  )
   if (context.instructions) {
     parts.push(`<project-instructions>\n${context.instructions}\n</project-instructions>`)
   }
