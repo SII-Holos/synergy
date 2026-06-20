@@ -534,6 +534,7 @@ export namespace ToolResolver {
                       extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                       protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                       dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                      backend: sandbox.backend,
                     })
                     if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
                       throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)

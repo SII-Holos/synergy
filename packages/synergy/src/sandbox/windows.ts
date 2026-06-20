@@ -204,3 +204,11 @@ export function isWindowsHelperAvailable(): boolean {
   const helper = findHelperBinary()
   return helper !== null && helper.verified
 }
+
+/**
+ * Detailed diagnostic info about the Windows sandbox helper.
+ * Returns null if no helper binary found at any search path.
+ */
+export function getWindowsHelperInfo(): { path: string; verified: boolean } | null {
+  return findHelperBinary()
+}

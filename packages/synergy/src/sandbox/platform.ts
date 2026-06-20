@@ -24,7 +24,7 @@ export function platformInfo(): PlatformInfo {
   return { platform, available: false, backend: null }
 }
 
-function isBwrapAvailable(): boolean {
+export function isBwrapAvailable(): boolean {
   try {
     const which = Bun.spawnSync({ cmd: ["which", "bwrap"], stdout: "pipe", stderr: "pipe" })
     return which.exitCode === 0 && which.stdout && new TextDecoder().decode(which.stdout).trim().length > 0

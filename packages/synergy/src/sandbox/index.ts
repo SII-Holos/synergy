@@ -14,6 +14,7 @@ export type {
   FallbackPolicy,
   SandboxNetworkMode,
 } from "./types"
+export type { SandboxReadinessCheck, SandboxReadiness } from "./types"
 
 // Re-export policy-engine public types and functions
 export { buildPermissionProfile, canEnforceOnPlatform } from "./policy-engine"

@@ -57,6 +57,7 @@ import { platformInfo as getPlatformInfo } from "./platform"
 import { MacBackend } from "./macos"
 import { LinuxBackend } from "./linux"
 import { WindowsBackend } from "./windows"
+import { startDenialLogger, type DenialLoggerSession } from "./macos-diagnostics"
 
 // ------------------------------------------------------------------
 // SandboxBackend — unified public API
@@ -244,6 +245,15 @@ export namespace SandboxBackend {
       onExit: () => {},
     })
 
+    // ── macOS denial logger: capture sandboxd audit events ───────
+    let denialSession: DenialLoggerSession | null = null
+    if (wrapper.sandboxed) {
+      const platform = detectPlatform()
+      if (platform === "macos") {
+        denialSession = startDenialLogger(child.pid)
+      }
+    }
+
     const outputChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
 
@@ -323,12 +333,20 @@ export namespace SandboxBackend {
     const stdout = Buffer.concat(outputChunks).toString("utf-8")
     const stderr = Buffer.concat(stderrChunks).toString("utf-8")
 
+    // ── Stop macOS denial logger ─────────────────────────────────
+    if (denialSession) {
+      denialSession.stop()
+    }
+
     // ── Sandbox denial detection ──────────────────────────────────
     // When the sandbox is active and the command fails, scan output
-    // for OS-level permission denial patterns. If matched, throw a
-    // structured SandboxBlocked error.
+    // for OS-level permission denial patterns. On macOS, include
+    // sandboxd audit events captured by the denial logger.
     if (wrapper.sandboxed && exitCode !== 0 && !timedOut) {
-      const combinedOutput = stdout + stderr
+      let combinedOutput = stdout + stderr
+      if (denialSession && denialSession.output.length > 0) {
+        combinedOutput += "\n" + denialSession.output.join("\n")
+      }
       const matches = SandboxDetector.scan(combinedOutput)
       if (matches.length > 0) {
         const info = platformInfo()
