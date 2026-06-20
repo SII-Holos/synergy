@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileSystemPolicy {
     pub workspace: String,
     #[serde(default, rename = "readableRoots")]
@@ -21,7 +21,7 @@ pub struct FileSystemPolicy {
     pub include_platform_defaults: bool,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetworkPolicy {
     pub mode: String,
     #[serde(default, rename = "allowLocalBinding")]
@@ -32,7 +32,7 @@ pub struct NetworkPolicy {
     pub wfp_enabled: bool,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PermissionProfile {
     #[serde(rename = "fileSystem")]
     pub file_system: FileSystemPolicy,

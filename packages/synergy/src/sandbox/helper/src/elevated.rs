@@ -2,16 +2,36 @@
 // Elevated sandbox session — IPC-pipe backend for deny-read + WFP
 // ================================================================
 
-use crate::ipc_framed;
+use crate::config::PermissionProfile;
+use crate::elevation;
+use crate::ipc_framed::{self, IpcMessage};
+use crate::pipe::{PipeClient, PipeServer};
 
 /// Elevated sandbox session handle, identified by its IPC pipe name.
-#[derive(Debug, Clone)]
+///
+/// On Windows, `prepare_spawn_context` creates a named pipe server
+/// and `connect_elevated` launches an elevated child process that
+/// connects back as a client for the setup handshake.
+#[derive(Debug)]
 pub struct ElevatedSandboxSession {
     pub ipc_pipe_name: String,
+    pub pipe_server: Option<PipeServer>,
+}
+
+impl Clone for ElevatedSandboxSession {
+    fn clone(&self) -> Self {
+        ElevatedSandboxSession {
+            ipc_pipe_name: self.ipc_pipe_name.clone(),
+            pipe_server: None, // PipeServer handle cannot be meaningfully cloned
+        }
+    }
 }
 
 impl ElevatedSandboxSession {
     /// Prepare a spawn context for the given Windows integrity level.
+    ///
+    /// Creates a named pipe server with a unique name including a random
+    /// suffix to avoid collisions between concurrent sessions.
     ///
     /// On non-Windows this always fails — the elevated backend is
     /// a Windows-only concept.
@@ -22,13 +42,140 @@ impl ElevatedSandboxSession {
         if windows_level.trim().is_empty() {
             return Err("windows_level must not be empty".into());
         }
-        // Placeholder pipe name — real implementation derives this from
-        // the session identity and integrity level.
-        let pipe_name = format!("\\\\.\\pipe\\synergy-sandbox-{}", windows_level);
+
+        let random_suffix = format!("{:08x}", rand::random::<u32>());
+        let pipe_name = format!(
+            "\\\\.\\pipe\\synergy-sandbox-{}-{}",
+            windows_level, random_suffix
+        );
+        let pipe_server = PipeServer::create(&pipe_name)?;
+
         let _ = ipc_framed::IPC_PROTOCOL_VERSION; // version contract reference
+
         Ok(ElevatedSandboxSession {
             ipc_pipe_name: pipe_name,
+            pipe_server: Some(pipe_server),
         })
+    }
+
+    /// Launch the elevated process via UAC and wait for it to connect.
+    ///
+    /// Calls `self_elevate` to prompt for administrator privileges, then
+    /// blocks on `wait_for_client` until the elevated child connects to
+    /// the named pipe server.
+    pub fn connect_elevated(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !cfg!(target_os = "windows") {
+            return Err("Elevated sandbox session is only supported on Windows".into());
+        }
+        let pipe = self
+            .pipe_server
+            .as_ref()
+            .ok_or("no pipe server — call prepare_spawn_context first")?;
+
+        elevation::self_elevate(&self.ipc_pipe_name, &[])?;
+        pipe.wait_for_client()?;
+        Ok(())
+    }
+
+    /// Send the sandbox setup configuration to the elevated child.
+    ///
+    /// Serializes the permission profile and user SID as a JSON payload
+    /// and sends it over the pipe as an `IpcMessage::Error` with
+    /// `msg_id = "setup_config"` (temporary encoding until Phase 4
+    /// adds a dedicated `SetupConfig` variant).
+    pub fn send_setup_config(
+        &self,
+        profile: &PermissionProfile,
+        user_sid: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let pipe = self
+            .pipe_server
+            .as_ref()
+            .ok_or("no pipe server")?;
+
+        let config_json = serde_json::json!({
+            "permission_profile": profile,
+            "user_sid": user_sid,
+        });
+        let msg = IpcMessage::Error {
+            msg_id: "setup_config".into(),
+            message: config_json.to_string(),
+        };
+        pipe.send(&msg)
+    }
+
+    /// Wait for the elevated child to acknowledge setup completion.
+    ///
+    /// Blocks until an `IpcMessage::Ack` is received over the pipe.
+    pub fn wait_setup_ack(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let pipe = self
+            .pipe_server
+            .as_ref()
+            .ok_or("no pipe server")?;
+        let mut buf = Vec::new();
+        let msg = pipe.receive(&mut buf)?;
+        match msg {
+            IpcMessage::Ack { .. } => Ok(()),
+            IpcMessage::Error { message, .. } => Err(format!("setup error: {}", message).into()),
+            other => Err(format!("unexpected message during setup: {:?}", other).into()),
+        }
+    }
+
+    /// Request the elevated child to tear down sandbox resources.
+    ///
+    /// Sends an `IpcMessage::Ack` with `msg_id = "cleanup"` to signal
+    /// that the elevated child should restore DACLs, remove WFP filters,
+    /// and terminate.
+    pub fn request_cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let pipe = self
+            .pipe_server
+            .as_ref()
+            .ok_or("no pipe server")?;
+        let msg = IpcMessage::Ack {
+            msg_id: "cleanup".into(),
+            detail: "request".into(),
+        };
+        pipe.send(&msg)
+    }
+
+    /// (Elevated instance side) Connect to the parent's named pipe server.
+    ///
+    /// Called by the elevated child process in `--setup-mode`.
+    pub fn connect_to_parent(pipe_name: &str) -> Result<PipeClient, Box<dyn std::error::Error>> {
+        PipeClient::connect(pipe_name)
+    }
+
+    /// (Elevated instance side) Run the elevated setup handshake.
+    ///
+    /// Receives the setup config from the parent, processes it,
+    /// and sends an acknowledgement. In future phases this will
+    /// apply DACLs, install WFP filters, etc.
+    pub fn run_elevated_setup(
+        pipe: &PipeClient,
+        _args: &[String],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut buf = Vec::new();
+        let msg = pipe.receive(&mut buf)?;
+        match msg {
+            IpcMessage::Error { ref msg_id, ref message } if msg_id == "setup_config" => {
+                // Parse and validate the setup config
+                let _config: serde_json::Value =
+                    serde_json::from_str(message)?;
+                // TODO: Phase 4+ — apply DACLs, WFP filters, etc. from config
+                // For now, acknowledge receipt so the parent can proceed.
+                let ack = IpcMessage::Ack {
+                    msg_id: "setup_done".into(),
+                    detail: "setup complete".into(),
+                };
+                pipe.send(&ack)?;
+                Ok(())
+            }
+            other => Err(format!(
+                "unexpected message in elevated setup (expected setup_config): {:?}",
+                other
+            )
+            .into()),
+        }
     }
 
     /// Refresh credentials for the elevated session.
@@ -212,6 +359,7 @@ mod tests {
     fn elevated_sandbox_session_can_be_constructed_directly() {
         let session = ElevatedSandboxSession {
             ipc_pipe_name: "\\\\.\\pipe\\test".to_string(),
+            pipe_server: None,
         };
         assert_eq!(session.ipc_pipe_name, "\\\\.\\pipe\\test");
     }
@@ -220,6 +368,7 @@ mod tests {
     fn elevated_sandbox_session_is_clone() {
         let session = ElevatedSandboxSession {
             ipc_pipe_name: "\\\\.\\pipe\\clone-test".to_string(),
+            pipe_server: None,
         };
         let cloned = session.clone();
         assert_eq!(session.ipc_pipe_name, cloned.ipc_pipe_name);
@@ -229,6 +378,7 @@ mod tests {
     fn elevated_sandbox_session_debug_format_includes_pipe_name() {
         let session = ElevatedSandboxSession {
             ipc_pipe_name: "\\\\.\\pipe\\debug-test".to_string(),
+            pipe_server: None,
         };
         let debug_str = format!("{:?}", session);
         assert!(

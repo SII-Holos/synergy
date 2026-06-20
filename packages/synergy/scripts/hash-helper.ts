@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+// DEPRECATED: Use build-helper.ts --skip-build --dry-run instead.
+// This script is kept for backward compatibility only.
+
 import * as fs from "fs"
 import * as path from "path"
 import { createHash } from "crypto"
@@ -26,7 +29,7 @@ console.log(`# Update ${constName} in packages/synergy/src/sandbox/${targetModul
 console.log()
 const helperName = platform === "linux" ? "synergy-sandbox-linux" : "synergy-sandbox-windows.exe"
 console.log(`export const ${constName}: Record<string, string> = {`)
-console.log(`  path.join(homedir, ".synergy", "sandbox-helper", "${helperName}"): "${digest}",`)
+console.log(`  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${helperName}")]: "${digest}",`)
 console.log(`}`)
 
 if (process.argv.includes("--auto-update")) {
@@ -34,7 +37,7 @@ if (process.argv.includes("--auto-update")) {
   let content = fs.readFileSync(sourceFile, "utf-8")
   const pattern = new RegExp(`export const ${constName}: Record<string, string> = \\{[^}]*\\}`, "s")
   const replacement = `export const ${constName}: Record<string, string> = {
-  path.join(homedir, ".synergy", "sandbox-helper", "${helperName}"): "${digest}",
+  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${helperName}")]: "${digest}",
 }`
   content = content.replace(pattern, replacement)
   fs.writeFileSync(sourceFile, content)

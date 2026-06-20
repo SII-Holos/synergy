@@ -25,7 +25,93 @@ export const HELPER_SEARCH_PATHS = [
   (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", WINDOWS_HELPER_BINARY_NAME),
   // Global Synergy binary directory
   (homedir: string) => path.join(homedir, ".synergy", "bin", WINDOWS_HELPER_BINARY_NAME),
+  // Global npm install — node_modules in user home
+  (homedir: string) =>
+    path.join(
+      homedir,
+      "node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-windows-x64",
+      "bin",
+      WINDOWS_HELPER_BINARY_NAME,
+    ),
+  // System-wide npm install (%ProgramFiles% equivalent)
+  (_homedir: string) =>
+    path.join(
+      "C:\\Program Files\\node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-windows-x64",
+      "bin",
+      WINDOWS_HELPER_BINARY_NAME,
+    ),
 ]
+
+/**
+ * One-time initialization: detect and install the sandbox helper from a
+ * tarball-relative sandbox/ directory next to the bundled synergy binary.
+ *
+ * Standalone tarball layout:
+ *   synergy-windows-x64/
+ *   ├── bin/synergy.exe
+ *   └── sandbox/
+ *       └── synergy-sandbox-windows.exe
+ *
+ * Only runs when the current binary is inside a `bin/` subdirectory of
+ * a release tarball — never when running from source (`bun run`).
+ * Copies the helper to ~/.synergy/sandbox-helper/ if found.
+ * Non-fatal: warns and returns false on any error.
+ */
+function installTarballHelper(): boolean {
+  const execPath = process.execPath
+  const execDir = path.dirname(execPath)
+  const execDirName = path.basename(execDir)
+
+  // Guard: only install from tarball layout where the binary is inside a
+  // `bin/` subdirectory. Prevents false positives when running from source.
+  if (execDirName !== "bin") return false
+
+  const tarballSandboxDir = path.resolve(execDir, "..", "sandbox")
+  const tarballHelper = path.join(tarballSandboxDir, WINDOWS_HELPER_BINARY_NAME)
+
+  if (!fs.existsSync(tarballHelper)) return false
+
+  const homedir = os.homedir()
+  const destDir = path.join(homedir, ".synergy", "sandbox-helper")
+  const destPath = path.join(destDir, WINDOWS_HELPER_BINARY_NAME)
+
+  // Idempotent: skip if destination already exists and is up to date.
+  try {
+    if (fs.existsSync(destPath) && isTarballHelperUpToDate(tarballHelper, destPath)) {
+      return true
+    }
+  } catch {
+    // Fall through to copy
+  }
+
+  try {
+    fs.mkdirSync(destDir, { recursive: true })
+    fs.copyFileSync(tarballHelper, destPath)
+    log.info("Installed sandbox helper from tarball", { src: tarballHelper, dest: destPath })
+    return true
+  } catch (e) {
+    log.warn("Failed to install tarball sandbox helper", {
+      src: tarballHelper,
+      dest: destPath,
+      error: String(e),
+    })
+    return false
+  }
+}
+
+function isTarballHelperUpToDate(src: string, dst: string): boolean {
+  try {
+    const srcStat = fs.statSync(src)
+    const dstStat = fs.statSync(dst)
+    return srcStat.mtimeMs <= dstStat.mtimeMs
+  } catch {
+    return false
+  }
+}
 /**
  * Trusted SHA-256 hashes for helper binaries.
  * Updated with every helper binary release.
@@ -41,6 +127,9 @@ export const TRUSTED_HELPER_HASHES: Record<string, string> = {
  * Returns the absolute path if found and hash-verified, or null if not installed.
  */
 function findHelperBinary(): { path: string; verified: boolean } | null {
+  // Try tarball-relative installation before searching standard paths
+  installTarballHelper()
+
   const homedir = os.homedir()
   for (const getPath of HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)
@@ -63,26 +152,30 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
 }
 
 function verifyHelperHash(binaryPath: string): boolean {
-  const trustedHash = TRUSTED_HELPER_HASHES[binaryPath]
-  // If no trusted hash is embedded, refuse to trust the binary
-  if (!trustedHash || trustedHash.length === 0) {
+  // If no trusted hashes are embedded, refuse to trust the binary
+  if (Object.keys(TRUSTED_HELPER_HASHES).length === 0) {
     return false
   }
-  try {
-    const hash = crypto.createHash("sha256")
-    const data = fs.readFileSync(binaryPath)
-    hash.update(data)
-    const digest = hash.digest("hex")
-    // Constant-time comparison
-    if (digest.length !== trustedHash.length) return false
-    let result = 0
-    for (let i = 0; i < digest.length; i++) {
-      result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+  // Try all trusted hashes — multi-arch builds produce distinct keys
+  for (const trustedHash of Object.values(TRUSTED_HELPER_HASHES)) {
+    if (!trustedHash || trustedHash.length === 0) continue
+    try {
+      const hash = crypto.createHash("sha256")
+      const data = fs.readFileSync(binaryPath)
+      hash.update(data)
+      const digest = hash.digest("hex")
+      // Constant-time comparison
+      if (digest.length !== trustedHash.length) continue
+      let result = 0
+      for (let i = 0; i < digest.length; i++) {
+        result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+      }
+      if (result === 0) return true
+    } catch {
+      continue
     }
-    return result === 0
-  } catch {
-    return false
   }
+  return false
 }
 
 // ------------------------------------------------------------------

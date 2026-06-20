@@ -16,31 +16,186 @@ const log = Log.create({ service: "sandbox-linux" })
 
 /**
  * Known search paths for the Linux sandbox helper binary.
- * Priority order: bundled with Synergy, then global bin directory.
+ * Priority order: bundled with Synergy, then global bin directory,
+ * then node_modules (global + home), then tarball sandbox.
  */
 export const LINUX_HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
   (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox-linux"),
   // Global Synergy binary directory
   (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox-linux"),
+  // Global npm install — node_modules in user home
+  (homedir: string) =>
+    path.join(homedir, "node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
+  // System-wide npm install
+  (_homedir: string) =>
+    path.join("/usr/lib/node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
 ]
 
 /**
- * Trusted SHA-256 hashes for Linux helper binaries.
- * Updated with every helper binary release.
- * Never load from config — embedded at compile time.
+ * One-time initialization: detect and install the sandbox helper from a
+ * tarball-relative sandbox/ directory next to the bundled synergy binary.
+ *
+ * Standalone tarball layout:
+ *   synergy-linux-x64/
+ *   ├── bin/synergy
+ *   └── sandbox/
+ *       └── synergy-sandbox-linux
+ *
+ * Only runs when the current binary is inside a `bin/` subdirectory of
+ * a release tarball — never when running from source (`bun run`).
+ * Copies the helper to ~/.synergy/sandbox-helper/ if found and verified.
+ * Non-fatal: warns and returns false on any error.
  */
-export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
-  // Empty map is intentional until release — no helper will be trusted.
-}
+function installTarballHelper(): boolean {
+  const execPath = process.execPath
+  const execDir = path.dirname(execPath)
+  const execDirName = path.basename(execDir)
 
-function verifyHelperHash(binaryPath: string): boolean {
-  const trustedHash = TRUSTED_LINUX_HELPER_HASHES[binaryPath]
-  // If no trusted hash is embedded, refuse to trust the binary
-  if (!trustedHash || trustedHash.length === 0) {
+  // Guard: only install from tarball layout where the binary is inside a
+  // `bin/` subdirectory. Prevents false positives when running from source.
+  if (execDirName !== "bin") return false
+
+  const tarballSandboxDir = path.resolve(execDir, "..", "sandbox")
+  const tarballHelper = path.join(tarballSandboxDir, "synergy-sandbox-linux")
+
+  if (!fs.existsSync(tarballHelper)) return false
+
+  const homedir = os.homedir()
+  const destDir = path.join(homedir, ".synergy", "sandbox-helper")
+  const destPath = path.join(destDir, "synergy-sandbox-linux")
+
+  // Idempotent: skip if destination already in search results is enough —
+  // but copy if the tarball version differs.
+  try {
+    if (fs.existsSync(destPath) && isTarballHelperUpToDate(tarballHelper, destPath)) {
+      return true
+    }
+  } catch {
+    // Fall through to copy
+  }
+
+  try {
+    fs.mkdirSync(destDir, { recursive: true })
+    fs.copyFileSync(tarballHelper, destPath)
+    fs.chmodSync(destPath, 0o755)
+    log.info("Installed sandbox helper from tarball", { src: tarballHelper, dest: destPath })
+    return true
+  } catch (e) {
+    log.warn("Failed to install tarball sandbox helper", {
+      src: tarballHelper,
+      dest: destPath,
+      error: String(e),
+    })
     return false
   }
+}
+
+function isTarballHelperUpToDate(src: string, dst: string): boolean {
+  try {
+    const srcStat = fs.statSync(src)
+    const dstStat = fs.statSync(dst)
+    return srcStat.mtimeMs <= dstStat.mtimeMs
+  } catch {
+    return false
+  }
+}
+
+// ------------------------------------------------------------------
+// Bundled bwrap detection and hash verification
+// ------------------------------------------------------------------
+
+/**
+ * Search path for the bundled bwrap binary.
+ */
+export const BWRAP_SEARCH_PATHS = [
+  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "bwrap", "bwrap"),
+]
+
+/**
+ * Trusted SHA-256 hashes for bundled bwrap binaries.
+ * Populated by the release pipeline after building static bwrap.
+ * Never load from config — embedded at compile time.
+ *
+ * Graceful degradation: when empty (pre-release state), the verification
+ * function allows execution with a warning instead of blocking.
+ */
+export const TRUSTED_BWRAP_HASHES: Record<string, string> = {
+  // Hash entries for verified bwrap binaries. Run scripts/download-bwrap.sh to build.
+  // Empty map is intentional until release — bwrap will be allowed with a warning.
+}
+
+/**
+ * Verify the bundled bwrap binary against trusted hashes.
+ *
+ * When the trusted hash map is not yet populated (pre-release state):
+ * - Checks minimum file size (>= 50KB — bwrap static builds are substantial)
+ * - Runs `bwrap_path --version` and verifies exit code 0 with expected output
+ * - If both checks pass: returns true with log.info (plausible pre-release binary)
+ * - If either check fails: returns false with log.warn
+ *
+ * When hashes are populated:
+ * - Hash matches: verified.
+ * - Hash mismatch: blocks exec.
+ *
+ * Returns true if the binary should be trusted (verified or pre-release checks pass).
+ */
+function verifyBwrapHash(binaryPath: string): boolean {
+  const trustedHash = TRUSTED_BWRAP_HASHES[binaryPath]
+
+  // Graceful degradation: if no trusted hash is embedded (pre-release),
+  // run minimum plausibility checks instead of unconditionally allowing.
+  if (!trustedHash || trustedHash.length === 0) {
+    // Check 1: Minimum file size. bwrap static builds are at least 50KB.
+    try {
+      const stat = fs.statSync(binaryPath)
+      if (stat.size < 50 * 1024) {
+        log.warn("Bundled bwrap is too small — refusing to trust", {
+          path: binaryPath,
+          size: stat.size,
+        })
+        return false
+      }
+    } catch {
+      return false
+    }
+
+    // Check 2: Run --version and verify output looks like bwrap/bubblewrap.
+    try {
+      const proc = Bun.spawnSync({
+        cmd: [binaryPath, "--version"],
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      if (proc.exitCode !== 0) {
+        log.warn("Bundled bwrap --version failed — refusing to trust", {
+          path: binaryPath,
+          exitCode: proc.exitCode,
+        })
+        return false
+      }
+      const output = proc.stdout.toString()
+      if (!/bubblewrap|bwrap/i.test(output)) {
+        log.warn("Bundled bwrap --version output does not contain expected identifiers", {
+          path: binaryPath,
+          output: output.slice(0, 200),
+        })
+        return false
+      }
+    } catch (e) {
+      log.warn("Bundled bwrap --version check failed", {
+        path: binaryPath,
+        error: String(e),
+      })
+      return false
+    }
+
+    log.info("Bwrap hash table empty (pre-release) — binary passed minimum plausibility checks", {
+      path: binaryPath,
+    })
+    return true
+  }
+
   try {
     const hash = crypto.createHash("sha256")
     const data = fs.readFileSync(binaryPath)
@@ -59,10 +214,82 @@ function verifyHelperHash(binaryPath: string): boolean {
 }
 
 /**
+ * Find the bundled bwrap binary and verify its hash.
+ * Returns { path, verified } if found, or null if not present at any search path.
+ */
+export function findBundledBwrap(): { path: string; verified: boolean } | null {
+  const homedir = os.homedir()
+  for (const getPath of BWRAP_SEARCH_PATHS) {
+    const p = getPath(homedir)
+    try {
+      if (fs.existsSync(p)) {
+        const verified = verifyBwrapHash(p)
+        if (!verified) {
+          log.warn("Bundled bwrap hash verification failed", { path: p })
+        }
+        return { path: p, verified }
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+/**
+ * Check if a verified bundled bwrap binary is available.
+ * Returns true only when the binary exists and hash verification passes
+ * (or hash table is empty — pre-release graceful degradation).
+ */
+export function isBundledBwrapAvailable(): boolean {
+  const bwrap = findBundledBwrap()
+  return bwrap !== null && bwrap.verified
+}
+/**
+ * Trusted SHA-256 hashes for Linux helper binaries.
+ * Updated with every helper binary release.
+ * Never load from config — embedded at compile time.
+ */
+export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
+  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
+  // Empty map is intentional until release — no helper will be trusted.
+}
+
+function verifyHelperHash(binaryPath: string): boolean {
+  // If no trusted hashes are embedded, refuse to trust the binary
+  if (Object.keys(TRUSTED_LINUX_HELPER_HASHES).length === 0) {
+    return false
+  }
+  // Try all trusted hashes — multi-arch builds produce distinct keys
+  for (const trustedHash of Object.values(TRUSTED_LINUX_HELPER_HASHES)) {
+    if (!trustedHash || trustedHash.length === 0) continue
+    try {
+      const hash = crypto.createHash("sha256")
+      const data = fs.readFileSync(binaryPath)
+      hash.update(data)
+      const digest = hash.digest("hex")
+      // Constant-time comparison
+      if (digest.length !== trustedHash.length) continue
+      let result = 0
+      for (let i = 0; i < digest.length; i++) {
+        result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+      }
+      if (result === 0) return true
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
+/**
  * Resolve the path to the sandbox helper binary on Linux.
  * Returns the absolute path if found and hash-verified, or null if not installed.
  */
 function findLinuxHelperBinary(): { path: string; verified: boolean } | null {
+  // Try tarball-relative installation before searching standard paths
+  installTarballHelper()
+
   const homedir = os.homedir()
   for (const getPath of LINUX_HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)

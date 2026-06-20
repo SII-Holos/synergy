@@ -1,40 +1,81 @@
-# CI workflow to auto-populate TRUSTED_HELPER_HASHES in source after building helpers.
-# Uncomment and activate once GitHub Actions is configured for this repo.
+name: Build Sandbox Helpers & Update Hashes
 
-# name: Build Sandbox Helpers & Update Hashes
-#
-# on:
-#   push:
-#     branches: [dev, main]
-#
-# jobs:
-#   build-and-update-hashes:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#
-#       - name: Setup Rust
-#         uses: actions-rs/toolchain@v1
-#         with:
-#           toolchain: stable
-#
-#       - name: Setup Bun
-#         uses: oven-sh/setup-bun@v1
-#
-#       - name: Install dependencies
-#         run: bun install
-#
-#       - name: Build Linux helper & update hashes
-#         run: bun run packages/synergy/scripts/build-helper.ts linux --auto-update
-#
-#       - name: Build Windows helper & update hashes
-#         # Requires cross-compilation toolchain (not yet configured)
-#         # run: bun run packages/synergy/scripts/build-helper.ts windows --auto-update
-#
-#       - name: Commit and push updated hashes
-#         run: |
-#           git config user.name "github-actions[bot]"
-#           git config user.email "github-actions[bot]@users.noreply.github.com"
-#           git add packages/synergy/src/sandbox/linux.ts packages/synergy/src/sandbox/windows.ts
-#           git diff --cached --quiet || git commit -m "chore: auto-update sandbox helper hashes"
-#           git push
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "packages/synergy/src/sandbox/helper-linux/**"
+      - "packages/synergy/src/sandbox/helper/**"
+      - "packages/synergy/scripts/build-helper.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-update-hashes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build Linux helper (x64) & update hashes
+        run: bun run packages/synergy/scripts/build-helper.ts linux --auto-update
+
+      - name: Build Linux helper (arm64) & append hash
+        run: |
+          rustup target add aarch64-unknown-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+            bun run packages/synergy/scripts/build-helper.ts linux --auto-update --append --target aarch64-unknown-linux-gnu
+
+      - name: Setup Windows cross-compile
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo install --locked cargo-xwin
+
+      - name: Cache Windows SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cargo-xwin
+          key: cargo-xwin-${{ runner.os }}-${{ hashFiles('packages/synergy/src/sandbox/helper/Cargo.lock') }}
+
+      - name: Build Windows helper & update hashes
+        run: |
+          cargo xwin build --release --target x86_64-pc-windows-msvc \
+            --manifest-path packages/synergy/src/sandbox/helper/Cargo.toml
+          bun run packages/synergy/scripts/build-helper.ts windows --auto-update --target x86_64-pc-windows-msvc --skip-build
+
+      - name: Upload Linux x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: synergy-sandbox-linux-x64
+          path: packages/synergy/src/sandbox/helper-linux/target/release/synergy-sandbox-linux
+
+      - name: Upload Linux arm64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: synergy-sandbox-linux-arm64
+          path: packages/synergy/src/sandbox/helper-linux/target/aarch64-unknown-linux-gnu/release/synergy-sandbox-linux
+
+      - name: Upload Windows x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: synergy-sandbox-windows-x64
+          path: packages/synergy/src/sandbox/helper/target/x86_64-pc-windows-msvc/release/synergy-sandbox-windows.exe
+
+      - name: Commit and push updated hashes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/synergy/src/sandbox/linux.ts packages/synergy/src/sandbox/windows.ts
+          git diff --cached --quiet || git commit -m "chore: auto-update sandbox helper hashes [skip ci]"
+          git push

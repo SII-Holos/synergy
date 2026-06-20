@@ -4,6 +4,8 @@ mod config;
 mod conpty;
 mod desktop;
 mod elevated;
+mod elevation;
+mod pipe;
 mod env;
 mod ipc_framed;
 mod path;

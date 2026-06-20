@@ -26,21 +26,13 @@ import * as os from "os"
 // 1. getLinuxHelperInfo export
 // ==================================================================
 describe("Phase 2: getLinuxHelperInfo", () => {
-  test("getLinuxHelperInfo is exported from linux module", () => {
-    // Phase 2: the linux module must export getLinuxHelperInfo() analogous
-    // to getWindowsHelperInfo() from the windows module.
-    //
-    // RED expected: The module doesn't export this yet.
-    // After implementation, getLinuxHelperInfo will be a function that
-    // returns { path, verified } | null.
-    const linuxModule = require("../../src/sandbox/linux")
+  test("getLinuxHelperInfo is exported from linux module", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
     expect(typeof linuxModule.getLinuxHelperInfo).toBe("function")
   })
 
-  test("getLinuxHelperInfo returns null on non-Linux platforms", () => {
-    // On non-Linux (e.g. macOS), the function returns null because
-    // the helper binary won't be found at any search path.
-    const { getLinuxHelperInfo } = require("../../src/sandbox/linux")
+  test("getLinuxHelperInfo returns null on non-Linux platforms", async () => {
+    const { getLinuxHelperInfo } = await import("../../src/sandbox/linux")
     const info = getLinuxHelperInfo()
 
     if (os.platform() !== "linux") {
@@ -48,13 +40,9 @@ describe("Phase 2: getLinuxHelperInfo", () => {
     }
   })
 
-  test("getLinuxHelperInfo returns object with path and verified when found", () => {
-    // When the helper IS found on Linux, it returns { path: string, verified: boolean }.
-    // This test validates the return shape. On non-Linux it returns null
-    // (tested above), so we just verify the type signature is correct.
-    const { getLinuxHelperInfo } = require("../../src/sandbox/linux")
+  test("getLinuxHelperInfo returns object with path and verified when found", async () => {
+    const { getLinuxHelperInfo } = await import("../../src/sandbox/linux")
 
-    // The function must accept no arguments and return either null or an object.
     const info = getLinuxHelperInfo()
     if (info !== null) {
       expect(typeof info.path).toBe("string")
@@ -67,23 +55,12 @@ describe("Phase 2: getLinuxHelperInfo", () => {
 // 2. Trusted hash structure for Linux helper
 // ==================================================================
 describe("Phase 2: Linux helper trusted hashes", () => {
-  test("linux module exports TRUSTED_LINUX_HELPER_HASHES", () => {
-    // Phase 2: the linux module should export a hash map analogous to
-    // TRUSTED_HELPER_HASHES in the windows module.
-    //
-    // RED expected: The module doesn't export this constant yet.
+  test("linux module exports TRUSTED_LINUX_HELPER_HASHES", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
 
-    // Check if the module exports this constant.
-    // On failure, the test message will show that the export is missing.
-    const linuxModule = require("../../src/sandbox/linux")
-
-    // The hash map must exist and be an object (potentially empty placeholder).
-    // After implementation, it will be a Record<string, string> mapping
-    // helper binary paths to their SHA-256 hashes.
     const hashes = linuxModule.TRUSTED_LINUX_HELPER_HASHES
     expect(hashes).toBeDefined()
     expect(typeof hashes).toBe("object")
-    // It's a Record, not an array
     expect(Array.isArray(hashes)).toBe(false)
   })
 })
@@ -156,26 +133,49 @@ describe("Phase 2: Readiness Linux checks", () => {
 // 4. Linux helper search paths (analogous to Windows HELPER_SEARCH_PATHS)
 // ==================================================================
 describe("Phase 2: Linux helper search paths", () => {
-  test("linux module defines LINUX_HELPER_SEARCH_PATHS", () => {
-    // Phase 2: the linux module should define search paths for the
-    // helper binary analogous to HELPER_SEARCH_PATHS in windows.ts.
-    //
-    // RED expected: The module doesn't export this yet.
+  test("linux module defines LINUX_HELPER_SEARCH_PATHS", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
 
-    const linuxModule = require("../../src/sandbox/linux")
-
-    // The search paths array must exist and be non-empty.
     const searchPaths = linuxModule.LINUX_HELPER_SEARCH_PATHS
     expect(searchPaths).toBeDefined()
     expect(Array.isArray(searchPaths)).toBe(true)
     expect(searchPaths.length).toBeGreaterThan(0)
 
-    // Each entry must be a function that accepts homedir and returns a path string.
     for (const fn of searchPaths) {
       expect(typeof fn).toBe("function")
       const result = fn("/home/testuser")
       expect(typeof result).toBe("string")
       expect(result.length).toBeGreaterThan(0)
     }
+  })
+
+  test("node_modules home search path resolves correctly", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
+    const searchPaths: Array<(h: string) => string> = linuxModule.LINUX_HELPER_SEARCH_PATHS
+
+    const homeNpmFn = searchPaths[2]
+    const result = homeNpmFn("/home/testuser")
+    expect(result).toContain("node_modules")
+    expect(result).toContain("@ericsanchezok/synergy-sandbox-linux-x64")
+    expect(result).toContain("synergy-sandbox-linux")
+    expect(result).toEndWith("bin/synergy-sandbox-linux")
+  })
+
+  test("system-wide node_modules search path resolves independently of homedir", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
+    const searchPaths: Array<(h: string) => string> = linuxModule.LINUX_HELPER_SEARCH_PATHS
+
+    const sysNpmFn = searchPaths[3]
+    const result = sysNpmFn("/home/testuser")
+    expect(result).toContain("/usr/lib/node_modules")
+    expect(result).toContain("@ericsanchezok/synergy-sandbox-linux-x64")
+    expect(result).toContain("synergy-sandbox-linux")
+    expect(result).not.toContain("/home/testuser")
+  })
+
+  test("LINUX_HELPER_SEARCH_PATHS has at least 4 entries (sandbox-helper, bin, node_modules home, node_modules system)", async () => {
+    const linuxModule = await import("../../src/sandbox/linux")
+    const searchPaths: Array<(h: string) => string> = linuxModule.LINUX_HELPER_SEARCH_PATHS
+    expect(searchPaths.length).toBeGreaterThanOrEqual(4)
   })
 })

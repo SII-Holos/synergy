@@ -4,7 +4,7 @@ import * as fs from "fs"
 import { detectPlatform } from "./detect"
 import { platformInfo, isBwrapAvailable } from "./platform"
 import { getWindowsHelperInfo } from "./windows"
-import { getLinuxHelperInfo } from "./linux"
+import { getLinuxHelperInfo, findBundledBwrap } from "./linux"
 import { isWsl1 } from "./wsl"
 import type { SandboxReadinessCheck, SandboxReadiness } from "./types"
 
@@ -273,22 +273,52 @@ export async function getSandboxReadiness(sandboxCfg?: SandboxReadinessConfig): 
         detail: bwrapVersion ?? "Could not determine bwrap version",
       })
 
-      const bundledBwrapPath = path.join(os.homedir(), ".synergy", "sandbox-helper", "bwrap")
-      const bundledBwrapExists = (() => {
-        try {
-          return fs.existsSync(bundledBwrapPath)
-        } catch {
-          return false
-        }
-      })()
-      checks.push({
-        id: "linux_bundled_bwrap",
-        label: "Bundled bwrap",
-        status: bundledBwrapExists ? "pass" : "warn",
-        detail: bundledBwrapExists
-          ? `Bundled bwrap found at ${bundledBwrapPath}`
-          : "No bundled bwrap found. Using system bwrap or manual install.",
-      })
+      const bundledBwrapInfo = findBundledBwrap()
+      if (!bundledBwrapInfo) {
+        checks.push({
+          id: "linux_bundled_bwrap",
+          label: "Bundled bwrap",
+          status: "fail",
+          detail:
+            "Bundled bwrap not found in ~/.synergy/sandbox-helper/bwrap/. Run: bun run packages/synergy/scripts/download-bwrap.sh",
+          recovery: {
+            action: "install_bundled_bwrap",
+            label: "Download and build bundled bwrap",
+            command: "bun run packages/synergy/scripts/download-bwrap.sh",
+          },
+        })
+        checks.push({
+          id: "linux_bundled_bwrap_hash",
+          label: "Bundled bwrap hash verification",
+          status: "fail",
+          detail: "Cannot verify hash — bundled bwrap binary not found.",
+        })
+      } else if (!bundledBwrapInfo.verified) {
+        checks.push({
+          id: "linux_bundled_bwrap",
+          label: "Bundled bwrap",
+          status: "warn",
+          detail: `Bundled bwrap found at ${bundledBwrapInfo.path} but hash verification failed. The binary may be corrupted or tampered. Re-download with: bun run packages/synergy/scripts/download-bwrap.sh`,
+          recovery: {
+            action: "reinstall",
+            label: "Re-download bundled bwrap",
+            command: "bun run packages/synergy/scripts/download-bwrap.sh",
+          },
+        })
+      } else {
+        checks.push({
+          id: "linux_bundled_bwrap",
+          label: "Bundled bwrap",
+          status: "pass",
+          detail: `Bundled bwrap found and hash-verified at ${bundledBwrapInfo.path}.`,
+        })
+        checks.push({
+          id: "linux_bundled_bwrap_hash",
+          label: "Bundled bwrap hash verification",
+          status: "pass",
+          detail: "Bundled bwrap hash verified against trusted hashes.",
+        })
+      }
 
       const landlockAvailable = (() => {
         try {
