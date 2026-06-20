@@ -156,6 +156,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
         ctx.user,
       ),
       options: {},
+      model: ctx.role("mid"),
     },
   }
 }
