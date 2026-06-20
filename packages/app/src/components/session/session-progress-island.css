@@ -209,7 +209,7 @@
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  padding: 0 6px 8px;
+  padding: 0 6px;
 }
 
 @keyframes session-progress-island-enter {
