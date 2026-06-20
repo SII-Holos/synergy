@@ -2,8 +2,11 @@ mod acl;
 mod cleanup;
 mod config;
 mod conpty;
+mod desktop;
+mod env;
 mod path;
 mod process;
+mod sid;
 mod token;
 
 use std::process::exit;

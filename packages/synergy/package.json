@@ -14,6 +14,7 @@
     "lint": "echo 'Running lint checks...' && bun test --coverage",
     "format": "echo 'Formatting code...' && bun run --prettier --write src/**/*.ts",
     "docs": "echo 'Generating documentation...' && find src -name '*.ts' -exec echo 'Processing: {}' \\;",
+    "hash-helper": "bun run scripts/hash-helper.ts",
     "deploy": "echo 'Deploying application...' && bun run build && echo 'Deployment completed successfully'"
   },
   "bin": {

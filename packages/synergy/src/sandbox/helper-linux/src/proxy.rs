@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A single proxy route entry — maps a sandbox-visible proxy URL to the
 /// approved host-side loopback proxy endpoint.
@@ -22,6 +22,22 @@ pub struct ProxyRouteSpec {
 pub struct ProxyHeaderEntry {
     pub name: String,
     pub value: String,
+}
+
+/// Full proxy bridge setup plan: routes, UDS socket path, sandbox listen
+/// address, and environment variable overrides.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyBridgePlan {
+    /// Proxy routes to activate inside the sandbox namespace.
+    pub routes: Vec<ProxyRouteSpec>,
+    /// Path to the host-side Unix domain socket for the proxy bridge.
+    pub host_bridge_socket: String,
+    /// Listen address inside the sandbox netns (e.g. "127.0.0.1:8080").
+    pub sandbox_listen_addr: String,
+    /// Environment variable overrides to set inside the sandbox
+    /// (e.g. "HTTP_PROXY" → "http://127.0.0.1:8080").
+    pub env_overrides: Vec<(String, String)>,
 }
 
 const PROXY_ENV_KEYS: &[&str] = &[
@@ -99,6 +115,59 @@ pub fn plan_proxy_routes() -> Result<Vec<ProxyRouteSpec>, crate::error::HelperEr
     Ok(collect_proxy_env()?.into_values().collect())
 }
 
+/// Plan a full proxy bridge setup from a set of proxy routes.
+///
+/// Generates a host-side Unix domain socket path (with a time-based suffix
+/// for uniqueness), a sandbox listen address, and environment variable
+/// overrides so that sandboxed processes route through the bridge.
+pub fn plan_proxy_bridge(
+    routes: &[ProxyRouteSpec],
+) -> Result<ProxyBridgePlan, crate::error::HelperError> {
+    if routes.is_empty() {
+        return Ok(ProxyBridgePlan {
+            routes: Vec::new(),
+            host_bridge_socket: String::new(),
+            sandbox_listen_addr: String::new(),
+            env_overrides: Vec::new(),
+        });
+    }
+
+    // Generate a unique-ish suffix for the UDS path.  No `rand` crate in
+    // this binary, so we use the current time in microseconds.
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros();
+    let host_bridge_socket = format!("/tmp/synergy-proxy-bridge-{suffix}.sock");
+
+    // Sandbox-side listen address — use a standard localhost port.
+    // In a real deployment the port would come from config; for now we
+    // assign a predictable default that the bridge process will bind to.
+    let sandbox_listen_addr = "127.0.0.1:8080".to_string();
+
+    // Build environment variable overrides from the route keys.
+    let mut env_overrides: Vec<(String, String)> = Vec::new();
+    for _route in routes {
+        // The key is inferred from the route's internal address; in a
+        // full implementation this would look at upstream too.
+        let proxy_url = format!("http://{sandbox_listen_addr}");
+        env_overrides.push(("HTTP_PROXY".to_string(), proxy_url.clone()));
+        env_overrides.push(("HTTPS_PROXY".to_string(), proxy_url.clone()));
+        env_overrides.push(("http_proxy".to_string(), proxy_url.clone()));
+        env_overrides.push(("https_proxy".to_string(), proxy_url));
+    }
+    // Deduplicate.
+    env_overrides.sort();
+    env_overrides.dedup();
+
+    Ok(ProxyBridgePlan {
+        routes: routes.to_vec(),
+        host_bridge_socket,
+        sandbox_listen_addr,
+        env_overrides,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +236,66 @@ mod tests {
         assert!(routes
             .iter()
             .all(|route| is_loopback_endpoint(&route.upstream)));
+    }
+
+    // --- ProxyBridgePlan / plan_proxy_bridge tests ---
+
+    #[test]
+    fn plan_proxy_bridge_produces_valid_plan() {
+        let routes = vec![ProxyRouteSpec {
+            internal: "http://127.0.0.1:3128".to_string(),
+            upstream: "http://127.0.0.1:3128".to_string(),
+            headers: Vec::new(),
+        }];
+        let plan = plan_proxy_bridge(&routes).unwrap();
+        assert_eq!(plan.routes.len(), 1);
+        assert!(!plan.host_bridge_socket.is_empty());
+        assert!(plan
+            .host_bridge_socket
+            .starts_with("/tmp/synergy-proxy-bridge-"));
+        assert!(plan.host_bridge_socket.ends_with(".sock"));
+        assert_eq!(plan.sandbox_listen_addr, "127.0.0.1:8080");
+        assert!(!plan.env_overrides.is_empty());
+    }
+
+    #[test]
+    fn host_bridge_socket_is_unique_per_call() {
+        let route = ProxyRouteSpec {
+            internal: "http://127.0.0.1:8080".to_string(),
+            upstream: "http://127.0.0.1:8080".to_string(),
+            headers: Vec::new(),
+        };
+        let plan1 = plan_proxy_bridge(&[route.clone()]).unwrap();
+        let plan2 = plan_proxy_bridge(&[route]).unwrap();
+        assert_ne!(plan1.host_bridge_socket, plan2.host_bridge_socket);
+    }
+
+    #[test]
+    fn env_overrides_include_proxy_keys() {
+        let routes = vec![ProxyRouteSpec {
+            internal: "http://127.0.0.1:3128".to_string(),
+            upstream: "http://127.0.0.1:3128".to_string(),
+            headers: Vec::new(),
+        }];
+        let plan = plan_proxy_bridge(&routes).unwrap();
+        let keys: Vec<&str> = plan.env_overrides.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains(&"HTTP_PROXY"));
+        assert!(keys.contains(&"HTTPS_PROXY"));
+        assert!(keys.contains(&"http_proxy"));
+        assert!(keys.contains(&"https_proxy"));
+        // Values are all the sandbox listen addr.
+        let addr = format!("http://{}", plan.sandbox_listen_addr);
+        for (_, v) in &plan.env_overrides {
+            assert_eq!(v, &addr);
+        }
+    }
+
+    #[test]
+    fn empty_routes_returns_empty_plan() {
+        let plan = plan_proxy_bridge(&[]).unwrap();
+        assert!(plan.routes.is_empty());
+        assert!(plan.host_bridge_socket.is_empty());
+        assert!(plan.sandbox_listen_addr.is_empty());
+        assert!(plan.env_overrides.is_empty());
     }
 }

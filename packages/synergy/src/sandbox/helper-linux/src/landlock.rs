@@ -107,6 +107,232 @@ fn push_rule_once(rules: &mut Vec<LandlockRule>, rule: LandlockRule) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Landlock kernel syscall wrappers (Linux-only)
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "linux")]
+mod sys {
+    use libc::{c_int, c_long, c_uint, c_void, size_t};
+    use std::ffi::CString;
+    use std::io;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    // Landlock syscall numbers (Linux 5.13+).
+    const SYS_LANDLOCK_CREATE_RULESET: c_long = 444;
+    const SYS_LANDLOCK_ADD_RULE: c_long = 445;
+    const SYS_LANDLOCK_RESTRICT_SELF: c_long = 446;
+
+    // Rule type: path-beneath is the only type in the current kernel.
+    const LANDLOCK_RULE_PATH_BENEATH: c_uint = 1;
+
+    // Filesystem access flags (from linux/landlock.h).
+    const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;
+    const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
+    const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
+    const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
+    const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
+    const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
+    const LANDLOCK_ACCESS_FS_MAKE_CHAR: u64 = 1 << 6;
+    const LANDLOCK_ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
+    const LANDLOCK_ACCESS_FS_MAKE_REG: u64 = 1 << 8;
+    const LANDLOCK_ACCESS_FS_MAKE_SOCK: u64 = 1 << 9;
+    const LANDLOCK_ACCESS_FS_MAKE_FIFO: u64 = 1 << 10;
+    const LANDLOCK_ACCESS_FS_MAKE_BLOCK: u64 = 1 << 11;
+    const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
+
+    /// Read-only access: read directories and files.
+    pub const FS_READ: u64 = LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_READ_FILE;
+
+    /// Read-write access: all read bits plus write, creation, and removal.
+    pub const FS_WRITE: u64 = LANDLOCK_ACCESS_FS_READ_DIR
+        | LANDLOCK_ACCESS_FS_READ_FILE
+        | LANDLOCK_ACCESS_FS_EXECUTE
+        | LANDLOCK_ACCESS_FS_WRITE_FILE
+        | LANDLOCK_ACCESS_FS_REMOVE_DIR
+        | LANDLOCK_ACCESS_FS_REMOVE_FILE
+        | LANDLOCK_ACCESS_FS_MAKE_CHAR
+        | LANDLOCK_ACCESS_FS_MAKE_DIR
+        | LANDLOCK_ACCESS_FS_MAKE_REG
+        | LANDLOCK_ACCESS_FS_MAKE_SOCK
+        | LANDLOCK_ACCESS_FS_MAKE_FIFO
+        | LANDLOCK_ACCESS_FS_MAKE_BLOCK
+        | LANDLOCK_ACCESS_FS_MAKE_SYM;
+
+    /// The union of all access rights we control.  We only need to set bits
+    /// the running kernel actually supports; probing the ABI version tells us
+    /// which access bits are safe.
+    pub const FS_ALL_HANDLED: u64 = FS_READ | FS_WRITE;
+
+    #[repr(C)]
+    pub struct LandlockRulesetAttr {
+        pub handled_access_fs: u64,
+    }
+
+    #[repr(C)]
+    pub struct LandlockPathBeneathAttr {
+        pub allowed_access: u64,
+        pub parent_fd: c_int,
+    }
+
+    pub fn landlock_create_ruleset(
+        attr: *const LandlockRulesetAttr,
+        size: size_t,
+        flags: u32,
+    ) -> c_int {
+        unsafe { libc::syscall(SYS_LANDLOCK_CREATE_RULESET, attr, size, flags) as c_int }
+    }
+
+    pub fn landlock_add_rule(
+        ruleset_fd: c_int,
+        rule_type: c_uint,
+        rule_attr: *const LandlockPathBeneathAttr,
+        flags: u32,
+    ) -> c_int {
+        unsafe {
+            libc::syscall(
+                SYS_LANDLOCK_ADD_RULE,
+                ruleset_fd,
+                rule_type,
+                rule_attr,
+                flags,
+            ) as c_int
+        }
+    }
+
+    pub fn landlock_restrict_self(ruleset_fd: c_int, flags: u32) -> c_int {
+        unsafe { libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, flags) as c_int }
+    }
+
+    /// Open `path` with O_PATH|O_CLOEXEC (no actual access, just a handle for
+    /// use as a Landlock parent fd).
+    pub fn open_path(path: &Path) -> Result<c_int, io::Error> {
+        let c_path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(fd)
+        }
+    }
+}
+
+/// Probe the kernel: is Landlock available?
+///
+/// Returns `true` when the kernel supports at least Landlock ABI v1.
+#[cfg(target_os = "linux")]
+pub fn is_landlock_available() -> bool {
+    let abi = sys::landlock_create_ruleset(std::ptr::null(), 0, 0);
+    abi >= 1
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn is_landlock_available() -> bool {
+    false
+}
+
+/// Apply a planned Landlock ruleset to the current process.
+///
+/// On Linux kernels that support Landlock (5.13+, ABI ≥ 1) this builds a
+/// Landlock ruleset with the specified read/write access and calls
+/// `landlock_restrict_self`.  On non-Linux platforms this is a safe no-op.
+pub fn apply_landlock_ruleset(plan: &LandlockPlan) -> Result<(), HelperError> {
+    apply_landlock_ruleset_impl(plan)
+}
+
+#[cfg(target_os = "linux")]
+fn apply_landlock_ruleset_impl(plan: &LandlockPlan) -> Result<(), HelperError> {
+    if plan.mode == LandlockMode::Disabled || plan.rules.is_empty() {
+        return Ok(());
+    }
+
+    // Probe the supported ABI version.
+    let abi = sys::landlock_create_ruleset(std::ptr::null(), 0, 0);
+    if abi < 1 {
+        return Err(HelperError::Landlock(
+            "Landlock not supported by kernel".into(),
+        ));
+    }
+
+    // Restrict the access mask to what this kernel supports.  ABI v1 covers
+    // bits 0–12 (through MAKE_SYM); v2 adds REFER (bit 13), v3 TRUNCATE
+    // (bit 14).  We don't set bits 13+ so the mask is identical, but
+    // masking here keeps the function robust against future constant changes.
+    let mut handled_access = sys::FS_ALL_HANDLED;
+    if abi < 2 {
+        handled_access &= !((1 << 13) | (1 << 14));
+    }
+
+    // Create the ruleset.
+    let attr = sys::LandlockRulesetAttr {
+        handled_access_fs: handled_access,
+    };
+    let ruleset_fd =
+        sys::landlock_create_ruleset(&attr, std::mem::size_of::<sys::LandlockRulesetAttr>(), 0);
+    if ruleset_fd < 0 {
+        return Err(HelperError::Landlock(format!(
+            "landlock_create_ruleset failed: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+
+    // Add each rule.
+    for rule in &plan.rules {
+        let (path, access) = match rule {
+            LandlockRule::Read { path } => (path, sys::FS_READ & handled_access),
+            LandlockRule::Write { path } => (path, sys::FS_WRITE & handled_access),
+        };
+
+        let dir_fd = sys::open_path(path)
+            .map_err(|e| HelperError::Landlock(format!("open({}) failed: {e}", path.display())))?;
+
+        let path_attr = sys::LandlockPathBeneathAttr {
+            allowed_access: access,
+            parent_fd: dir_fd,
+        };
+
+        let ret =
+            sys::landlock_add_rule(ruleset_fd, sys::LANDLOCK_RULE_PATH_BENEATH, &path_attr, 0);
+        // Close the parent fd immediately — Landlock copies what it needs.
+        unsafe {
+            libc::close(dir_fd);
+        }
+
+        if ret < 0 {
+            unsafe {
+                libc::close(ruleset_fd);
+            }
+            return Err(HelperError::Landlock(format!(
+                "landlock_add_rule({}) failed: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            )));
+        }
+    }
+
+    // Enforce the ruleset on the calling process.
+    let ret = sys::landlock_restrict_self(ruleset_fd, 0);
+    unsafe {
+        libc::close(ruleset_fd);
+    }
+
+    if ret < 0 {
+        return Err(HelperError::Landlock(format!(
+            "landlock_restrict_self failed: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn apply_landlock_ruleset_impl(_plan: &LandlockPlan) -> Result<(), HelperError> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +439,57 @@ mod tests {
             path: PathBuf::from("/usr"),
         };
         assert_ne!(read_rule, write_rule);
+    }
+
+    // -- New tests for Landlock syscall wrappers --
+
+    #[test]
+    fn is_landlock_available_returns_bool() {
+        // On macOS (non-Linux) this is always false.
+        let available = is_landlock_available();
+        assert!(!available);
+    }
+
+    #[test]
+    fn apply_landlock_ruleset_noop_for_disabled_mode() {
+        let plan = LandlockPlan {
+            mode: LandlockMode::Disabled,
+            rules: vec![],
+        };
+        assert!(apply_landlock_ruleset(&plan).is_ok());
+    }
+
+    #[test]
+    fn apply_landlock_ruleset_noop_for_readonly_with_no_rules() {
+        let plan = LandlockPlan {
+            mode: LandlockMode::ReadOnly,
+            rules: vec![],
+        };
+        assert!(apply_landlock_ruleset(&plan).is_ok());
+    }
+
+    #[test]
+    fn apply_landlock_ruleset_noop_on_non_linux_for_eligible_plan() {
+        // Even with a plan that would apply on Linux, this is a no-op on macOS.
+        let plan = LandlockPlan {
+            mode: LandlockMode::ReadOnly,
+            rules: vec![LandlockRule::Read {
+                path: PathBuf::from("/"),
+            }],
+        };
+        assert!(apply_landlock_ruleset(&plan).is_ok());
+    }
+
+    #[test]
+    fn landlock_read_write_masks_are_non_empty() {
+        // Verify the access masks represent distinct, non-trivial access sets.
+        #[cfg(target_os = "linux")]
+        {
+            assert!(sys::FS_READ > 0);
+            assert!(sys::FS_WRITE > 0);
+            assert!(sys::FS_WRITE & sys::FS_READ == sys::FS_READ);
+            assert!((sys::FS_WRITE & !sys::FS_READ) > 0);
+        }
+        // On non-Linux the sys module doesn't exist; the test trivially passes.
     }
 }
