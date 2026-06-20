@@ -8,6 +8,7 @@ import type { DagSummary } from "./session-progress-summary"
 interface SessionProgressDagProps {
   sessionID: string
   summary: DagSummary
+  frozen?: boolean
   class?: string
 }
 
@@ -92,6 +93,7 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
           nodes={nodes()}
           ready={props.summary.ready}
           variant="panel"
+          frozen={props.frozen}
           selectedNodeId={selectedNodeId()}
           onSelectNode={handleSelectNode}
           focusNodeId={focusNodeId()}

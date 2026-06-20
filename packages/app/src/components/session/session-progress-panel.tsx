@@ -1,4 +1,4 @@
-import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useSync } from "@/context/sync"
 import {
@@ -122,9 +122,20 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
 
   onCleanup(clearCompletionTimer)
 
+  // While the island panel is expanding/collapsing, freeze the embedded DAG
+  // so its ResizeObserver doesn't thrash layout + auto-focus every animation
+  // frame (the panel width is changing continuously during the 240ms CSS
+  // transition, which would otherwise cause severe jank).
+  let unfreezeTimer: ReturnType<typeof setTimeout> | undefined
+  const [isAnimating, setIsAnimating] = createSignal(false)
+  onCleanup(() => clearTimeout(unfreezeTimer))
+
   const setExpanded = (expanded: boolean) => {
     clearCompletionTimer()
     setState("expanded", expanded)
+    setIsAnimating(true)
+    clearTimeout(unfreezeTimer)
+    unfreezeTimer = setTimeout(() => setIsAnimating(false), 280)
     if (!expanded && snapshot().status === "complete") {
       completionTimer = setTimeout(() => setState("visible", false), 1600)
     }
@@ -132,12 +143,15 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
 
   const renderChild = () => {
     const currentMode = mode()
+    const frozen = isAnimating()
     if (currentMode === "dag")
-      return dagSummary() ? <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} /> : null
+      return dagSummary() ? (
+        <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} frozen={frozen} />
+      ) : null
     if (currentMode === "todo")
       return todoSummary() ? <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} /> : null
     return state.activeTab === "dag" && dagSummary() ? (
-      <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} />
+      <SessionProgressDag sessionID={props.sessionID} summary={dagSummary()!} frozen={frozen} />
     ) : todoSummary() ? (
       <SessionProgressTodo sessionID={props.sessionID} summary={todoSummary()!} />
     ) : null

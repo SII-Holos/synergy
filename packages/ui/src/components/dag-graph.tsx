@@ -225,6 +225,10 @@ export function DagGraph(props: {
   focusNodeId?: string
   onViewportInteraction?: () => void
   onOpenSession?: (sessionID: string) => void
+  /* When true, the graph ignores container width changes and suppresses
+     auto-focus. Use during parent animations (e.g. panel expand/collapse) so
+     the ResizeObserver storm doesn't thrash layout + focus every frame. */
+  frozen?: boolean
 }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
@@ -260,7 +264,10 @@ export function DagGraph(props: {
   onMount(() => {
     if (!ref) return
     setContainerWidth(ref.clientWidth)
-    const observer = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width))
+    const observer = new ResizeObserver((entries) => {
+      if (props.frozen) return
+      setContainerWidth(entries[0].contentRect.width)
+    })
     observer.observe(ref)
     onCleanup(() => observer.disconnect())
     onCleanup(closeNodeInspector)
@@ -287,6 +294,7 @@ export function DagGraph(props: {
 
   createEffect(
     on([nodeIds, () => containerWidth()], () => {
+      if (props.frozen) return
       const l = layout()
       if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
       focusActiveNodes()
