@@ -107,34 +107,30 @@
   transform: rotate(180deg);
 }
 
-/* Expand/collapse: the wrapper animates max-height, but the panel subtree
-   uses content-visibility so that when collapsed it is entirely skipped by
-   style/layout/paint — no per-frame UpdateLayoutTree for the 5000+ DAG
-   elements. When expanded, content-visibility: visible re-engages rendering.
+/* Expand/collapse panel.
 
-   This is the fix verified by Chrome trace: grid 0fr→1fr caused ~80ms
-   UpdateLayoutTree (8361 elements) per frame; contain+max-height reduced it
-   to ~50ms (5905 elements); content-visibility:hidden while collapsed brings
-   the collapsed-state subtree to near-zero. */
+   No height transition: a Chrome trace showed that any height/max-height
+   animation triggers a full-page UpdateLayoutTree (~6400 elements, 50-90ms
+   each) because the panel's size change is treated as potentially affecting
+   its 6000+ siblings in the session view. This caused severe jank regardless
+   of contain, content-visibility, or grid-rows tricks.
+
+   Instead: collapse/expand the panel instantly (display toggled by JS via the
+   data-expanded attribute), and animate only opacity + a small translate for
+   a lightweight entrance. The surface container's width/border-radius still
+   animates smoothly (cheap — affects only the surface itself), so the visible
+   "pill growing into a panel" effect is preserved. The content fade is fast
+   (120ms) so there's no perceptible delay. */
 .session-progress-island-panel-wrap {
-  contain: strict;
-  overflow: hidden;
-  content-visibility: hidden;
-  contain-intrinsic-size: 0 0;
-  opacity: 0;
-  max-height: 0;
-  pointer-events: none;
-  transition:
-    max-height 240ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 200ms ease-out;
+  display: none;
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
-  content-visibility: visible;
-  contain-intrinsic-size: auto min(68vh, 720px);
-  opacity: 1;
-  max-height: min(68vh, 720px);
-  pointer-events: auto;
+  display: block;
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
+  animation: session-progress-island-panel-fade-in 140ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .session-progress-island-panel {
@@ -144,6 +140,17 @@
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
+}
+
+@keyframes session-progress-island-panel-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .session-progress-island-panel-topline {
@@ -199,18 +206,6 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes session-progress-island-panel-in {
-  /* Reserved — panel visibility is now driven by the grid-rows transition
-     on .session-progress-island-panel-wrap. Kept as a no-op so any external
-     references don't break. */
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 1;
   }
 }
 
