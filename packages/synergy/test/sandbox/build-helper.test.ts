@@ -1,10 +1,8 @@
 import { test, expect, describe } from "bun:test"
 import { $ } from "bun"
-import * as fs from "fs"
 import * as path from "path"
 
 const BUILD_HELPER = path.resolve(import.meta.dir, "..", "..", "scripts", "build-helper.ts")
-const HASH_HELPER = path.resolve(import.meta.dir, "..", "..", "scripts", "hash-helper.ts")
 
 describe("build-helper.ts", () => {
   // Test 1: Linux dry-run generates valid TypeScript hash map
@@ -72,20 +70,15 @@ describe("build-helper.ts", () => {
   })
 })
 
-describe("hash-helper.ts", () => {
-  test("console output and --auto-update generate valid TypeScript hash map", () => {
-    const scriptContent = fs.readFileSync(HASH_HELPER, "utf-8")
+describe("hash-helper replacement (build-helper --skip-build --dry-run)", () => {
+  test("console output generates valid TypeScript hash map using computed property syntax", async () => {
+    const result = await $`bun run ${BUILD_HELPER} linux --skip-build --dry-run`.nothrow().quiet()
+    const stdout = result.stdout.toString()
 
-    // Verify the output line uses computed property syntax with os.homedir()
-    expect(scriptContent).toContain('[path.join(os.homedir(), ".synergy", "sandbox-helper"')
-
-    // Verify the --auto-update replacement uses computed property syntax
-    expect(scriptContent).toContain(
-      '  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${helperName}")]: "${digest}",',
-    )
+    // Verify the output uses computed property syntax with os.homedir()
+    expect(stdout).toContain('[path.join(os.homedir(), ".synergy", "sandbox-helper"')
 
     // Must NOT contain the broken form (bare homedir, no brackets)
-    expect(scriptContent).not.toMatch(/console\.log\(`  path\.join\(homedir/)
-    expect(scriptContent).not.toMatch(/\spath\.join\(homedir,/)
+    expect(stdout).not.toMatch(/\spath\.join\(homedir,/)
   })
 })

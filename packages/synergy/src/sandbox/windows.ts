@@ -7,6 +7,7 @@ import { detectPlatform } from "./detect"
 import { Log } from "@/util/log"
 import { DEFAULT_PROTECTED_PATHS } from "./policy"
 import { buildPermissionProfile } from "./policy-engine"
+import { isTarballHelperUpToDate, verifyHelperHash } from "./utils"
 
 const log = Log.create({ service: "sandbox-windows" })
 
@@ -20,7 +21,7 @@ const log = Log.create({ service: "sandbox-windows" })
  */
 export const WINDOWS_HELPER_BINARY_NAME = "synergy-sandbox-windows.exe"
 
-export const HELPER_SEARCH_PATHS = [
+export const WINDOWS_HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
   (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", WINDOWS_HELPER_BINARY_NAME),
   // Global Synergy binary directory
@@ -103,21 +104,12 @@ function installTarballHelper(): boolean {
   }
 }
 
-function isTarballHelperUpToDate(src: string, dst: string): boolean {
-  try {
-    const srcStat = fs.statSync(src)
-    const dstStat = fs.statSync(dst)
-    return srcStat.mtimeMs <= dstStat.mtimeMs
-  } catch {
-    return false
-  }
-}
 /**
- * Trusted SHA-256 hashes for helper binaries.
+ * Trusted SHA-256 hashes for Windows helper binaries.
  * Updated with every helper binary release.
  * Never load from config — embedded at compile time.
  */
-export const TRUSTED_HELPER_HASHES: Record<string, string> = {
+export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
   // Hash entries for verified helper binaries. Run scripts/build-helper.ts windows --auto-update to populate.
   // Empty map is intentional until release — no helper will be trusted.
 }
@@ -131,17 +123,17 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
   installTarballHelper()
 
   const homedir = os.homedir()
-  for (const getPath of HELPER_SEARCH_PATHS) {
+  for (const getPath of WINDOWS_HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)
     try {
       if (fs.existsSync(p)) {
-        const verified = verifyHelperHash(p)
+        const verified = verifyHelperHash(p, TRUSTED_WINDOWS_HELPER_HASHES)
         if (verified) {
           return { path: p, verified: true }
         }
         // Hash mismatch — log warning and continue searching
         log.warn("Windows sandbox helper hash verification failed", { path: p })
-        return { path: p, verified: false }
+        continue
       }
     } catch {
       // Permission denied or filesystem error — skip this path
@@ -149,33 +141,6 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
     }
   }
   return null
-}
-
-function verifyHelperHash(binaryPath: string): boolean {
-  // If no trusted hashes are embedded, refuse to trust the binary
-  if (Object.keys(TRUSTED_HELPER_HASHES).length === 0) {
-    return false
-  }
-  // Try all trusted hashes — multi-arch builds produce distinct keys
-  for (const trustedHash of Object.values(TRUSTED_HELPER_HASHES)) {
-    if (!trustedHash || trustedHash.length === 0) continue
-    try {
-      const hash = crypto.createHash("sha256")
-      const data = fs.readFileSync(binaryPath)
-      hash.update(data)
-      const digest = hash.digest("hex")
-      // Constant-time comparison
-      if (digest.length !== trustedHash.length) continue
-      let result = 0
-      for (let i = 0; i < digest.length; i++) {
-        result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
-      }
-      if (result === 0) return true
-    } catch {
-      continue
-    }
-  }
-  return false
 }
 
 // ------------------------------------------------------------------
@@ -193,7 +158,7 @@ export namespace WindowsBackend {
   /**
    * Prepare a Windows sandbox execution wrapper.
    *
-   * Phase 3: detects the Rust helper binary, builds JSON config,
+   * Detects the Rust helper binary, builds JSON config,
    * writes it to a temp file, and returns a sandboxed wrapper that
    * invokes synergy-sandbox-windows.exe with a shared PermissionProfile config.
    * Security invariants:

@@ -118,6 +118,8 @@ export namespace SandboxBackend {
           extraWritableRoots: opts.extraWritableRoots,
           forcePlatform: opts.forcePlatform,
           backend: opts.backend,
+          forceHelperPath: opts.forceHelperPath,
+          forceHelperVerified: opts.forceHelperVerified,
         }
         return LinuxBackend.prepare(linuxOpts)
       }

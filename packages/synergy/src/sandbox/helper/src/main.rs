@@ -3,7 +3,7 @@ mod cleanup;
 mod config;
 mod conpty;
 mod desktop;
-mod elevated;
+mod elevated_session;
 mod elevation;
 mod pipe;
 mod env;

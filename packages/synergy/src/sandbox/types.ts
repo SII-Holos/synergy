@@ -45,6 +45,10 @@ export interface PrepareLinuxWrapperOpts {
   forcePlatform?: string
   /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
   backend?: string
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
 }
 
 export interface SeatbeltProfileOpts {

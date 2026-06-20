@@ -9,7 +9,7 @@ const args = process.argv.slice(2)
 const platform = args.find((a) => a === "linux" || a === "windows") ?? "linux"
 const helperDir = platform === "linux" ? "helper-linux" : "helper"
 const targetModule = platform === "linux" ? "linux.ts" : "windows.ts"
-const constName = platform === "linux" ? "TRUSTED_LINUX_HELPER_HASHES" : "TRUSTED_HELPER_HASHES"
+const constName = platform === "linux" ? "TRUSTED_LINUX_HELPER_HASHES" : "TRUSTED_WINDOWS_HELPER_HASHES"
 const binaryName = platform === "linux" ? "synergy-sandbox-linux" : "synergy-sandbox-windows.exe"
 
 const targetArgIdx = args.indexOf("--target")
@@ -64,13 +64,11 @@ if (autoUpdate) {
   const sourceFile = path.resolve(import.meta.dir, "..", "src", "sandbox", targetModule)
   let content = fs.readFileSync(sourceFile, "utf-8")
 
-  const archSuffix = targetTriple
-    ? targetTriple.includes("aarch64")
-      ? "-arm64"
-      : targetTriple.includes("x86_64")
-        ? "-x64"
-        : ""
-    : ""
+  let archSuffix = ""
+  if (targetTriple) {
+    if (targetTriple.includes("aarch64")) archSuffix = "-arm64"
+    else if (targetTriple.includes("x86_64")) archSuffix = "-x64"
+  }
   const binaryKey = binaryName + archSuffix
   const newEntry = `  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${binaryKey}")]: "${hash}",`
 

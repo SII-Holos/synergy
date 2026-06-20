@@ -27,6 +27,10 @@ struct TokenElevation {
 ///
 /// Uses `GetTokenInformation` with `TokenElevation` class on Windows.
 /// Returns `false` on non-Windows platforms.
+///
+/// Held for future admin-detection flow (e.g., skip UAC prompt if already elevated).
+/// Currently unused in production — only `self_elevate()` is called.
+#[allow(dead_code)]
 pub fn is_elevated() -> bool {
     if !cfg!(target_os = "windows") {
         return false;
