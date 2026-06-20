@@ -220,3 +220,13 @@ export function generateAmendment(match: RuleMatch): ExecPolicyAmendment | null 
     commandPrefix: match.matchedRule?.prefix ?? [],
   }
 }
+export function generateAmendmentForCapability(capability: string): ExecPolicyAmendment | undefined {
+  // For shell_hardline: no amendment (can't be bypassed in any profile)
+  if (capability === "shell_hardline") return undefined
+
+  // For other denied capabilities, suggest switching to guarded
+  return {
+    type: "execPolicy",
+    commandPrefix: ["--profile=guarded"],
+  }
+}

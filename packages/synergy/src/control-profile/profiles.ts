@@ -67,12 +67,53 @@ function guardedRules() {
     return rule(permission, "ask")
   })
 }
+function autonomousRules() {
+  return CAPABILITY_PERMISSIONS.map((permission) => {
+    // Hardline is NEVER allowed — absolute bottom line
+    if (permission === "shell_hardline") return rule(permission, "deny", true)
+
+    // These are safe for autonomous development
+    if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
+    if (permission === "file_write") return rule(permission, "allow")
+    if (permission === "shell") return rule(permission, "allow")
+    if (permission === "network_request") return rule(permission, "allow")
+
+    // These were previously blocked in autonomous — now ALLOWED
+    if (permission === "file_external") return rule(permission, "allow")
+    if (permission === "mcp_invoke") return rule(permission, "allow")
+    if (permission === "plugin_invoke") return rule(permission, "allow")
+    if (permission === "identity_act") return rule(permission, "allow")
+    if (permission === "communication_email") return rule(permission, "allow")
+    if (permission === "channel_outbound") return rule(permission, "allow")
+    if (permission === "platform_control") return rule(permission, "allow")
+
+    // Shell destructive: keep as ask (agent should be aware)
+    if (permission === "shell_destructive") return rule(permission, "ask")
+
+    return rule(permission, "allow")
+  })
+}
 
 function workspaceFs(workspace: string) {
   return {
     readRoots: [workspace],
     writeRoots: [workspace],
     protectedPaths: [],
+  }
+}
+function autonomousFs(workspace: string) {
+  return {
+    readRoots: ["/"],
+    writeRoots: [workspace],
+    protectedPaths: [],
+  }
+}
+
+function autonomousPolicy(workspace: string) {
+  return {
+    filesystem: autonomousFs(workspace),
+    network: { mode: "restricted" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
   }
 }
 
@@ -216,19 +257,20 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
     }
 
     case "autonomous": {
-      const policy = workspacePolicy(workspace)
+      const policy = autonomousPolicy(workspace)
       const profile = {
         valid: true,
         label: "Autonomous",
-        description: "Keep working unattended. High-risk actions are denied with guidance instead of prompting.",
-        ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
+        description:
+          "Unattended development with full tool access. Network, external reads, and extensions are available. Only destructive shell commands are blocked with recovery guidance.",
+        ruleset: autonomousRules(),
         ...policy,
         sandbox: effectiveSandbox,
         approval: approval("autonomous"),
       }
       return {
         ...profile,
-        summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace),
+        summary: summary(id, profile, ["shell_hardline"], workspace),
       }
     }
 

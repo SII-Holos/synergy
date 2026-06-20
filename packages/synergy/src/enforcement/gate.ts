@@ -31,6 +31,7 @@ import {
   type PrefixRule,
   evaluateCommand,
   generateAmendment,
+  generateAmendmentForCapability,
   type ExecPolicyAmendment,
   type RuleMatch,
 } from "./exec-policy"
@@ -64,6 +65,8 @@ export interface Envelope {
     reason: string
     permanent: boolean
     matchedPermission: string
+    guidance?: string
+    amendment?: ExecPolicyAmendment
   }
   /** Populated when execPolicy generates an amendment for "ask" decisions */
   amendment?: ExecPolicyAmendment
@@ -717,10 +720,18 @@ export namespace EnforcementGate {
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
       if (decision === "deny") {
+        const isAutonomous = profileId === "autonomous"
         refusal = {
           reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
+          ...(isAutonomous && deniedCapClass
+            ? {
+                guidance:
+                  "Switch to guarded profile to approve this operation. Use `synergy profile guarded` or the profile switcher in the UI.",
+                amendment: generateAmendmentForCapability(deniedCapClass),
+              }
+            : {}),
         }
       }
 

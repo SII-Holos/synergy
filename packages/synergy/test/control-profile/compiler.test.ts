@@ -54,21 +54,24 @@ describe("guarded profile policy", () => {
 })
 
 describe("autonomous profile policy", () => {
-  test("auto-allows low and medium risk work but denies high-risk capabilities", async () => {
+  test("auto-allows most capabilities, denies only shell_hardline", async () => {
     const profile = await ControlProfileCompiler.resolve("autonomous", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
     expect(rule(profile, "shell_read")?.action).toBe("allow")
     expect(rule(profile, "file_write")?.action).toBe("allow")
     expect(rule(profile, "shell")?.action).toBe("allow")
-    expect(rule(profile, "file_external")?.action).toBe("deny")
-    expect(rule(profile, "platform_control")?.action).toBe("deny")
+    expect(rule(profile, "file_external")?.action).toBe("allow")
+    expect(rule(profile, "platform_control")?.action).toBe("allow")
+    expect(rule(profile, "shell_destructive")?.action).toBe("ask")
+    expect(rule(profile, "shell_hardline")?.action).toBe("deny")
   })
 
-  test("matches guarded filesystem, network, and sandbox boundaries", async () => {
+  test("shares network and sandbox boundaries with guarded while allowing full read", async () => {
     const guarded = await ControlProfileCompiler.resolve("guarded", context)
     const autonomous = await ControlProfileCompiler.resolve("autonomous", context)
-    expect(autonomous.filesystem).toEqual(guarded.filesystem)
+    expect(autonomous.filesystem.readRoots).toEqual(["/"])
+    expect(autonomous.filesystem.writeRoots).toEqual(guarded.filesystem.writeRoots)
     expect(autonomous.network).toEqual(guarded.network)
     expect(autonomous.sandbox).toEqual(guarded.sandbox)
   })
