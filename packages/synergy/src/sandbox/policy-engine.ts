@@ -12,6 +12,7 @@ export interface SynergyFileSystemSandboxPolicy {
   protectedPaths: string[]
   dataDenyRoots: string[]
   includePlatformDefaults: boolean
+  workspace: string
 }
 
 export interface SynergyNetworkSandboxPolicy {
@@ -106,6 +107,7 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     protectedPaths,
     dataDenyRoots,
     includePlatformDefaults: true,
+    workspace: input.workspace,
   }
 
   return { fileSystem, network }

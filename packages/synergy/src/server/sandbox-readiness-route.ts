@@ -23,6 +23,7 @@ const SandboxReadinessSchema = z
     backend: z.string().nullable(),
     ready: z.boolean(),
     checks: z.array(SandboxReadinessCheckSchema),
+    summary: z.string(),
   })
   .meta({ ref: "SandboxReadiness" })
 
@@ -104,6 +105,16 @@ export const SandboxReadinessRoute = new Hono().get(
             : "/usr/bin/sandbox-exec not found — macOS sandbox unavailable",
         })
 
+        // Check sandbox-exec version / deprecation note
+        checks.push({
+          id: "macos_sandbox_exec_version",
+          label: "sandbox-exec version",
+          status: sandboxExecExists ? "warn" : "fail",
+          detail: sandboxExecExists
+            ? "sandbox-exec available (deprecated since macOS 10.12 Sierra but still functional on Apple Silicon)"
+            : "sandbox-exec not found",
+        })
+
         // Check log stream utility for denial logging
         const logExists = (() => {
           try {
@@ -160,6 +171,78 @@ export const SandboxReadinessRoute = new Hono().get(
           detail: usernsAvailable
             ? "User namespaces appear enabled"
             : "User namespaces disabled — bwrap requires unprivileged user namespaces. Set kernel.unprivileged_userns_clone=1.",
+        })
+
+        // Check max_user_namespaces (RHEL/Fedora)
+        const maxUsernsAvailable = (() => {
+          try {
+            const result = Bun.spawnSync({
+              cmd: ["cat", "/proc/sys/user/max_user_namespaces"],
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            if (result.exitCode === 0) {
+              const val = parseInt(new TextDecoder().decode(result.stdout).trim())
+              return val > 0
+            }
+            return true // file doesn't exist = unlimited (kernel default)
+          } catch {
+            return true
+          }
+        })()
+        checks.push({
+          id: "linux_user_max_namespaces",
+          label: "Max user namespaces",
+          status: maxUsernsAvailable ? "pass" : "fail",
+          detail: maxUsernsAvailable
+            ? "user.max_user_namespaces > 0"
+            : "user.max_user_namespaces = 0 — no user namespaces available. Set to > 0 or disable this restriction.",
+        })
+
+        // Check bwrap version
+        const bwrapVersion = (() => {
+          try {
+            const result = Bun.spawnSync({
+              cmd: ["bwrap", "--version"],
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            return new TextDecoder().decode(result.stdout).trim()
+          } catch {
+            return null
+          }
+        })()
+        checks.push({
+          id: "linux_bwrap_version",
+          label: "bwrap version",
+          status: bwrapVersion ? "pass" : "warn",
+          detail: bwrapVersion ?? "Could not determine bwrap version",
+        })
+
+        // Check Landlock LSM availability
+        const landlockAvailable = (() => {
+          try {
+            const result = Bun.spawnSync({
+              cmd: [
+                "sh",
+                "-c",
+                "grep -q landlock /proc/filesystems 2>/dev/null || grep -q CONFIG_SECURITY_LANDLOCK /boot/config-$(uname -r) 2>/dev/null",
+              ],
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            return result.exitCode === 0
+          } catch {
+            return false
+          }
+        })()
+        checks.push({
+          id: "linux_landlock",
+          label: "Landlock LSM",
+          status: landlockAvailable ? "pass" : "warn",
+          detail: landlockAvailable
+            ? "Landlock kernel module detected — available as fallback sandbox"
+            : "Landlock not detected — bwrap is the only Linux sandbox option",
         })
         break
       }
@@ -224,11 +307,19 @@ export const SandboxReadinessRoute = new Hono().get(
 
     // Ready: config must be enabled and no checks must have failed
     const ready = configEnabled && !checks.some((c) => c.status === "fail")
+    // Compute summary
+    const summary = ready
+      ? "Sandbox is operational"
+      : checks
+          .filter((c) => c.status === "fail")
+          .map((c) => c.label)
+          .join(", ") + " — sandbox not ready"
 
     return c.json({
       platform: platformName,
       backend: info.backend,
       ready,
+      summary,
       checks,
     })
   },

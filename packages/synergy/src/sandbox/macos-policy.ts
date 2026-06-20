@@ -6,6 +6,10 @@
 // macos-sbpl.ts. Paths are parameterized via -D flags so the
 // generated .sb file is portable across directories.
 // ------------------------------------------------------------------
+import * as fs_node from "fs"
+import * as os from "os"
+import * as path from "path"
+import { ancestorLiterals } from "./policy"
 
 import type { SynergySandboxPermissionProfile } from "./policy-engine"
 import { MacOSSbpl } from "./macos-sbpl"
@@ -42,12 +46,6 @@ function readOnlyDeny(subpath: string): string {
   return `(deny file-write* (subpath "${escapeSbpl(subpath)}"))`
 }
 
-function dataDenyRule(root: string): string {
-  const r = escapeSbpl(root)
-  return `(deny file-read* (subpath "${r}"))
-(deny file-write* (subpath "${r}"))`
-}
-
 function metadataDenyRegex(name: string): string {
   // Protect writable paths containing /.<name>/ or ending in /.<name>
   const escaped = name.replace(/\./g, "\\.")
@@ -65,9 +63,59 @@ function escapeSbpl(s: string): string {
 }
 
 // ------------------------------------------------------------------
-// Main exports
+// Path normalization helpers
 // ------------------------------------------------------------------
 
+/**
+ * Canonicalize a path through realpath to handle APFS firmlinks.
+ * On macOS, /tmp → /private/tmp and /Users → /System/Volumes/Data/Users.
+ * SBPL rules using user-visible paths may not match kernel-resolved paths,
+ * so we resolve all paths to their canonical form before Rule generation.
+ *
+ * Returns the original path if realpath fails (e.g. path doesn't exist yet).
+ */
+function canonicalize(p: string): string {
+  try {
+    return fs_node.realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
+/**
+ * Build deny rules for sibling directories of the workspace in the homedir.
+ *
+ * Seatbelt SBPL enforces "deny always wins" regardless of rule order.
+ * A broad (deny (subpath /Users/eric)) would block workspace access even if
+ * the workspace is later allowed. Instead, we enumerate each sibling directory
+ * of the homedir and deny only those that are NOT the workspace or its ancestors.
+ *
+ * This achieves the goal: workspace access is permitted, but other user data
+ * directories under $HOME are blocked.
+ */
+function buildSiblingDenyRules(workspace: string, homedir: string): string[] {
+  const results: string[] = []
+  const ancestors = new Set(ancestorLiterals(workspace).map((p) => canonicalize(p)))
+
+  try {
+    const entries = fs_node.readdirSync(homedir)
+    for (const entry of entries) {
+      const full = canonicalize(path.join(homedir, entry))
+      if (!ancestors.has(full) && !full.startsWith(workspace + "/") && full !== workspace) {
+        const r = escapeSbpl(full)
+        results.push(`(deny file-read* (subpath "${r}"))`)
+        results.push(`(deny file-write* (subpath "${r}"))`)
+      }
+    }
+  } catch {
+    // can't read homedir — skip sibling blocking
+  }
+
+  return results
+}
+
+// ------------------------------------------------------------------
+// Main exports
 export namespace MacOSPolicy {
   /**
    * Compile a SynergySandboxPermissionProfile into a complete SBPL
@@ -98,13 +146,17 @@ export namespace MacOSPolicy {
     }
 
     // 5. Read-only subpaths (protected paths inside writable roots)
+    //    Canonicalize to handle APFS firmlink path remapping.
     for (const pp of fs.readOnlySubpaths) {
-      lines.push(readOnlyDeny(pp))
+      lines.push(readOnlyDeny(canonicalize(pp)))
     }
 
-    // 6. Data deny roots (e.g. homedir — deny all access)
-    for (const root of fs.dataDenyRoots) {
-      lines.push(dataDenyRule(root))
+    // 6. Sibling-block deny rules — block homedir children except workspace
+    //    Uses canonicalized paths for APFS firmlink correctness.
+    const homedir = canonicalize(os.homedir())
+    const workspace = canonicalize(fs.workspace)
+    for (const rule of buildSiblingDenyRules(workspace, homedir)) {
+      lines.push(rule)
     }
 
     // 7. Network policy
@@ -133,11 +185,11 @@ export namespace MacOSPolicy {
     const fs = profile.fileSystem
 
     for (let i = 0; i < fs.readableRoots.length; i++) {
-      params[readParamName(i)] = fs.readableRoots[i]
+      params[readParamName(i)] = canonicalize(fs.readableRoots[i])
     }
 
     for (let i = 0; i < fs.writableRoots.length; i++) {
-      params[writeParamName(i)] = fs.writableRoots[i]
+      params[writeParamName(i)] = canonicalize(fs.writableRoots[i])
     }
 
     return params

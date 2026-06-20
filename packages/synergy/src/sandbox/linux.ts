@@ -1,5 +1,6 @@
 import * as path from "path"
 import * as os from "os"
+import * as fs from "fs"
 import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
 import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
@@ -10,6 +11,45 @@ import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
  * Mirrors Codex's LINUX_PLATFORM_DEFAULT_READ_ROOTS.
  */
 const LINUX_PLATFORM_READ_ROOTS = ["/bin", "/sbin", "/usr", "/etc", "/lib", "/lib64"]
+
+/**
+ * Ensure a protected path exists before bwrap tries to --ro-bind it.
+ * bwrap requires the source path to exist; if it doesn't, the mount
+ * is skipped and a sandboxed process could create a malicious config
+ * file or directory at that location (CBSE attack vector).
+ *
+ * Pre-creates missing paths as empty files or directories as needed.
+ * Never throws — graceful degradation: returns false if creation fails.
+ */
+function ensureProtectedPath(protectedPath: string): boolean {
+  try {
+    fs.statSync(protectedPath)
+    return true
+  } catch {
+    try {
+      const parentDir = path.dirname(protectedPath)
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true })
+      }
+      if (isFilePath(protectedPath)) {
+        fs.writeFileSync(protectedPath, "# Synergy sandbox protected placeholder. Do not remove.\n", "utf-8")
+      } else {
+        fs.mkdirSync(protectedPath, { recursive: true })
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+/** Heuristic: files have a known file basename or a file extension. */
+function isFilePath(protectedPath: string): boolean {
+  const ext = path.extname(protectedPath)
+  if (ext) return true
+  const knownFileBasenames = new Set([".netrc", ".npmrc", ".gitconfig", ".git-credentials"])
+  return knownFileBasenames.has(path.basename(protectedPath))
+}
 
 export namespace LinuxBackend {
   /**
@@ -73,9 +113,12 @@ export namespace LinuxBackend {
     } else {
       bwrapArgs.push("--bind", workspace, workspace)
 
-      // Protected paths: ro-bind to prevent writes inside workspace
+      // Protected paths: ensure existence then ro-bind to prevent writes.
+      // Pre-creating missing paths closes the CBSE vector where a sandboxed
+      // process creates a malicious config file that executes on the host.
       const protectedPaths = DEFAULT_PROTECTED_PATHS(homedir, workspace)
       for (const protectedPath of protectedPaths) {
+        ensureProtectedPath(protectedPath)
         bwrapArgs.push("--ro-bind", protectedPath, protectedPath)
       }
     }

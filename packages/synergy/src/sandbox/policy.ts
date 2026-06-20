@@ -41,8 +41,47 @@ export function traversalLiterals(roots: string[]): string[] {
   return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
 }
 
+// ------------------------------------------------------------------
+// Credential-bearing paths that must ALWAYS be protected inside any sandbox.
+// Each path is read-only mounted (or denied writes on macOS) unconditionally.
+//
+// Lessons from real-world sandbox escapes:
+//   - Cymulate 2026: Gemini CLI OAuth leak via ~/.gemini/oauth_creds.json mounted RW
+//   - CBSE (Cross-Agent Sandbox Bypass Exploit): agent config cross-contamination
+// ------------------------------------------------------------------
+export const CREDENTIAL_PATHS = (homedir: string): string[] => [
+  // ── Synergy internal ───────────────────────────────────────────
+  // Protects against: CBSE config/prompt leak, credential exfiltration
+  path.join(homedir, ".synergy", "config"),
+  path.join(homedir, ".synergy", "data", "auth"),
+  path.join(homedir, ".synergy", "data", "engram"),
+  path.join(homedir, ".synergy", "data", "notes"),
+  // ── Network & cloud credentials ─────────────────────────────────
+  // Protects against: SSH key theft, cloud credential exfiltration, GPG key compromise
+  path.join(homedir, ".netrc"),
+  path.join(homedir, ".ssh"),
+  path.join(homedir, ".gnupg"),
+  path.join(homedir, ".aws"),
+  path.join(homedir, ".config", "gcloud"),
+  path.join(homedir, ".docker", "config.json"),
+  // ── Shell configs (prevent command injection) ────────────────────
+  // Protects against: shell injection via sandboxed process rewriting shell rc files
+  path.join(homedir, ".bashrc"),
+  path.join(homedir, ".zshrc"),
+  path.join(homedir, ".profile"),
+  path.join(homedir, ".bash_profile"),
+  path.join(homedir, ".zprofile"),
+  // ── Other agent configs ─────────────────────────────────────────
+  // Protects against: CBSE — cross-agent sandbox bypass via reading/writing
+  // another agent's configuration, credentials, or prompt data
+  path.join(homedir, ".cursor"),
+  path.join(homedir, ".claude"),
+  path.join(homedir, ".codex"),
+  path.join(homedir, ".gemini"),
+]
+
 export const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
   path.join(workspace, ".git"),
-  path.join(homedir, ".synergy", "config"),
-  path.join(homedir, ".synergy", "data", "auth", "api-key.json"),
+  path.join(workspace, ".synergy"),
+  ...CREDENTIAL_PATHS(homedir),
 ]

@@ -95,4 +95,5 @@ export interface SandboxReadiness {
   backend: string | null
   ready: boolean
   checks: SandboxReadinessCheck[]
+  summary: string
 }
