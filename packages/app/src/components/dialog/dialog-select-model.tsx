@@ -2,7 +2,8 @@ import { Component, createMemo, JSX, Show } from "solid-js"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { useLocal, type LocalModel } from "@/context/local"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { popularProviders } from "@/hooks/use-providers"
+import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { useGlobalSync } from "@/context/global-sync"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
@@ -110,14 +111,44 @@ const ConnectedModelManager: Component<{
   provider?: string
   onSelect?: () => void
 }> = (props) => {
-  const local = useLocal()
+  const globalSync = useGlobalSync()
+  const providers = useProviders()
 
+  // Build the connected model list from global provider data so the panel
+  // shows models even when opened outside the per-directory LocalProvider
+  // (e.g. from Settings → Manage models).
   const models = createMemo(() =>
-    local.model
+    providers
       .all()
+      .flatMap((p) =>
+        Object.values(p.models).map((m) => ({
+          ...m,
+          provider: p,
+          name: m.name.replace("(latest)", "").trim(),
+          latest: m.name.includes("(latest)"),
+        })),
+      )
+      .filter((model) =>
+        providers
+          .connected()
+          .map((p) => p.id)
+          .includes(model.provider.id),
+      )
       .filter((model) => (props.provider ? model.provider.id === props.provider : true))
       .sort((a, b) => a.name.localeCompare(b.name)),
   )
+
+  // Local preferences (quick switcher membership) are only available inside
+  // a directory route. When opened from a global context, these are no-ops.
+  const local = (() => {
+    try {
+      return useLocal()
+    } catch {
+      return undefined
+    }
+  })()
+
+  const currentModel = () => local?.model.current()
 
   return (
     <List
@@ -125,13 +156,13 @@ const ConnectedModelManager: Component<{
       emptyMessage="No connected model results"
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
-      current={local.model.current()}
+      current={currentModel()}
       filterKeys={["provider.name", "name", "id"]}
       groupBy={(x) => x.provider.name}
       sortGroupsBy={sortGroups}
       onSelect={(x) => {
         if (!x) return
-        local.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
+        local?.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
         props.onSelect?.()
       }}
     >
@@ -141,9 +172,9 @@ const ConnectedModelManager: Component<{
           <div class="flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
             <span class="text-12-regular text-text-weak">Quick</span>
             <Switch
-              checked={local.model.inQuickSwitcher({ modelID: model.id, providerID: model.provider.id })}
+              checked={local?.model.inQuickSwitcher({ modelID: model.id, providerID: model.provider.id }) ?? false}
               onChange={(checked) => {
-                local.model.setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
+                local?.model.setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
               }}
             />
           </div>
