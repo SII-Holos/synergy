@@ -292,12 +292,25 @@ export function DagGraph(props: {
       .join("\u0001"),
   )
 
+  // Auto-focus when node set or container width changes. Wrapped in
+  // requestAnimationFrame so the forced reflow inside fitToNodes
+  // (viewport.getBoundingClientRect()) doesn't run synchronously inside
+  // Solid's effect batch — a sync reflow here blocked the main thread for
+  // 55-60ms per call (verified via Chrome trace stackTrace on fitToNodes).
+  let focusRaf: number | undefined
+  onCleanup(() => {
+    if (focusRaf !== undefined) cancelAnimationFrame(focusRaf)
+  })
   createEffect(
     on([nodeIds, () => containerWidth()], () => {
       if (props.frozen) return
       const l = layout()
       if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
-      focusActiveNodes()
+      if (focusRaf !== undefined) cancelAnimationFrame(focusRaf)
+      focusRaf = requestAnimationFrame(() => {
+        focusRaf = undefined
+        focusActiveNodes()
+      })
     }),
   )
 
