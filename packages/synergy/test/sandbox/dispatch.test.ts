@@ -102,10 +102,12 @@ describe("prepareWrapper dispatch routing", () => {
     expect(wrapper.sandboxed).toBe(true)
     expect(wrapper.skipReason).toBeUndefined()
 
-    // Args structure: ["-f", <tempPath>, command, ...args]
+    // Args structure with deny-default: ["-f", <tempPath>, ...-D params..., command, ...args]
+    // Use dynamic command lookup instead of fixed positions.
     expect(wrapper.args[0]).toBe("-f")
-    expect(wrapper.args[2]).toBe("echo")
-    expect(wrapper.args[3]).toBe("dispatch-test")
+    const cmdIndex = wrapper.args.indexOf("echo")
+    expect(cmdIndex).toBeGreaterThan(0)
+    expect(wrapper.args[cmdIndex + 1]).toBe("dispatch-test")
 
     // Temp profile file exists and has .sb suffix
     const tempPath = wrapper.args[1]
@@ -261,7 +263,6 @@ describe("execute fallback", () => {
 // ------------------------------------------------------------------
 describe("execute sandboxed temp cleanup", () => {
   test("sandboxed=true runs wrapper and cleans up temp on success", () => {
-    // This test spawns sandbox-exec — only valid on macOS
     if (os.platform() !== "darwin") return
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
@@ -269,6 +270,7 @@ describe("execute sandboxed temp cleanup", () => {
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
       forcePlatform: "macos",
+      backend: "seatbelt-legacy-allow-default",
     })
 
     const tempPath = wrapper.tempPath

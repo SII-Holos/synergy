@@ -5,6 +5,7 @@ import * as crypto from "crypto"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
 import { Log } from "@/util/log"
+import { DEFAULT_PROTECTED_PATHS } from "./policy"
 
 const log = Log.create({ service: "sandbox-windows" })
 
@@ -79,18 +80,6 @@ function verifyHelperHash(binaryPath: string): boolean {
   } catch {
     return false
   }
-}
-
-// ------------------------------------------------------------------
-// Protected paths
-// ------------------------------------------------------------------
-
-function defaultProtectedPaths(homedir: string, workspace: string): string[] {
-  return [
-    path.join(workspace, ".git"),
-    path.join(homedir, ".synergy", "config"),
-    path.join(homedir, ".synergy", "data", "auth", "api-key.json"),
-  ]
 }
 
 // ------------------------------------------------------------------
@@ -176,7 +165,7 @@ export namespace WindowsBackend {
       execution_cwd: opts.executionCwd ?? workspace,
       writable_roots: [workspace, ...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])],
       read_roots: [path.join(homedir, ".synergy"), ...(opts.runtimeReadRoots ?? []), ...(opts.extraReadRoots ?? [])],
-      protected_paths: defaultProtectedPaths(homedir, workspace),
+      protected_paths: DEFAULT_PROTECTED_PATHS(homedir, workspace),
       data_deny_roots: opts.dataDenyRoots ?? [],
       command,
       args,

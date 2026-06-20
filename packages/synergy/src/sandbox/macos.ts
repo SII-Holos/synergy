@@ -14,19 +14,18 @@ function randomId(): string {
 
 export namespace MacBackend {
   /**
-   * Generate a macOS Seatbelt profile as an ordered array of lines.
+   * Generate the legacy macOS Seatbelt profile as an ordered array of lines.
    *
-   * macOS `sandbox-exec` is not usable for normal shell commands with a pure
-   * `(deny default)` baseline without a very large platform-specific allowlist.
-   * This backend therefore uses `(allow default)` for process viability, then
-   * denies broad user-data roots (for example the home directory) and re-allows
-   * only the active workspace / controlled temp paths. This preserves the
-   * important Synergy boundary: commands cannot read or write sibling worktrees,
-   * the original checkout, or other user data under home unless the active
-   * workspace explicitly covers them.
+   * This function is used only by the explicit
+   * `seatbelt-legacy-allow-default` backend. The default macOS sandbox path is
+   * the Codex-parity deny-default compiler (`buildPermissionProfile` +
+   * `MacOSPolicy.compileProfile`).
    *
-   * Order matters (last-match-wins): broad user-data denies come before active
-   * workspace allows; protected write denies come last.
+   * The legacy profile keeps `(allow default)` for process viability, then
+   * denies broad user-data roots and re-allows only the active workspace /
+   * controlled temp paths. Order matters in this legacy profile
+   * (last-match-wins): broad user-data denies come before active workspace
+   * allows; protected write denies come last.
    */
   export function generateSeatbeltProfile(opts: SeatbeltProfileOpts): string[] {
     const { workspace, sandboxMode, runtimeReadRoots, writableRoots, protectedPaths } = opts
@@ -95,18 +94,25 @@ export namespace MacBackend {
       }
     }
 
-    // ── Deny-default (Codex parity) SBPL path ────────────────────────
-    // When the backend is explicitly set to "seatbelt-deny-default",
-    // use the parameterized (deny default) profile compiler instead of
-    // the legacy (allow default) approach. This produces stricter
-    // sandbox profiles that match Codex's macOS sandbox behavior.
-    if (opts.backend === "seatbelt-deny-default") {
+    // ── Deny-default (Codex parity) SBPL path (DEFAULT) ──────────
+    // Unless explicitly overridden to "seatbelt-legacy-allow-default",
+    // use the parameterized (deny default) profile compiler. The deny-default
+    // path intentionally does not consume legacy dataDenyRoots directly;
+    // `MacOSPolicy.compileProfile` enforces user-data isolation through
+    // sibling-blocking so broad parent denies cannot override workspace allows.
+    // This matches Codex's macOS sandbox behavior.
+    if (opts.backend !== "seatbelt-legacy-allow-default") {
+      const runtimeReadRoots = [
+        ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
+        ...(opts.extraReadRoots ?? []),
+      ]
+      const writableRoots = [...(opts.writableRoots ?? [workspace]), ...(opts.extraWritableRoots ?? [])]
       const policyProfile = buildPermissionProfile({
         workspace,
         executionCwd: opts.executionCwd ?? workspace,
         sandboxMode,
-        approvedReadPaths: [],
-        approvedWritePaths: [],
+        approvedReadPaths: runtimeReadRoots,
+        approvedWritePaths: writableRoots,
         approvedNetwork: false,
         approvedUnixSockets: [],
       })

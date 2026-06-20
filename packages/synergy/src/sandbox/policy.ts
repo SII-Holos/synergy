@@ -64,6 +64,7 @@ export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   path.join(homedir, ".aws"),
   path.join(homedir, ".config", "gcloud"),
   path.join(homedir, ".docker", "config.json"),
+  path.join(homedir, ".npmrc"),
   // ── Shell configs (prevent command injection) ────────────────────
   // Protects against: shell injection via sandboxed process rewriting shell rc files
   path.join(homedir, ".bashrc"),

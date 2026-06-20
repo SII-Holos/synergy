@@ -43,11 +43,21 @@ function ensureProtectedPath(protectedPath: string): boolean {
   }
 }
 
-/** Heuristic: files have a known file basename or a file extension. */
+/** Heuristic for missing protected paths that should be pre-created as files. */
 function isFilePath(protectedPath: string): boolean {
   const ext = path.extname(protectedPath)
   if (ext) return true
-  const knownFileBasenames = new Set([".netrc", ".npmrc", ".gitconfig", ".git-credentials"])
+  const knownFileBasenames = new Set([
+    ".netrc",
+    ".npmrc",
+    ".gitconfig",
+    ".git-credentials",
+    ".bashrc",
+    ".zshrc",
+    ".profile",
+    ".bash_profile",
+    ".zprofile",
+  ])
   return knownFileBasenames.has(path.basename(protectedPath))
 }
 
@@ -69,7 +79,16 @@ export namespace LinuxBackend {
    * - Protected paths (.git, .synergy/config, etc.) must not be writable
    */
   export function prepare(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrapper {
-    const { command, args, workspace, sandboxMode, runtimeReadRoots, forcePlatform } = opts
+    const {
+      command,
+      args,
+      workspace,
+      sandboxMode,
+      runtimeReadRoots,
+      extraReadRoots,
+      extraWritableRoots,
+      forcePlatform,
+    } = opts
 
     if (sandboxMode === "none") {
       return { command, args, sandboxed: false }
@@ -107,11 +126,21 @@ export namespace LinuxBackend {
       bwrapArgs.push("--ro-bind", root, root)
     }
 
+    // Extra read roots (from caller — e.g. permitted tool paths)
+    for (const root of extraReadRoots ?? []) {
+      bwrapArgs.push("--ro-bind", root, root)
+    }
+
     // Workspace mount: read-only or read-write based on sandbox mode
     if (sandboxMode === "read_only") {
       bwrapArgs.push("--ro-bind", workspace, workspace)
     } else {
       bwrapArgs.push("--bind", workspace, workspace)
+
+      // Extra writable roots (from caller — e.g. permitted tool output paths)
+      for (const root of extraWritableRoots ?? []) {
+        bwrapArgs.push("--bind", root, root)
+      }
 
       // Protected paths: ensure existence then ro-bind to prevent writes.
       // Pre-creating missing paths closes the CBSE vector where a sandboxed
