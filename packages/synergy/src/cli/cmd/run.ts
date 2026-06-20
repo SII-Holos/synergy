@@ -1,4 +1,5 @@
 import type { Argv } from "yargs"
+import { pathToFileURL } from "url"
 import path from "path"
 import { UI } from "../ui"
 import { cmd } from "./cmd"
@@ -121,7 +122,7 @@ export const SendCommand = cmd({
 
         fileParts.push({
           type: "file",
-          url: `file://${resolvedPath}`,
+          url: pathToFileURL(resolvedPath).href,
           filename: path.basename(resolvedPath),
           mime,
         })

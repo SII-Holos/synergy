@@ -1,6 +1,7 @@
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
+import { pathToFileURL } from "url"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 
@@ -100,7 +101,7 @@ export namespace Global {
       return path.join(root(), "schema", "config.schema.json")
     },
     get configSchemaUrl() {
-      return "file://" + path.join(root(), "schema", "config.schema.json")
+      return pathToFileURL(path.join(root(), "schema", "config.schema.json")).href
     },
   }
 }

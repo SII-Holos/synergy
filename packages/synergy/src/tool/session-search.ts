@@ -8,6 +8,7 @@ import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import DESCRIPTION from "./session-search.txt"
+import path from "node:path"
 
 const parameters = z.object({
   pattern: z.string().describe("Regex pattern to search for in message text content."),
@@ -94,7 +95,10 @@ function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefin
 
 function formatResult(result: SessionResult): string {
   const scope = result.session.scope as Scope
-  const scopeLabel = scope.type === "global" ? "Home" : (scope.name ?? scope.directory?.split("/").pop() ?? scope.id)
+  const scopeLabel =
+    scope.type === "global"
+      ? "Home"
+      : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
   const updated = new Date(result.session.time.updated).toISOString()
   const lines = [`[${result.session.id}] "${result.session.title}" — ${scopeLabel} (updated ${updated})`]
 

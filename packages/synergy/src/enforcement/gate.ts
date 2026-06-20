@@ -1,3 +1,4 @@
+import path from "node:path"
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier } from "./classify"
@@ -263,7 +264,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
+      paths.push(path.isAbsolute(raw) ? raw : path.join(cwd, raw))
     }
   }
   return paths

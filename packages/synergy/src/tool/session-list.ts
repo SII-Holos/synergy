@@ -7,6 +7,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionNav, type SessionNavEntry } from "../session/nav"
 import DESCRIPTION from "./session-list.txt"
+import path from "node:path"
 
 const parameters = z.object({
   scope: z
@@ -35,7 +36,7 @@ const QueryLimit = 10000
 
 function formatScopeLabel(scope: Scope): string {
   if (scope.type === "global") return `Home [${scope.id}]`
-  const name = scope.name ?? scope.directory.split("/").pop() ?? scope.id
+  const name = scope.name ?? path.basename(scope.directory) ?? scope.id
   return `${name} [${scope.id}] — ${scope.directory}`
 }
 
