@@ -7,6 +7,7 @@ import { detectPlatform } from "../sandbox/detect"
 import { platformInfo, isBwrapAvailable } from "../sandbox/platform"
 import { getWindowsHelperInfo } from "../sandbox/windows"
 import { getLinuxHelperInfo, TRUSTED_LINUX_HELPER_HASHES } from "../sandbox/linux"
+import { isWsl1 } from "../sandbox/wsl"
 import type { SandboxReadinessCheck } from "../sandbox/types"
 
 const SandboxReadinessCheckSchema = z
@@ -135,6 +136,18 @@ export const SandboxReadinessRoute = new Hono().get(
         break
       }
       case "linux": {
+        // ── WSL1 detection ────────────────────────────────────
+        // WSL1 lacks the kernel features (namespaces, seccomp)
+        // required for bwrap-based sandboxing.
+        const wsl1Detected = isWsl1()
+        checks.push({
+          id: "linux_wsl1",
+          label: "WSL1 environment",
+          status: wsl1Detected ? "fail" : "pass",
+          detail: wsl1Detected
+            ? "WSL1 detected — bwrap namespace sandboxing is unsupported due to kernel limitations. Upgrade to WSL2 for full sandbox support."
+            : "Not running under WSL1",
+        })
         // ── Linux helper binary check ──────────────────────────
         const linuxHelperInfo = getLinuxHelperInfo()
         if (!linuxHelperInfo) {

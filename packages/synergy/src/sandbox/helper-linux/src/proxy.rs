@@ -24,6 +24,39 @@ pub struct ProxyHeaderEntry {
     pub value: String,
 }
 
+/// Permission decision for a domain or unix socket rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DomainPermission {
+    Allow,
+    Deny,
+}
+
+/// A per-domain routing rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DomainRule {
+    pub pattern: String,
+    pub permission: DomainPermission,
+}
+
+/// SOCKS5 proxy configuration contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Socks5ConfigContract {
+    pub enabled: bool,
+    pub url: Option<String>,
+    pub udp_enabled: bool,
+}
+
+/// Rule for allowing or denying access to a Unix domain socket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnixSocketRule {
+    pub path: String,
+    pub permission: DomainPermission,
+}
+
 /// Full proxy bridge setup plan: routes, UDS socket path, sandbox listen
 /// address, and environment variable overrides.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +71,14 @@ pub struct ProxyBridgePlan {
     /// Environment variable overrides to set inside the sandbox
     /// (e.g. "HTTP_PROXY" → "http://127.0.0.1:8080").
     pub env_overrides: Vec<(String, String)>,
+    /// Per-domain allow/deny rules.
+    pub domain_rules: Vec<DomainRule>,
+    /// SOCKS5 proxy configuration.
+    pub socks5: Socks5ConfigContract,
+    /// Unix domain socket access rules.
+    pub unix_socket_rules: Vec<UnixSocketRule>,
+    /// Whether local port binding is allowed inside the sandbox.
+    pub allow_local_binding: bool,
 }
 
 const PROXY_ENV_KEYS: &[&str] = &[
@@ -129,6 +170,14 @@ pub fn plan_proxy_bridge(
             host_bridge_socket: String::new(),
             sandbox_listen_addr: String::new(),
             env_overrides: Vec::new(),
+            domain_rules: Vec::new(),
+            socks5: Socks5ConfigContract {
+                enabled: false,
+                url: None,
+                udp_enabled: false,
+            },
+            unix_socket_rules: Vec::new(),
+            allow_local_binding: false,
         });
     }
 
@@ -165,6 +214,14 @@ pub fn plan_proxy_bridge(
         host_bridge_socket,
         sandbox_listen_addr,
         env_overrides,
+        domain_rules: Vec::new(),
+        socks5: Socks5ConfigContract {
+            enabled: false,
+            url: None,
+            udp_enabled: false,
+        },
+        unix_socket_rules: Vec::new(),
+        allow_local_binding: false,
     })
 }
 
@@ -297,5 +354,76 @@ mod tests {
         assert!(plan.host_bridge_socket.is_empty());
         assert!(plan.sandbox_listen_addr.is_empty());
         assert!(plan.env_overrides.is_empty());
+    }
+
+    // --- New contract tests ---
+
+    #[test]
+    fn domain_rules_can_be_built() {
+        let rule = DomainRule {
+            pattern: "api.example.com".to_string(),
+            permission: DomainPermission::Allow,
+        };
+        assert_eq!(rule.pattern, "api.example.com");
+        assert_eq!(rule.permission, DomainPermission::Allow);
+    }
+
+    #[test]
+    fn domain_rule_can_deny() {
+        let rule = DomainRule {
+            pattern: "*.evil.com".to_string(),
+            permission: DomainPermission::Deny,
+        };
+        assert_eq!(rule.permission, DomainPermission::Deny);
+        assert_eq!(rule.pattern, "*.evil.com");
+    }
+
+    #[test]
+    fn socks5_config_contract_fields_are_correct() {
+        let enabled = Socks5ConfigContract {
+            enabled: true,
+            url: Some("socks5://127.0.0.1:9050".to_string()),
+            udp_enabled: true,
+        };
+        assert!(enabled.enabled);
+        assert_eq!(enabled.url, Some("socks5://127.0.0.1:9050".to_string()));
+        assert!(enabled.udp_enabled);
+
+        let disabled = Socks5ConfigContract {
+            enabled: false,
+            url: None,
+            udp_enabled: false,
+        };
+        assert!(!disabled.enabled);
+        assert_eq!(disabled.url, None);
+        assert!(!disabled.udp_enabled);
+    }
+
+    #[test]
+    fn unix_socket_rules_can_be_allow_or_deny() {
+        let allow_rule = UnixSocketRule {
+            path: "/var/run/docker.sock".to_string(),
+            permission: DomainPermission::Allow,
+        };
+        assert_eq!(allow_rule.path, "/var/run/docker.sock");
+        assert_eq!(allow_rule.permission, DomainPermission::Allow);
+
+        let deny_rule = UnixSocketRule {
+            path: "/tmp/private.sock".to_string(),
+            permission: DomainPermission::Deny,
+        };
+        assert_eq!(deny_rule.path, "/tmp/private.sock");
+        assert_eq!(deny_rule.permission, DomainPermission::Deny);
+    }
+
+    #[test]
+    fn empty_plan_has_default_new_fields() {
+        let plan = plan_proxy_bridge(&[]).unwrap();
+        assert!(plan.domain_rules.is_empty());
+        assert!(!plan.socks5.enabled);
+        assert!(plan.socks5.url.is_none());
+        assert!(!plan.socks5.udp_enabled);
+        assert!(plan.unix_socket_rules.is_empty());
+        assert!(!plan.allow_local_binding);
     }
 }

@@ -38,22 +38,55 @@ export namespace MacOSSbpl {
   (iokit-user-client-class "RootDomainUserClient"))
 (allow mach-lookup
   (global-name "com.apple.distributed_notifications")
+  (global-name "com.apple.distributed_notifications.2")
   (global-name "com.apple.FontServer")
+  (global-name "com.apple.FontObjectsServer")
+  (global-name "com.apple.FontWorker")
+  (global-name "com.apple.MallocDiagnostics")
+  (global-name "com.apple.PerformanceAnalysis.animationperfd")
+  (global-name "com.apple.SystemConfiguration.configd")
+  (global-name "com.apple.SystemConfiguration.PPPController")
+  (global-name "com.apple.audio.SandboxHelper")
+  (global-name "com.apple.cfprefsd.daemon")
+  (global-name "com.apple.cfprefsd.agent")
+  (local-name "com.apple.cfprefsd.agent")
   (global-name "com.apple.CoreServices.coreservicesd")
-  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.coreservices.launchservicesd")
+  (global-name "com.apple.diagnosticd")
+  (global-name "com.apple.DiskArbitration.diskarbitrationd")
+  (global-name "com.apple.diskimages-helpers")
+  (global-name "com.apple.lsd.mapdb")
+  (global-name "com.apple.metadata.mds")
+  (global-name "com.apple.PowerManagement.control")
+  (global-name "com.apple.quicklook.ThumbnailsAgent")
+  (global-name "com.apple.revisiond")
   (global-name "com.apple.securityd")
-  (global-name "com.apple.system.notification_center"))
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.opendirectoryd.membership")
+  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.cmio.VDCAssistant")
+  (global-name "com.apple.tccd")
+  (global-name "com.apple.corespotlightservice"))
 (allow ipc-posix-sem)
-(allow ipc-posix-shm)
+(allow ipc-posix-shm
+  (ipc-posix-name-prefix "apple.cfprefs.")
+  (ipc-posix-name-regex #"^/__KMP_REGISTERED_LIB_[0-9]+$"))
 (allow file-read* file-write*
   (subpath "/dev/ptmx"))
 (allow file-read* file-write*
   (regex #"^/dev/ttys[0-9]+"))
+(allow file-read* file-write*
+  (subpath "/var/tmp")
+  (subpath "/dev/shm")
+  (regex #"^/tmp/.com.apple.csseed.*")
+  (regex #"^/private/tmp/.com.apple.csseed.*"))
 (allow file-read*
   (subpath "/usr/lib")
   (subpath "/System/Library")
   (subpath "/Library")
-  (subpath "/Applications/Xcode.app"))`
+  (subpath "/Applications/Xcode.app"))
+(allow user-preference-read)`
 
   // ------------------------------------------------------------------
   // Platform default readable paths

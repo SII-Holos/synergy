@@ -7,6 +7,7 @@ import { isLinuxHelperAvailable } from "./linux"
 // Re-export detection primitives for backward compat
 export { detectPlatform, isPlatformSupported } from "./detect"
 export type { PlatformName } from "./detect"
+export { isWsl, isWsl1, isWsl2, detectWslVersion } from "./wsl"
 
 export function platformInfo(): PlatformInfo {
   const platform = detectPlatform()

@@ -246,6 +246,15 @@ export namespace SandboxBackend {
         denialSession = startDenialLogger(child.pid)
       }
     }
+    // ── after_spawn hook: caller callback after child process created ─────
+    if (opts.after_spawn) {
+      try {
+        await opts.after_spawn(child.pid)
+      } catch (e) {
+        child.kill("SIGKILL")
+        throw e
+      }
+    }
 
     const outputChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []

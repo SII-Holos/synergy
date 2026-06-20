@@ -73,6 +73,7 @@ export interface SandboxExecuteOpts {
   maxOutputBytes?: number
   onStdout?: (chunk: Buffer) => void
   onStderr?: (chunk: Buffer) => void
+  after_spawn?: (pid: number) => void | Promise<void>
 }
 
 export interface SandboxExecuteResult {

@@ -1,3 +1,26 @@
+export interface ApprovalCacheEntry {
+  decision: "approved_for_session" | "denied"
+  timestamp: number
+}
+
+export class ApprovalCache {
+  private cache = new Map<string, ApprovalCacheEntry>()
+
+  get(capabilityKey: string): "approved_for_session" | "denied" | null {
+    const entry = this.cache.get(capabilityKey)
+    if (!entry) return null
+    return entry.decision
+  }
+
+  put(capabilityKey: string, decision: "approved_for_session" | "denied"): void {
+    this.cache.set(capabilityKey, { decision, timestamp: Date.now() })
+  }
+
+  clear(): void {
+    this.cache.clear()
+  }
+}
+
 import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
@@ -311,6 +334,7 @@ export namespace EnforcementGate {
     const approvedReadPaths = new Set<string>()
     const approvedWritePaths = new Set<string>()
     let approvedNetwork = false
+    const approvalCache = new ApprovalCache()
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
@@ -585,6 +609,11 @@ export namespace EnforcementGate {
       return { capabilities: caps }
     }
 
+    function buildCapabilityKey(caps: Capability[]): string {
+      const classes = [...new Set(caps.filter((c) => c.class !== "file_read").map((c) => c.class))].sort()
+      return classes.join("|") || "file_read"
+    }
+
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
       const { capabilities } = classify(toolName, args)
 
@@ -609,6 +638,16 @@ export namespace EnforcementGate {
         // NonBypassable/opaque affect explicit asks and metadata, not an
         // already-allowed profile decision.
         // Allow stands unless overridden
+      }
+
+      // Approval cache: if the profile says "ask" but the capability was
+      // previously approved for this session, skip the prompt.
+      if (decision === "ask") {
+        const key = buildCapabilityKey(capabilities)
+        const cached = approvalCache.get(key)
+        if (cached === "approved_for_session") {
+          decision = "allow"
+        }
       }
 
       // Populate refusal info for deny decisions
@@ -715,6 +754,20 @@ export namespace EnforcementGate {
           approvedNetwork,
           approvedUnixSockets: [],
         })
+      },
+      /** Record a session-level approval for the capability classes in this envelope. */
+      approveCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "approved_for_session")
+      },
+      /** Record a session-level denial for the capability classes in this envelope. */
+      denyCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "denied")
+      },
+      /** Clear all session-level approval cache entries. */
+      clearApprovalCache() {
+        approvalCache.clear()
       },
     }
   }

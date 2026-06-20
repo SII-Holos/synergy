@@ -6,6 +6,7 @@ import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
 import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
 import { Log } from "@/util/log"
+import { isWsl1 } from "./wsl"
 
 const log = Log.create({ service: "sandbox-linux" })
 
@@ -274,6 +275,18 @@ export namespace LinuxBackend {
     }
 
     // Explicit opt-in to inline bwrap for debugging/comparison
+
+    // WSL1 lacks the kernel features required for bwrap namespace sandboxing.
+    // Return skipReason instead of failing with cryptic kernel errors.
+    if (isWsl1()) {
+      return {
+        command,
+        args,
+        sandboxed: false,
+        skipReason:
+          "WSL1 is unsupported for sandboxing — bwrap requires namespace and seccomp features not available on WSL1. Upgrade to WSL2 for full sandbox support.",
+      }
+    }
     if (opts.backend === "bwrap-inline-debug") {
       return prepareInlineBwrap(opts)
     }
