@@ -100,7 +100,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!binPath) return { available: false }
 
     try {
-      const proc = Bun.spawn(["codex", "--version"], {
+      const proc = Bun.spawn([binPath, "--version"], {
         stdout: "pipe",
         stderr: "pipe",
       })
@@ -135,13 +135,15 @@ class CodexAdapter implements ExternalAgent.Adapter {
     // are forwarded to avoid leaking the Synergy process environment to Codex.
     const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
     const currentEnv = buildCodexProcessEnv(process.env, this.env, configEnv)
+    const prompt = composeTurnInput(context)
 
+    const command = this.commandPath()
     const args = this.buildArgs(context)
     const fullArgs = [...args]
 
-    log.info("spawning codex turn", { sessionID: context.sessionID, args: fullArgs.join(" ") })
+    log.info("spawning codex turn", { sessionID: context.sessionID, command, args: fullArgs.join(" ") })
 
-    const proc = Bun.spawn(["codex", ...fullArgs], {
+    const proc = Bun.spawn([command, ...fullArgs], {
       cwd: this.cwd,
       env: currentEnv,
       stdin: "pipe",
@@ -151,6 +153,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.currentProc = proc
 
     try {
+      proc.stdin.write(prompt)
       proc.stdin.end()
     } catch {}
 
@@ -249,10 +252,14 @@ class CodexAdapter implements ExternalAgent.Adapter {
     if (!isResume) {
       args.push("-C", this.cwd)
     }
-
-    const prompt = composeTurnInput(context)
-    args.push(prompt)
+    args.push("-")
     return args
+  }
+
+  private commandPath(): string {
+    const configured = this.adapterConfig.path
+    if (typeof configured === "string" && configured.trim()) return configured
+    return "codex"
   }
 
   private readStdout(proc: import("bun").Subprocess<"pipe", "pipe", "pipe">): void {
@@ -435,6 +442,13 @@ class CodexAdapter implements ExternalAgent.Adapter {
 
 function composeTurnInput(context: ExternalAgent.TurnContext): string {
   const parts: string[] = []
+  parts.push(
+    [
+      "<handoff-guidance>",
+      "Inspect the repository in a targeted way before editing. Prefer rg and specific known files over broad scans, avoid exhaustive searches unless necessary, and avoid repeated status or log checks when one current check is enough.",
+      "</handoff-guidance>",
+    ].join("\n"),
+  )
   if (context.instructions) {
     parts.push(`<project-instructions>\n${context.instructions}\n</project-instructions>`)
   }
