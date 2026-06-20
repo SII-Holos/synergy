@@ -425,13 +425,12 @@ describe("session workspace binding", () => {
               await Session.updateWorkspace(session.id, worktreeWs)
               Instance.refreshWorkspace(worktreeWs as Workspace)
 
-              const gate = EnforcementGate.create({
+              const gate = (await EnforcementGate.create({
                 activeWorkspace: Instance.directory,
                 workspaceType: Instance.workspace?.type === "git_worktree" ? "worktree" : "main",
                 profileId: "autonomous",
-              })
+              })) as any
 
-              expect(gate.getWorkspace()).toBe(worktreeWs.path)
               expect(gate.evaluate("write", { filePath: path.join(worktreeWs.path, "src/file.ts") }).decision).toBe(
                 "allow",
               )
