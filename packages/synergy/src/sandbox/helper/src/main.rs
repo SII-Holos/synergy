@@ -1,6 +1,7 @@
 mod acl;
 mod cleanup;
 mod config;
+mod conpty;
 mod path;
 mod process;
 mod token;

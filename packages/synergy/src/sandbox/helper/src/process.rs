@@ -122,8 +122,12 @@ fn quote_windows_arg(arg: &str) -> String {
 }
 
 use windows_result::*;
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
 use windows_sys::Win32::System::JobObjects::*;
+use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::*;
 
 /// Create a Job Object with KILL_ON_JOB_CLOSE and active process limit 1.
@@ -157,6 +161,7 @@ pub unsafe fn create_sandbox_job() -> windows_result::Result<HANDLE> {
 }
 
 /// Create a sandboxed process using the restricted token and assign to job.
+/// Captures child stdout/stderr via anonymous pipes and forwards to parent.
 /// Returns the child's exit code.
 pub unsafe fn create_sandboxed_process(
     token: HANDLE,
@@ -168,9 +173,39 @@ pub unsafe fn create_sandboxed_process(
     let cmd_line = build_command_line(command, args);
     let mut cmd_line_wide: Vec<u16> = cmd_line.encode_utf16().chain(std::iter::once(0)).collect();
     let cwd_wide: Vec<u16> = cwd.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // Inheritable security attributes for pipe handles
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: std::ptr::null_mut(),
+        bInheritHandle: 1,
+    };
+
+    // Create anonymous pipes for stdout and stderr capture
+    let mut stdout_read: HANDLE = INVALID_HANDLE_VALUE;
+    let mut stdout_write: HANDLE = INVALID_HANDLE_VALUE;
+    let mut stderr_read: HANDLE = INVALID_HANDLE_VALUE;
+    let mut stderr_write: HANDLE = INVALID_HANDLE_VALUE;
+
+    if CreatePipe(&mut stdout_read, &mut stdout_write, &sa, 0) == 0 {
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(hr, "CreatePipe for stdout failed"));
+    }
+
+    if CreatePipe(&mut stderr_read, &mut stderr_write, &sa, 0) == 0 {
+        CloseHandle(stdout_read);
+        CloseHandle(stdout_write);
+        let hr = HRESULT::from_win32(GetLastError());
+        return Err(Error::new(hr, "CreatePipe for stderr failed"));
+    }
+
     let mut process_info: PROCESS_INFORMATION = std::mem::zeroed();
     let mut startup_info: STARTUPINFOW = std::mem::zeroed();
     startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    startup_info.hStdOutput = stdout_write;
+    startup_info.hStdError = stderr_write;
+    startup_info.hStdInput = std::ptr::null_mut();
+    startup_info.dwFlags = STARTF_USESTDHANDLES;
 
     // Create process as the restricted token user, suspended
     let ok = CreateProcessAsUserW(
@@ -179,7 +214,7 @@ pub unsafe fn create_sandboxed_process(
         cmd_line_wide.as_mut_ptr(),
         std::ptr::null(),
         std::ptr::null(),
-        0,
+        1, // bInheritHandles = TRUE
         CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
         std::ptr::null(),
         cwd_wide.as_ptr(),
@@ -188,10 +223,18 @@ pub unsafe fn create_sandboxed_process(
     );
 
     if ok == 0 {
+        CloseHandle(stdout_read);
+        CloseHandle(stdout_write);
+        CloseHandle(stderr_read);
+        CloseHandle(stderr_write);
         CloseHandle(token);
         let hr = HRESULT::from_win32(GetLastError());
         return Err(Error::new(hr, "CreateProcessAsUserW failed"));
     }
+
+    // Close our write ends — child inherits them; when child exits, pipe breaks
+    CloseHandle(stdout_write);
+    CloseHandle(stderr_write);
 
     // Assign to job BEFORE resuming
     let ok = AssignProcessToJobObject(job, process_info.hProcess);
@@ -199,6 +242,8 @@ pub unsafe fn create_sandboxed_process(
         TerminateProcess(process_info.hProcess, 1);
         CloseHandle(process_info.hProcess);
         CloseHandle(process_info.hThread);
+        CloseHandle(stdout_read);
+        CloseHandle(stderr_read);
         CloseHandle(token);
         let hr = HRESULT::from_win32(GetLastError());
         return Err(Error::new(hr, "AssignProcessToJobObject failed"));
@@ -215,7 +260,72 @@ pub unsafe fn create_sandboxed_process(
     // Close our thread handle (job still holds process reference)
     CloseHandle(process_info.hThread);
 
-    // Wait for process exit (INFINITE is in Win32_System_Threading)
+    // Forward child stdout/stderr to parent until pipes break
+    let parent_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    let parent_stderr = GetStdHandle(STD_ERROR_HANDLE);
+    let mut buf = [0u8; 4096];
+    let mut bytes_read: u32 = 0;
+    let mut bytes_written: u32 = 0;
+
+    loop {
+        // Read from child stdout pipe
+        let stdout_ok = ReadFile(
+            stdout_read,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            &mut bytes_read,
+            std::ptr::null_mut(),
+        );
+
+        if stdout_ok != 0 && bytes_read > 0 {
+            if parent_stdout != INVALID_HANDLE_VALUE {
+                WriteFile(
+                    parent_stdout,
+                    buf.as_ptr(),
+                    bytes_read,
+                    &mut bytes_written,
+                    std::ptr::null_mut(),
+                );
+            }
+        }
+
+        // Read from child stderr pipe
+        let stderr_ok = ReadFile(
+            stderr_read,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            &mut bytes_read,
+            std::ptr::null_mut(),
+        );
+
+        if stderr_ok != 0 && bytes_read > 0 {
+            if parent_stderr != INVALID_HANDLE_VALUE {
+                WriteFile(
+                    parent_stderr,
+                    buf.as_ptr(),
+                    bytes_read,
+                    &mut bytes_written,
+                    std::ptr::null_mut(),
+                );
+            }
+        }
+
+        // Both pipes broken → child has exited and closed its handles
+        if stdout_ok == 0 || stderr_ok == 0 {
+            let err = GetLastError();
+            if err == 109 {
+                // ERROR_BROKEN_PIPE
+                break;
+            }
+            // Other error: still break to avoid infinite loop
+            break;
+        }
+    }
+
+    CloseHandle(stdout_read);
+    CloseHandle(stderr_read);
+
+    // Wait for process exit
     WaitForSingleObject(process_info.hProcess, INFINITE);
 
     let mut exit_code: u32 = 0;
