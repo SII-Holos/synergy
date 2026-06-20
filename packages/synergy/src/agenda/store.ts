@@ -111,6 +111,7 @@ export namespace AgendaStore {
       prompt: input.prompt,
       agent: input.agent,
       model: input.model,
+      sessionMode: input.sessionMode,
       sessionRefs: input.sessionRefs,
       timeout: input.timeout,
       wake: input.wake ?? true,
@@ -161,6 +162,7 @@ export namespace AgendaStore {
     options?: { recomputeNextRunAt?: boolean },
   ): Promise<AgendaTypes.Item> {
     const sid = Identifier.asScopeID(scopeID)
+    const now = Date.now()
     const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
       if (patch.title !== undefined) draft.title = patch.title
       if (patch.description !== undefined) draft.description = patch.description
@@ -173,18 +175,21 @@ export namespace AgendaStore {
           }
         }
         draft.triggers = patch.triggers
-        draft.state.nextRunAt = computeNextRunAt(patch.triggers)
+        draft.state.nextRunAt = computeNextRunAt(patch.triggers, now)
       }
       if (patch.prompt !== undefined) draft.prompt = patch.prompt
       if (patch.global !== undefined) draft.global = patch.global
       if (patch.wake !== undefined) draft.wake = patch.wake
       if (patch.silent !== undefined) draft.silent = patch.silent
       if (patch.agent !== undefined) draft.agent = patch.agent
+      if (patch.model !== undefined) draft.model = patch.model
+      if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
       if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
+      if (patch.timeout !== undefined) draft.timeout = patch.timeout
       if (options?.recomputeNextRunAt) {
-        draft.state.nextRunAt = computeNextRunAt(draft.triggers)
+        draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
       }
-      draft.time.updated = Date.now()
+      draft.time.updated = now
     })
     log.info("updated", { id: itemID })
     await Bus.publish(AgendaEvent.ItemUpdated, { item })
