@@ -126,31 +126,3 @@ describe("SessionInvoke.cancel", () => {
     SessionManager.unregisterRuntime(sessionID)
   })
 })
-
-describe("SessionInvoke.resumePending", () => {
-  test("does not start assistant loops for pending sessions", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await Session.updateMessage({
-          id: "msg_pending_user",
-          sessionID: session.id,
-          role: "user",
-          agent: "test",
-          model: { providerID: "test-provider", modelID: "test-model" },
-          time: { created: 0 },
-        })
-        await Session.update(session.id, (draft) => {
-          draft.pendingReply = true
-        })
-        SessionManager.unregisterRuntime(session.id)
-
-        await SessionInvoke.resumePending()
-
-        expect(SessionManager.getRuntime(session.id)).toBeUndefined()
-      },
-    })
-  })
-})

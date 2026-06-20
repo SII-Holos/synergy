@@ -200,7 +200,7 @@ export function MemoryView(props: {
           />
         }
       >
-        <div class={`flex items-center gap-1.5 flex-wrap mb-3 px-3 py-2.5 ${engramInsetClass}`}>
+        <div class="flex items-center gap-1.5 flex-wrap mb-3">
           <For each={MEMORY_CATEGORIES}>
             {(cat) => {
               const count = () => categoryCounts().get(cat) ?? 0

@@ -27,7 +27,12 @@ export namespace AgendaReactor {
       return await run(signal, scopeID)
     } catch (err) {
       log.error("execute failed", { itemID: signal.source, error: err instanceof Error ? err : new Error(String(err)) })
-      return { nextRunAt: undefined, sessionID: undefined }
+      // Compute a fallback nextRunAt so the clock entry is not permanently
+      // deleted. If the item cannot be read, return undefined as a last resort.
+      const nextRunAt = await AgendaStore.get(scopeID, signal.source)
+        .then((item) => AgendaStore.computeNextRunAt(item.triggers))
+        .catch(() => undefined)
+      return { nextRunAt, sessionID: undefined }
     }
   }
 
@@ -40,18 +45,37 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined }
     }
 
-    const before = await Plugin.trigger(
-      "agenda.run.before",
-      {
-        signal,
-        item: storedItem,
-        scopeID,
-      },
-      {
-        skip: false,
-        item: storedItem,
-      },
-    )
+    const scope = storedItem.origin.scope ?? Scope.global()
+    return Instance.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
+  }
+
+  async function runInScope(
+    storedItem: AgendaTypes.Item,
+    signal: AgendaTypes.FiredSignal,
+    scopeID: string,
+    scope: Scope,
+  ): Promise<Result> {
+    let before: { skip: boolean; item: AgendaTypes.Item }
+    try {
+      before = await Plugin.trigger(
+        "agenda.run.before",
+        {
+          signal,
+          item: storedItem,
+          scopeID,
+        },
+        {
+          skip: false,
+          item: storedItem,
+        },
+      )
+    } catch (err) {
+      log.error("agenda.run.before plugin failed", {
+        itemID: storedItem.id,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+      before = { skip: false, item: storedItem }
+    }
     if (before.skip) {
       log.info("skipped by plugin", { itemID: storedItem.id, signalType: signal.type })
       return { nextRunAt: AgendaStore.computeNextRunAt(storedItem.triggers), sessionID: undefined }
@@ -84,8 +108,7 @@ export namespace AgendaReactor {
       lastMessage = item.prompt
     } else {
       // Normal path — create session, run prompt via SessionInvoke
-      const scope = item.origin.scope ?? Scope.global()
-      const sessionMode = AgendaTypes.inferSessionMode(item.triggers)
+      const sessionMode = AgendaTypes.inferSessionMode(item.triggers, item.sessionMode)
       const contextMode = AgendaTypes.inferContextMode(sessionMode)
       const persistent = sessionMode === "persistent"
 
@@ -116,6 +139,18 @@ export namespace AgendaReactor {
 
       if (sessionID && !error) {
         lastMessage = await extractLastAssistantMessage(sessionID)
+      }
+      // Archive ephemeral sessions so they don't accumulate in the session list.
+      // Do this after extracting the last message but before state management.
+      if (sessionID && !persistent) {
+        await Session.update(sessionID, (draft) => {
+          draft.time.archived = Date.now()
+        }).catch((err) => {
+          log.warn("failed to archive ephemeral session", {
+            sessionID,
+            error: err instanceof Error ? err : new Error(String(err)),
+          })
+        })
       }
     }
 
@@ -171,10 +206,17 @@ export namespace AgendaReactor {
     // Plugin hooks — always fire
     // -----------------------------------------------------------------------
 
-    if (error) {
-      await Plugin.trigger("agenda.run.error", { signal, item, scopeID, error: error.message, sessionID }, {})
-    } else {
-      await Plugin.trigger("agenda.run.after", { signal, item, run: runLog, scopeID }, {})
+    try {
+      if (error) {
+        await Plugin.trigger("agenda.run.error", { signal, item, scopeID, error: error.message, sessionID }, {})
+      } else {
+        await Plugin.trigger("agenda.run.after", { signal, item, run: runLog, scopeID }, {})
+      }
+    } catch (err) {
+      log.error("agenda.run plugin hook failed", {
+        itemID: item.id,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
     }
 
     // -----------------------------------------------------------------------
@@ -192,9 +234,22 @@ export namespace AgendaReactor {
   }
 
   async function createEphemeralSession(item: AgendaTypes.Item, scope: Scope): Promise<string> {
+    // Append a short date to the title so ephemeral sessions are easy to
+    // identify in the session list. Use the cron/every trigger's timezone if
+    // available, otherwise fall back to UTC.
+    const cronTrigger = item.triggers.find(
+      (t): t is AgendaTypes.Trigger & { type: "cron"; tz?: string } => t.type === "cron",
+    )
+    const tz = cronTrigger?.tz
+    const date = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: tz ?? "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date())
     const session = await Session.create({
       scope,
-      title: "Agenda: " + item.title,
+      title: `Agenda: ${item.title} ${date}`,
       agenda: { itemID: item.id },
       interaction: SessionInteraction.unattended("agenda"),
     })

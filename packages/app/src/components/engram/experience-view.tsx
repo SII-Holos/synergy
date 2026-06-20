@@ -376,7 +376,7 @@ export function ExperienceView(props: {
   }
 
   return (
-    <div class="flex flex-col flex-1 min-h-0 -mx-6">
+    <div class="h-full flex flex-col -mx-6">
       <div class="shrink-0 px-6 mb-3">
         <Show
           when={!selecting()}

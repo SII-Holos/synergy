@@ -6,6 +6,8 @@ import { Log } from "../../src/util/log"
 Log.init({ print: false })
 
 const DIMENSIONS = 8
+const BUG_SCHEMA_DIMENSIONS = 1024
+const BUG_DRIFT_DIMENSIONS = 1536
 
 function fakeVector(values?: number[]): number[] {
   const base = values ?? Array.from({ length: DIMENSIONS }, () => Math.random())
@@ -14,6 +16,18 @@ function fakeVector(values?: number[]): number[] {
 
 function fakeEmbedding(values?: number[]) {
   return { id: "emb", vector: fakeVector(values), model: "test-model" }
+}
+
+function dimensionVector(dimensions: number, activeIndex: number): number[] {
+  return Array.from({ length: dimensions }, (_, index) => (index === activeIndex ? 1 : 0))
+}
+
+function dimensionEmbedding(dimensions: number, activeIndex: number) {
+  return {
+    id: `emb-${dimensions}-${activeIndex}`,
+    vector: dimensionVector(dimensions, activeIndex),
+    model: "test-model",
+  }
 }
 
 function makeExperience(id: string, overrides: Partial<Parameters<typeof EngramDB.Experience.insert>[0]> = {}) {
@@ -44,6 +58,69 @@ function makeMemory(id: string, overrides: Partial<Parameters<typeof EngramDB.Me
     },
     fakeEmbedding(),
   )
+}
+
+function makeExperienceWithDimensions(id: string, dimensions: number, activeIndex: number) {
+  return EngramDB.Experience.insert({
+    id,
+    sessionID: "sess-drift",
+    scopeID: "scope-drift",
+    intent: `Dimension drift experience ${id}`,
+    intentEmbedding: dimensionEmbedding(dimensions, activeIndex),
+    scriptEmbedding: undefined,
+    content: { script: "print('drift')", raw: "drift" },
+    metadata: {},
+    retrievedExperienceIDs: [],
+    createdAt: Date.now(),
+  })
+}
+
+function makeMemoryWithDimensions(id: string, dimensions: number, activeIndex: number) {
+  return EngramDB.Memory.insert(
+    {
+      id,
+      title: `Dimension drift memory ${id}`,
+      content: `Dimension drift content ${id}`,
+      category: "general",
+      recallMode: "search_only",
+    },
+    dimensionEmbedding(dimensions, activeIndex),
+  )
+}
+
+function seedBugDimensionTables() {
+  makeExperienceWithDimensions("exp-drift-seed", BUG_SCHEMA_DIMENSIONS, 0)
+  makeMemoryWithDimensions("mem-drift-seed", BUG_SCHEMA_DIMENSIONS, 1)
+}
+
+function replaceVecExperienceTable(dimensions: number, schemaDimensions: number) {
+  const conn = EngramDB.connection()
+  conn.exec("DROP TABLE IF EXISTS vec_experience")
+  conn.exec(`
+    CREATE VIRTUAL TABLE vec_experience USING vec0(
+      experience_id TEXT PRIMARY KEY,
+      scope_id TEXT partition key,
+      reward_status TEXT,
+      intent_embedding float[${dimensions}] distance_metric=cosine,
+      script_embedding float[${dimensions}] distance_metric=cosine
+    )
+  `)
+  conn.prepare("UPDATE schema_version SET embedding_dimensions = ?1").run(schemaDimensions)
+  closeDB()
+}
+
+function replaceVecMemoryTable(dimensions: number, schemaDimensions: number) {
+  const conn = EngramDB.connection()
+  conn.exec("DROP TABLE IF EXISTS vec_memory")
+  conn.exec(`
+    CREATE VIRTUAL TABLE vec_memory USING vec0(
+      memory_id TEXT PRIMARY KEY,
+      category TEXT,
+      embedding float[${dimensions}] distance_metric=cosine
+    )
+  `)
+  conn.prepare("UPDATE schema_version SET embedding_dimensions = ?1").run(schemaDimensions)
+  closeDB()
 }
 
 describe.serial("EngramDB", () => {
@@ -206,6 +283,43 @@ describe.serial("EngramDB", () => {
       const results = EngramDB.Experience.searchByIntent("scope-1", vector, 3)
       expect(results.length).toBeGreaterThan(0)
       expect(results[0]?.id).toBe("exp-search")
+    })
+
+    test("rebuilds vec_experience when actual dimensions drift from schema dimensions", () => {
+      seedBugDimensionTables()
+      replaceVecExperienceTable(BUG_DRIFT_DIMENSIONS, BUG_SCHEMA_DIMENSIONS)
+
+      const before = EngramDB.vecHealth()
+      expect(before.schemaDimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(before.experience.dimensions).toBe(BUG_DRIFT_DIMENSIONS)
+      expect(before.experience.ready).toBe(false)
+      expect(before.memory.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(before.memory.ready).toBe(true)
+
+      const queryVector = dimensionVector(BUG_SCHEMA_DIMENSIONS, 2)
+      makeExperienceWithDimensions("exp-drift-fixed", BUG_SCHEMA_DIMENSIONS, 2)
+      EngramDB.Experience.applyReward("exp-drift-fixed", {
+        rewards: { outcome: 1 },
+        rewardWeights: {
+          outcome: 0.35,
+          intent: 0.25,
+          execution: 0.2,
+          orchestration: 0.1,
+          expression: 0.1,
+        },
+        alpha: 0.3,
+      })
+
+      const after = EngramDB.vecHealth()
+      expect(after.schemaDimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.experience.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.experience.ready).toBe(true)
+      expect(after.memory.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.memory.ready).toBe(true)
+
+      const results = EngramDB.Experience.searchByIntent("scope-drift", queryVector, 3)
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0]?.id).toBe("exp-drift-fixed")
     })
 
     test("listPendingRewards returns pending experiences for a session", () => {
@@ -705,6 +819,45 @@ describe.serial("EngramDB", () => {
       const results = EngramDB.Memory.searchByVector(vector, 3)
       expect(results.length).toBeGreaterThan(0)
       expect(results[0]?.id).toBe("mem-search")
+    })
+
+    test("rebuilds vec_memory when actual dimensions drift from schema dimensions", () => {
+      seedBugDimensionTables()
+      replaceVecMemoryTable(BUG_DRIFT_DIMENSIONS, BUG_SCHEMA_DIMENSIONS)
+
+      const before = EngramDB.vecHealth()
+      expect(before.schemaDimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(before.experience.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(before.experience.ready).toBe(true)
+      expect(before.memory.dimensions).toBe(BUG_DRIFT_DIMENSIONS)
+      expect(before.memory.ready).toBe(false)
+
+      const queryVector = dimensionVector(BUG_SCHEMA_DIMENSIONS, 3)
+      makeMemoryWithDimensions("mem-drift-fixed", BUG_SCHEMA_DIMENSIONS, 3)
+
+      const after = EngramDB.vecHealth()
+      expect(after.schemaDimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.experience.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.experience.ready).toBe(true)
+      expect(after.memory.dimensions).toBe(BUG_SCHEMA_DIMENSIONS)
+      expect(after.memory.ready).toBe(true)
+      expect(after.memory.rowCount).toBe(1)
+
+      const results = EngramDB.Memory.searchByVector(queryVector, 3)
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0]?.id).toBe("mem-drift-fixed")
+    })
+
+    test("does not mark an incompatible vec_memory table ready after reopen", () => {
+      seedBugDimensionTables()
+      replaceVecMemoryTable(BUG_DRIFT_DIMENSIONS, BUG_SCHEMA_DIMENSIONS)
+
+      const results = EngramDB.Memory.searchByVector(dimensionVector(BUG_SCHEMA_DIMENSIONS, 4), 3)
+      const health = EngramDB.vecHealth()
+
+      expect(results).toEqual([])
+      expect(health.memory.dimensions).toBe(BUG_DRIFT_DIMENSIONS)
+      expect(health.memory.ready).toBe(false)
     })
 
     test("CATEGORIES includes all expected categories", () => {

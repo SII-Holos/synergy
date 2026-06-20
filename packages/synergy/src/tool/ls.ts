@@ -87,7 +87,7 @@ export const ListTool = Tool.define("list", {
 
     for (const file of files) {
       const dir = path.dirname(file)
-      const parts = dir === "." ? [] : dir.split("/")
+      const parts = dir === "." ? [] : dir.split(path.sep)
 
       // Add all parent directories
       for (let i = 0; i <= parts.length; i++) {

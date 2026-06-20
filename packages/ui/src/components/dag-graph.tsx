@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, createUniqueId, onCleanup, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
@@ -225,11 +225,16 @@ export function DagGraph(props: {
   focusNodeId?: string
   onViewportInteraction?: () => void
   onOpenSession?: (sessionID: string) => void
+  /* When true, the graph ignores container width changes and suppresses
+     auto-focus. Use during parent animations (e.g. panel expand/collapse) so
+     the ResizeObserver storm doesn't thrash layout + focus every frame. */
+  frozen?: boolean
 }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
   const [dragging, setDragging] = createSignal(false)
+  const [zooming, setZooming] = createSignal(false)
   const [hasUserMoved, setHasUserMoved] = createSignal(false)
   const [pointerMoved, setPointerMoved] = createSignal(false)
 
@@ -259,7 +264,10 @@ export function DagGraph(props: {
   onMount(() => {
     if (!ref) return
     setContainerWidth(ref.clientWidth)
-    const observer = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width))
+    const observer = new ResizeObserver((entries) => {
+      if (props.frozen) return
+      setContainerWidth(entries[0].contentRect.width)
+    })
     observer.observe(ref)
     onCleanup(() => observer.disconnect())
     onCleanup(closeNodeInspector)
@@ -275,11 +283,36 @@ export function DagGraph(props: {
   const readySet = createMemo(() => new Set(props.ready ?? []))
   const counts = createMemo(() => statusCounts(nodes()))
 
-  createEffect(() => {
-    const l = layout()
-    if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
-    focusActiveNodes()
+  // Track the set of node IDs separately so auto-focus only fires when nodes
+  // are added or removed — not on every status change (which would cause the
+  // viewport to jump wildly as each node flips pending→running→completed).
+  const nodeIds = createMemo(() =>
+    nodes()
+      .map((n) => n.id)
+      .join("\u0001"),
+  )
+
+  // Auto-focus when node set or container width changes. Wrapped in
+  // requestAnimationFrame so the forced reflow inside fitToNodes
+  // (viewport.getBoundingClientRect()) doesn't run synchronously inside
+  // Solid's effect batch — a sync reflow here blocked the main thread for
+  // 55-60ms per call (verified via Chrome trace stackTrace on fitToNodes).
+  let focusRaf: number | undefined
+  onCleanup(() => {
+    if (focusRaf !== undefined) cancelAnimationFrame(focusRaf)
   })
+  createEffect(
+    on([nodeIds, () => containerWidth()], () => {
+      if (props.frozen) return
+      const l = layout()
+      if (!viewport || hasUserMoved() || l.width === 0 || l.height === 0) return
+      if (focusRaf !== undefined) cancelAnimationFrame(focusRaf)
+      focusRaf = requestAnimationFrame(() => {
+        focusRaf = undefined
+        focusActiveNodes()
+      })
+    }),
+  )
 
   createEffect(() => {
     const focusId = props.focusNodeId
@@ -328,6 +361,15 @@ export function DagGraph(props: {
     })
   }
 
+  let zoomTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(zoomTimer))
+
+  function flagZooming() {
+    setZooming(true)
+    clearTimeout(zoomTimer)
+    zoomTimer = setTimeout(() => setZooming(false), 220)
+  }
+
   function zoomAt(nextScale: number, clientX?: number, clientY?: number) {
     if (!viewport) return
     const bounds = viewport.getBoundingClientRect()
@@ -338,6 +380,7 @@ export function DagGraph(props: {
     const currentPan = pan()
     const worldX = (originX - currentPan.x) / current
     const worldY = (originY - currentPan.y) / current
+    flagZooming()
     setScale(next)
     setPan({ x: originX - worldX * next, y: originY - worldY * next })
     setHasUserMoved(true)
@@ -469,6 +512,7 @@ export function DagGraph(props: {
         <div
           data-slot="dag-graph-viewport"
           data-dragging={dragging()}
+          data-zooming={zooming() ? "true" : undefined}
           ref={viewport}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}

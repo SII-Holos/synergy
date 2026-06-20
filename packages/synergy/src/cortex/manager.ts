@@ -28,6 +28,8 @@ export namespace Cortex {
   const acquiredTasks = new Set<string>()
 
   const CLEANUP_DELAY_MS = 20 * 60 * 1000
+  const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
+  const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
     "task",
     "task_output",
@@ -39,6 +41,39 @@ export namespace Cortex {
   ]
 
   export const Event = CortexEvent
+
+  /** Extract final text from an external-agent subagent session.
+   *  Reads all assistant text parts (excluding synthetic, ignored, tool output, reasoning)
+   *  and returns the concatenated result, capped to avoid excessive context size. */
+  export async function extractExternalTaskResult(sessionID: string): Promise<string> {
+    const messages = await Session.messages({ sessionID })
+    const chunks: string[] = []
+
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+
+      for (const part of message.parts) {
+        if (part.type !== "text" || part.synthetic || part.ignored) continue
+        const text = part.text.trim()
+        if (text) chunks.push(text)
+      }
+    }
+
+    const result = chunks.join("\n\n").trim()
+    if (!result) return "No assistant text found in external subagent session."
+
+    if (result.length <= EXTERNAL_TASK_RESULT_CHAR_LIMIT) return result
+
+    const tailChars = EXTERNAL_TASK_RESULT_CHAR_LIMIT - EXTERNAL_TASK_RESULT_HEAD_CHARS
+    const omitted = result.length - EXTERNAL_TASK_RESULT_CHAR_LIMIT
+    return [
+      result.slice(0, EXTERNAL_TASK_RESULT_HEAD_CHARS).trimEnd(),
+      "",
+      `[External subagent result truncated: ${omitted.toLocaleString()} characters omitted.]`,
+      "",
+      result.slice(-tailChars).trimStart(),
+    ].join("\n")
+  }
 
   export const launch = fn(CortexTypes.LaunchInput, async (input) => {
     const taskID = Identifier.short("cortex")
@@ -274,8 +309,10 @@ export namespace Cortex {
 
       unsub()
 
-      const summary = await Trajectory.summarize(task.sessionID)
-      updateTaskStatus(task.id, "completed", undefined, summary || undefined)
+      const result = agent.external
+        ? await extractExternalTaskResult(task.sessionID)
+        : await Trajectory.summarize(task.sessionID)
+      updateTaskStatus(task.id, "completed", undefined, result || undefined)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })

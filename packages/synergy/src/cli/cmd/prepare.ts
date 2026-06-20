@@ -79,6 +79,6 @@ export const BuildCommand = cmd({
       process.exit(1)
     }
 
-    UI.println("✅ Frontend built. Restart the server with: bun dev restart")
+    UI.println("✅ Frontend built. Restart the server with: bun dev server")
   },
 })

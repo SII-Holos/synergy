@@ -7,7 +7,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { getDirectory, getFilename, resolvePathInput } from "@ericsanchezok/synergy-util/path"
 import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
@@ -45,24 +45,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   }
 
   function resolveInput(input: string): { path: string; query: string } {
-    const trimmed = input.trim()
-    if (!trimmed) return { path: home() || "/", query: "" }
-
-    let expanded = trimmed
-    if (expanded.startsWith("~/")) {
-      expanded = (home() || "") + expanded.slice(1)
-    } else if (expanded === "~") {
-      expanded = home() || "/"
-    }
-
-    if (expanded.startsWith("/")) {
-      const lastSlash = expanded.lastIndexOf("/")
-      const parentDir = expanded.slice(0, lastSlash) || "/"
-      const basename = expanded.slice(lastSlash + 1)
-      return { path: parentDir, query: basename }
-    }
-
-    return { path: home() || "/", query: expanded }
+    return resolvePathInput(input, home() ?? "/")
   }
 
   const [results] = createResource(

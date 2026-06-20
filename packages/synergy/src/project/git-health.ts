@@ -36,6 +36,7 @@ export namespace GitHealth {
   let _generation = 0
   const CACHE_TTL_MS = 5 * 60 * 1000
   const GIT_COMMAND_TIMEOUT_MS = 2_000
+  const SCAN_TIMEOUT_MS = 3_000
   const LARGE_FILE_STAT_BATCH_SIZE = 64
 
   // ---------------------------------------------------------------------------
@@ -49,6 +50,20 @@ export namespace GitHealth {
   function cacheKey(cwd: string): string {
     const dir = normalizeDir(cwd)
     return _aliases.get(dir) ?? dir
+  }
+
+  function remainingMs(deadline: number): number {
+    return Math.max(0, deadline - Date.now())
+  }
+
+  async function withTimeoutValue<T>(promise: Promise<T>, ms: number, value: T): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fallback = new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(value), ms)
+    })
+    return Promise.race([promise, fallback]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
   }
 
   async function gitText(cwd: string, args: string[]): Promise<string | undefined> {
@@ -211,7 +226,7 @@ export namespace GitHealth {
   // Dimension 4: large_files
   // Thresholds: >10MB→warn, >50MB→critical
   // ---------------------------------------------------------------------------
-  async function checkLargeFiles(cwd: string): Promise<Issue | undefined> {
+  async function checkLargeFiles(cwd: string, deadline: number): Promise<Issue | undefined> {
     const result = (await gitText(cwd, ["ls-files", "-z"])) ?? ""
 
     const fileNames = result.split("\0").filter(Boolean)
@@ -223,15 +238,19 @@ export namespace GitHealth {
     const large: { path: string; size: number }[] = []
 
     for (let i = 0; i < cappedNames.length; i += LARGE_FILE_STAT_BATCH_SIZE) {
+      if (Date.now() >= deadline) break
       const batch = cappedNames.slice(i, i + LARGE_FILE_STAT_BATCH_SIZE)
-      const stats = await Promise.all(
-        batch.map(async (fileName) => {
-          const filePath = path.join(cwd, fileName)
-          const stat = await Bun.file(filePath)
-            .stat()
-            .catch(() => undefined)
-          return stat ? { fileName, stat } : undefined
-        }),
+      const stats = await withTimeoutValue(
+        Promise.all(
+          batch.map(async (fileName) => {
+            const filePath = path.join(cwd, fileName)
+            const stat = await fs.promises.lstat(filePath).catch(() => undefined)
+            if (!stat || stat.isSymbolicLink()) return undefined
+            return { fileName, stat }
+          }),
+        ),
+        remainingMs(deadline),
+        [],
       )
       for (const result of stats) {
         if (result && result.stat.size > 10 * 1024 * 1024) {
@@ -311,14 +330,14 @@ export namespace GitHealth {
   // catches hand-crafted test fixture objects.
   // Thresholds: 50→warn, 200→critical
   // ---------------------------------------------------------------------------
-  async function checkGcNeeded(cwd: string, gitDir: string): Promise<Issue | undefined> {
+  async function checkGcNeeded(cwd: string, gitDir: string, deadline: number): Promise<Issue | undefined> {
     const output = (await gitText(cwd, ["count-objects", "-v"])) ?? ""
 
     const countMatch = output.match(/count:\s*(\d+)/)
     const sizeMatch = output.match(/size:\s*(\d+)/)
 
     const gitCount = countMatch ? parseInt(countMatch[1]) : 0
-    const diskCount = countLooseObjectsOnDisk(gitDir)
+    const diskCount = Date.now() >= deadline ? 0 : countLooseObjectsOnDisk(gitDir)
     const looseObjects = Math.max(gitCount, diskCount)
     const size = sizeMatch ? parseInt(sizeMatch[1]) : 0
 
@@ -340,17 +359,22 @@ export namespace GitHealth {
 
   async function scan(cwd: string): Promise<{ dir: string; issues: Issue[] }> {
     const fallbackDir = normalizeDir(cwd)
+    const deadline = Date.now() + SCAN_TIMEOUT_MS
     const repo = await resolveRepo(fallbackDir)
     if (!repo) return { dir: fallbackDir, issues: [] }
 
-    const results = await Promise.all([
+    const remaining = remainingMs(deadline)
+    if (remaining === 0) return { dir: repo.root, issues: [] }
+
+    const checks: Promise<Issue | Issue[] | undefined>[] = [
       checkDiff(repo.root),
       checkUntracked(repo.root),
-      checkLargeFiles(repo.root),
+      checkLargeFiles(repo.root, deadline),
       checkExtraBranches(repo.root),
       checkDetachedHead(repo.root),
-      checkGcNeeded(repo.root, repo.gitDir),
-    ])
+      checkGcNeeded(repo.root, repo.gitDir, deadline),
+    ]
+    const results = await withTimeoutValue(Promise.all(checks), remaining, [])
 
     const issues = results.flat().filter((i): i is Issue => i !== undefined)
     return { dir: repo.root, issues }
@@ -418,9 +442,9 @@ export namespace GitHealth {
   }
 
   export function invalidate(cwd?: string): void {
-    _generation++
-    _refreshing.clear()
     if (cwd === undefined) {
+      _generation++
+      _refreshing.clear()
       _cache.clear()
       _aliases.clear()
       _lastDir = undefined
@@ -432,6 +456,8 @@ export namespace GitHealth {
     _cache.delete(dir)
     _cache.delete(key)
     _aliases.delete(dir)
+    _refreshing.delete(dir)
+    _refreshing.delete(key)
     if (_lastDir === dir || _lastDir === key) _lastDir = undefined
   }
 }

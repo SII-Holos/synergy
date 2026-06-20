@@ -1,4 +1,6 @@
 import fs from "fs/promises"
+import path from "path"
+import { pathToFileURL } from "url"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Instance } from "../scope/instance"
@@ -554,8 +556,8 @@ export namespace Channel {
       for (const attachment of ctx.attachments) {
         parts.push({
           type: "file",
-          url: `file://${attachment.path}`,
-          filename: attachment.filename ?? attachment.path.split("/").pop() ?? "attachment",
+          url: pathToFileURL(attachment.path).href,
+          filename: attachment.filename ?? path.basename(attachment.path) ?? "attachment",
           mime: attachment.contentType,
         })
       }

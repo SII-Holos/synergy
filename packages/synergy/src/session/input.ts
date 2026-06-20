@@ -1,4 +1,5 @@
 import path from "path"
+import { pathToFileURL } from "url"
 import os from "os"
 import fs from "fs/promises"
 import z from "zod"
@@ -101,7 +102,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       if (stats.isDirectory()) {
         parts.push({
           type: "file",
-          url: `file://${filepath}`,
+          url: pathToFileURL(filepath).href,
           filename: name,
           mime: "application/x-directory",
         })
@@ -110,7 +111,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
 
       parts.push({
         type: "file",
-        url: `file://${filepath}`,
+        url: pathToFileURL(filepath).href,
         filename: name,
         mime: "text/plain",
       })

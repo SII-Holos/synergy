@@ -28,10 +28,10 @@ export const StartCommand = cmd({
         logFile: status.logFile,
         detail: status.detail,
         notes: status.drifted
-          ? ["Current config differs from the installed service. Restart to apply the current config."]
+          ? ["Current config differs from the installed service. Stop and start to apply the current config."]
           : undefined,
         next: status.drifted
-          ? ["synergy restart", "synergy status", "synergy logs"]
+          ? ["synergy stop && synergy start", "synergy status", "synergy logs"]
           : ["synergy web", 'synergy send "your message"'],
       })
       return
@@ -94,7 +94,7 @@ export const StartCommand = cmd({
             : "Check that the service manager is available and your user has permissions.",
           "If background service startup is unavailable in this environment, try `synergy server` to run the server in the current terminal.",
         ],
-        next: ["synergy status", "synergy logs", "synergy restart", "synergy server"],
+        next: ["synergy status", "synergy logs", "synergy server"],
       })
       process.exit(1)
     }
