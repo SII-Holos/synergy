@@ -434,9 +434,16 @@ describe("session workspace binding", () => {
               expect(gate.evaluate("write", { filePath: path.join(worktreeWs.path, "src/file.ts") }).decision).toBe(
                 "allow",
               )
+              // autonomous allows file_external — writing outside workspace is permitted by design
               expect(gate.evaluate("write", { filePath: path.join(scope.directory, "src/file.ts") }).decision).toBe(
-                "deny",
+                "allow",
               )
+              // protected metadata under a writable root still denied (shell_hardline remains blocked)
+              expect(
+                gate
+                  .classify("shell", { command: "rm -rf /" })
+                  .capabilities.some((c: any) => c.class === "shell_hardline"),
+              ).toBe(true)
             })
 
             await Session.remove(session.id)
