@@ -324,9 +324,12 @@ export namespace SessionInvoke {
           } else {
             const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
             if (cfg) Object.assign(cfg, runConfig)
-            if (env) {
-              const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
-              if (adapterEnv) Object.assign(adapterEnv, env)
+            const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
+            if (adapter.name === "codex" && adapterEnv) {
+              for (const key of Object.keys(adapterEnv)) delete adapterEnv[key]
+              Object.assign(adapterEnv, env ?? {})
+            } else if (env && adapterEnv) {
+              Object.assign(adapterEnv, env)
             }
           }
 

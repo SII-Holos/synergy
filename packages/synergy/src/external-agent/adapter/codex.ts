@@ -5,6 +5,76 @@ const log = Log.create({ service: "external-agent.codex" })
 
 type QueueEntry = { event: ExternalAgent.BridgeEvent } | { done: true }
 
+const BASE_ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TERM",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_DATA_HOME",
+  "XDG_RUNTIME_DIR",
+  "CODEX_HOME",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NODE_EXTRA_CA_CERTS",
+])
+
+const CONFIG_ENV_ALLOWLIST = new Set([
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy",
+  "CODEX_HOME",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NODE_EXTRA_CA_CERTS",
+])
+
+const INJECTED_ENV_ALLOWLIST = new Set(["SYNERGY_CODEX_API_KEY"])
+const CODEX_SANDBOX_ALLOWLIST = new Set(["read-only", "workspace-write"])
+
+function copyAllowedEnv(
+  target: Record<string, string>,
+  source: Record<string, string | undefined>,
+  allowlist: Set<string>,
+) {
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined || !allowlist.has(key)) continue
+    target[key] = value
+  }
+}
+
+export function buildCodexProcessEnv(
+  processEnv: Record<string, string | undefined>,
+  injectedEnv: Record<string, string | undefined> = {},
+  configEnv: Record<string, string | undefined> = {},
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  copyAllowedEnv(env, processEnv, BASE_ENV_ALLOWLIST)
+  copyAllowedEnv(env, injectedEnv, INJECTED_ENV_ALLOWLIST)
+  copyAllowedEnv(env, configEnv, CONFIG_ENV_ALLOWLIST)
+  return env
+}
+
+export function normalizeCodexSandbox(value: unknown): "read-only" | "workspace-write" | undefined {
+  return typeof value === "string" && CODEX_SANDBOX_ALLOWLIST.has(value)
+    ? (value as "read-only" | "workspace-write")
+    : undefined
+}
+
 class CodexAdapter implements ExternalAgent.Adapter {
   readonly name = "codex"
 
@@ -47,9 +117,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
-    // Merge: process.env < opts.env (apiKey etc.) < adapterConfig.env (proxy etc.)
-    const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
-    this.env = { ...process.env, ...(opts.env ?? {}), ...configEnv }
+    this.env = { ...(opts.env ?? {}) }
     this.started = true
     log.info("codex adapter started", { cwd: opts.cwd })
   }
@@ -63,16 +131,13 @@ class CodexAdapter implements ExternalAgent.Adapter {
     this.gotStdoutEvents = false
 
     // Re-apply configEnv every turn — adapterConfig may be updated by invoke.ts
-    // between turns (line 324: Object.assign(cfg, runConfig)) but env is not
-    // re-merged there, so we do it here to ensure proxy env is always present.
+    // between turns (Object.assign(cfg, runConfig)). Only allowlisted env keys
+    // are forwarded to avoid leaking the Synergy process environment to Codex.
     const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
-    const currentEnv = { ...process.env, ...configEnv }
+    const currentEnv = buildCodexProcessEnv(process.env, this.env, configEnv)
 
-    // --ask-for-approval must be a top-level flag (before the subcommand)
-    const approvalPolicy = this.adapterConfig.approvalPolicy as string | undefined
-    const topLevelArgs = approvalPolicy ? ["--ask-for-approval", approvalPolicy] : []
     const args = this.buildArgs(context)
-    const fullArgs = [...topLevelArgs, ...args]
+    const fullArgs = [...args]
 
     log.info("spawning codex turn", { sessionID: context.sessionID, args: fullArgs.join(" ") })
 
@@ -165,13 +230,17 @@ class CodexAdapter implements ExternalAgent.Adapter {
       }
     }
 
-    const allowAll = this.adapterConfig.allowAll === true
-    const sandbox = this.adapterConfig.sandbox as string | undefined
+    const controlProfile = this.adapterConfig.controlProfile as string | undefined
+    const rawSandbox = this.adapterConfig.sandbox
+    const sandbox = normalizeCodexSandbox(rawSandbox)
 
-    if (allowAll) {
+    if (controlProfile === "full_access") {
       args.push("--dangerously-bypass-approvals-and-sandbox")
     } else if (sandbox) {
       args.push("--sandbox", sandbox)
+    } else if (rawSandbox !== undefined) {
+      log.warn("ignoring unsupported codex sandbox value", { sandbox: String(rawSandbox) })
+      if (!isResume) args.push("--sandbox", "read-only")
     } else if (!isResume) {
       args.push("--sandbox", "read-only")
     }
