@@ -3,7 +3,7 @@ import * as os from "os"
 import type { PlatformInfo } from "./types"
 import { detectPlatform } from "./detect"
 import { isWindowsHelperAvailable } from "./windows"
-
+import { isLinuxHelperAvailable } from "./linux"
 // Re-export detection primitives for backward compat
 export { detectPlatform, isPlatformSupported } from "./detect"
 export type { PlatformName } from "./detect"
@@ -14,8 +14,8 @@ export function platformInfo(): PlatformInfo {
     return { platform, available: true, backend: "sandbox-exec" }
   }
   if (platform === "linux") {
-    const available = isBwrapAvailable()
-    return { platform, available, backend: available ? "bwrap" : null }
+    const available = isLinuxHelperAvailable()
+    return { platform, available, backend: available ? "synergy-sandbox-linux" : null }
   }
   if (platform === "windows") {
     const available = isWindowsHelperAvailable()

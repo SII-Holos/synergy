@@ -506,6 +506,7 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // bwrap command, not sandbox-exec
@@ -521,6 +522,7 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // Critical: must NOT bind-mount the entire root filesystem.
@@ -540,6 +542,7 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots,
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // Each runtime read root must be individually bind-mounted

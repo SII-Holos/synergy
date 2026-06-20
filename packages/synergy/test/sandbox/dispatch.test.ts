@@ -170,6 +170,7 @@ describe("prepareLinuxWrapper backward compat", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots,
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     expect(wrapper.command).toBe("bwrap")
@@ -349,6 +350,7 @@ describe("prepareWrapper Linux dispatch", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots,
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // Dispatch must route to LinuxBackend

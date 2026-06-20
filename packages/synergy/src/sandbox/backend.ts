@@ -97,22 +97,14 @@ export namespace SandboxBackend {
     }
 
     const platform = opts.forcePlatform ?? detectPlatform()
-
     switch (platform) {
       case "macos":
         return MacBackend.prepare(opts)
       case "linux": {
-        // Check bwrap availability before dispatching
-        const info = platformInfo()
-        if (!info.available) {
-          return {
-            command: opts.command,
-            args: opts.args,
-            sandboxed: false,
-            skipReason: "bwrap not found — install bubblewrap for Linux sandbox support",
-          }
-        }
-        // Convert PrepareWrapperOpts → PrepareLinuxWrapperOpts for bwrap dispatch.
+        // Phase 2: Linux dispatch delegates helper availability checks to
+        // LinuxBackend.prepare(). No pre-checks — the backend handles its own
+        // availability (helper path) or generates inline args (bwrap-inline-debug).
+        // Convert PrepareWrapperOpts → PrepareLinuxWrapperOpts.
         const linuxOpts: PrepareLinuxWrapperOpts = {
           command: opts.command,
           args: opts.args,
@@ -122,6 +114,7 @@ export namespace SandboxBackend {
           extraReadRoots: opts.extraReadRoots,
           extraWritableRoots: opts.extraWritableRoots,
           forcePlatform: opts.forcePlatform,
+          backend: opts.backend,
         }
         return LinuxBackend.prepare(linuxOpts)
       }

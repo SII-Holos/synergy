@@ -6,6 +6,7 @@ import { Config } from "../config/config"
 import { detectPlatform } from "../sandbox/detect"
 import { platformInfo, isBwrapAvailable } from "../sandbox/platform"
 import { getWindowsHelperInfo } from "../sandbox/windows"
+import { getLinuxHelperInfo, TRUSTED_LINUX_HELPER_HASHES } from "../sandbox/linux"
 import type { SandboxReadinessCheck } from "../sandbox/types"
 
 const SandboxReadinessCheckSchema = z
@@ -133,8 +134,92 @@ export const SandboxReadinessRoute = new Hono().get(
         })
         break
       }
-
       case "linux": {
+        // ── Linux helper binary check ──────────────────────────
+        const linuxHelperInfo = getLinuxHelperInfo()
+        if (!linuxHelperInfo) {
+          checks.push({
+            id: "linux_helper",
+            label: "Linux sandbox helper binary",
+            status: "fail",
+            detail: "synergy-sandbox-linux helper not found. Install the Synergy sandbox helper for Linux.",
+            recovery: {
+              type: "install_helper",
+              backend: "synergy-sandbox-linux",
+              instructions: "Install the Synergy sandbox helper for Linux",
+            },
+          })
+          checks.push({
+            id: "linux_helper_hash",
+            label: "Linux helper hash verification",
+            status: "fail",
+            detail: "Cannot verify hash — helper binary not found.",
+          })
+        } else if (!linuxHelperInfo.verified) {
+          checks.push({
+            id: "linux_helper",
+            label: "Linux sandbox helper binary",
+            status: "warn",
+            detail: `Helper binary found at ${linuxHelperInfo.path} but hash verification failed.`,
+            recovery: {
+              type: "install_helper",
+              backend: "synergy-sandbox-linux",
+              instructions:
+                "Sandbox helper binary hash verification failed. The helper may be corrupted or tampered. Reinstall the Synergy Linux sandbox helper.",
+            },
+          })
+          checks.push({
+            id: "linux_helper_hash",
+            label: "Linux helper hash verification",
+            status: "fail",
+            detail: "Hash verification failed — helper may be corrupted or tampered.",
+          })
+        } else {
+          checks.push({
+            id: "linux_helper",
+            label: "Linux sandbox helper binary",
+            status: "pass",
+            detail: `Helper binary found and verified at ${linuxHelperInfo.path}.`,
+          })
+          checks.push({
+            id: "linux_helper_hash",
+            label: "Linux helper hash verification",
+            status: "pass",
+            detail: "Helper hash verified against trusted hashes.",
+          })
+        }
+
+        // ── Linux seccomp check ─────────────────────────────────
+        const seccompAvailable = (() => {
+          try {
+            // Check if /proc/sys/kernel/seccomp/actions_avail exists
+            // This file lists available seccomp actions (e.g. kill_process, trap, errno, trace, log, allow)
+            const result = Bun.spawnSync({
+              cmd: ["cat", "/proc/sys/kernel/seccomp/actions_avail"],
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            if (result.exitCode === 0) {
+              const val = new TextDecoder().decode(result.stdout).trim()
+              // SECCOMP_SET_MODE_FILTER corresponds to actions "errno", "trap", "kill", "kill_process", "allow", "trace", "log"
+              return val.length > 0 && val.includes("errno")
+            }
+            // Fallback: check classic /proc/sys/kernel/seccomp/actions_logged (older kernels)
+            return false
+          } catch {
+            return false
+          }
+        })()
+        checks.push({
+          id: "linux_seccomp",
+          label: "seccomp BPF filtering",
+          status: seccompAvailable ? "pass" : "warn",
+          detail: seccompAvailable
+            ? "seccomp filter mode available"
+            : "seccomp filter mode unavailable — kernel may not support SECCOMP_SET_MODE_FILTER",
+        })
+
+        // ── Existing checks (bwrap, namespaces, landlock) ──────
         // Check bwrap availability
         const bwrapAvailable = isBwrapAvailable()
         checks.push({

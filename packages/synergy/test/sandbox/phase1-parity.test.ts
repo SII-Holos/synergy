@@ -176,13 +176,16 @@ describe("Phase 1: Linux extra roots parity", () => {
       fs.mkdirSync(readRoot, { recursive: true })
     } catch {}
 
-    // Use prepareLinuxWrapper to bypass bwrap availability check
+    // Use prepareLinuxWrapper with backend:"bwrap-inline-debug" to opt into inline bwrap behavior.
+    // Use prepareLinuxWrapper to bypass bwrap availability check,
+    // with backend:"bwrap-inline-debug" to opt into inline bwrap behavior.
     const wrapper = SandboxBackend.prepareLinuxWrapper({
       command: "echo",
       args: ["test"],
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
       extraReadRoots: [readRoot],
     })
 
@@ -213,6 +216,7 @@ describe("Phase 1: Linux extra roots parity", () => {
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
       extraWritableRoots: [writeRoot],
     })
 
@@ -246,6 +250,7 @@ describe("Phase 1: Linux extra roots parity", () => {
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
       extraReadRoots: [readRoot],
       extraWritableRoots: [writeRoot],
     })
@@ -299,6 +304,7 @@ describe("Phase 1: Linux extra roots parity", () => {
       extraReadRoots: [readRoot],
       extraWritableRoots: [writeRoot],
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // If bwrap is not available, the wrapper has skipReason — that's a

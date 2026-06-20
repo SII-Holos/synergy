@@ -39,6 +39,8 @@ export interface PrepareLinuxWrapperOpts {
   extraReadRoots?: string[]
   extraWritableRoots?: string[]
   forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
+  backend?: string
 }
 
 export interface SeatbeltProfileOpts {

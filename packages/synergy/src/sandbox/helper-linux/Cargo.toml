@@ -1,0 +1,17 @@
+[package]
+name = "synergy-sandbox-linux"
+version = "0.1.0"
+edition = "2021"
+description = "Synergy Linux sandbox helper — namespace isolation via bwrap, Landlock, seccomp, and permission profile enforcement"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1

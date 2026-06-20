@@ -75,16 +75,15 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
       readableRoots.push(p)
     }
   }
-
-  // Writable roots
+  // Writable roots: only for workspace_write mode
   if (input.sandboxMode === "workspace_write") {
     writableRoots.push(input.workspace)
-  }
 
-  // Approved write paths from permission system
-  for (const p of input.approvedWritePaths) {
-    if (!writableRoots.includes(p)) {
-      writableRoots.push(p)
+    // Approved write paths from permission system
+    for (const p of input.approvedWritePaths) {
+      if (!writableRoots.includes(p)) {
+        writableRoots.push(p)
+      }
     }
   }
 
