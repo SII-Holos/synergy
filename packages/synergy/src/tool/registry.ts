@@ -242,6 +242,7 @@ export namespace ToolRegistry {
       WorktreeLeaveTool,
       WorktreeListTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
+      ...custom,
     ]
   }
 
