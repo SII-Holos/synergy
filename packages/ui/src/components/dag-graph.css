@@ -152,9 +152,22 @@
       opacity: 0.7;
     }
 
-    &[data-dragging="true"] {
+    &[data-dragging="true"],
+    &[data-zooming="true"] {
       cursor: grabbing;
     }
+  }
+
+  /* Disable layout transitions during direct user interaction (drag/zoom) so
+     the viewport stays locked to the pointer instead of lagging behind. */
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-stage"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-stage"] {
+    transition: none;
+  }
+
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-card"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-card"] {
+    transition: none;
   }
 
   [data-slot="dag-graph-stage"] {
@@ -164,6 +177,7 @@
     transform-origin: 0 0;
     will-change: transform;
     z-index: 1;
+    transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
   }
 
   [data-slot="dag-graph-edges"] {
@@ -183,6 +197,7 @@
     stroke: color-mix(in srgb, var(--border-base) 82%, transparent);
     stroke-width: 1.35;
     stroke-linecap: round;
+    transition: stroke 0.18s ease;
 
     &[data-status="completed"] {
       stroke: color-mix(in srgb, var(--dag-done) 74%, var(--border-base));
@@ -214,10 +229,10 @@
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
-    opacity: 1;
     transition:
-      border-color 0.14s ease,
-      box-shadow 0.14s ease,
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      box-shadow 0.18s ease,
       transform 0.14s ease;
 
     &:hover {
@@ -269,6 +284,9 @@
     flex-shrink: 0;
     background: var(--text-weaker);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 18%, transparent);
+    transition:
+      background-color 0.18s ease,
+      box-shadow 0.18s ease;
 
     [data-status="completed"] & {
       background: var(--border-success-base);
@@ -297,6 +315,7 @@
     font-weight: var(--font-weight-medium);
     letter-spacing: 0.065em;
     color: var(--text-weak);
+    transition: color 0.18s ease;
 
     [data-status="completed"] & {
       color: var(--text-on-success-base);
@@ -364,10 +383,21 @@
   }
 }
 
-/* Panel variant — compact enough for embedded session progress surfaces */
+/* Panel variant — compact enough for embedded session progress surfaces.
+   contain:layout style paint isolates the DAG's ~400 nodes (~8000 DOM
+   elements) into a self-contained layout/paint context so that size changes
+   in the parent (the island panel) don't trigger style/layout recalc of the
+   DAG subtree. (Not using contain:strict/size because the DAG's height
+   depends on its content via the viewport's clamp().)
+   Verified necessary via Chrome trace: without it, the panel's height
+   transition cascaded a full-page UpdateLayoutTree (8352 elements, ~65ms). */
 .dag-graph[data-variant="panel"] {
+  contain: layout style paint;
+  height: 100%;
+
   [data-slot="dag-graph-viewport"] {
-    height: clamp(360px, 52vh, 620px);
+    height: 100%;
+    min-height: 0;
   }
 }
 

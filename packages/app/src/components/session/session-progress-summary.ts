@@ -195,7 +195,26 @@ export function computeProgressIslandSnapshot(
   const failed = includeDag ? dag!.failed : 0
   const progressRatio = clampRatio(completed / total)
 
-  if (lifecycle === "paused" && !dagHasAttention && active === 0) {
+  if (completed >= total) {
+    return {
+      status: "complete",
+      tone: "complete",
+      completed,
+      total,
+      active,
+      pending,
+      blocked,
+      failed,
+      progressRatio: 1,
+    }
+  }
+
+  // When the DAG is settled (session idle, no active tasks), the work is
+  // finished even if the agent left nodes in non-terminal states. Hide the
+  // panel so orphaned frames don't linger. The `active === 0` guard applies
+  // only to the "paused" case (session busy but DAG waiting on deps), where
+  // running nodes genuinely indicate in-flight work.
+  if (!dagHasAttention && (lifecycle === "settled" || (lifecycle === "paused" && active === 0))) {
     return {
       status: "hidden",
       tone: "neutral",
@@ -214,19 +233,6 @@ export function computeProgressIslandSnapshot(
   }
   if (blocked > 0) {
     return { status: "attention", tone: "blocked", completed, total, active, pending, blocked, failed, progressRatio }
-  }
-  if (completed >= total) {
-    return {
-      status: "complete",
-      tone: "complete",
-      completed,
-      total,
-      active,
-      pending,
-      blocked,
-      failed,
-      progressRatio: 1,
-    }
   }
   if (active > 0) {
     return { status: "active", tone: "running", completed, total, active, pending, blocked, failed, progressRatio }

@@ -96,9 +96,9 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
       {/* Header */}
       <Show
         when={summaryParts().length > 0}
-        fallback={<div class="text-text-weaker text-xs px-3 py-1.5">No active tasks</div>}
+        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">No active tasks</div>}
       >
-        <div class="text-xs text-text-weaker px-3 py-1.5 shrink-0">{summaryParts().join(" · ")}</div>
+        <div class="text-xs text-text-weaker px-2.5 py-1 shrink-0">{summaryParts().join(" · ")}</div>
       </Show>
 
       {/* List */}
@@ -120,7 +120,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
                         toggleTodo(todo.id)
                       }
                     }}
-                    class="flex items-center gap-2.5 px-3 py-2 transition-colors cursor-pointer select-none hover:bg-surface-raised-base-hover"
+                    class="flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none hover:bg-surface-raised-base-hover"
                     classList={{
                       "bg-text-interactive-base/5 border-l-2 border-l-text-interactive-base": isActive(),
                     }}
@@ -155,7 +155,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
 
                   {/* Expanded detail for long content */}
                   <Show when={isExpanded()}>
-                    <div class="flex items-center gap-2.5 px-3 py-2 bg-surface-raised-base border-t border-border-weak-base/40">
+                    <div class="flex items-center gap-2 px-2.5 py-1.5 bg-surface-raised-base border-t border-border-weak-base/40">
                       <span class="shrink-0 text-sm leading-none text-text-weaker"> </span>
                       <span class="text-xs leading-snug text-text-base whitespace-pre-wrap break-words flex-1 min-w-0">
                         {todo.content}
