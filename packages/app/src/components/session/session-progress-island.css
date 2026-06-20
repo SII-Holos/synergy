@@ -107,50 +107,54 @@
   transform: rotate(180deg);
 }
 
-/* Expand/collapse panel.
+/* Expand/collapse with the panel taken out of normal flow.
 
-   No height transition: a Chrome trace showed that any height/max-height
-   animation triggers a full-page UpdateLayoutTree (~6400 elements, 50-90ms
-   each) because the panel's size change is treated as potentially affecting
-   its 6000+ siblings in the session view. This caused severe jank regardless
-   of contain, content-visibility, or grid-rows tricks.
+   5 Chrome traces showed the DAG panel's ~7000 DOM elements make any height
+   animation expensive when the panel is in flow (grid 0fr→1fr, max-height,
+   contain, content-visibility all recalc'd thousands of elements per frame),
+   and display:none caused a 60ms cold-layout on each toggle.
 
-   Instead: collapse/expand the panel instantly (display toggled by JS via the
-   data-expanded attribute), and animate only opacity + a small translate for
-   a lightweight entrance. The surface container's width/border-radius still
-   animates smoothly (cheap — affects only the surface itself), so the visible
-   "pill growing into a panel" effect is preserved. The content fade is fast
-   (120ms) so there's no perceptible delay. */
+   Solution: position:absolute the panel so it never participates in the
+   wrapper's layout. The wrapper animates its own height via max-height (cheap
+   — it's an empty container). The panel is always rendered (no cold layout),
+   animating only opacity + a compositor-friendly transform. Neither property
+   triggers style recalc or layout. */
 .session-progress-island-panel-wrap {
-  display: none;
+  position: relative;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 240ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
-  display: block;
-}
-
-.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
-  animation: session-progress-island-panel-fade-in 140ms cubic-bezier(0.2, 0, 0, 1) both;
+  max-height: min(68vh, 720px);
 }
 
 .session-progress-island-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  min-height: min(220px, 44vh);
-  max-height: min(68vh, 720px);
+  height: min(68vh, 720px);
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-@keyframes session-progress-island-panel-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    opacity 220ms ease-out 40ms,
+    transform 240ms cubic-bezier(0.2, 0, 0, 1) 40ms;
 }
 
 .session-progress-island-panel-topline {
