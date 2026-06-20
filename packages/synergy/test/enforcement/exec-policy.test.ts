@@ -26,7 +26,7 @@ const {
   parseNetworkRule,
   parsePrefixRule,
   shouldPrompt,
-} = require("../../src/enforcement/exec-policy")
+} = await import("../../src/enforcement/exec-policy")
 
 // ------------------------------------------------------------------
 // 1. Prefix Rule Matching

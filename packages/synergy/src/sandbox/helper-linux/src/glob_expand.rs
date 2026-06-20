@@ -100,9 +100,13 @@ mod tests {
     use super::*;
     use std::fs;
     use std::os::unix;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn tmp_root() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("synergy-glob-test-{}", std::process::id()));
+        let id = TMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("synergy-glob-{}-{}", std::process::id(), id));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
