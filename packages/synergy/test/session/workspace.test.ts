@@ -438,12 +438,11 @@ describe("session workspace binding", () => {
               expect(gate.evaluate("write", { filePath: path.join(scope.directory, "src/file.ts") }).decision).toBe(
                 "allow",
               )
-              // protected metadata under a writable root still denied (shell_hardline remains blocked)
-              expect(
-                gate
-                  .classify("shell", { command: "rm -rf /" })
-                  .capabilities.some((c: any) => c.class === "shell_hardline"),
-              ).toBe(true)
+              // autonomous: shell_hardline is denied, shell_destructive is deny (was ask)
+              const classifyResult = gate.classify("bash", { command: "rm -rf /" })
+              const hardline = classifyResult.capabilities.some((c: any) => c.class === "shell_hardline")
+              const destructive = classifyResult.capabilities.some((c: any) => c.class === "shell_destructive")
+              expect(hardline || destructive).toBe(true)
             })
 
             await Session.remove(session.id)

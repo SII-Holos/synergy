@@ -82,7 +82,7 @@ function autonomousRules() {
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")
     if (permission === "platform_control") return rule(permission, "allow")
-    if (permission === "shell_destructive") return rule(permission, "ask")
+    if (permission === "shell_destructive") return rule(permission, "deny")
     return rule(permission, "allow")
   })
 }
@@ -270,7 +270,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
       }
       return {
         ...profile,
-        summary: summary(id, profile, ["shell_hardline"], workspace),
+        summary: summary(id, profile, ["shell_hardline", "shell_destructive"], workspace),
       }
     }
 

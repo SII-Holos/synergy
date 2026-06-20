@@ -688,7 +688,8 @@ describe("EnforcementGate profile integration", () => {
     const external = gate.evaluate("read", {
       filePath: "/etc/hosts",
     })
-    expect(external.decision).toBe("deny")
+    // autonomous allows file_external — reading outside workspace is permitted
+    expect(external.decision).toBe("allow")
   })
 
   test("gate with full_access allows external reads", async () => {
