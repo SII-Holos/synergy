@@ -303,3 +303,87 @@ describe("Phase 3 Slice 1: original command preservation on skip", () => {
     expect(wrapper.skipReason).toBeUndefined()
   })
 })
+// ==================================================================
+// 6. Windows helper CLI shape contract
+// ==================================================================
+describe("Phase 3 Slice 2: Windows helper CLI argument shape", () => {
+  test("sandboxed wrapper args match helper CLI contract: --permission-profile <path> --cwd <cwd> -- <cmd> <args...>", () => {
+    // The Rust helper main.rs expects exactly this argv shape.
+    // This is a GREEN contract test — the current implementation
+    // already conforms. It serves as a regression guard.
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "powershell.exe",
+      args: ["-NoProfile", "-Command", "Write-Host test"],
+      workspace: "C:\\Users\\test\\project",
+      sandboxMode: "workspace_write",
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    expect(wrapper.sandboxed).toBe(true)
+    expect(wrapper.command).toBe("C:\\Synergy\\synergy-sandbox-windows.exe")
+
+    const args = wrapper.args
+    // args[0] = "--permission-profile"
+    expect(args[0]).toBe("--permission-profile")
+    // args[1] = path to temp JSON config file
+    expect(args[1]).toMatch(/synergy-sandbox-windows-[a-f0-9]+\.json$/)
+    // args[2] = "--cwd"
+    expect(args[2]).toBe("--cwd")
+    // args[3] = CWD (workspace by default)
+    expect(args[3]).toBe("C:\\Users\\test\\project")
+    // args[4] = "--" separator
+    expect(args[4]).toBe("--")
+    // args[5] = child command
+    expect(args[5]).toBe("powershell.exe")
+    // args[6..] = child args, preserved verbatim
+    expect(args[6]).toBe("-NoProfile")
+    expect(args[7]).toBe("-Command")
+    expect(args[8]).toBe("Write-Host test")
+    expect(args.length).toBe(9)
+
+    // Cleanup temp file
+    if (wrapper.tempPath) fs.rmSync(wrapper.tempPath, { force: true })
+  })
+
+  test("sandboxed wrapper uses executionCwd for --cwd when provided", () => {
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cmd.exe",
+      args: ["/c", "dir"],
+      workspace: "C:\\Users\\test\\project",
+      executionCwd: "C:\\Users\\test\\subdir",
+      sandboxMode: "read_only",
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    expect(wrapper.sandboxed).toBe(true)
+    expect(wrapper.args[2]).toBe("--cwd")
+    expect(wrapper.args[3]).toBe("C:\\Users\\test\\subdir")
+
+    if (wrapper.tempPath) fs.rmSync(wrapper.tempPath, { force: true })
+  })
+
+  test("tempPath is cleaned up after test (verify write format)", () => {
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cmd.exe",
+      args: ["/c", "echo test"],
+      workspace: "C:\\Users\\test\\project",
+      sandboxMode: "workspace_write",
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    expect(wrapper.tempPath).toBeDefined()
+    expect(wrapper.tempPath).toMatch(/\.json$/)
+    // Verify the file is valid JSON
+    const content = fs.readFileSync(wrapper.tempPath!, "utf8")
+    const parsed = JSON.parse(content)
+    expect(parsed).toHaveProperty("fileSystem")
+    expect(parsed).toHaveProperty("network")
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+})
