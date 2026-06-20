@@ -30,7 +30,7 @@ impl SeccompPlan {
     pub fn always_denied_names(&self) -> HashSet<&'static str> {
         self.rules
             .iter()
-            .filter_map(|r| match r {
+            .filter_map(|rule| match rule {
                 SeccompRule::AlwaysDeny { syscall } => Some(*syscall),
                 _ => None,
             })
@@ -40,7 +40,7 @@ impl SeccompPlan {
     pub fn network_denied_names(&self) -> HashSet<&'static str> {
         self.rules
             .iter()
-            .filter_map(|r| match r {
+            .filter_map(|rule| match rule {
                 SeccompRule::NetworkDeny { syscall } => Some(*syscall),
                 _ => None,
             })
@@ -176,6 +176,10 @@ fn syscall_number(name: &str) -> Option<i64> {
         "init_module" => Some(libc::SYS_init_module),
         "finit_module" => Some(libc::SYS_finit_module),
         "delete_module" => Some(libc::SYS_delete_module),
+        // Obsolete pre-2.6 module syscalls are intentionally omitted when libc
+        // does not expose them on the target architecture. Modern kernels no
+        // longer implement them as callable entry points.
+        "create_module" | "get_kernel_syms" | "query_module" => None,
         "mount" => Some(libc::SYS_mount),
         "umount2" => Some(libc::SYS_umount2),
         "pivot_root" => Some(libc::SYS_pivot_root),
@@ -183,6 +187,10 @@ fn syscall_number(name: &str) -> Option<i64> {
         "swapoff" => Some(libc::SYS_swapoff),
         "reboot" => Some(libc::SYS_reboot),
         "kexec_load" => Some(libc::SYS_kexec_load),
+        // `kexec_file_load` is real but CAP_SYS_BOOT-gated. libc does not expose
+        // it on all supported targets; no_new_privs + user namespace remove the
+        // practical capability path, so omit when no constant is available.
+        "kexec_file_load" => raw_syscall_number(name),
         "bpf" => Some(libc::SYS_bpf),
         "perf_event_open" => Some(libc::SYS_perf_event_open),
         "ptrace" => Some(libc::SYS_ptrace),
@@ -203,12 +211,42 @@ fn syscall_number(name: &str) -> Option<i64> {
         "socketpair" => Some(libc::SYS_socketpair),
         "sendto" => Some(libc::SYS_sendto),
         "sendmsg" => Some(libc::SYS_sendmsg),
+        "sendmmsg" => raw_syscall_number(name),
         "recvfrom" => Some(libc::SYS_recvfrom),
         "recvmsg" => Some(libc::SYS_recvmsg),
+        "recvmmsg" => raw_syscall_number(name),
         "setsockopt" => Some(libc::SYS_setsockopt),
         "getsockopt" => Some(libc::SYS_getsockopt),
         _ => None,
     }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn raw_syscall_number(name: &str) -> Option<i64> {
+    match name {
+        "recvmmsg" => Some(299),
+        "sendmmsg" => Some(307),
+        "kexec_file_load" => Some(320),
+        _ => None,
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+fn raw_syscall_number(name: &str) -> Option<i64> {
+    match name {
+        "recvmmsg" => Some(243),
+        "sendmmsg" => Some(269),
+        "kexec_file_load" => Some(294),
+        _ => None,
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+fn raw_syscall_number(_name: &str) -> Option<i64> {
+    None
 }
 
 /// Syscalls denied regardless of network mode.
@@ -388,109 +426,50 @@ mod tests {
         assert!(proxy_only_has_distinct_filter());
     }
 
-    // ── SeccompPlan RED tests ──
-    // These tests define the contract for build_seccomp_plan(). The stub
-    // returns an empty plan, so all assertions below will currently FAIL.
-
     #[test]
     fn build_seccomp_plan_restricted_includes_always_denied() {
         let plan = build_seccomp_plan(NetworkSeccompMode::Restricted);
         let names = plan.always_denied_names();
-        assert!(
-            names.contains("ptrace"),
-            "restricted plan must always-deny ptrace"
-        );
-        assert!(
-            names.contains("process_vm_readv"),
-            "restricted plan must always-deny process_vm_readv"
-        );
-        assert!(
-            names.contains("process_vm_writev"),
-            "restricted plan must always-deny process_vm_writev"
-        );
-        assert!(
-            names.contains("io_uring_setup"),
-            "restricted plan must always-deny io_uring_setup"
-        );
-        assert!(
-            names.contains("io_uring_enter"),
-            "restricted plan must always-deny io_uring_enter"
-        );
-        assert!(
-            names.contains("io_uring_register"),
-            "restricted plan must always-deny io_uring_register"
-        );
-        assert!(
-            names.contains("bpf"),
-            "restricted plan must always-deny bpf"
-        );
+        assert!(names.contains("ptrace"));
+        assert!(names.contains("process_vm_readv"));
+        assert!(names.contains("process_vm_writev"));
+        assert!(names.contains("io_uring_setup"));
+        assert!(names.contains("io_uring_enter"));
+        assert!(names.contains("io_uring_register"));
+        assert!(names.contains("bpf"));
     }
 
     #[test]
     fn build_seccomp_plan_restricted_includes_network_denies() {
         let plan = build_seccomp_plan(NetworkSeccompMode::Restricted);
         let names = plan.network_denied_names();
-        assert!(
-            !names.is_empty(),
-            "restricted plan must have network-denied rules"
-        );
-        assert!(
-            names.contains("bind"),
-            "restricted plan must network-deny bind"
-        );
-        assert!(
-            names.contains("listen"),
-            "restricted plan must network-deny listen"
-        );
-        assert!(
-            names.contains("connect"),
-            "restricted plan must network-deny connect"
-        );
-        assert!(
-            names.contains("sendto"),
-            "restricted plan must network-deny sendto"
-        );
-        assert!(
-            names.contains("recvfrom"),
-            "restricted plan must network-deny recvfrom"
-        );
+        assert!(names.contains("bind"));
+        assert!(names.contains("listen"));
+        assert!(names.contains("connect"));
+        assert!(names.contains("sendto"));
+        assert!(names.contains("recvfrom"));
     }
 
     #[test]
     fn build_seccomp_plan_restricted_does_not_allow_direct_socket_bind() {
         let plan = build_seccomp_plan(NetworkSeccompMode::Restricted);
         let net_denied = plan.network_denied_names();
-        assert!(
-            net_denied.contains("bind"),
-            "restricted must network-deny bind"
-        );
-        assert!(
-            net_denied.contains("listen"),
-            "restricted must network-deny listen"
-        );
+        assert!(net_denied.contains("bind"));
+        assert!(net_denied.contains("listen"));
     }
 
     #[test]
     fn build_seccomp_plan_full_includes_always_denied() {
         let plan = build_seccomp_plan(NetworkSeccompMode::Full);
         let names = plan.always_denied_names();
-        assert!(
-            names.contains("ptrace"),
-            "full plan must always-deny ptrace"
-        );
-        assert!(
-            names.contains("io_uring_setup"),
-            "full plan must always-deny io_uring_setup"
-        );
+        assert!(names.contains("ptrace"));
+        assert!(names.contains("io_uring_setup"));
     }
 
     #[test]
     fn build_seccomp_plan_full_has_zero_network_denies() {
         let plan = build_seccomp_plan(NetworkSeccompMode::Full);
-        assert!(
-            plan.network_denied_names().is_empty(),
-            "Full mode must add no network-denied rules — raw-byte syscalls are allowed"
-        );
+        assert!(plan.network_denied_names().is_empty());
     }
 
     #[test]
@@ -499,8 +478,7 @@ mod tests {
         let restricted_plan = build_seccomp_plan(NetworkSeccompMode::Restricted);
         assert_ne!(
             proxy_plan.network_denied_names(),
-            restricted_plan.network_denied_names(),
-            "ProxyOnly plan must differ from Restricted plan in network-denied set"
+            restricted_plan.network_denied_names()
         );
     }
 
@@ -510,8 +488,7 @@ mod tests {
         let restricted_plan = build_seccomp_plan(NetworkSeccompMode::Restricted);
         assert_eq!(
             proxy_plan.always_denied_names(),
-            restricted_plan.always_denied_names(),
-            "Always-denied set must be identical regardless of network mode"
+            restricted_plan.always_denied_names()
         );
     }
 
@@ -523,11 +500,7 @@ mod tests {
             NetworkSeccompMode::ProxyOnly,
         ] {
             let plan = build_seccomp_plan(mode);
-            assert!(
-                !plan.rules.is_empty(),
-                "Plan for {:?} must not be empty — at least always-denied rules must be present",
-                mode
-            );
+            assert!(!plan.rules.is_empty());
         }
     }
 }
