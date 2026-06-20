@@ -107,38 +107,45 @@
   transform: rotate(180deg);
 }
 
+/* Expand/collapse via CSS grid rows trick. The wrapper is a grid with one
+   row whose height transitions between 0fr (collapsed) and 1fr (expanded).
+   The panel inside is the grid item — it must have min-height:0 so the row
+   can collapse to zero regardless of the content's intrinsic size. */
 .session-progress-island-panel-wrap {
   display: grid;
-  grid-template-rows: 0fr;
+  /* minmax(0, 0fr) — the explicit 0 minimum lets the track collapse fully
+     to zero regardless of the content's intrinsic min-content height.
+     (Bare "0fr" expands to "minmax(auto, 0fr)" whose minimum is min-content,
+     which the DAG graph's fixed viewport height would pin open.) */
+  grid-template-rows: minmax(0, 0fr);
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
   transition:
     grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 200ms ease-out;
+    opacity 240ms ease-out;
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
   opacity: 1;
-  visibility: visible;
   pointer-events: auto;
 }
 
-/* The panel itself sits in the single grid row. min-height: 0 lets the row
-   collapse to 0fr cleanly; overflow hidden clips content while collapsing. */
+/* Panel is the grid item. overflow:hidden clips content while the row
+   animates. min-height:0 is mandatory for the 0fr collapse to work. */
 .session-progress-island-panel {
   display: flex;
   min-height: 0;
-  max-height: min(68vh, 720px);
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--color-border-weak-base) 54%, transparent);
 }
 
-/* When expanded, let the panel settle to a comfortable min height */
+/* Cap the expanded panel height. Applied only when expanded so it never
+   fights the 0fr collapse. */
 .session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
-  min-height: min(280px, 50vh);
+  max-height: min(68vh, 720px);
+  min-height: min(220px, 44vh);
 }
 
 .session-progress-island-panel-topline {
