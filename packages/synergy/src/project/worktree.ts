@@ -179,7 +179,18 @@ export namespace Worktree {
     bare?: boolean
   }
 
-  const activeLocks = new Map<string, number>()
+  export interface LockResult {
+    acquired: boolean
+    /** true when git reported that the worktree was already locked before this call. */
+    existing: boolean
+  }
+
+  interface LockState {
+    count: number
+    synergyAcquired: boolean
+  }
+
+  const activeLocks = new Map<string, LockState>()
 
   function pick<const T extends readonly string[]>(items: T) {
     return items[Math.floor(Math.random() * items.length)]
@@ -624,8 +635,13 @@ export namespace Worktree {
     if (removed.exitCode !== 0)
       throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
     if (info.managed) await removeRegistry(info.id)
-    const session = await Session.get(parsed.sessionID)
-    if (session.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id)
+    let session: Awaited<ReturnType<typeof Session.get>> | undefined
+    try {
+      session = await Session.get(parsed.sessionID)
+    } catch {
+      // sessionID may be a placeholder like "none" — ignore
+    }
+    if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id)
       await leave(parsed.sessionID)
     return info
   }
@@ -639,27 +655,40 @@ export namespace Worktree {
     return true
   }
 
-  export async function lock(directory: string) {
+  export async function lock(directory: string): Promise<LockResult> {
     const resolved = path.resolve(directory)
-    const count = activeLocks.get(resolved) ?? 0
-    activeLocks.set(resolved, count + 1)
-    if (count > 0) return
+    let state = activeLocks.get(resolved)
+    if (!state) {
+      state = { count: 0, synergyAcquired: false }
+      activeLocks.set(resolved, state)
+    }
+    state.count += 1
+    if (state.count > 1) return { acquired: false, existing: false }
     const { repoRoot } = ensureGitScope()
     const result = await $`git worktree lock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {
+      const msg = errorText(result)
+      if (/already locked/i.test(msg)) {
+        activeLocks.delete(resolved)
+        return { acquired: false, existing: true }
+      }
       activeLocks.delete(resolved)
-      throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
+      throw new LockFailedError({ message: msg || `Failed to lock worktree: ${resolved}` })
     }
+    state.synergyAcquired = true
+    return { acquired: true, existing: false }
   }
 
   export async function unlock(directory: string) {
     const resolved = path.resolve(directory)
-    const count = activeLocks.get(resolved) ?? 0
-    if (count > 1) {
-      activeLocks.set(resolved, count - 1)
+    const state = activeLocks.get(resolved)
+    if (!state) return
+    if (state.count > 1) {
+      state.count -= 1
       return
     }
     activeLocks.delete(resolved)
+    if (!state.synergyAcquired) return
     const { repoRoot } = ensureGitScope()
     const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
     if (result.exitCode !== 0) {

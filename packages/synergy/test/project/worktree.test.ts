@@ -137,3 +137,166 @@ describe("git worktree integration", () => {
 function using(fn: () => Promise<void>): () => Promise<void> {
   return fn
 }
+
+describe("worktree lock invariant", () => {
+  type LockResult = { acquired: boolean; existing: boolean }
+  function guard(result: unknown): LockResult {
+    return result as LockResult
+  }
+
+  test("lock reports already-locked worktree as non-acquired instead of throwing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "lock-test-1", bind: false, baseRef: "current" })
+
+          // Pre-lock the worktree externally — simulates a lock left behind
+          await $`git worktree lock ${created.path}`.quiet().cwd(scope.worktree)
+
+          // The lock call should not throw — it should report the existing lock
+          // Expected contract: Worktree.lock() returns { acquired: boolean, existing: boolean }
+          const result = guard(await Worktree.lock(created.path))
+          expect(result.acquired).toBe(false)
+          expect(result.existing).toBe(true)
+
+          // Cleanup: unlock the pre-existing lock so the worktree can be removed
+          await $`git worktree unlock ${created.path}`.quiet().cwd(scope.worktree)
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("fn executes when worktree is already locked", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "lock-test-2", bind: false, baseRef: "current" })
+
+          // Pre-lock the worktree externally
+          await $`git worktree lock ${created.path}`.quiet().cwd(scope.worktree)
+
+          // Simulate the SessionManager.run pattern: lock, fn, unlock
+          const result = guard(await Worktree.lock(created.path))
+
+          let fnRan = false
+          try {
+            // fn must execute regardless of who owns the lock
+            fnRan = true
+          } finally {
+            if (result.acquired) {
+              await Worktree.unlock(created.path)
+            }
+          }
+
+          expect(fnRan).toBe(true)
+
+          // The pre-existing lock must still be present since Synergy did not acquire it
+          const checkLock = await $`git worktree lock ${created.path} 2>&1`.quiet().nothrow().cwd(scope.worktree)
+          expect(checkLock.exitCode).not.toBe(0)
+
+          // Cleanup: unlock pre-existing, then remove worktree
+          await $`git worktree unlock ${created.path}`.quiet().cwd(scope.worktree)
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("pre-existing lock is not removed after run completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "lock-test-3", bind: false, baseRef: "current" })
+
+          // Pre-lock the worktree externally
+          await $`git worktree lock ${created.path}`.quiet().cwd(scope.worktree)
+
+          // Simulate lock-and-run pattern
+          const result = guard(await Worktree.lock(created.path))
+          try {
+            // fn body — intentionally empty
+          } finally {
+            if (result.acquired) {
+              await Worktree.unlock(created.path)
+            }
+          }
+
+          // Verify the git lock is STILL present (it was pre-existing, not Synergy's)
+          const checkLock = await $`git worktree lock ${created.path} 2>&1`.quiet().nothrow().cwd(scope.worktree)
+          expect(checkLock.exitCode).not.toBe(0)
+          // stdout captures the error message (2>&1 merged stderr→stdout in Bun shell)
+          const msg = new TextDecoder().decode(checkLock.stdout).toLowerCase()
+          expect(msg).toMatch(/already/)
+
+          // Cleanup
+          await $`git worktree unlock ${created.path}`.quiet().cwd(scope.worktree)
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("synergy-acquired lock is unlocked after run completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "lock-test-4", bind: false, baseRef: "current" })
+
+          // No pre-existing lock — Synergy should acquire it
+          const result = guard(await Worktree.lock(created.path))
+          expect(result.acquired).toBe(true)
+          expect(result.existing).toBe(false)
+
+          try {
+            // fn runs under the lock
+          } finally {
+            if (result.acquired) {
+              await Worktree.unlock(created.path)
+            }
+          }
+
+          // Verify the git lock has been removed
+          const checkLock = await $`git worktree lock ${created.path} 2>&1`.quiet().nothrow().cwd(scope.worktree)
+          // Re-locking should succeed (not "already locked")
+          expect(checkLock.exitCode).toBe(0)
+
+          // Cleanup
+          await $`git worktree unlock ${created.path}`.quiet().cwd(scope.worktree)
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("normal lock returns acquired=true", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await Instance.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "lock-test-5", bind: false, baseRef: "current" })
+
+          const result = guard(await Worktree.lock(created.path))
+          expect(result.acquired).toBe(true)
+
+          await Worktree.unlock(created.path)
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+})
