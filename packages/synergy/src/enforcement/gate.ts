@@ -446,10 +446,15 @@ export namespace EnforcementGate {
           })
           return { capabilities: caps }
         }
-
         caps.push({ class: risk, nonBypassable: false })
 
-        if (risk !== "shell_destructive" && isDestructive(command)) {
+        if (risk === "shell_destructive") {
+          caps[caps.length - 1].nonBypassable = true
+          const extraReason = isDestructive(command)
+          if (extraReason) {
+            caps[caps.length - 1].reason = `matched destructive pattern: ${extraReason}`
+          }
+        } else if (isDestructive(command)) {
           const matched = isDestructive(command)
           caps.push({
             class: "shell_destructive",
