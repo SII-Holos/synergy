@@ -1,4 +1,4 @@
-import { createMemo, onCleanup, onMount, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { formatProgressIslandLabel, type ProgressIslandSnapshot, type ProgressMode } from "./session-progress-summary"
@@ -34,6 +34,10 @@ function detailText(snapshot: ProgressIslandSnapshot): string | undefined {
 
 export function SessionProgressIsland(props: SessionProgressIslandProps) {
   let rootRef: HTMLDivElement | undefined
+  let panelRef: HTMLDivElement | undefined
+  let bodyRef: HTMLDivElement | undefined
+
+  const [panelHeight, setPanelHeight] = createSignal<number | undefined>(undefined)
 
   const label = createMemo(() => formatProgressIslandLabel(props.snapshot, props.activeLabel))
   const percentage = createMemo(() => Math.round(props.snapshot.progressRatio * 100))
@@ -63,6 +67,45 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
     onCleanup(() => {
       document.removeEventListener("keydown", keyHandler)
       document.removeEventListener("click", clickHandler)
+    })
+  })
+
+  createEffect(() => {
+    const shouldMeasure =
+      props.expanded && (props.mode === "todo" || (props.mode === "both" && props.activeTab === "todo"))
+
+    if (!shouldMeasure) {
+      setPanelHeight(undefined)
+      return
+    }
+
+    const body = bodyRef
+    const panel = panelRef
+    if (!body || !panel) return
+
+    const measure = () => {
+      const bodyHeight = body.scrollHeight
+      if (bodyHeight <= 0) return
+
+      const topline = panel.querySelector(".session-progress-island-panel-topline")
+      const tabs = panel.querySelector(".session-progress-island-tabs")
+      const overhead = (topline?.scrollHeight ?? 0) + (tabs?.scrollHeight ?? 0)
+      const maxH = Math.min(window.innerHeight * 0.52, 560)
+
+      setPanelHeight(Math.min(bodyHeight + overhead, maxH))
+    }
+
+    // Initial measure after the DOM has settled, then watch for content
+    // changes (new todos, status changes, expanded detail rows) so the
+    // panel grows or shrinks with the list instead of staying at max-height.
+    const raf = requestAnimationFrame(measure)
+
+    const observer = new MutationObserver(measure)
+    observer.observe(body, { childList: true, subtree: true, characterData: true })
+
+    onCleanup(() => {
+      cancelAnimationFrame(raf)
+      observer.disconnect()
     })
   })
 
@@ -120,8 +163,16 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
           class="session-progress-island-panel-wrap"
           data-expanded={props.expanded ? "true" : "false"}
           aria-hidden={!props.expanded}
+          style={panelHeight() != null ? { height: `${panelHeight()}px` } : undefined}
         >
-          <div id="session-progress-island-panel" class="session-progress-island-panel">
+          <div
+            id="session-progress-island-panel"
+            class="session-progress-island-panel"
+            ref={(el) => {
+              panelRef = el
+            }}
+            style={panelHeight() != null ? { height: `${panelHeight()}px` } : undefined}
+          >
             <div class="session-progress-island-panel-topline">
               <span>Current work</span>
               <span class="text-text-weaker">
@@ -141,7 +192,14 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
               </div>
             </Show>
 
-            <div class="session-progress-island-body">{props.children}</div>
+            <div
+              class="session-progress-island-body"
+              ref={(el) => {
+                bodyRef = el
+              }}
+            >
+              {props.children}
+            </div>
           </div>
         </div>
       </div>
