@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -385,7 +386,7 @@ export function Sidebar(props: SidebarProps) {
                   when={recentEntries().length > 0}
                   fallback={<div class="sb-section-empty">No recent sessions</div>}
                 >
-                  <div class="sb-sessions">
+                  <FlipList entries={recentEntries()} class="sb-sessions">
                     <For each={recentEntries()}>
                       {(entry) => (
                         <button
@@ -394,6 +395,7 @@ export function Sidebar(props: SidebarProps) {
                             "sb-session-row": true,
                             "sb-session-active": entry.id === params.id,
                           }}
+                          data-session-id={entry.id}
                           onClick={() => handleNavEntryClick(entry)}
                         >
                           <SessionRowIcon entry={entry} />
@@ -401,7 +403,7 @@ export function Sidebar(props: SidebarProps) {
                         </button>
                       )}
                     </For>
-                  </div>
+                  </FlipList>
                   <Show when={hasMoreRecent()}>
                     <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
                       Load more
@@ -442,21 +444,24 @@ export function Sidebar(props: SidebarProps) {
                 <Show when={channelEntries().length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
                   <div class="sb-session-group">
                     <div class="sb-session-group-header">Feishu</div>
-                    <For each={channelEntries()}>
-                      {(entry) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "sb-session-row": true,
-                            "sb-session-active": entry.id === params.id,
-                          }}
-                          onClick={() => handleNavEntryClick(entry)}
-                        >
-                          <SessionRowIcon entry={entry} />
-                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                        </button>
-                      )}
-                    </For>
+                    <FlipList entries={channelEntries()} class="sb-sessions">
+                      <For each={channelEntries()}>
+                        {(entry) => (
+                          <button
+                            type="button"
+                            classList={{
+                              "sb-session-row": true,
+                              "sb-session-active": entry.id === params.id,
+                            }}
+                            data-session-id={entry.id}
+                            onClick={() => handleNavEntryClick(entry)}
+                          >
+                            <SessionRowIcon entry={entry} />
+                            <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                          </button>
+                        )}
+                      </For>
+                    </FlipList>
                   </div>
                   <Show when={layout.nav.hasMoreRootNavSection("channel")}>
                     <button
@@ -719,30 +724,29 @@ function RootNavSection(props: {
       </div>
       <Show when={props.open()}>
         <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
-          <>
-            <div class="sb-sessions">
-              <For each={props.entries}>
-                {(entry) => (
-                  <button
-                    type="button"
-                    classList={{
-                      "sb-session-row": true,
-                      "sb-session-active": entry.id === props.activeID,
-                    }}
-                    onClick={() => props.onSessionClick(entry)}
-                  >
-                    <SessionRowIcon entry={entry} />
-                    <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={props.hasMore}>
-              <button type="button" class="sb-load-more-btn" onClick={props.onLoadMore}>
-                Load more
-              </button>
-            </Show>
-          </>
+          <FlipList entries={props.entries} class="sb-sessions">
+            <For each={props.entries}>
+              {(entry) => (
+                <button
+                  type="button"
+                  classList={{
+                    "sb-session-row": true,
+                    "sb-session-active": entry.id === props.activeID,
+                  }}
+                  data-session-id={entry.id}
+                  onClick={() => props.onSessionClick(entry)}
+                >
+                  <SessionRowIcon entry={entry} />
+                  <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                </button>
+              )}
+            </For>
+          </FlipList>
+          <Show when={props.hasMore}>
+            <button type="button" class="sb-load-more-btn" onClick={props.onLoadMore}>
+              Load more
+            </button>
+          </Show>
         </Show>
       </Show>
     </div>
@@ -756,7 +760,7 @@ function GroupedSessionList(props: {
   onSessionClick: (entry: NavEntry) => void
 }) {
   return (
-    <>
+    <FlipList entries={props.entries} class="sb-sessions">
       <For each={props.entries.filter((e) => e.category === "project")}>
         {(entry) => (
           <button
@@ -765,6 +769,7 @@ function GroupedSessionList(props: {
               "sb-session-row": true,
               "sb-session-active": entry.id === props.activeID,
             }}
+            data-session-id={entry.id}
             onClick={(e) => {
               e.stopPropagation()
               props.onSessionClick(entry)
@@ -775,7 +780,7 @@ function GroupedSessionList(props: {
           </button>
         )}
       </For>
-    </>
+    </FlipList>
   )
 }
 

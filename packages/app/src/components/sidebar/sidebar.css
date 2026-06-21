@@ -991,6 +991,10 @@
   .sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
     animation: none;
   }
+  .sb-session-row {
+    transition: background-color 100ms !important;
+    transform: none !important;
+  }
 }
 
 /* ===== Projects flyout (collapsed mode) ===== */

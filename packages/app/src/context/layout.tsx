@@ -709,7 +709,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function recentNavEntries(): NavEntry[] {
-      return recentEntries.items
+      return recentEntries.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
     }
 
     function hasMoreRecent(): boolean {
