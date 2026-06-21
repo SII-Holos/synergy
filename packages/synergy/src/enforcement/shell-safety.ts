@@ -111,7 +111,15 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── push ───────────────────────────────────────────────────
   if (sub === "push") {
-    return "shell_destructive" // any push → destructive
+    // Force push rewrites remote history → destructive (nonBypassable).
+    // Delete remote branch → destructive.
+    // Plain push only uploads commits — safe_write, let the classifier
+    // evaluate if needed. This avoids blocking routine pushes to forks.
+    if (hasExact("--force") || hasExact("-f") || hasExact("--force-with-lease") || hasExact("--mirror")) {
+      return "shell_destructive"
+    }
+    if (hasExact("--delete") || hasExact("-d")) return "shell_destructive"
+    return "shell"
   }
 
   // ── reset ──────────────────────────────────────────────────

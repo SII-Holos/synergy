@@ -85,10 +85,11 @@ const DESTRUCTIVE_PATTERNS = [
   // Git history rewriting
   "git rebase ",
   "git filter-branch",
-  "git reflog expire",
   "git reflog delete",
-  // Git refined classifications — defense-in-depth
-  "git push ",
+  // NOTE: "git push " removed from here — shell-safety.ts now does
+  // flag-aware classification (only --force/-f/--delete/--mirror are
+  // destructive). This legacy includes() pattern was re-flagging ALL
+  // pushes as destructive, defeating the finer classification.
   "git pull --rebase",
   "git pull -r",
   "git revert ",

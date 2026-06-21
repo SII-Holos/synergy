@@ -722,7 +722,7 @@ describe("EnforcementGate profile integration", () => {
     ).toThrow()
   })
 
-  test("autonomous denies git push as shell_destructive", () => {
+  test("autonomous allows git push (plain) as shell (not shell_destructive)", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -730,10 +730,10 @@ describe("EnforcementGate profile integration", () => {
       profileId: "autonomous",
     })
     const envelope = gate.evaluate("bash", { command: "git push" })
-    expect(envelope.decision).toBe("deny")
+    expect(envelope.decision).toBe("allow")
   })
 
-  test("autonomous denies git push through git global options", () => {
+  test("autonomous allows git push through git global options (plain push is shell)", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -741,7 +741,7 @@ describe("EnforcementGate profile integration", () => {
       profileId: "autonomous",
     })
     const envelope = gate.evaluate("bash", { command: "git -C /tmp push" })
-    expect(envelope.decision).toBe("deny")
+    expect(envelope.decision).toBe("allow")
   })
 
   test("autonomous denies git push through shell wrapper", () => {
@@ -1338,7 +1338,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 
   // ── Refined git classifications (classifyBashRisk primary path) ──
 
-  test("git push (plain) is classified as destructive (classifyBashRisk)", () => {
+  test("git push (plain) is classified as shell (not destructive)", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -1346,10 +1346,12 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     })
     const result = gate.classify("bash", { command: "git push" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
-    expect(destructive).toBeDefined()
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
   })
 
-  test("git push origin main is classified as destructive (classifyBashRisk)", () => {
+  test("git push origin main is classified as shell (not destructive)", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -1357,10 +1359,12 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     })
     const result = gate.classify("bash", { command: "git push origin main" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
-    expect(destructive).toBeDefined()
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
   })
 
-  test("git push through git global options is classified as destructive", () => {
+  test("git push through git global options is classified as shell (not destructive)", () => {
     const { EnforcementGate } = require("../../src/enforcement/gate")
     const gate = EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -1368,7 +1372,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     })
     const result = gate.classify("bash", { command: "git -C /tmp push" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
-    expect(destructive).toBeDefined()
+    expect(destructive).toBeUndefined()
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
   })
 
   test("git push through shell wrapper is classified as destructive", () => {

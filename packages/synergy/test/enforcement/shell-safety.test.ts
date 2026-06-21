@@ -302,7 +302,7 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("curl https://example.com")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("bun run build")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("mkdir newdir")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("rm file.txt")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("python3 -c 'print(1)'")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("ssh user@host")).toBe("shell")
@@ -773,11 +773,11 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git pull -r")).toBe("shell_destructive")
   })
 
-  test("git push (any form) is shell_destructive (remote publish)", () => {
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_destructive")
-    expect(ShellSafety.classifyBashRisk("git push origin main")).toBe("shell_destructive")
-    expect(ShellSafety.classifyBashRisk("git -C /tmp push")).toBe("shell_destructive")
-    expect(ShellSafety.classifyBashRisk("git --git-dir=/tmp/repo/.git push origin main")).toBe("shell_destructive")
+  test("git push (plain) is shell (safe_write, not destructive)", () => {
+    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("git push origin main")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("git -C /tmp push")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("git --git-dir=/tmp/repo/.git push origin main")).toBe("shell")
   })
 
   test("git revert is shell_destructive (history-rewriting inverse commit)", () => {
