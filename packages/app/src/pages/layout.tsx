@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "solid-js"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show, Switch, Match } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import type { Component } from "solid-js"
@@ -31,6 +32,7 @@ import { AgendaPanel } from "@/components/agenda"
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
 import { getGlobalPanel, loadPluginExport, getPluginContribution } from "@/plugin"
+import { SandboxShell } from "@/plugin/sandbox"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
@@ -483,26 +485,28 @@ function GlobalPanelSwitch() {
 function PluginGlobalPanelContent(props: { panelId: string }) {
   const [comp, setComp] = createSignal<Component | null>(null)
   const [loading, setLoading] = createSignal(true)
+  const [entry, setEntry] = createSignal<ReturnType<typeof getGlobalPanel>>(undefined)
 
   onMount(() => {
-    const entry = getGlobalPanel(props.panelId)
-    if (!entry) {
+    const e = getGlobalPanel(props.panelId)
+    setEntry(e)
+    if (!e) {
       setLoading(false)
       return
     }
-    if (entry.component) {
-      setComp(() => entry.component!)
+    if (e.component) {
+      setComp(() => e.component!)
       setLoading(false)
       return
     }
-    if (entry.sandbox) {
+    if (e.sandbox) {
       setLoading(false)
       return
     }
-    if (entry.pluginId && entry.exportName) {
-      const contrib = getPluginContribution(entry.pluginId)
+    if (e.pluginId && e.exportName) {
+      const contrib = getPluginContribution(e.pluginId)
       if (contrib) {
-        loadPluginExport(contrib, entry.exportName)
+        loadPluginExport(contrib, e.exportName)
           .then((c) => {
             setComp(() => c as Component)
             setLoading(false)
@@ -514,6 +518,8 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
     setLoading(false)
   })
 
+  const isSandbox = () => entry()?.sandbox && entry()?.sandboxUrl
+
   return (
     <Show
       when={!loading()}
@@ -523,11 +529,24 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
         </div>
       }
     >
-      <Show
-        when={comp()}
-        fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">Panel unavailable</div>}
-      >
-        {(c) => <Dynamic component={c()} />}
+      <Show when={isSandbox()}>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div class="flex items-center justify-center h-full text-14 text-icon-critical-base p-4">
+              {error.message}
+            </div>
+          )}
+        >
+          <SandboxShell src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+        </ErrorBoundary>
+      </Show>
+      <Show when={!isSandbox()}>
+        <Show
+          when={comp()}
+          fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">Panel unavailable</div>}
+        >
+          {(c) => <Dynamic component={c()} />}
+        </Show>
       </Show>
     </Show>
   )

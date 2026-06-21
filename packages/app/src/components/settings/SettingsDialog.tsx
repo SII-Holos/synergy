@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, Show, For, onMount } from "solid-js"
+import { ErrorBoundary, createEffect, createMemo, createResource, createSignal, Show, For, onMount } from "solid-js"
 import type { Component } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
@@ -15,6 +15,7 @@ import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } f
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
 import { getSettingsSections, type SettingsSection, loadPluginExport, getPluginContribution } from "@/plugin"
+import { SandboxShell } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
 import type {
@@ -721,21 +722,24 @@ function PluginSettingsContent(props: { section: SettingsSection }) {
   const [comp, setComp] = createSignal<Component | null>(null)
   const [loading, setLoading] = createSignal(true)
 
+  const section = () => props.section
+  const isSandbox = () => section().sandbox && section().sandboxUrl && section().pluginId
+
   onMount(() => {
-    const section = props.section
-    if (section.component) {
-      setComp(() => section.component!)
+    const s = section()
+    if (s.component) {
+      setComp(() => s.component!)
       setLoading(false)
       return
     }
-    if (section.sandbox) {
+    if (s.sandbox) {
       setLoading(false)
       return
     }
-    if (section.pluginId && section.exportName) {
-      const contrib = getPluginContribution(section.pluginId)
+    if (s.pluginId && s.exportName) {
+      const contrib = getPluginContribution(s.pluginId)
       if (contrib) {
-        loadPluginExport(contrib, section.exportName)
+        loadPluginExport(contrib, s.exportName)
           .then((c) => {
             setComp(() => c as Component)
             setLoading(false)
@@ -756,15 +760,28 @@ function PluginSettingsContent(props: { section: SettingsSection }) {
         </div>
       }
     >
-      <Show
-        when={comp()}
-        fallback={
-          <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
-            {props.section.label} is not available
-          </div>
-        }
-      >
-        {(c) => <Dynamic component={c()} />}
+      <Show when={isSandbox()}>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div class="flex items-center justify-center py-8 text-13-regular text-icon-critical-base">
+              {error.message}
+            </div>
+          )}
+        >
+          <SandboxShell src={section().sandboxUrl!} pluginId={section().pluginId!} panelId={section().id} />
+        </ErrorBoundary>
+      </Show>
+      <Show when={!isSandbox()}>
+        <Show
+          when={comp()}
+          fallback={
+            <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
+              {section().label} is not available
+            </div>
+          }
+        >
+          {(c) => <Dynamic component={c()} />}
+        </Show>
       </Show>
     </Show>
   )

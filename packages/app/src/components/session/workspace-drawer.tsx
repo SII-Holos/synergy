@@ -1,4 +1,4 @@
-import { Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
+import { ErrorBoundary, Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import type { Component } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -6,33 +6,35 @@ import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
 import { getWorkspacePanel, loadPluginExport, getPluginContribution } from "@/plugin"
+import { SandboxShell } from "@/plugin/sandbox"
 import "./workspace-drawer.css"
 
 /** Wrapper that shows a skeleton/spinner while lazy-loading a plugin panel component. */
 function PluginWorkspaceContent(props: { panelId: string }) {
   const [comp, setComp] = createSignal<Component | null>(null)
   const [loading, setLoading] = createSignal(true)
+  const [entry, setEntry] = createSignal<ReturnType<typeof getWorkspacePanel>>(undefined)
 
   onMount(() => {
-    const entry = getWorkspacePanel(props.panelId)
-    if (!entry) {
+    const e = getWorkspacePanel(props.panelId)
+    setEntry(e)
+    if (!e) {
       setLoading(false)
       return
     }
-    if (entry.component) {
-      setComp(() => entry.component!)
+    if (e.component) {
+      setComp(() => e.component!)
       setLoading(false)
       return
     }
-    if (entry.sandbox) {
-      // Sandbox panels rendered via iframe — handled elsewhere
+    if (e.sandbox) {
       setLoading(false)
       return
     }
-    if (entry.pluginId && entry.exportName) {
-      const contrib = getPluginContribution(entry.pluginId)
+    if (e.pluginId && e.exportName) {
+      const contrib = getPluginContribution(e.pluginId)
       if (contrib) {
-        loadPluginExport(contrib, entry.exportName)
+        loadPluginExport(contrib, e.exportName)
           .then((c) => {
             setComp(() => c as Component)
             setLoading(false)
@@ -44,6 +46,8 @@ function PluginWorkspaceContent(props: { panelId: string }) {
     setLoading(false)
   })
 
+  const isSandbox = () => entry()?.sandbox && entry()?.sandboxUrl
+
   return (
     <Show
       when={!loading()}
@@ -53,13 +57,26 @@ function PluginWorkspaceContent(props: { panelId: string }) {
         </div>
       }
     >
-      <Show
-        when={comp()}
-        fallback={
-          <div class="flex items-center justify-center h-full text-text-weak text-14">Plugin panel unavailable</div>
-        }
-      >
-        {(c) => <Dynamic component={c()} />}
+      <Show when={isSandbox()}>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div class="flex items-center justify-center h-full text-14 text-icon-critical-base p-4">
+              {error.message}
+            </div>
+          )}
+        >
+          <SandboxShell src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+        </ErrorBoundary>
+      </Show>
+      <Show when={!isSandbox()}>
+        <Show
+          when={comp()}
+          fallback={
+            <div class="flex items-center justify-center h-full text-text-weak text-14">Plugin panel unavailable</div>
+          }
+        >
+          {(c) => <Dynamic component={c()} />}
+        </Show>
       </Show>
     </Show>
   )
