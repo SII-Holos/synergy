@@ -39,7 +39,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
 
     const result = gate.classify("mcp__github__list_repos", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")
+    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
     expect(mcpCap).toBeDefined()
     // MCP invoke is an externalIO operation — always nonBypassable
     expect(mcpCap.nonBypassable).toBe(true)
@@ -53,7 +53,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
 
     const result = gate.classify("mcp__completely_fake_server__do_something", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")
+    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
     expect(mcpCap).toBeDefined()
     expect(mcpCap.opaque).toBe(true)
   })
@@ -119,7 +119,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
 
     const result = gate.classify("plugin__my_plugin__do_export", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")
+    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
     expect(pluginCap).toBeDefined()
     // Plugin invoke is an externalIO operation — always nonBypassable
     expect(pluginCap.nonBypassable).toBe(true)
@@ -133,7 +133,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
 
     const result = gate.classify("plugin__no_such_plugin__run_task", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")
+    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
     expect(pluginCap).toBeDefined()
     expect(pluginCap.opaque).toBe(true)
   })

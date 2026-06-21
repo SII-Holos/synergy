@@ -27,7 +27,7 @@ const { evaluateCommand, generateAmendment, parseAskForApproval, parseNetworkRul
 // ------------------------------------------------------------------
 describe("ExecPolicy prefix rule matching", () => {
   test("prefix_rule matches exact command: allow git matches ['git', 'status']", () => {
-    const rule = parsePrefixRule("allow git", { source: "test-policy" })
+    const rule = parsePrefixRule("allow git", { source: "test-policy" })!
     expect(rule).toEqual({
       action: "allow",
       prefix: ["git"],
@@ -41,7 +41,7 @@ describe("ExecPolicy prefix rule matching", () => {
   })
 
   test("prefix_rule matches multi-token prefix: allow git log matches ['git', 'log', '--oneline']", () => {
-    const rule = parsePrefixRule("allow git log")
+    const rule = parsePrefixRule("allow git log")!
     expect(rule).toEqual({
       action: "allow",
       prefix: ["git", "log"],
@@ -53,8 +53,8 @@ describe("ExecPolicy prefix rule matching", () => {
   })
 
   test("prefix_rule most-specific wins: forbidden git + allow git push", () => {
-    const denyGit = parsePrefixRule("forbid git")
-    const allowPush = parsePrefixRule("allow git push")
+    const denyGit = parsePrefixRule("forbid git")!
+    const allowPush = parsePrefixRule("allow git push")!
 
     // git push → allowed (more specific allow wins)
     const pushMatch = evaluateCommand(["git", "push", "origin", "main"], [denyGit, allowPush])
@@ -88,7 +88,7 @@ describe("ExecPolicy prefix rule matching", () => {
   })
 
   test("justification is preserved in rule match", () => {
-    const rule = parsePrefixRule("ask git commit", { source: "project-policy" })
+    const rule = parsePrefixRule("ask git commit", { source: "project-policy" })!
     const match = evaluateCommand(["git", "commit", "-m", "fix bug"], [rule])
 
     expect(match.action).toBe("ask")
@@ -98,15 +98,15 @@ describe("ExecPolicy prefix rule matching", () => {
   })
 
   test("empty command returns prompt (no rules match)", () => {
-    const match = evaluateCommand([], [parsePrefixRule("allow git"), parsePrefixRule("deny rm")])
+    const match = evaluateCommand([], [parsePrefixRule("allow git")!, parsePrefixRule("deny rm")!])
     // Empty command has no prefix → falls through to default
     expect(match.action).toBe("ask")
     expect(match.heuristic).toBe(true)
   })
 
   test("duplicate prefix rules: last one wins (deterministic)", () => {
-    const first = parsePrefixRule("allow npm install")
-    const second = parsePrefixRule("deny npm install")
+    const first = parsePrefixRule("allow npm install")!
+    const second = parsePrefixRule("deny npm install")!
 
     // Last rule registered should win when specificity is identical
     const match = evaluateCommand(["npm", "install", "express"], [first, second])
@@ -146,7 +146,7 @@ describe("ExecPolicy network rule parsing", () => {
 // ------------------------------------------------------------------
 describe("ExecPolicy source annotation", () => {
   test("source annotation: rule carries source filename", () => {
-    const rule = parsePrefixRule("allow bun test", { source: ".synergy/exec-policy.toml" })
+    const rule = parsePrefixRule("allow bun test", { source: ".synergy/exec-policy.toml" })!
 
     expect(rule.source).toBe(".synergy/exec-policy.toml")
     expect(rule.action).toBe("allow")
@@ -205,10 +205,10 @@ describe("ExecPolicy AskForApproval", () => {
 // ------------------------------------------------------------------
 describe("ExecPolicy amendment generation", () => {
   test("Prompt rule match generates ExecPolicyAmendment with command prefix", () => {
-    const rule = parsePrefixRule("ask git push")
+    const rule = parsePrefixRule("ask git push")!
     const match: RuleMatch = {
       action: "ask",
-      matchedRule: rule,
+      matchedRule: rule!,
       heuristic: false,
     }
 
@@ -219,10 +219,10 @@ describe("ExecPolicy amendment generation", () => {
   })
 
   test("Allow rule match does NOT generate amendment", () => {
-    const rule = parsePrefixRule("allow git status")
+    const rule = parsePrefixRule("allow git status")!
     const match: RuleMatch = {
       action: "allow",
-      matchedRule: rule,
+      matchedRule: rule!,
       heuristic: false,
     }
 
