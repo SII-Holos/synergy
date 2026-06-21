@@ -53,7 +53,7 @@ export namespace Plugin {
   }
 
   // ---------------------------------------------------------------------------
-  // Plugin auth store — encrypted credentials at ~/.synergy/data/plugin/{id}/auth.json
+  // Plugin auth store — plaintext credentials at ~/.synergy/data/plugin/{id}/auth.json
   // ---------------------------------------------------------------------------
 
   function resolveAuthPath(pluginId: string) {

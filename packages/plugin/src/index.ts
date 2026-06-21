@@ -41,7 +41,7 @@ export interface PluginConfigAccessor {
 export interface PluginAuthStore {
   /** Read a credential by key */
   get(key: string): Promise<string | undefined>
-  /** Persist a credential (encrypted at rest) */
+  /** Persist a credential. WARNING: stored as plaintext JSON on disk. Protect your filesystem. */
   set(key: string, value: string): Promise<void>
   /** Remove a credential */
   delete(key: string): Promise<void>
