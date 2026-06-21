@@ -92,6 +92,68 @@ function installTarballHelper(): boolean {
   }
 }
 
+/**
+ * One-time: discover a locally-built helper from `cargo build --release`.
+ * Only runs when NOT inside a tarball layout — source-deploy use case.
+ *
+ * Scans a few well-known locations under the workspace root for the helper
+ * binary and copies it to ~/.synergy/sandbox-helper/ if found and newer.
+ * Non-fatal: returns false on any error.
+ */
+function tryInstallCargoHelper(): boolean {
+  const execPath = process.execPath
+  const execDirName = path.basename(path.dirname(execPath))
+
+  // Only attempt cargo discovery when NOT inside a tarball layout.
+  // The tarball layout already handles this in installTarballHelper().
+  if (execDirName === "bin") return false
+
+  // resolveWorkspaceRoot is import-dynamic to avoid circular deps.
+  // Fall back to a simple heuristic: walk up from __dirname looking for
+  // a .git directory as the workspace root.
+  let workspaceRoot = import.meta.dir
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.dirname(workspaceRoot)
+    if (!candidate || candidate === workspaceRoot) break
+    workspaceRoot = candidate
+    if (fs.existsSync(path.join(workspaceRoot, ".git"))) break
+  }
+
+  // Well-known cargo target paths from workspace root
+  const cargoPaths = [
+    path.join(
+      workspaceRoot,
+      "packages",
+      "synergy",
+      "src",
+      "sandbox",
+      "helper-linux",
+      "target",
+      "release",
+      "synergy-sandbox-linux",
+    ),
+  ]
+
+  const homedir = os.homedir()
+  const destDir = path.join(homedir, ".synergy", "sandbox-helper")
+  const destPath = path.join(destDir, "synergy-sandbox-linux")
+
+  for (const srcPath of cargoPaths) {
+    try {
+      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || isTarballHelperUpToDate(srcPath, destPath))) {
+        fs.mkdirSync(destDir, { recursive: true })
+        fs.copyFileSync(srcPath, destPath)
+        fs.chmodSync(destPath, 0o755)
+        log.info("Installed sandbox helper from cargo build", { src: srcPath, dest: destPath })
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+  return false
+}
+
 // ------------------------------------------------------------------
 // Bundled bwrap detection and hash verification
 // ------------------------------------------------------------------
@@ -252,8 +314,11 @@ export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
  * Returns the absolute path if found and hash-verified, or null if not installed.
  */
 function findLinuxHelperBinary(): { path: string; verified: boolean } | null {
-  // Try tarball-relative installation before searching standard paths
+  // One-time try: install from tarball sandbox/ directory
   installTarballHelper()
+
+  // One-time try: discover locally-built helper (cargo build --release)
+  tryInstallCargoHelper()
 
   const homedir = os.homedir()
   for (const getPath of LINUX_HELPER_SEARCH_PATHS) {

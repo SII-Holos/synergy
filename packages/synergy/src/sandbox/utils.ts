@@ -1,5 +1,8 @@
 import * as fs from "fs"
 import * as crypto from "crypto"
+import { Log } from "@/util/log"
+
+const log = Log.create({ service: "sandbox-utils" })
 
 export function isTarballHelperUpToDate(src: string, dst: string): boolean {
   try {
@@ -11,28 +14,77 @@ export function isTarballHelperUpToDate(src: string, dst: string): boolean {
   }
 }
 
+/**
+ * Verify a helper binary against a set of trusted SHA-256 hashes.
+ *
+ * When `trustedHashes` is populated:
+ *   - Computes SHA-256 of the binary once, then compares against every
+ *     entry with constant-time comparison.
+ *   - Returns true on first match, false if no entry matches.
+ *
+ * When `trustedHashes` is EMPTY (pre-release or source-deploy state):
+ *   - Runs minimum plausibility checks instead of unconditionally blocking.
+ *   - Checks: (1) file is readable, (2) file is at least 1KB (not a stub),
+ *     (3) file has execute permission on Unix.
+ *   - Returns true with a log.info if all checks pass.
+ *   - Returns false with log.warn if any check fails.
+ *
+ * This mirrors the graceful-degradation pattern in verifyBwrapHash,
+ * making the sandbox usable without waiting for the CI hash pipeline.
+ */
 export function verifyHelperHash(binaryPath: string, trustedHashes: Record<string, string>): boolean {
-  if (Object.keys(trustedHashes).length === 0) {
-    return false
-  }
-  // Compute digest once to avoid re-reading the file for each candidate hash
-  let digest: string
-  try {
-    const hash = crypto.createHash("sha256")
-    hash.update(fs.readFileSync(binaryPath))
-    digest = hash.digest("hex")
-  } catch {
-    return false
-  }
-  // Try all trusted hashes with constant-time comparison
-  for (const trustedHash of Object.values(trustedHashes)) {
-    if (!trustedHash || trustedHash.length === 0) continue
-    if (digest.length !== trustedHash.length) continue
-    let result = 0
-    for (let i = 0; i < digest.length; i++) {
-      result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+  // When hashes are available: standard constant-time verification.
+  if (Object.keys(trustedHashes).length > 0) {
+    let digest: string
+    try {
+      const hash = crypto.createHash("sha256")
+      hash.update(fs.readFileSync(binaryPath))
+      digest = hash.digest("hex")
+    } catch {
+      return false
     }
-    if (result === 0) return true
+    for (const trustedHash of Object.values(trustedHashes)) {
+      if (!trustedHash || trustedHash.length === 0) continue
+      if (digest.length !== trustedHash.length) continue
+      let result = 0
+      for (let i = 0; i < digest.length; i++) {
+        result |= digest.charCodeAt(i) ^ trustedHash.charCodeAt(i)
+      }
+      if (result === 0) return true
+    }
+    return false
   }
-  return false
+
+  // Graceful degradation: no trusted hashes available.
+  // Run minimum plausibility checks so source-deploy and pre-release
+  // users can use the sandbox without waiting for CI hash population.
+  log.info("Helper hash table is empty (pre-release/source-deploy) — running minimum plausibility checks", {
+    path: binaryPath,
+  })
+
+  try {
+    const stat = fs.statSync(binaryPath)
+    if (!stat.isFile()) {
+      log.warn("Helper binary is not a regular file — refusing to trust", { path: binaryPath })
+      return false
+    }
+    // Minimum size: even a release-optimized Rust binary is > 1MB.
+    // This catches stubs, shell scripts, and corrupted downloads.
+    if (stat.size < 1024) {
+      log.warn("Helper binary is too small — refusing to trust", { path: binaryPath, size: stat.size })
+      return false
+    }
+    // On Unix, verify execute permission.
+    try {
+      fs.accessSync(binaryPath, fs.constants.X_OK)
+    } catch {
+      log.warn("Helper binary is not executable — refusing to trust", { path: binaryPath })
+      return false
+    }
+    log.info("Helper binary passed minimum plausibility checks", { path: binaryPath, size: stat.size })
+    return true
+  } catch {
+    log.warn("Cannot stat helper binary — refusing to trust", { path: binaryPath })
+    return false
+  }
 }

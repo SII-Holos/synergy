@@ -16,6 +16,11 @@ const targetArgIdx = args.indexOf("--target")
 const targetTriple = targetArgIdx >= 0 ? args[targetArgIdx + 1] : null
 const dryRun = args.includes("--dry-run")
 const skipBuild = args.includes("--skip-build")
+const localMode = args.includes("--local")
+
+// --helper-path allows overriding the binary path when used with --local
+const helperPathIdx = args.indexOf("--helper-path")
+const localHelperPath = helperPathIdx >= 0 ? args[helperPathIdx + 1] : null
 
 const helperDirAbs = path.resolve(import.meta.dir, "..", "src", "sandbox", helperDir)
 const releaseSubdir = targetTriple ? path.join("target", targetTriple, "release") : path.join("target", "release")
@@ -104,4 +109,43 @@ if (autoUpdate) {
     fs.writeFileSync(sourceFile, content)
     console.log(`Updated ${sourceFile}`)
   }
+}
+
+// --local: one-step setup for source-deploy users.
+// Reads an already-built helper binary, computes its hash, and auto-updates
+// the trusted hash map in the source file.
+// Usage: bun run scripts/build-helper.ts linux --local --helper-path target/release/synergy-sandbox-linux
+if (localMode) {
+  const sourceFile = path.resolve(import.meta.dir, "..", "src", "sandbox", targetModule)
+
+  const readPath = localHelperPath ?? binaryPath
+  if (!fs.existsSync(readPath)) {
+    console.error(`Helper binary not found: ${readPath}`)
+    console.error("Build it first: cargo build --release")
+    console.error(`Or pass --helper-path to point to an existing binary.`)
+    process.exit(1)
+  }
+
+  const binary = fs.readFileSync(readPath)
+  const localHash = createHash("sha256").update(binary).digest("hex")
+
+  let content = fs.readFileSync(sourceFile, "utf-8")
+  const newEntry = `  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${binaryName}")]: "${localHash}",`
+  const pattern = new RegExp(`export const ${constName}: Record<string, string> = \\{[^}]*\\}`, "s")
+  content = content.replace(pattern, `export const ${constName}: Record<string, string> = {\n${newEntry}\n}`)
+  fs.writeFileSync(sourceFile, content)
+
+  console.log(`Registered ${binaryName} hash in ${targetModule}`)
+  console.log(`SHA-256: ${localHash}`)
+  console.log()
+  console.log("Next steps:")
+  if (platform === "linux") {
+    console.log(`  cp ${readPath} ~/.synergy/sandbox-helper/${binaryName}`)
+    console.log("  sudo apt install bubblewrap   # or: bash scripts/download-bwrap.sh")
+  } else {
+    console.log(`  copy ${readPath} %USERPROFILE%\\.synergy\\sandbox-helper\\${binaryName}`)
+  }
+  console.log("  # Then restart Synergy")
+
+  process.exit(0)
 }
