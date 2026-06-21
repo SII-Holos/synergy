@@ -279,7 +279,8 @@ export namespace ToolResolver {
     const decision = { ...policyDecision, action: envelope.decision }
     if (decision.action === "deny") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
-      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
+      const reason = envelope.refusal?.reason ?? decision.reason
+      throw new EnforcementError.PolicyDenied(reason, decision.capabilities, envelope.profileId)
     }
 
     if (decision.action === "allow") {

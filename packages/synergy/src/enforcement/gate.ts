@@ -40,6 +40,7 @@ import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-pro
 export interface Capability {
   class: string
   nonBypassable: boolean
+  reason?: string
   opaque?: boolean
   paths?: string[]
 }
@@ -202,9 +203,13 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-function isDestructive(command: string): boolean {
+function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
-  return DESTRUCTIVE_PATTERNS.some((p) => lower.includes(p)) || DESTRUCTIVE_REGEX.test(lower)
+  for (const p of DESTRUCTIVE_PATTERNS) {
+    if (lower.includes(p)) return p
+  }
+  if (DESTRUCTIVE_REGEX.test(lower)) return "dd with raw device"
+  return null
 }
 
 function extractAbsolutePaths(command: string): string[] {
@@ -434,14 +439,23 @@ export namespace EnforcementGate {
         const risk = ShellSafety.classifyBashRisk(command)
 
         if (risk === "shell_hardline") {
-          caps.push({ class: "shell_hardline", nonBypassable: true })
+          caps.push({
+            class: "shell_hardline",
+            nonBypassable: true,
+            reason: `hardline rule matched: ${command.slice(0, 200)}`,
+          })
           return { capabilities: caps }
         }
 
         caps.push({ class: risk, nonBypassable: false })
 
         if (risk !== "shell_destructive" && isDestructive(command)) {
-          caps.push({ class: "shell_destructive", nonBypassable: true })
+          const matched = isDestructive(command)
+          caps.push({
+            class: "shell_destructive",
+            nonBypassable: true,
+            reason: matched ? `matched destructive pattern: ${matched}` : undefined,
+          })
         }
 
         const cwd = args.workdir ?? activeWorkspace
@@ -721,17 +735,20 @@ export namespace EnforcementGate {
       let refusal: Envelope["refusal"]
       if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"
+        const diagnosticReasons = capabilities
+          .filter((c) => c.reason)
+          .map((c) => c.reason)
+          .join("; ")
+
         refusal = {
-          reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
+          reason: diagnosticReasons
+            ? `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}" — ${diagnosticReasons}`
+            : `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
-          ...(isAutonomous && deniedCapClass
-            ? {
-                guidance:
-                  "Switch to guarded profile to approve this operation. Use `synergy profile guarded` or the profile switcher in the UI.",
-                amendment: generateAmendmentForCapability(deniedCapClass),
-              }
-            : {}),
+          guidance:
+            diagnosticReasons || (isAutonomous ? "Switch to guarded profile to approve this operation." : undefined),
+          amendment: isAutonomous && deniedCapClass ? generateAmendmentForCapability(deniedCapClass) : undefined,
         }
       }
 
