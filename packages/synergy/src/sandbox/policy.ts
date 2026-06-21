@@ -1,3 +1,4 @@
+import { normalizeSlashes } from "@/util/path"
 import * as path from "path"
 
 // ------------------------------------------------------------------
@@ -94,12 +95,15 @@ export function isMetadataWriteDenied(
   customProtectedNames?: string[],
 ): { denied: true; path: string; metadataName: string } | { denied: false } {
   const names = customProtectedNames ?? PROTECTED_METADATA_PATH_NAMES
+  const normalizedTarget = normalizeSlashes(targetPath)
 
   for (const root of writableRoots) {
-    if (!targetPath.startsWith(root + "/") && targetPath !== root) continue
+    const normalizedRoot = normalizeSlashes(root)
+    if (!normalizedTarget.startsWith(normalizedRoot + "/") && normalizedTarget !== normalizedRoot) continue
     for (const name of names) {
       const protectedFullPath = path.join(root, name)
-      if (targetPath === protectedFullPath || targetPath.startsWith(protectedFullPath + "/")) {
+      const normalizedProtected = normalizeSlashes(protectedFullPath)
+      if (normalizedTarget === normalizedProtected || normalizedTarget.startsWith(normalizedProtected + "/")) {
         return { denied: true, path: targetPath, metadataName: name }
       }
     }
@@ -266,7 +270,7 @@ export class ReadDenyMatcher {
   private failedCompilation: boolean
 
   constructor(unreadableGlobs: string[], unreadableRoots: string[]) {
-    this.deniedCandidates = new Set(unreadableRoots)
+    this.deniedCandidates = new Set(unreadableRoots.map((r) => normalizeSlashes(r)))
     this.denyReadMatchers = []
     this.failedCompilation = false
 
@@ -287,8 +291,9 @@ export class ReadDenyMatcher {
    */
   isDenied(filepath: string): boolean {
     if (this.failedCompilation) return true
-    if (this.deniedCandidates.has(filepath)) return true
-    return this.denyReadMatchers.some((r) => r.test(filepath))
+    const normalized = normalizeSlashes(filepath)
+    if (this.deniedCandidates.has(normalized)) return true
+    return this.denyReadMatchers.some((r) => r.test(normalized))
   }
 
   /**

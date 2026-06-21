@@ -1,13 +1,24 @@
 .workspace-drawer {
-  transition: width var(--motion-duration-base) var(--motion-ease-emphasized);
+  overflow: hidden;
+  transition: width 300ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.workspace-drawer--closing {
-  overflow: hidden;
+.workspace-drawer-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 200ms ease-out 50ms;
+}
+
+.workspace-drawer-panel--open {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-drawer {
+  .workspace-drawer,
+  .workspace-drawer-panel {
     transition: none;
   }
 }

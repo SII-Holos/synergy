@@ -2,6 +2,11 @@
 # Download and build a static bwrap binary for Linux. Supports x86_64 and aarch64.
 # Usage: ./scripts/download-bwrap.sh
 set -euo pipefail
+case "$(uname -s)" in
+  Linux) ;;
+  *) echo "download-bwrap.sh is Linux-only."; exit 0 ;;
+esac
+
 
 ARCH=$(uname -m)
 TARGET_DIR="${HOME}/.synergy/sandbox-helper/bwrap"

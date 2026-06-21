@@ -107,3 +107,7 @@
     color: var(--text-weak);
   }
 }
+/* Compact mode: hide args chips when workspace squeezes the conversation */
+[data-compact="true"] [data-slot="basic-tool-tool-arg"] {
+  display: none;
+}

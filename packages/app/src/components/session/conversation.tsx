@@ -52,7 +52,7 @@ export function SessionConversation(props: {
         if (props.isDesktop()) props.onScheduleScrollSpy(el)
       }}
       overlay={
-        <Show when={props.isDesktop()}>
+        <Show when={props.isDesktop() && !workspaceOpen()}>
           <div class="absolute inset-0 pointer-events-none z-10">
             <SessionTimeline
               messages={props.visibleUserMessages}

@@ -59,6 +59,9 @@ console.log(`binary: ${binaryName}`)
 console.log(`SHA-256: ${hash}`)
 console.log()
 console.log(`Add to packages/synergy/src/sandbox/${targetModule}:`)
+// Generated hash map keys use forward-slash since CI runs on Linux.
+// verifyHelperHash() iterates Object.values() (ignores keys). If key-based
+// lookup is ever added, normalize the lookup key with normalizeSlashes() first.
 console.log(`export const ${constName}: Record<string, string> = {`)
 console.log(`  [path.join(os.homedir(), ".synergy", "sandbox-helper", "${binaryName}")]: "${hash}",`)
 console.log(`}`)
@@ -142,7 +145,7 @@ if (localMode) {
   if (platform === "linux") {
     console.log(`  cp ${readPath} ~/.synergy/sandbox-helper/${binaryName}`)
     console.log("  sudo apt install bubblewrap   # or: bash scripts/download-bwrap.sh")
-  } else {
+  } else if (platform === "windows") {
     console.log(`  copy ${readPath} %USERPROFILE%\\.synergy\\sandbox-helper\\${binaryName}`)
   }
   console.log("  # Then restart Synergy")

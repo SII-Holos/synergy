@@ -288,8 +288,13 @@ export namespace ToolResolver {
     // must be enforced before anything else — the classifier and user rules
     // exist only to save a confirmation prompt, never to override a deny.
     if (decision.action === "deny") {
-      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
-      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
+      // Use the refusal's diagnostic reason when available — this carries
+      // specific detail like "matched destructive pattern: git push" that
+      // should be visible both in the error message AND the frontend audit tooltip.
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
     // Profile already permits the operation — no need for the classifier.

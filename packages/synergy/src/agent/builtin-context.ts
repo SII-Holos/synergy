@@ -106,6 +106,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     note_list: "allow",
     note_read: "allow",
     note_search: "allow",
+    note_write: "allow",
+    note_edit: "allow",
     session_list: "allow",
     session_read: "allow",
     session_search: "allow",

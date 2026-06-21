@@ -14,6 +14,16 @@ export interface ToolResult {
   title?: string
   output: string
   metadata?: Record<string, any>
+  attachments?: Array<{
+    type: "file"
+    id: string
+    sessionID: string
+    messageID: string
+    mime: string
+    filename?: string
+    url: string
+    localPath?: string
+  }>
 }
 
 export function tool<Args extends z.ZodRawShape>(input: {

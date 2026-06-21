@@ -635,3 +635,8 @@
     transform: translateX(0);
   }
 }
+/* Compact mode: hide file path and action chips when workspace squeezes the conversation */
+[data-compact="true"] [data-slot="message-part-path"],
+[data-compact="true"] [data-slot="message-part-actions"] {
+  display: none;
+}
