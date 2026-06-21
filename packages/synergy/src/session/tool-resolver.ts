@@ -178,7 +178,8 @@ export namespace ToolResolver {
       approval.status === "auto_denied" ||
       approval.status === "policy_denied" ||
       approval.status === "sandbox_blocked" ||
-      approval.status === "not_required"
+      approval.status === "not_required" ||
+      approval.status === "pre_authorized"
     ) {
       timing.approvalResolvedAt ??= now
     }
@@ -272,6 +273,7 @@ export namespace ToolResolver {
     envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
+    session?: Info,
   ) {
     const profile = gate.getProfileInfo()
     const approval = profile.approval
@@ -284,6 +286,20 @@ export namespace ToolResolver {
 
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+    // Provenance: sessions created by system scheduling (e.g. agenda wake)
+    // may pre-authorize specific tools to bypass the ask gate. This only
+    // applies within this session and cannot override deny rules or
+    // protected paths (those are checked earlier in the gate).
+    const preAuthorized = session?.preAuthorizedActions ?? []
+    if (decision.action === "ask" && preAuthorized.includes(toolName)) {
+      await setApprovalMetadata(ctx, {
+        ...ApprovalPolicy.metadata(approval, decision, "pre_authorized"),
+        source: "provenance",
+        reason: `Pre-authorized by system scheduling (session inherits trust from agenda wake)`,
+      })
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
@@ -501,7 +517,7 @@ export namespace ToolResolver {
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
-                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>)
+                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
@@ -650,7 +666,7 @@ export namespace ToolResolver {
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
-                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>)
+                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
