@@ -27,7 +27,7 @@ type Data = {
 export type PermissionRespondFn = (input: {
   sessionID: string
   permissionID: string
-  response: "once" | "reject"
+  response: "once" | "session" | "reject"
 }) => void
 
 export type NavigateToSessionFn = (sessionID: string) => void
