@@ -73,8 +73,9 @@ pub unsafe fn switch_to_desktop(hdesk: isize) {
 #[cfg(target_os = "windows")]
 pub mod ffi {
     use windows_result::*;
-    use windows_sys::Win32::Foundation::{GetLastError, GENERIC_ALL, HDESK};
+    use windows_sys::Win32::Foundation::{GetLastError, GENERIC_ALL};
     use windows_sys::Win32::System::StationsAndDesktops::*;
+    pub use windows_sys::Win32::System::StationsAndDesktops::HDESK;
     use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 
     /// Create a private desktop and switch the calling thread to it.

@@ -146,7 +146,7 @@ use windows_result::*;
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
-use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
+use windows_sys::Win32::System::Console::{GetStdHandle, HPCON, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
 use windows_sys::Win32::System::JobObjects::*;
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::*;
