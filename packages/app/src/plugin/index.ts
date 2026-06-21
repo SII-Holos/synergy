@@ -39,3 +39,15 @@ export {
   getPluginRoutes,
   clearPluginRoutes,
 } from "./registries/route-registry"
+
+export {
+  type ToolRendererProps,
+  type ToolRenderer,
+  registerToolRenderer,
+  getToolRenderer,
+  hasToolRenderer,
+  onToolLoaded,
+  clearAllToolRenderers,
+} from "./registries/tool-registry"
+
+export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
