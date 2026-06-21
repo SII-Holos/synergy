@@ -128,6 +128,7 @@
         "@tsconfig/node22": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",
+        "solid-js": "catalog:",
         "typescript": "catalog:",
         "zod": "catalog:",
       },
