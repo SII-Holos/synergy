@@ -235,7 +235,7 @@ describe("EnforcementGate shell classification", () => {
       command: "cat /etc/passwd",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
     expect(external.paths).toContain("/etc/passwd")
@@ -1639,7 +1639,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cat /etc/hosts" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
   })

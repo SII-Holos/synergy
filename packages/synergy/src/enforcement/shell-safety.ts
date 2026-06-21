@@ -287,7 +287,7 @@ const UNSAFE_SHELL_TOKENS = [
   "disown",
   "screen ",
   "tmux ",
-  "at ",
+  " at ",
   "crontab ",
   "launchctl ",
   "xargs ",
