@@ -98,10 +98,10 @@ export namespace ToolRegistry {
       }
     }
 
-    const plugins = await Plugin.list()
+    const plugins = await Plugin.hooks()
     for (const plugin of plugins) {
-      for (const [id, def] of Object.entries(plugin.tool ?? {})) {
-        custom.push(fromPlugin(id, def))
+      for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
+        custom.push(fromPlugin(id, def, plugin.id))
       }
     }
 
@@ -114,9 +114,10 @@ export namespace ToolRegistry {
     log.info("tool registry state reloaded")
   }
 
-  function fromPlugin(id: string, def: ToolDefinition): Tool.Info {
+  function fromPlugin(id: string, def: ToolDefinition, pluginId?: string): Tool.Info {
+    const fullId = pluginId ? `plugin__${pluginId}__${id}` : id
     return {
-      id,
+      id: fullId,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,

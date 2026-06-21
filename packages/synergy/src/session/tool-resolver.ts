@@ -72,6 +72,21 @@ export namespace ToolResolver {
     return _cachedConfig.controlProfile
   }
 
+  /** Cached plugin tool IDs (prefixed) for enforcement gate registration. */
+  let _cachedPluginToolIds: Set<string> | null = null
+  async function cachedPluginToolIds(): Promise<Set<string>> {
+    if (_cachedPluginToolIds === null) {
+      const ids = new Set<string>()
+      for (const plugin of await Plugin.hooks()) {
+        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+          ids.add(`plugin__${plugin.id}__${toolId}`)
+        }
+      }
+      _cachedPluginToolIds = ids
+    }
+    return _cachedPluginToolIds
+  }
+
   /**
    * Derive an external path string from tool args for use in nonBypassable
    * permission asks triggered by the enforcement gate.
@@ -497,11 +512,13 @@ export namespace ToolResolver {
                 const topLevelProfile = await cachedTopLevelProfile()
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
                 const synergyRoot = Global.Path.root
+                const pluginToolIds = await cachedPluginToolIds()
                 const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                  registeredPluginTools: pluginToolIds,
                   profileId,
                   readRoots: [synergyRoot],
                 })
@@ -662,12 +679,14 @@ export namespace ToolResolver {
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
                   const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                  const pluginToolIds = await cachedPluginToolIds()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: mcpToolNames,
+                    registeredPluginTools: pluginToolIds,
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)

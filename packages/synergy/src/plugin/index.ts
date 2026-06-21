@@ -353,6 +353,10 @@ export namespace Plugin {
   export async function list() {
     return state().then((x) => x.loaded.map((p) => p.hooks))
   }
+  /** Return loaded plugin IDs and hooks (for consumers that need both) */
+  export async function hooks() {
+    return state().then((x) => x.loaded.map((p) => ({ id: p.id, hooks: p.hooks })))
+  }
 
   /** Return loaded plugin metadata */
   export async function descriptors() {
