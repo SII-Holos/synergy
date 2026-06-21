@@ -105,25 +105,11 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-Quick start (one command):
+One command to set up and start:
 
 ```bash
-bun dev prepare
-```
-
-This installs dependencies, generates the SDK, and builds the frontend in one step.
-
-Manual setup if you prefer step-by-step:
-
-```bash
-bun install
-bun dev prepare   # generates SDK + builds frontend
-```
-
-Start the server:
-
-```bash
-bun dev server
+bun dev prepare     # install deps, generate SDK, build frontend
+bun dev server      # start the server
 ```
 
 Then connect from another terminal:
@@ -489,15 +475,10 @@ bun install
 
 ### Running locally
 
-`bun dev prepare` handles everything in one step (install deps, generate SDK, build frontend):
+`bun dev prepare` installs dependencies, generates the SDK, and builds the frontend in one step:
 
 ```bash
 bun dev prepare
-```
-
-Start the dev server:
-
-```bash
 bun dev server
 ```
 
