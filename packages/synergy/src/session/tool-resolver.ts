@@ -293,7 +293,7 @@ export namespace ToolResolver {
     const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
     if (!hasNonBypassable) {
       const cfg = await Config.get()
-      const autoEnabled = (cfg as any)?.permission?.auto_classifier === true
+      const autoEnabled = (cfg as any)?.auto_classifier === true
       if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
         const caps = envelope.capabilities.map((c) => c.class)
         const classification = await RiskClassifier.classify({
