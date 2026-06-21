@@ -8,7 +8,8 @@
   justify-content: space-between;
   padding: 8px 12px;
 
-  [data-slot="basic-tool-tool-trigger-content"] {
+  /* New ToolTrigger slots */
+  [data-slot="tool-trigger-left"] {
     width: 100%;
     display: flex;
     align-items: center;
@@ -18,6 +19,127 @@
 
   [data-slot="icon-svg"] {
     flex-shrink: 0;
+  }
+
+  [data-slot="tool-trigger-info"] {
+    flex-grow: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  [data-slot="tool-trigger-info-main"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  [data-slot="tool-trigger-title"] {
+    flex-shrink: 0;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-base);
+
+    &.capitalize {
+      text-transform: capitalize;
+    }
+  }
+
+  [data-slot="tool-trigger-subtitle"] {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-weak);
+
+    &.clickable {
+      cursor: pointer;
+      text-decoration: underline;
+      transition: color 0.15s ease;
+
+      &:hover {
+        color: var(--text-base);
+      }
+    }
+  }
+
+  [data-slot="tool-trigger-path"] {
+    display: flex;
+    flex-grow: 1;
+    min-width: 0;
+  }
+
+  [data-slot="tool-trigger-path-dir"] {
+    color: var(--text-weak);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
+  }
+
+  [data-slot="tool-trigger-path-sep"] {
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
+
+  [data-slot="tool-trigger-path-file"] {
+    color: var(--text-strong);
+    flex-shrink: 0;
+  }
+
+  [data-slot="tool-trigger-tag"] {
+    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-weak);
+  }
+
+  [data-slot="tool-trigger-right"] {
+    flex-shrink: 0;
+  }
+
+  [data-slot="tool-trigger-chars"] {
+    flex-shrink: 0;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-weak);
+  }
+
+  /* Old slot names — backward compat for file-ops.tsx and legacy callers */
+  [data-slot="basic-tool-tool-trigger-content"] {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    gap: 20px;
   }
 
   [data-slot="basic-tool-tool-info"] {
@@ -107,7 +229,13 @@
     color: var(--text-weak);
   }
 }
-/* Compact mode: hide args chips when workspace squeezes the conversation */
+/* Compact mode: hide tags, path, and right-side content when workspace squeezes the conversation */
+[data-compact="true"] [data-slot="tool-trigger-tag"],
+[data-compact="true"] [data-slot="tool-trigger-path"],
+[data-compact="true"] [data-slot="tool-trigger-right"] {
+  display: none;
+}
+/* Compact mode: also hide old arg slots for backward compat */
 [data-compact="true"] [data-slot="basic-tool-tool-arg"] {
   display: none;
 }

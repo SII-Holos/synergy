@@ -27,64 +27,65 @@ function directoryLabel(path: string): string {
 export function ToolTrigger(props: ToolTriggerProps) {
   return (
     <div data-component="tool-trigger">
-      <div data-slot="basic-tool-tool-trigger-content">
+      <div data-slot="tool-trigger-left">
         <Icon name={props.icon} size="small" />
-        <div data-slot="basic-tool-tool-info">
-          <div data-slot="basic-tool-tool-info-structured">
-            <div data-slot="basic-tool-tool-info-main">
+        <div data-slot="tool-trigger-info">
+          <div data-slot="tool-trigger-info-main">
+            <span
+              data-slot="tool-trigger-title"
+              classList={{
+                [props.titleClass ?? ""]: !!props.titleClass,
+              }}
+            >
+              {props.title}
+            </span>
+            <Show when={props.subtitlePath}>
+              <div data-slot="tool-trigger-path">
+                <Show when={props.subtitlePath!.includes("/")}>
+                  <span data-slot="tool-trigger-path-dir">{directoryLabel(props.subtitlePath!)}</span>
+                  <span data-slot="tool-trigger-path-sep">/</span>
+                </Show>
+                <span data-slot="tool-trigger-path-file">{getFilename(props.subtitlePath!)}</span>
+              </div>
+            </Show>
+            <Show when={!props.subtitlePath && props.subtitle}>
               <span
-                data-slot="basic-tool-tool-title"
+                data-slot="tool-trigger-subtitle"
                 classList={{
-                  [props.titleClass ?? ""]: !!props.titleClass,
+                  [props.subtitleClass ?? ""]: !!props.subtitleClass,
+                  clickable: !!props.onSubtitleClick,
+                }}
+                onClick={(e) => {
+                  if (props.onSubtitleClick) {
+                    e.stopPropagation()
+                    props.onSubtitleClick()
+                  }
                 }}
               >
-                {props.title}
+                {props.subtitle}
               </span>
-              <Show when={props.subtitlePath}>
-                <div data-slot="message-part-path">
-                  <Show when={props.subtitlePath!.includes("/")}>
-                    <span data-slot="message-part-directory">{directoryLabel(props.subtitlePath!)}</span>
-                    <span data-slot="message-part-separator">/</span>
-                  </Show>
-                  <span data-slot="message-part-filename">{getFilename(props.subtitlePath!)}</span>
-                </div>
-              </Show>
-              <Show when={!props.subtitlePath && props.subtitle}>
+            </Show>
+            <For each={props.tags ?? []}>
+              {(tag) => (
                 <span
-                  data-slot="basic-tool-tool-subtitle"
+                  data-slot="tool-trigger-tag"
+                  data-tone={tag.tone ?? "default"}
                   classList={{
-                    [props.subtitleClass ?? ""]: !!props.subtitleClass,
-                    clickable: !!props.onSubtitleClick,
-                  }}
-                  onClick={(e) => {
-                    if (props.onSubtitleClick) {
-                      e.stopPropagation()
-                      props.onSubtitleClick()
-                    }
+                    [props.argsClass ?? ""]: !!props.argsClass,
                   }}
                 >
-                  {props.subtitle}
+                  {tag.label}
                 </span>
-              </Show>
-              <For each={props.tags ?? []}>
-                {(tag) => (
-                  <span
-                    data-slot="basic-tool-tool-arg"
-                    classList={{
-                      [props.argsClass ?? ""]: !!props.argsClass,
-                    }}
-                  >
-                    {tag.label}
-                  </span>
-                )}
-              </For>
-            </div>
-            <Show when={props.action}>{props.action}</Show>
+              )}
+            </For>
           </div>
+          <Show when={props.action}>{props.action}</Show>
         </div>
       </div>
       <Show when={props.changes}>
-        <DiffChanges changes={props.changes!} />
+        <div data-slot="tool-trigger-right">
+          <DiffChanges changes={props.changes!} />
+        </div>
       </Show>
     </div>
   )

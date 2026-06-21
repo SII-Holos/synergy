@@ -12,7 +12,7 @@
  *
  * Consumers:
  *   - cortex/trajectory.ts  — domain for phase grouping, kind for labels
- *   - ui/semantic-tool-classifier.ts — kind→SemanticCategory mapping
+ *   - ui/tool/classifier.ts — kind→SemanticCategory mapping
  */
 
 // ── Types ────────────────────────────────────────────────────────────

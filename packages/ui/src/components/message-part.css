@@ -636,7 +636,14 @@
   }
 }
 /* Compact mode: hide file path and action chips when workspace squeezes the conversation */
+/* Old slot names (used by edit-trigger, write-trigger, anchored-trigger in file-ops.tsx) */
 [data-compact="true"] [data-slot="message-part-path"],
 [data-compact="true"] [data-slot="message-part-actions"] {
+  display: none;
+}
+/* New slot names (used by ToolTrigger in basic-tool.tsx) */
+[data-compact="true"] [data-slot="tool-trigger-path"],
+[data-compact="true"] [data-slot="tool-trigger-right"],
+[data-compact="true"] [data-slot="tool-trigger-tag"] {
   display: none;
 }
