@@ -118,21 +118,6 @@ User: "Add a CLI command for exporting session history."
 → After implement: dispatch 8+9+10 in parallel.
 ```
 
-## Bug Fix
-
-```
-User: "The config UI crashes when provider fields are empty."
-
-→ Create DAG:
-  1. Map the crash path (code-cartographer)
-  2. Create failing test (regression-reproducer)
-  3. Confirm RED
-  4. Implement fix (implementation-engineer)
-  5. Confirm GREEN
-  6. Quality gates
-  7. Review if shared logic affected
-→ Dispatch node 1.
-```
 
 
 ## Architecture Design
@@ -283,9 +268,7 @@ Choose by the scenario, not by habit. Every scenario has a primary agent and exp
 
 ### Understand (codebase navigation)
 
-| Scenario | Primary Agent | When NOT to use |
-|----------|--------------|-----------------|
-| Unfamiliar code, root-cause location, cross-module work | `code-cartographer` | If you already know the codebase or the task is purely mechanical |
+| Unfamiliar code, cross-module work, feature exploration | `code-cartographer` | If the task is a bug — use `regression-reproducer` first; if the codebase is familiar or the task is purely mechanical — skip |
 | Downstream impact of a proposed change (rename, schema, config) | `dependency-tracer` | If the change is purely local to one file |
 | External library APIs, CLI flags, config formats, framework behavior | `docs-researcher` | If the question is broad ecosystem/design/product research — use `research-scout` |
 | Broad ecosystem, product, design, or technical topic research | `research-scout` | If the task is exact API/version verification (use `docs-researcher`) or academic-only literature survey (use `literature-searcher`) |
