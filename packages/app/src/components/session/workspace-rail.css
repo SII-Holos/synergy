@@ -15,7 +15,7 @@
     0 4px 20px rgba(0, 0, 0, 0.14),
     0 0 0 1px rgba(0, 0, 0, 0.04);
   z-index: 40;
-  transition: right var(--motion-duration-base) var(--motion-ease-emphasized);
+  transition: right 300ms var(--motion-ease-emphasized);
 }
 
 .workspace-rail--open {

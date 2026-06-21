@@ -71,7 +71,8 @@ export function WorkspaceDrawer() {
       />
       <aside
         ref={drawerEl}
-        class="w-full h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
+        class="workspace-drawer-panel w-full h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
+        classList={{ "workspace-drawer-panel--open": workspace.opened() }}
         role="complementary"
         aria-label="Session workspace"
       >
