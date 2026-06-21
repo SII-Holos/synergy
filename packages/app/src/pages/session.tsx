@@ -826,6 +826,7 @@ function SessionPageContent() {
 
           <div
             class="@container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
+            data-compact={isDesktop() && workspaceOpen() ? "true" : undefined}
             classList={{
               "flex-none": isDesktop() && workspaceOpen(),
               "flex-1": !(isDesktop() && workspaceOpen()),
