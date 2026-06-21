@@ -5,6 +5,8 @@ import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
 import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
+import { PermissionRules } from "@/permission/rules"
+import { RiskClassifier } from "@/permission/classifier"
 import { Plugin } from "@/plugin"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
@@ -302,6 +304,68 @@ export namespace ToolResolver {
       })
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
+    }
+    // User/session rules: check persistent user rules (from "Always allow"
+    // button) and ephemeral session rules. Deny always wins. Allow bypasses
+    // the ask. This sits after provenance (system pre-auth) so user deny
+    // rules can still block pre-authorized tools if explicitly configured.
+    if (decision.action === "ask") {
+      const pattern = PermissionRules.extractPattern(toolName, args)
+      const userRules = await PermissionRules.userRuleset()
+      const sessionRules = PermissionRules.sessionRuleset()
+      const ruleDecision = PermissionRules.evaluate(toolName, pattern, userRules, sessionRules)
+      if (ruleDecision.action === "deny") {
+        await setApprovalMetadata(ctx, {
+          ...ApprovalPolicy.metadata(approval, decision, "auto_denied"),
+          source: "user",
+          reason: `Denied by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
+        })
+        throw new EnforcementError.PolicyDenied(
+          `Blocked by user permission rule: ${ruleDecision.rule?.permission ?? toolName}(${ruleDecision.rule?.pattern ?? pattern})`,
+          decision.capabilities,
+          envelope.profileId,
+        )
+      }
+      if (ruleDecision.action === "allow") {
+        await setApprovalMetadata(ctx, {
+          ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+          source: "user",
+          reason: `Allowed by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
+        })
+        if (toolName === "bash") markShellSandboxBypass(ctx)
+        return
+      }
+      // action === "ask" → fall through to classifier / gateOwnedAsks
+    }
+    // Classifier (auto mode): if enabled, evaluate the remaining ask with
+    // the LLM risk classifier. Safe + high-confidence → auto-allow.
+    // The classifier runs only on bypassable asks; non-bypassable
+    // capabilities (protected_op, identity_act) always go to the user.
+    const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
+    if (decision.action === "ask" && !hasNonBypassable) {
+      const cfg = await Config.get()
+      const autoEnabled = (cfg as any)?.permission?.auto_classifier === true
+      if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
+        const caps = envelope.capabilities.map((c) => c.class)
+        const classification = await RiskClassifier.classify({
+          tool: toolName,
+          args,
+          capabilities: caps,
+          workspace: Instance.directory,
+        })
+        if (RiskClassifier.shouldAutoAllow(classification)) {
+          await setApprovalMetadata(ctx, {
+            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+            source: "classifier",
+            reason: `Auto-allowed by classifier: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
+          })
+          if (toolName === "bash") markShellSandboxBypass(ctx)
+          return
+        }
+        if (classification) {
+          ;(ctx.extra as any).classifierRisk = classification
+        }
+      }
     }
 
     const gateOwnedAsks = envelope.capabilities.filter((cap) => {
