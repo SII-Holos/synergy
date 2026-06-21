@@ -1,10 +1,20 @@
+import { execSync } from "child_process"
+
+function rgAvailable(): boolean {
+  try {
+    execSync("rg --version", { stdio: "ignore" })
+    return true
+  } catch {
+    return false
+  }
+}
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Ripgrep.files", () => {
-  test("yields all files without signal parameter (backward compat)", async () => {
+  test.skipIf(!rgAvailable())("yields all files without signal parameter (backward compat)", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -23,7 +33,7 @@ describe("Ripgrep.files", () => {
     expect(basenames).toEqual(["alpha.ts", "beta.ts", "gamma.ts"])
   })
 
-  test("yields all files when signal is present but never aborted", async () => {
+  test.skipIf(!rgAvailable())("yields all files when signal is present but never aborted", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -44,7 +54,7 @@ describe("Ripgrep.files", () => {
     expect(controller.signal.aborted).toBe(false)
   })
 
-  test("aborted signal exits generator cleanly without throwing", async () => {
+  test.skipIf(!rgAvailable())("aborted signal exits generator cleanly without throwing", async () => {
     // Create enough files that ripgrep output spans multiple pipe reads,
     // so aborting mid-iteration prevents yielding all files.
     await using tmp = await tmpdir({
@@ -77,7 +87,7 @@ describe("Ripgrep.files", () => {
     // exceeds a single pipe buffer, fewer files will be yielded.
   })
 
-  test("aborted signal prevents yielding partial buffer remnants", async () => {
+  test.skipIf(!rgAvailable())("aborted signal prevents yielding partial buffer remnants", async () => {
     // Create many files so the generator likely reads multiple pipe chunks.
     await using tmp = await tmpdir({
       git: true,
