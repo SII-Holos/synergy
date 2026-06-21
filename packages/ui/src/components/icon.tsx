@@ -1,3 +1,7 @@
+import { getIcon } from "../plugin/icon-registry"
+// Side-effect import: registers all built-in Lucide icon names in the registry
+import "../plugin/builtin-icons"
+
 import { splitProps, type ComponentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import {
@@ -353,7 +357,7 @@ const icons = {
   "worktree-list": LayoutGrid,
 }
 
-export type IconName = keyof typeof icons
+export type IconName = keyof typeof icons | string
 
 export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
   name: IconName
@@ -362,19 +366,49 @@ export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
 
 export function Icon(props: IconProps) {
   const [local, others] = splitProps(props, ["name", "size", "class", "classList"])
-  const Component = () => icons[local.name]
+
+  // Check registry for a plugin-contributed icon with actual SVG markup
+  const entry = () => getIcon(local.name)
+  const pluginSvg = () => entry()?.svgContent
+
+  // Fall back to Lucide component map for built-ins
+  const Component = () => icons[local.name as keyof typeof icons]
 
   return (
     <div data-component="icon" data-size={local.size || "normal"}>
-      <Dynamic
-        component={Component()}
-        data-slot="icon-svg"
-        class={local.class}
-        classList={local.classList}
-        size="100%"
-        strokeWidth={1.5}
-        {...others}
-      />
+      {(() => {
+        const svg = pluginSvg()
+        if (svg) {
+          // Plugin icon: render raw SVG markup through innerHTML
+          return (
+            <span
+              data-slot="icon-svg"
+              class={local.class}
+              classList={local.classList}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: plugin SVG must be sanitized before registration
+              innerHTML={svg}
+              style="width: 100%; height: 100%; display: inline-flex; align-items: center; justify-content: center;"
+              {...(others as any)}
+            />
+          )
+        }
+        const lucide = Component()
+        if (lucide) {
+          return (
+            <Dynamic
+              component={lucide}
+              data-slot="icon-svg"
+              class={local.class}
+              classList={local.classList}
+              size="100%"
+              strokeWidth={1.5}
+              {...(others as any)}
+            />
+          )
+        }
+        // Neither plugin icon nor built-in — render nothing
+        return null
+      })()}
     </div>
   )
 }

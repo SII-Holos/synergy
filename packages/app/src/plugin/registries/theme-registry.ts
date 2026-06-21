@@ -1,3 +1,14 @@
+import { synergyTheme } from "@ericsanchezok/synergy-ui/theme"
+
+// Register the built-in synergy theme at module init
+registerTheme({
+  id: synergyTheme.id,
+  label: synergyTheme.name,
+  appearance: undefined,
+  variables: {},
+  pluginId: undefined,
+})
+
 export interface ThemeDefinition {
   id: string
   label: string
