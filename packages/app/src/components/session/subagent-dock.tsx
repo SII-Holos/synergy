@@ -7,7 +7,7 @@ import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
 import "./subagent-dock.css"
 
-const HOLD_TO_CANCEL_MS = 1400
+const HOLD_TO_CANCEL_MS = 2000
 const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
 
 function formatElapsed(startedAt: number): string {
@@ -171,12 +171,13 @@ function SubagentAvatar(props: SubagentAvatarProps) {
         >
           <Show when={!isQueued() && isHolding()}>
             <svg class="subagent-hold-ring absolute inset-0 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
-              <circle class="subagent-hold-ring-track" cx="22" cy="22" r="19" />
+              <circle class="subagent-hold-ring-track" cx="22" cy="22" r="19" fill="none" />
               <circle
                 class="subagent-hold-ring-progress"
                 cx="22"
                 cy="22"
                 r="19"
+                fill="none"
                 style={{
                   "stroke-dasharray": `${HOLD_RING_CIRCUMFERENCE}`,
                   "stroke-dashoffset": `${ringOffset()}`,
