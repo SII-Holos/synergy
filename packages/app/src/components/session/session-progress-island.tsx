@@ -14,6 +14,7 @@ interface SessionProgressIslandProps {
   onTabChange: (tab: "dag" | "todo") => void
   children: JSX.Element
   class?: string
+  exiting?: boolean
 }
 
 function describeProgress(snapshot: ProgressIslandSnapshot): string {
@@ -89,6 +90,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
       data-expanded={props.expanded ? "true" : "false"}
       data-status={props.snapshot.status}
       data-tone={props.snapshot.tone}
+      data-exiting={props.exiting ? "true" : "false"}
     >
       <div class="session-progress-island-surface statusbar-glass">
         <button

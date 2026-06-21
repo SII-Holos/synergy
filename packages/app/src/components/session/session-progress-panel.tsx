@@ -22,6 +22,8 @@ interface SessionProgressPanelState {
   activeTab: "dag" | "todo"
   expanded: boolean
   visible: boolean
+  exiting: boolean
+  lastHiddenFingerprint: string | undefined
 }
 
 export function SessionProgressPanel(props: SessionProgressPanelProps) {
@@ -31,6 +33,8 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     activeTab: "dag",
     expanded: false,
     visible: false,
+    exiting: false,
+    lastHiddenFingerprint: undefined,
   })
 
   let completionTimer: ReturnType<typeof setTimeout> | undefined
@@ -72,6 +76,13 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
   })
   const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary(), dagLifecycle()))
 
+  const dagFingerprint = createMemo(() =>
+    dagNodes()
+      .map((n) => `${n.id}:${n.status}`)
+      .sort()
+      .join("|"),
+  )
+
   const activeLabel = createMemo(() => {
     const runningNode = dagNodes().find((node) => node.status === "running")
     if (runningNode?.content) return runningNode.content
@@ -95,15 +106,54 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     const current = snapshot()
     clearCompletionTimer()
 
+    // Case 1: snapshot says hidden — record fingerprint if it's an orphaned DAG
     if (current.status === "hidden") {
-      setState({ expanded: false, visible: false })
+      const fp = dagFingerprint()
+      if (fp && (dagLifecycle() === "settled" || dagLifecycle() === "paused")) {
+        setState("lastHiddenFingerprint", fp)
+      }
+      // If currently visible, play exit animation first
+      if (state.visible && !state.exiting) {
+        setState("exiting", true)
+        completionTimer = setTimeout(() => {
+          setState({ expanded: false, visible: false, exiting: false })
+        }, 350)
+      } else if (!state.visible) {
+        setState("exiting", false)
+      }
       return
+    }
+
+    // Case 2: snapshot says non-hidden — check fingerprint
+    const fp = dagFingerprint()
+    if (state.lastHiddenFingerprint === fp && fp) {
+      // Stale DAG, no changes since last hidden → keep hidden
+      if (state.visible) {
+        setState("exiting", true)
+        completionTimer = setTimeout(() => {
+          setState({ expanded: false, visible: false, exiting: false })
+        }, 350)
+      }
+      return
+    }
+
+    // Fingerprint changed or never hidden → clear fingerprint, show normally
+    if (state.lastHiddenFingerprint !== undefined) {
+      setState("lastHiddenFingerprint", undefined)
     }
 
     setState("visible", true)
 
+    // Complete → fade out after delay
     if (current.status === "complete" && !state.expanded) {
-      completionTimer = setTimeout(() => setState("visible", false), 1600)
+      completionTimer = setTimeout(() => {
+        setState("exiting", true)
+        completionTimer = setTimeout(() => {
+          setState({ expanded: false, visible: false, exiting: false })
+        }, 350)
+      }, 1600)
+    } else {
+      setState("exiting", false)
     }
   })
 
@@ -126,7 +176,12 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     clearCompletionTimer()
     setState("expanded", expanded)
     if (!expanded && snapshot().status === "complete") {
-      completionTimer = setTimeout(() => setState("visible", false), 1600)
+      completionTimer = setTimeout(() => {
+        setState("exiting", true)
+        completionTimer = setTimeout(() => {
+          setState({ expanded: false, visible: false, exiting: false })
+        }, 350)
+      }, 1600)
     }
   }
 
@@ -154,6 +209,7 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
           onExpandedChange={setExpanded}
           onTabChange={(tab) => setState("activeTab", tab)}
           class={props.class}
+          exiting={state.exiting}
         >
           {renderChild()}
         </SessionProgressIsland>
