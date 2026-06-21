@@ -1,4 +1,5 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -847,7 +848,24 @@ function SessionPageContent() {
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
-                    <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
+                    <Show
+                      when={activeMessage() || (timeline()?.length ?? 0) > 0}
+                      fallback={
+                        <Show
+                          when={messagesReady()}
+                          fallback={
+                            <div class="flex flex-col items-center justify-center h-full gap-3">
+                              <Spinner class="text-text-weak size-10" />
+                              <span class="text-text-weak text-sm">Loading conversation…</span>
+                            </div>
+                          }
+                        >
+                          <div class="flex items-center justify-center h-full">
+                            <span class="text-text-weak text-sm">No messages yet</span>
+                          </div>
+                        </Show>
+                      }
+                    >
                       <Show
                         when={!mobileReview()}
                         fallback={

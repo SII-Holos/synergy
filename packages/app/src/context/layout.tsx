@@ -251,6 +251,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       total: 0,
     })
     const navPending = new Set<string>()
+    const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
 
     async function loadScopeIndex() {
       await globalSdk.client.scope.list()
@@ -262,6 +263,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       } catch (err) {
         console.warn("Failed to load scope index", err)
         // fall through; scope ordering remains localStorage-based
+      } finally {
+        setScopeIndexLoaded(true)
       }
     }
 
@@ -706,7 +709,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function recentNavEntries(): NavEntry[] {
-      return recentEntries.items
+      return recentEntries.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
     }
 
     function hasMoreRecent(): boolean {
@@ -896,6 +904,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         pinSession,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
+        scopeIndexLoaded,
       },
       scopes: {
         list,

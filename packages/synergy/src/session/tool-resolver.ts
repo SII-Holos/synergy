@@ -102,7 +102,7 @@ export namespace ToolResolver {
   }
 
   function permissionForGateCapability(toolName: string, className: string): string {
-    if (className === "file_external") return "external_directory"
+    if (className === "file_external_read" || className === "file_external_write") return "external_directory"
     if (className === "shell_read") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request")
@@ -111,7 +111,7 @@ export namespace ToolResolver {
   }
 
   function patternsForGateCapability(toolName: string, cap: Capability, args: Record<string, any>): string[] {
-    if (cap.class === "file_external")
+    if (cap.class === "file_external_read" || cap.class === "file_external_write")
       return cap.paths?.length ? cap.paths : [externalPathFromArgs(toolName, args) || "*"]
     if (cap.class === "shell_destructive") return [String(args.command ?? "*")]
     if (cap.class === "network_request") return [String(args.url ?? args.query ?? "*")]
@@ -333,10 +333,13 @@ export namespace ToolResolver {
           nonBypassable: true,
           capability: cap.class,
           opaque: cap.opaque === true,
-          ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
+          ...(cap.class === "file_external_read" || cap.class === "file_external_write"
+            ? { workspaceBoundary: true, outsideWorkspace: true }
+            : {}),
         },
       })
-      if (cap.class === "file_external") rememberApprovedExternalRoots(ctx, patterns)
+      if (cap.class === "file_external_read" || cap.class === "file_external_write")
+        rememberApprovedExternalRoots(ctx, patterns)
       gate.resolveCapability(cap.class)
     }
   }

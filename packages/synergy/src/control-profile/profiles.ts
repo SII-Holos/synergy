@@ -19,8 +19,10 @@ const CAPABILITY_PERMISSIONS = [
   "shell",
   "shell_destructive",
   "shell_hardline",
+  "file_external_read",
+  "file_external_write",
   "network_request",
-  "file_external",
+
   "mcp_invoke",
   "plugin_invoke",
   "identity_act",
@@ -32,7 +34,10 @@ const CAPABILITY_PERMISSIONS = [
 const HIGH_RISK_PERMISSIONS = [
   "shell_hardline",
   "shell_destructive",
-  "file_external",
+
+  "file_external_read",
+  "file_external_write",
+
   "mcp_invoke",
   "plugin_invoke",
   "identity_act",
@@ -73,9 +78,9 @@ function autonomousRules() {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (permission === "file_write") return rule(permission, "allow")
-    if (permission === "shell") return rule(permission, "allow")
+    if (permission === "file_external_read") return rule(permission, "allow")
+    if (permission === "file_external_write") return rule(permission, "deny", true)
     if (permission === "network_request") return rule(permission, "allow")
-    if (permission === "file_external") return rule(permission, "allow")
     if (permission === "mcp_invoke") return rule(permission, "allow")
     if (permission === "plugin_invoke") return rule(permission, "allow")
     if (permission === "identity_act") return rule(permission, "allow")
