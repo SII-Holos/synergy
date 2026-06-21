@@ -281,6 +281,43 @@ export namespace ToolResolver {
     const approval = profile.approval
     const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
     const decision = { ...policyDecision, action: envelope.decision }
+    // Classifier (auto mode): evaluates the operation with the LLM risk
+    // classifier BEFORE the profile decision is enforced. This is critical —
+    // placing the classifier after the profile meant 'autonomous' (which
+    // turns high-risk into deny) would short-circuit before the classifier
+    // ever ran, making Auto Mode ineffective under the profile where it's
+    // most useful (unattended work). Now the classifier runs first for
+    // bypassable operations: if it says safe + high-confidence, auto-allow
+    // regardless of profile. Non-bypassable capabilities (protected_op,
+    // identity_act) always skip the classifier — those are hard boundaries.
+    const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
+    if (!hasNonBypassable) {
+      const cfg = await Config.get()
+      const autoEnabled = (cfg as any)?.permission?.auto_classifier === true
+      if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
+        const caps = envelope.capabilities.map((c) => c.class)
+        const classification = await RiskClassifier.classify({
+          tool: toolName,
+          args,
+          capabilities: caps,
+          workspace: Instance.directory,
+        })
+        if (RiskClassifier.shouldAutoAllow(classification)) {
+          await setApprovalMetadata(ctx, {
+            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+            source: "classifier",
+            reason: `Auto-allowed by classifier: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
+          })
+          if (toolName === "bash") markShellSandboxBypass(ctx)
+          return
+        }
+        if (classification) {
+          ;(ctx.extra as any).classifierRisk = classification
+        }
+      }
+    }
+
+    // Now enforce the profile decision (allow/deny/ask).
     if (decision.action === "deny") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
       throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
@@ -291,6 +328,7 @@ export namespace ToolResolver {
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
+
     // Provenance: sessions created by system scheduling (e.g. agenda wake)
     // may pre-authorize specific tools to bypass the ask gate. This only
     // applies within this session and cannot override deny rules or
@@ -305,6 +343,7 @@ export namespace ToolResolver {
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
+
     // User/session rules: check persistent user rules (from "Always allow"
     // button) and ephemeral session rules. Deny always wins. Allow bypasses
     // the ask. This sits after provenance (system pre-auth) so user deny
@@ -335,37 +374,7 @@ export namespace ToolResolver {
         if (toolName === "bash") markShellSandboxBypass(ctx)
         return
       }
-      // action === "ask" → fall through to classifier / gateOwnedAsks
-    }
-    // Classifier (auto mode): if enabled, evaluate the remaining ask with
-    // the LLM risk classifier. Safe + high-confidence → auto-allow.
-    // The classifier runs only on bypassable asks; non-bypassable
-    // capabilities (protected_op, identity_act) always go to the user.
-    const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
-    if (decision.action === "ask" && !hasNonBypassable) {
-      const cfg = await Config.get()
-      const autoEnabled = (cfg as any)?.permission?.auto_classifier === true
-      if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
-        const caps = envelope.capabilities.map((c) => c.class)
-        const classification = await RiskClassifier.classify({
-          tool: toolName,
-          args,
-          capabilities: caps,
-          workspace: Instance.directory,
-        })
-        if (RiskClassifier.shouldAutoAllow(classification)) {
-          await setApprovalMetadata(ctx, {
-            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
-            source: "classifier",
-            reason: `Auto-allowed by classifier: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
-          })
-          if (toolName === "bash") markShellSandboxBypass(ctx)
-          return
-        }
-        if (classification) {
-          ;(ctx.extra as any).classifierRisk = classification
-        }
-      }
+      // action === "ask" → fall through to gateOwnedAsks
     }
 
     const gateOwnedAsks = envelope.capabilities.filter((cap) => {
