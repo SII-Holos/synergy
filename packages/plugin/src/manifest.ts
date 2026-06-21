@@ -1,5 +1,114 @@
 import z from "zod"
 
+const ToolRendererDef = z
+  .object({
+    tool: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    priority: z.number().int().min(0).max(100).optional().default(0),
+    fallback: z
+      .object({
+        icon: z.string().optional(),
+        title: z.string().optional(),
+        subtitleTemplate: z.string().optional(),
+      })
+      .optional(),
+  })
+  .strict()
+
+const PartRendererDef = z
+  .object({
+    type: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    priority: z.number().int().min(0).max(100).optional().default(0),
+  })
+  .strict()
+
+const PanelDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    icon: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    sandbox: z.boolean().optional().default(false),
+    sandboxEntry: z.string().optional(),
+  })
+  .strict()
+
+const SettingsDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    icon: z.string().min(1),
+    group: z.string(),
+    formSchema: z.record(z.string(), z.unknown()).optional(),
+    exportName: z.string().optional(),
+    sandbox: z.boolean().optional().default(false),
+    sandboxEntry: z.string().optional(),
+  })
+  .strict()
+
+const ChatComponentDef = z
+  .object({
+    id: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    slot: z.enum(["before-tools", "after-tools", "before-reasoning", "after-reasoning"]).optional(),
+  })
+  .strict()
+
+const ThemeDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    path: z.string().min(1),
+  })
+  .strict()
+
+const IconDef = z
+  .object({
+    name: z.string().min(1).max(128),
+    path: z.string().min(1),
+  })
+  .strict()
+
+const RouteDef = z
+  .object({
+    path: z.string().min(1),
+    entry: z.string().min(1),
+    label: z.string().min(1),
+    icon: z.string().optional(),
+  })
+  .strict()
+
+const UICommandDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    exportName: z.string().optional(),
+    description: z.string().max(256).optional(),
+    icon: z.string().optional(),
+  })
+  .strict()
+
+const UIContribution = z
+  .object({
+    entry: z.string().optional(),
+    minUIApiVersion: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/)
+      .optional(),
+    toolRenderers: z.array(ToolRendererDef).optional(),
+    partRenderers: z.array(PartRendererDef).optional(),
+    workspacePanels: z.array(PanelDef).optional(),
+    globalPanels: z.array(PanelDef).optional(),
+    settings: z.array(SettingsDef).optional(),
+    chatComponents: z.array(ChatComponentDef).optional(),
+    themes: z.array(ThemeDef).optional(),
+    icons: z.array(IconDef).optional(),
+    routes: z.array(RouteDef).optional(),
+    commands: z.array(UICommandDef).optional(),
+  })
+  .partial()
+  .optional()
 // PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
   .object({
@@ -212,6 +321,7 @@ export const PluginManifest = z
           .optional(),
 
         extensionPack: z.array(z.string()).optional(),
+        ui: UIContribution,
       })
       .partial()
       .optional(),
