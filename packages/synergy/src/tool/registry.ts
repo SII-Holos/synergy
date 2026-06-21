@@ -132,7 +132,12 @@ export namespace ToolRegistry {
           }
           const raw = await def.execute(args as any, pluginCtx)
           if (typeof raw === "object" && raw !== null && "output" in raw) {
-            const structured = raw as { title?: string; output: string; metadata?: Record<string, any> }
+            const structured = raw as {
+              title?: string
+              output: string
+              metadata?: Record<string, any>
+              attachments?: any
+            }
             const out = await Truncate.output(structured.output, {}, initCtx?.agent)
             return {
               title: structured.title ?? "",
@@ -142,6 +147,7 @@ export namespace ToolRegistry {
                 truncated: out.truncated,
                 outputPath: out.truncated ? out.outputPath : undefined,
               },
+              attachments: structured.attachments,
             }
           }
           const text = raw as string
