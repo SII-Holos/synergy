@@ -31,7 +31,7 @@ import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { BasicTool } from "./basic-tool"
-import { GenericTool, SmartTool } from "./basic-tool"
+import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
@@ -1618,7 +1618,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     />
   )
 
-  const component = createMemo(() => render() ?? fallbackRender ?? GenericTool)
+  const component = createMemo(() => render() ?? fallbackRender)
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
