@@ -146,22 +146,31 @@ export namespace RiskClassifier {
 
   function buildPrompt(
     tool: string,
-    capabilities: string[],
+    _capabilities: string[],
     ctx: { cmd?: string; path?: string; url?: string; workspace: string },
   ): string {
+    // NOTE: capabilities are intentionally NOT passed to the LLM. The
+    // classifier's value is an INDEPENDENT judgment — if we fed it the
+    // shell-safety capability label (e.g. "shell_destructive"), the LLM
+    // would just echo it back ("you said it's destructive, so it's
+    // dangerous"), making the whole classifier a no-op. Letting the LLM
+    // see only the raw operation forces it to reason about actual impact.
     return `Assess the risk of this agent tool operation. Respond with JSON only.
 
 Tool: ${tool}
-Capabilities: ${capabilities.join(", ")}
 Workspace: ${ctx.workspace}
 ${ctx.cmd ? `Command: ${ctx.cmd}` : ""}
 ${ctx.path ? `Path: ${ctx.path}` : ""}
 ${ctx.url ? `URL: ${ctx.url}` : ""}
 
 Classify as:
-- "safe": read-only, standard dev workflow, workspace-local, reversible
-- "risky": external network, cross-workspace, potentially destructive
-- "dangerous": data loss, credential exposure, irreversible deploy, mass deletion
+- "safe": read-only, standard dev workflow (git status, npm run, push to own fork), workspace-local, reversible
+- "risky": external network to unknown host, cross-workspace, potentially destructive
+- "dangerous": data loss, credential exposure, irreversible deploy, force push to shared branch, mass deletion
+
+A git push to the user's own fork or feature branch is "safe" — it only uploads commits.
+A git push --force to a shared branch (main/master) is "dangerous".
+Editing files inside the workspace is "safe".
 
 Respond JSON: {"risk":"safe|risky|dangerous","reason":"brief","confidence":0.0-1.0}`
   }
