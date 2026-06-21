@@ -93,7 +93,7 @@ export namespace Server {
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
-    "connect-src 'self' ws: wss:; " +
+    "connect-src 'self'; " +
     "frame-src 'self'; " +
     "media-src 'none'; " +
     "object-src 'none'; " +

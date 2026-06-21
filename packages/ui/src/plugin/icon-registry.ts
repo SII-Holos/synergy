@@ -1,3 +1,11 @@
+function sanitizeSvg(svg: string): string {
+  return svg
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/javascript\s*:/gi, "blocked:")
+}
+
 export interface IconEntry {
   name: string
   svgContent: string // sanitized SVG markup
@@ -7,7 +15,8 @@ export interface IconEntry {
 const icons: Map<string, IconEntry> = new Map()
 
 export function registerIcon(entry: IconEntry): () => void {
-  icons.set(entry.name, entry)
+  const sanitized: IconEntry = { ...entry, svgContent: sanitizeSvg(entry.svgContent) }
+  icons.set(entry.name, sanitized)
   return () => {
     icons.delete(entry.name)
   }

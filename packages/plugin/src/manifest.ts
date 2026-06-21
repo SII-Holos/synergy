@@ -30,7 +30,11 @@ const PanelDef = z
     icon: z.string().min(1),
     exportName: z.string().optional().default("default"),
     sandbox: z.boolean().optional().default(false),
-    sandboxEntry: z.string().optional(),
+    sandboxEntry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
   })
   .strict()
 
@@ -43,7 +47,11 @@ const SettingsDef = z
     formSchema: z.record(z.string(), z.unknown()).optional(),
     exportName: z.string().optional(),
     sandbox: z.boolean().optional().default(false),
-    sandboxEntry: z.string().optional(),
+    sandboxEntry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
   })
   .strict()
 
@@ -91,7 +99,11 @@ const UICommandDef = z
 
 const UIContribution = z
   .object({
-    entry: z.string().optional(),
+    entry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
     minUIApiVersion: z
       .string()
       .regex(/^\d+\.\d+\.\d+$/)

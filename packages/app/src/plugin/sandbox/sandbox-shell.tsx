@@ -29,7 +29,7 @@ export function SandboxShell(props: SandboxShellProps) {
   })
 
   function send(msg: BridgeMessage) {
-    iframeRef?.contentWindow?.postMessage(msg, "*")
+    iframeRef?.contentWindow?.postMessage(msg, window.location.origin)
   }
 
   return (

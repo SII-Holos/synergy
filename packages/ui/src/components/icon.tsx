@@ -385,7 +385,7 @@ export function Icon(props: IconProps) {
               data-slot="icon-svg"
               class={local.class}
               classList={local.classList}
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: plugin SVG must be sanitized before registration
+              // SVG content is sanitized during icon registration
               innerHTML={svg}
               style="width: 100%; height: 100%; display: inline-flex; align-items: center; justify-content: center;"
               {...(others as any)}

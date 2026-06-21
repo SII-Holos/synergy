@@ -269,7 +269,13 @@ export const PluginRoute = new Hono()
         ...errors(400, 404),
       },
     }),
-    validator("json", z.record(z.string(), z.any())),
+    // TODO: Future — enforce against manifest.contributes.config.schema per-plugin
+    validator(
+      "json",
+      z
+        .record(z.string(), z.any())
+        .refine((obj) => JSON.stringify(obj).length < 65536, { message: "Config payload too large (max 64KB)" }),
+    ),
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
