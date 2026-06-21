@@ -6620,7 +6620,7 @@ export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnre
 
 export type PermissionRespondData = {
   body?: {
-    response: "once" | "reject"
+    response: "once" | "session" | "reject"
   }
   path: {
     sessionID: string
