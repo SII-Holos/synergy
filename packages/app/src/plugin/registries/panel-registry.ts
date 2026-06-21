@@ -8,6 +8,7 @@ export interface GlobalPanelEntry {
   sandbox?: boolean
   sandboxUrl?: string
   pluginId: string
+  exportName?: string // named export from the plugin UI bundle
 }
 
 const entries: Map<string, GlobalPanelEntry> = new Map()
@@ -21,6 +22,11 @@ export function registerGlobalPanel(entry: GlobalPanelEntry): () => void {
 
 export function listGlobalPanels(): GlobalPanelEntry[] {
   return Array.from(entries.values())
+}
+
+/** Look up a single global panel by id. */
+export function getGlobalPanel(id: string): GlobalPanelEntry | undefined {
+  return entries.get(id)
 }
 
 export function clearGlobalPanels(pluginId?: string): void {

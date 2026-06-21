@@ -1,10 +1,69 @@
 import { Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import type { Component } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
+import { getWorkspacePanel, loadPluginExport, getPluginContribution } from "@/plugin"
 import "./workspace-drawer.css"
+
+/** Wrapper that shows a skeleton/spinner while lazy-loading a plugin panel component. */
+function PluginWorkspaceContent(props: { panelId: string }) {
+  const [comp, setComp] = createSignal<Component | null>(null)
+  const [loading, setLoading] = createSignal(true)
+
+  onMount(() => {
+    const entry = getWorkspacePanel(props.panelId)
+    if (!entry) {
+      setLoading(false)
+      return
+    }
+    if (entry.component) {
+      setComp(() => entry.component!)
+      setLoading(false)
+      return
+    }
+    if (entry.sandbox) {
+      // Sandbox panels rendered via iframe — handled elsewhere
+      setLoading(false)
+      return
+    }
+    if (entry.pluginId && entry.exportName) {
+      const contrib = getPluginContribution(entry.pluginId)
+      if (contrib) {
+        loadPluginExport(contrib, entry.exportName)
+          .then((c) => {
+            setComp(() => c as Component)
+            setLoading(false)
+          })
+          .catch(() => setLoading(false))
+        return
+      }
+    }
+    setLoading(false)
+  })
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center h-full">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show
+        when={comp()}
+        fallback={
+          <div class="flex items-center justify-center h-full text-text-weak text-14">Plugin panel unavailable</div>
+        }
+      >
+        {(c) => <Dynamic component={c()} />}
+      </Show>
+    </Show>
+  )
+}
 
 export function WorkspaceDrawer() {
   const workspace = useWorkspace()
@@ -50,6 +109,13 @@ export function WorkspaceDrawer() {
     workspace.setWidth(w)
   }
 
+  // Detect whether the active tool is a plugin panel that needs lazy loading
+  const isPluginPanel = createMemo(() => {
+    const t = tool()
+    if (!t) return false
+    return !!getWorkspacePanel(t.id)
+  })
+
   return (
     <div
       class="workspace-drawer relative shrink-0 h-full"
@@ -84,15 +150,22 @@ export function WorkspaceDrawer() {
               <div class="flex items-center justify-center h-full text-text-weak text-14">No tool selected</div>
             }
           >
-            <Suspense
+            <Show
+              when={isPluginPanel()}
               fallback={
-                <div class="flex items-center justify-center h-full">
-                  <Spinner class="size-5" />
-                </div>
+                <Suspense
+                  fallback={
+                    <div class="flex items-center justify-center h-full">
+                      <Spinner class="size-5" />
+                    </div>
+                  }
+                >
+                  <Dynamic component={tool()!.component} />
+                </Suspense>
               }
             >
-              <Dynamic component={tool()!.component} />
-            </Suspense>
+              <PluginWorkspaceContent panelId={tool()!.id} />
+            </Show>
           </Show>
         </div>
       </aside>

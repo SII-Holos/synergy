@@ -8,6 +8,7 @@ export interface WorkspacePanelEntry {
   sandbox?: boolean // for Tier 3 (iframe)
   sandboxUrl?: string
   pluginId: string
+  exportName?: string // named export from the plugin UI bundle
 }
 
 const entries: Map<string, WorkspacePanelEntry> = new Map()
@@ -21,6 +22,11 @@ export function registerWorkspacePanel(entry: WorkspacePanelEntry): () => void {
 
 export function listWorkspacePanels(): WorkspacePanelEntry[] {
   return Array.from(entries.values())
+}
+
+/** Look up a single workspace panel by id. */
+export function getWorkspacePanel(id: string): WorkspacePanelEntry | undefined {
+  return entries.get(id)
 }
 
 export function clearWorkspacePanels(pluginId?: string): void {

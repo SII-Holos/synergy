@@ -9,6 +9,7 @@ export interface SettingsSection {
   sandbox?: boolean
   sandboxUrl?: string
   pluginId?: string // undefined for built-in
+  exportName?: string // named export from the plugin UI bundle (for lazy loading)
 }
 
 const sections: SettingsSection[] = []
@@ -23,6 +24,11 @@ export function registerSettingsSection(section: SettingsSection): () => void {
 
 export function getSettingsSections(): SettingsSection[] {
   return [...sections]
+}
+
+/** Look up a single settings section by id. */
+export function getSettingsSection(id: string): SettingsSection | undefined {
+  return sections.find((s) => s.id === id)
 }
 
 // Built-in settings sections — registered at module init, consumed by SettingsDialog via getSettingsSections()

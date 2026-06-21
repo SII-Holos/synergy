@@ -87,6 +87,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         sandbox: wp.sandbox,
         sandboxUrl: wp.sandboxEntry,
         pluginId: contrib.pluginId,
+        exportName: wp.exportName,
       })
       disposers.push(dispose)
     }
@@ -102,6 +103,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         sandbox: gp.sandbox,
         sandboxUrl: gp.sandboxEntry,
         pluginId: contrib.pluginId,
+        exportName: gp.exportName,
       })
       disposers.push(dispose)
     }
@@ -118,6 +120,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         sandbox: s.sandbox,
         sandboxUrl: s.sandboxEntry,
         pluginId: contrib.pluginId,
+        exportName: s.exportName,
       })
       disposers.push(dispose)
     }
@@ -196,4 +199,9 @@ export function deactivatePlugin(pluginId: string): void {
 /** Get all active plugin instances (reactive). */
 export function getActivePlugins(): PluginInstance[] {
   return instances()
+}
+
+/** Get a plugin contribution by id for lazy-loading its components. */
+export function getPluginContribution(pluginId: string): PluginContribution | undefined {
+  return instances().find((i) => i.id === pluginId)?.contribution
 }

@@ -1,9 +1,11 @@
-import { createEffect, createMemo, createResource, createSignal, Show, For } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, Show, For, onMount } from "solid-js"
+import type { Component } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
@@ -12,7 +14,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import { getSettingsSections, type SettingsSection } from "@/plugin"
+import { getSettingsSections, type SettingsSection, loadPluginExport, getPluginContribution } from "@/plugin"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
 import type {
@@ -589,20 +591,11 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              {/* Plugin-contributed sections — rendered via Dynamic */}
+              {/* Plugin-contributed sections — lazy-loaded via Dynamic */}
               <For each={pluginSections()}>
                 {(section) => (
                   <Show when={editMode() === "form" && activeTab() === section.id}>
-                    <Show
-                      when={section.component}
-                      fallback={
-                        <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
-                          {section.label} is not available
-                        </div>
-                      }
-                    >
-                      <Dynamic component={section.component} />
-                    </Show>
+                    <PluginSettingsContent section={section} />
                   </Show>
                 )}
               </For>
@@ -720,5 +713,59 @@ export function SettingsDialog(props: DialogSettingsProps) {
         <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">Loading...</div>
       )}
     </Dialog>
+  )
+}
+
+/** Wrapper that shows a spinner while lazy-loading a plugin settings section component. */
+function PluginSettingsContent(props: { section: SettingsSection }) {
+  const [comp, setComp] = createSignal<Component | null>(null)
+  const [loading, setLoading] = createSignal(true)
+
+  onMount(() => {
+    const section = props.section
+    if (section.component) {
+      setComp(() => section.component!)
+      setLoading(false)
+      return
+    }
+    if (section.sandbox) {
+      setLoading(false)
+      return
+    }
+    if (section.pluginId && section.exportName) {
+      const contrib = getPluginContribution(section.pluginId)
+      if (contrib) {
+        loadPluginExport(contrib, section.exportName)
+          .then((c) => {
+            setComp(() => c as Component)
+            setLoading(false)
+          })
+          .catch(() => setLoading(false))
+        return
+      }
+    }
+    setLoading(false)
+  })
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center py-8">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show
+        when={comp()}
+        fallback={
+          <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
+            {props.section.label} is not available
+          </div>
+        }
+      >
+        {(c) => <Dynamic component={c()} />}
+      </Show>
+    </Show>
   )
 }

@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show, Switch, Match } from "solid-js"
+import { Dynamic } from "solid-js/web"
+import type { Component } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
@@ -28,6 +30,8 @@ import { AgendaPanel } from "@/components/agenda"
 
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
+import { getGlobalPanel, loadPluginExport, getPluginContribution } from "@/plugin"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -468,7 +472,64 @@ function GlobalPanelSwitch() {
         <LucidPanel />
       </Match>
       <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
+      <Match when={!!getGlobalPanel(panel.active()!)}>
+        <PluginGlobalPanelContent panelId={panel.active()!} />
+      </Match>
     </Switch>
+  )
+}
+
+/** Wrapper that shows a spinner while lazy-loading a plugin global panel component. */
+function PluginGlobalPanelContent(props: { panelId: string }) {
+  const [comp, setComp] = createSignal<Component | null>(null)
+  const [loading, setLoading] = createSignal(true)
+
+  onMount(() => {
+    const entry = getGlobalPanel(props.panelId)
+    if (!entry) {
+      setLoading(false)
+      return
+    }
+    if (entry.component) {
+      setComp(() => entry.component!)
+      setLoading(false)
+      return
+    }
+    if (entry.sandbox) {
+      setLoading(false)
+      return
+    }
+    if (entry.pluginId && entry.exportName) {
+      const contrib = getPluginContribution(entry.pluginId)
+      if (contrib) {
+        loadPluginExport(contrib, entry.exportName)
+          .then((c) => {
+            setComp(() => c as Component)
+            setLoading(false)
+          })
+          .catch(() => setLoading(false))
+        return
+      }
+    }
+    setLoading(false)
+  })
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center h-full">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show
+        when={comp()}
+        fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">Panel unavailable</div>}
+      >
+        {(c) => <Dynamic component={c()} />}
+      </Show>
+    </Show>
   )
 }
 
