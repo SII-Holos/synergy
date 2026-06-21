@@ -51,3 +51,18 @@ export {
 } from "./registries/tool-registry"
 
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
+export {
+  fetchContributions,
+  type PluginContribution,
+  type PluginUIContributions,
+  type PluginPermissions,
+} from "./contributions-fetcher"
+export { loadPluginBundle, loadPluginExport, type PluginBundleExports } from "./loaders"
+export {
+  discoverAndActivate,
+  deactivatePlugin,
+  getActivePlugins,
+  type PluginInstance,
+  type PluginLifecycleState,
+  HOST_UI_API_VERSION,
+} from "./lifecycle"
