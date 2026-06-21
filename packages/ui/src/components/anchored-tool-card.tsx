@@ -417,3 +417,12 @@ export function AnchoredSaveTool(props: ToolProps) {
     </BasicTool>
   )
 }
+export { SummaryGrid, WarningPanel, DiagnosticsPanel, RawOutput, SearchFiles } from "./tool/body-primitives"
+export {
+  shortText,
+  lineRangeLabel,
+  conflictCount,
+  diagnosticCount,
+  changeSummary,
+  operationCounts,
+} from "./tool/body-primitives"

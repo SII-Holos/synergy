@@ -4,7 +4,7 @@ import { Icon, IconProps, IconName } from "./icon"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
 import { ToolTextOutput } from "./tool-output-text"
-import { classifyTool } from "./semantic-tool-classifier"
+import { classifyTool } from "./tool/classifier"
 
 type TriggerTitleObject = {
   title: string
