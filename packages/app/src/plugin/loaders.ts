@@ -22,8 +22,7 @@ export async function loadPluginBundle(contribution: PluginContribution): Promis
   }
   const entry = contribution.ui.entry
   if (!entry) return {}
-  // The URL format matches the server's /plugin-assets/:pluginId/:versionHash/* route
-  const url = `/plugin-assets/${contribution.pluginId}/${contribution.version}/${entry}`
+  const url = `/plugin/assets/${contribution.pluginId}/${contribution.version}/${entry}`
   return (await import(/* @vite-ignore */ url)) as PluginBundleExports
 }
 

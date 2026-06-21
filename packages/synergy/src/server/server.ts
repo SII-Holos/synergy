@@ -94,7 +94,7 @@ export namespace Server {
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
     "connect-src 'self' ws: wss:; " +
-    "frame-src 'none'; " +
+    "frame-src 'self'; " +
     "media-src 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +

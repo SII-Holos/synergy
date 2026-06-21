@@ -49,5 +49,6 @@ export function SandboxShell(props: SandboxShellProps) {
 }
 
 function isValidOrigin(origin: string): boolean {
-  return origin === window.location.origin
+  // Sandboxed iframes (without allow-same-origin) get an opaque origin serialized as "null"
+  return origin === window.location.origin || origin === "null"
 }
