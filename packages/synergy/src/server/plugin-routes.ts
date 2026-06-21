@@ -157,36 +157,25 @@ export const PluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
-      const html = `<!doctype html>
+      const manifest = await Plugin.manifest(pluginId)
+      const ui = manifest?.contributes?.ui
+      const version = manifest?.version ?? "0.0.0"
+
+      // Resolve entry: panel-level sandboxEntry > ui.entry > default
+      const panels = [...(ui?.workspacePanels ?? []), ...(ui?.globalPanels ?? [])]
+      const panel = panels.find((p) => p.id === panelId)
+      const entry = panel?.sandboxEntry ?? ui?.entry ?? "dist/ui.js"
+
+      const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${plugin.name ?? pluginId} — ${panelId}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; }
-    #root { height: 100%; }
+    body { margin: 0; font-family: system-ui; background: var(--bg); color: var(--fg); }
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module">
-    const PLUGIN_ID = ${JSON.stringify(pluginId)};
-    const PANEL_ID = ${JSON.stringify(panelId)};
-    // Notify parent that sandbox is ready
-    window.parent.postMessage({
-      type: "synergy:plugin:ready",
-      pluginId: PLUGIN_ID,
-      panelId: PANEL_ID,
-    }, "*")
-    // Listen for messages from parent window
-    window.addEventListener("message", (event) => {
-      if (event.source === window.parent && event.data?.type?.startsWith("synergy:")) {
-        // Forward parent messages to the plugin runtime
-      }
-    })
-  </script>
+  <script src="/plugin/assets/${pluginId}/${version}/${entry}"></script>
 </body>
 </html>`
       return c.html(html)
