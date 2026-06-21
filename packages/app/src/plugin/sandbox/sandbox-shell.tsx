@@ -48,7 +48,6 @@ export function SandboxShell(props: SandboxShellProps) {
   )
 }
 
-function isValidOrigin(_origin: string): boolean {
-  // In production, check against a known sandbox origin. For now, allow same-origin.
-  return true
+function isValidOrigin(origin: string): boolean {
+  return origin === window.location.origin
 }
