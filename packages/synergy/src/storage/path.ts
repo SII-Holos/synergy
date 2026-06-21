@@ -68,6 +68,7 @@ export namespace StoragePath {
   ]
 
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
+  export const permissionRules = () => ["permission-rules"]
 
   export const share = (shareID: string) => ["shares", shareID]
 
