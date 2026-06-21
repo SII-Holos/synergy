@@ -537,9 +537,11 @@ export namespace ToolResolver {
             }
             rememberShellApproval(ctx, req.permission, requestMetadata)
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
+            RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, true)
           } catch (error) {
             if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
               await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_denied"))
+              RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, false)
             }
             throw error
           }

@@ -62,7 +62,6 @@ export interface Envelope {
   decision: "allow" | "ask" | "deny"
   profileId: string
   opaque: boolean
-  canAutoApprove(): boolean
   capabilities: Capability[]
   /** Populated when decision is "deny" — explains why and whether retrying would help */
   refusal?: {
@@ -831,9 +830,6 @@ export namespace EnforcementGate {
             opaque: false,
             capabilities: [],
             amendment,
-            canAutoApprove() {
-              return true
-            },
           }
         }
 
@@ -851,9 +847,6 @@ export namespace EnforcementGate {
               reason: `ExecPolicy forbids command prefix [${execPolicyMatch.matchedRule?.prefix?.join(" ") ?? ""}]`,
               permanent: true,
               matchedPermission: "shell_hardline",
-            },
-            canAutoApprove() {
-              return false
             },
           }
         }
@@ -953,9 +946,6 @@ export namespace EnforcementGate {
         capabilities,
         refusal,
         amendment,
-        canAutoApprove() {
-          return !capabilities.some((c) => c.nonBypassable || c.opaque)
-        },
       }
     }
 

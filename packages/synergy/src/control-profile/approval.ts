@@ -44,6 +44,7 @@ const HIGH_RISK = new Set([
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 ])
 
 const MEDIUM_RISK = new Set(["file_write", "shell", "network_request"])
