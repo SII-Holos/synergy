@@ -1,0 +1,121 @@
+import { Storage } from "@/storage/storage"
+import { StoragePath } from "@/storage/path"
+import { Log } from "@/util/log"
+import { Wildcard } from "@/util/wildcard"
+import { splitCompoundCommands, stripWrappers } from "@/enforcement/gate"
+import z from "zod"
+
+export namespace PermissionRules {
+  const log = Log.create({ service: "permission.rules" })
+
+  export const Action = z.enum(["allow", "deny", "ask"])
+  export type Action = z.infer<typeof Action>
+
+  export const Rule = z.object({
+    permission: z.string(),
+    pattern: z.string(),
+    action: Action,
+    scope: z.enum(["managed", "user", "session"]).default("user"),
+  })
+  export type Rule = z.infer<typeof Rule>
+
+  export const Ruleset = Rule.array()
+  export type Ruleset = z.infer<typeof Ruleset>
+
+  const sessionRules: Rule[] = []
+
+  export function extractPattern(toolName: string, args: Record<string, any>): string {
+    if (toolName === "bash") {
+      const command = (args.command as string) ?? ""
+      const subs = splitCompoundCommands(command)
+      if (subs.length === 0) return "*"
+      const stripped = stripWrappers(subs[0]).trim()
+      const tokens = stripped.split(/\s+/).slice(0, 2)
+      return tokens.length > 0 ? tokens.join(" ") + " *" : "*"
+    }
+    const path = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
+    if (path) {
+      const parts = path.replace(/^\.\//, "").split("/")
+      if (parts.length > 1) {
+        return parts.slice(0, Math.min(2, parts.length - 1)).join("/") + "/*"
+      }
+      return "*"
+    }
+    return "*"
+  }
+
+  export function evaluate(
+    permission: string,
+    pattern: string,
+    ...rulesets: Ruleset[]
+  ): { action: Action; rule?: Rule } {
+    const merged = merge(...rulesets)
+    const denyMatch = merged.findLast(
+      (r) => Wildcard.match(permission, r.permission) && Wildcard.match(pattern, r.pattern) && r.action === "deny",
+    )
+    if (denyMatch) return { action: "deny", rule: denyMatch }
+
+    const match = merged.findLast((r) => Wildcard.match(permission, r.permission) && Wildcard.match(pattern, r.pattern))
+    if (match) return { action: match.action, rule: match }
+    return { action: "ask" }
+  }
+
+  export function merge(...rulesets: Ruleset[]): Ruleset {
+    return rulesets.flat()
+  }
+
+  export function addSessionRule(rule: Omit<Rule, "scope">) {
+    sessionRules.push({ ...rule, scope: "session" })
+    log.info("added session rule", rule)
+  }
+
+  export function clearSessionRules() {
+    sessionRules.length = 0
+  }
+
+  export function sessionRuleset(): Ruleset {
+    return [...sessionRules]
+  }
+
+  let userRulesCache: Ruleset | undefined
+
+  async function loadUserRules(): Promise<Ruleset> {
+    if (userRulesCache) return userRulesCache
+    try {
+      const data = await Storage.read<Ruleset>(StoragePath.permissionRules())
+      userRulesCache = Array.isArray(data) ? data : []
+    } catch {
+      userRulesCache = []
+    }
+    return userRulesCache
+  }
+
+  async function saveUserRules(rules: Ruleset) {
+    userRulesCache = rules
+    await Storage.write(StoragePath.permissionRules(), rules)
+    log.info("saved user rules", { count: rules.length })
+  }
+
+  export async function addUserRule(rule: Omit<Rule, "scope">) {
+    const current = await loadUserRules()
+    const exists = current.some(
+      (r) => r.permission === rule.permission && r.pattern === rule.pattern && r.action === rule.action,
+    )
+    if (!exists) {
+      await saveUserRules([...current, { ...rule, scope: "user" }])
+    }
+  }
+
+  export async function removeUserRule(permission: string, pattern: string) {
+    const current = await loadUserRules()
+    await saveUserRules(current.filter((r) => !(r.permission === permission && r.pattern === pattern)))
+  }
+
+  export async function userRuleset(): Promise<Ruleset> {
+    return loadUserRules()
+  }
+
+  export async function listAllRules(): Promise<Ruleset> {
+    return [...(await loadUserRules()), ...sessionRules]
+  }
+}
