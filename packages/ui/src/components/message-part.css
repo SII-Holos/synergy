@@ -641,9 +641,3 @@
 [data-compact="true"] [data-slot="message-part-actions"] {
   display: none;
 }
-/* New slot names (used by ToolTrigger in basic-tool.tsx) */
-[data-compact="true"] [data-slot="tool-trigger-path"],
-[data-compact="true"] [data-slot="tool-trigger-right"],
-[data-compact="true"] [data-slot="tool-trigger-tag"] {
-  display: none;
-}

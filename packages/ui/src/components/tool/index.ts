@@ -1,4 +1,3 @@
-export * from "./registry"
 export * from "./classifier"
 export * from "./trigger"
 export * from "./body-primitives"
