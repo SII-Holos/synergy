@@ -251,6 +251,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       total: 0,
     })
     const navPending = new Set<string>()
+    const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
 
     async function loadScopeIndex() {
       await globalSdk.client.scope.list()
@@ -262,6 +263,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       } catch (err) {
         console.warn("Failed to load scope index", err)
         // fall through; scope ordering remains localStorage-based
+      } finally {
+        setScopeIndexLoaded(true)
       }
     }
 
@@ -896,6 +899,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         pinSession,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
+        scopeIndexLoaded,
       },
       scopes: {
         list,
