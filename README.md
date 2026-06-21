@@ -105,11 +105,11 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-One command to set up and start:
+One command to set up everything — deps, SDK, frontend, and sandbox helper:
 
 ```bash
-bun dev prepare     # install deps, generate SDK, build frontend
-bun dev server      # start the server
+bun dev prepare    # install deps, generate SDK, build frontend, compile sandbox helper
+bun dev server     # start the server
 ```
 
 Then connect from another terminal:
@@ -308,11 +308,11 @@ Built-in profiles:
 
 Synergy sandboxes shell command execution at the OS level for security. Availability per platform:
 
-| Platform | Backend                        | Installed         | Source-deploy                                      |
-| -------- | ------------------------------ | ----------------- | -------------------------------------------------- |
-| macOS    | `sandbox-exec` (Seatbelt)      | ✅ Out of the box | ✅ Out of the box                                  |
-| Linux    | `bwrap` + Rust helper          | ✅ Out of the box | `cargo build --release` + `apt install bubblewrap` |
-| Windows  | Restricted Token (Rust helper) | ✅ Out of the box | `cargo build --release`                            |
+| Platform | Backend                        | Installed         | Source-deploy        |
+| -------- | ------------------------------ | ----------------- | -------------------- |
+| macOS    | `sandbox-exec` (Seatbelt)      | ✅ Out of the box | ✅ `bun dev prepare` |
+| Linux    | `bwrap` + Rust helper          | ✅ Out of the box | ✅ `bun dev prepare` |
+| Windows  | Restricted Token (Rust helper) | ✅ Out of the box | ✅ `bun dev prepare` |
 
 > **Permission system** (profiles, ExecPolicy, approval gating) is pure TypeScript — works on all three platforms with zero setup, both installed and source-deploy.
 
@@ -475,67 +475,25 @@ bun install
 
 ### Running locally
 
-`bun dev prepare` installs dependencies, generates the SDK, and builds the frontend in one step:
+One command sets up everything: dependencies, SDK, frontend, and sandbox helper.
 
 ```bash
 bun dev prepare
 bun dev server
 ```
 
-**Web UI (development mode)** — run in a separate terminal while the server is up:
+`bun dev prepare` handles the full stack — on macOS the sandbox works immediately (built-in `sandbox-exec`). On Linux and Windows it compiles the Rust sandbox helper automatically (requires `cargo` — install from https://rustup.rs if missing).
 
-```bash
-bun dev web --dev
-```
+If Rust is not installed, prepare skips the sandbox step with a clear message and link. Re-run after installing Rust to complete sandbox setup.
 
-This launches a Vite dev server with hot-reload — no need to rebuild `packages/app/dist` each time.
+### Sandbox setup details
 
-**One-off prompt:**
+`bun dev prepare` compiles the sandbox helper on Linux and Windows automatically. If you need to recompile it separately:
 
-```bash
-bun dev send "hello"
-```
+**Linux:** `cd packages/synergy/src/sandbox/helper-linux && cargo build --release`
+**Windows:** `cd packages/synergy/src/sandbox/helper && cargo build --release`
 
-After editing code:
-
-```bash
-bun dev build       # rebuild frontend (after app changes)
-bun dev server      # restart the server
-```
-
-### Sandbox setup for source-deploy users
-
-The sandbox gives OS-level security isolation for shell commands. On macOS it works out of the box (`/usr/bin/sandbox-exec` is built into the OS). On Linux and Windows you need to compile the sandbox helper binary once:
-
-**Linux:**
-
-```bash
-cd packages/synergy/src/sandbox/helper-linux
-cargo build --release
-
-# Optional: register SHA-256 hash for precise verification
-cd ../../..  # back to packages/synergy
-bun run scripts/build-helper.ts linux --local
-
-# Install bwrap
-sudo apt install bubblewrap
-# or: bash scripts/download-bwrap.sh
-```
-
-**Windows:**
-
-```bash
-cd packages/synergy/src/sandbox/helper
-cargo build --release
-
-# Optional: register SHA-256 hash
-cd ../../..  # back to packages/synergy
-bun run scripts/build-helper.ts windows --local --helper-path packages/synergy/src/sandbox/helper/target/release/synergy-sandbox-windows.exe
-```
-
-Restart the server after compiling the helper. Synergy auto-discovers the locally-built binary on startup.
-
-> If the hash table is empty (pre-release state), the helper is still usable — Synergy runs minimum plausibility checks (file size, executable permission) instead of precise SHA-256 verification. Running `--local` upgrades this to precise verification.
+Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable — Synergy runs minimum plausibility checks (file size, executable permission) instead of precise SHA-256 verification.
 
 ### Quality checks
 
