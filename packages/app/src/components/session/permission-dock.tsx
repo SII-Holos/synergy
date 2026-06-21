@@ -6,7 +6,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { useData } from "@ericsanchezok/synergy-ui/context"
 import { ToolRegistry, getToolInfo } from "@ericsanchezok/synergy-ui/message-part"
-import { GenericTool } from "@ericsanchezok/synergy-ui/basic-tool"
+import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
 
 export interface PermissionDockProps {
   sessionID: string
@@ -171,7 +171,7 @@ export function PermissionDock(props: PermissionDockProps) {
             if (!item?.permission.tool) return null
             const part = toolPart()
             const toolName = part?.tool ?? item.permission.permission
-            const render = ToolRegistry.render(toolName) ?? GenericTool
+            const render = ToolRegistry.render(toolName) ?? SmartTool
             const state = part?.state
             const input = state?.input ?? {}
             const permissionMetadata = item.permission.metadata ?? {}

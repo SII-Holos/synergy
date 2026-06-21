@@ -1,12 +1,14 @@
-import { createEffect, createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
-import { Icon, IconProps, IconName } from "./icon"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
+import { ToolTrigger, type ToolTriggerProps } from "./tool/trigger"
+import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
-import { classifyTool } from "./semantic-tool-classifier"
+import { classifyTool } from "./tool/classifier"
 
-type TriggerTitleObject = {
+/** Legacy trigger value shape (pre-ToolTriggerProps). */
+interface LegacyTriggerValue {
   title: string
   titleClass?: string
   subtitle?: string
@@ -16,21 +18,15 @@ type TriggerTitleObject = {
   action?: JSX.Element
 }
 
-export type TriggerTitle = TriggerTitleObject | (() => TriggerTitleObject)
+export type LegacyTrigger = LegacyTriggerValue | (() => LegacyTriggerValue)
 
-const isTriggerTitle = (val: any): val is TriggerTitle => {
-  return (
-    typeof val === "object" &&
-    val !== null &&
-    Object.prototype.hasOwnProperty.call(val, "title") &&
-    typeof val.title === "string" &&
-    (typeof Node === "undefined" || !(val instanceof Node))
-  )
-}
+// Trigger can be ToolTriggerProps, the legacy {title, args} function/object, or raw JSX.
+type Trigger = ToolTriggerProps | LegacyTrigger | JSX.Element
 
 export interface BasicToolProps {
-  icon: IconName
-  trigger: TriggerTitle | JSX.Element
+  trigger?: Trigger
+  /** Legacy icon for use with legacy trigger patterns. */
+  icon?: IconName
   children?: JSX.Element
   hideDetails?: boolean
   defaultOpen?: boolean
@@ -41,6 +37,52 @@ export interface BasicToolProps {
   onSubtitleClick?: () => void
 }
 
+/** Returns ToolTriggerProps from any trigger shape, or undefined for raw JSX. */
+function fromTrigger(
+  trigger: Trigger | undefined,
+  icon?: IconName,
+  onSubtitleClick?: () => void,
+): ToolTriggerProps | undefined {
+  if (!trigger) return undefined
+  // ToolTriggerProps — non-function object with icon field
+  if (typeof trigger === "object" && !Array.isArray(trigger) && !("$$typeof" in (trigger as any))) {
+    const t = trigger as any
+    if (t.icon) return trigger as ToolTriggerProps
+    if (typeof t.title === "string") {
+      return {
+        icon: icon ?? "settings",
+        title: t.title as string,
+        titleClass: t.titleClass as string | undefined,
+        subtitle: t.subtitle as string | undefined,
+        subtitleClass: t.subtitleClass as string | undefined,
+        tags: (t.args as string[] | undefined)?.map((a) => ({ label: a })),
+        argsClass: t.argsClass as string | undefined,
+        action: t.action as JSX.Element | undefined,
+        onSubtitleClick,
+      }
+    }
+    return undefined
+  }
+  // Legacy function — call it
+  if (typeof trigger === "function") {
+    const resolved = (trigger as () => LegacyTriggerValue)()
+    if (!resolved || typeof resolved.title !== "string") return undefined
+    return {
+      icon: icon ?? "settings",
+      title: resolved.title,
+      titleClass: resolved.titleClass,
+      subtitle: resolved.subtitle,
+      subtitleClass: resolved.subtitleClass,
+      tags: resolved.args?.map((a) => ({ label: a })),
+      argsClass: resolved.argsClass,
+      action: resolved.action,
+      onSubtitleClick,
+    }
+  }
+  // JSX.Element
+  return undefined
+}
+
 export function BasicTool(props: BasicToolProps) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
@@ -49,83 +91,30 @@ export function BasicTool(props: BasicToolProps) {
     if (props.forceOpen) setOpen(true)
   })
 
-  const triggerContent = createMemo(() => {
-    const t = props.trigger
-    const value = typeof t === "function" ? (t as () => TriggerTitleObject | JSX.Element)() : t
-    return isTriggerTitle(value)
-      ? { structured: value, element: undefined }
-      : { structured: undefined, element: value as JSX.Element }
-  })
-
   const charsLabel = createMemo(() => {
     if (props.status !== "generating" || !props.charsReceived) return null
     return `${props.charsReceived.toLocaleString()} chars`
   })
 
+  const triggerProps = createMemo(() => fromTrigger(props.trigger, props.icon, props.onSubtitleClick))
+
   return (
     <Collapsible open={open()} onOpenChange={setOpen} variant="tool" data-tool-status={props.status ?? "completed"}>
       <Collapsible.Trigger>
-        <div data-component="tool-trigger">
-          <div data-slot="basic-tool-tool-trigger-content">
-            <Icon name={props.icon} size="small" />
-            <div data-slot="basic-tool-tool-info">
-              <Switch>
-                <Match when={triggerContent().structured}>
-                  {(trigger) => (
-                    <div data-slot="basic-tool-tool-info-structured">
-                      <div data-slot="basic-tool-tool-info-main">
-                        <span
-                          data-slot="basic-tool-tool-title"
-                          classList={{
-                            [trigger().titleClass ?? ""]: !!trigger().titleClass,
-                          }}
-                        >
-                          {trigger().title}
-                        </span>
-                        <Show when={trigger().subtitle}>
-                          <span
-                            data-slot="basic-tool-tool-subtitle"
-                            classList={{
-                              [trigger().subtitleClass ?? ""]: !!trigger().subtitleClass,
-                              clickable: !!props.onSubtitleClick,
-                            }}
-                            onClick={(e) => {
-                              if (props.onSubtitleClick) {
-                                e.stopPropagation()
-                                props.onSubtitleClick()
-                              }
-                            }}
-                          >
-                            {trigger().subtitle}
-                          </span>
-                        </Show>
-                        <Show when={trigger().args?.length}>
-                          <For each={trigger().args}>
-                            {(arg) => (
-                              <span
-                                data-slot="basic-tool-tool-arg"
-                                classList={{
-                                  [trigger().argsClass ?? ""]: !!trigger().argsClass,
-                                }}
-                              >
-                                {arg}
-                              </span>
-                            )}
-                          </For>
-                        </Show>
-                      </div>
-                      <Show when={trigger().action}>{trigger().action}</Show>
-                    </div>
-                  )}
-                </Match>
-                <Match when={triggerContent().element}>{triggerContent().element}</Match>
-              </Switch>
-            </div>
-          </div>
+        <Show
+          when={triggerProps()}
+          fallback={
+            // Raw JSX.Element fallback (anchored-tool-card, file-ops custom triggers)
+            <Show when={props.trigger as JSX.Element}>{(el) => el()}</Show>
+          }
+        >
+          {(tp) => <ToolTrigger {...tp()} />}
+        </Show>
+        <div data-slot="tool-trigger-status">
           <Switch>
             <Match when={active()}>
               <Show when={charsLabel()}>
-                <span data-slot="basic-tool-chars">{charsLabel()}</span>
+                <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
               <Show when={props.countdown != null}>
                 <Countdown seconds={props.countdown!} active={active()} />
@@ -145,24 +134,11 @@ export function BasicTool(props: BasicToolProps) {
   )
 }
 
-export function GenericTool(props: { tool: string; hideDetails?: boolean }) {
-  return <BasicTool icon="settings" trigger={() => ({ title: props.tool })} hideDetails={props.hideDetails} />
-}
-
 /**
  * SmartTool — intelligent fallback for unregistered tools.
  *
- * Instead of showing a plain gray gear icon with just the tool name,
- * SmartTool uses semantic classification to automatically:
- * - Pick a meaningful icon based on what the tool does
- * - Extract a human-readable title
- * - Pull the most relevant subtitle from the input
- * - Show contextual args badges
- * - Display output in a scrollable pane when available
- *
- * This covers external agent tools (codex shell, cline execute_command,
- * gemini read_file), MCP tools, and any future tools — all without
- * writing a single new ToolRegistry.register() entry.
+ * Uses semantic classification to pick icon, title, subtitle, and args badges
+ * for external tools, MCP tools, and any future unregistered tools.
  */
 export function SmartTool(props: {
   tool: string
@@ -180,14 +156,14 @@ export function SmartTool(props: {
 
   return (
     <BasicTool
-      icon={classified().spec.icon}
       status={props.status}
       charsReceived={props.charsReceived}
-      trigger={() => ({
+      trigger={{
+        icon: classified().spec.icon,
         title: classified().title,
         subtitle: classified().subtitle,
-        args: classified().args,
-      })}
+        tags: classified().args?.map((a) => ({ label: a })),
+      }}
       hideDetails={props.hideDetails}
     >
       <Show when={props.output}>
