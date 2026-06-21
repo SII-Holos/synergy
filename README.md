@@ -105,18 +105,25 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-Install dependencies, build the SDK, then build the frontend:
+Quick start (one command):
+
+```bash
+bun dev prepare
+```
+
+This installs dependencies, generates the SDK, and builds the frontend in one step.
+
+Manual setup if you prefer step-by-step:
 
 ```bash
 bun install
-bun run --cwd packages/sdk/js build
-bun run --cwd packages/app build
+bun dev prepare   # generates SDK + builds frontend
 ```
 
 Start the server:
 
 ```bash
-bun dev
+bun dev server
 ```
 
 Then connect from another terminal:
@@ -126,7 +133,12 @@ bun dev web --dev
 bun dev send "hello"
 ```
 
-## Common Commands
+After editing code:
+
+```bash
+bun dev build       # rebuild frontend (after app changes)
+bun dev server      # restart the server
+```
 
 ### Core runtime
 
@@ -308,13 +320,15 @@ Built-in profiles:
 
 ### Sandbox
 
-Synergy sandboxes shell command execution at the OS level for security. Sandbox support per platform:
+Synergy sandboxes shell command execution at the OS level for security. Availability per platform:
 
-| Platform | Backend                        | Status         |
-| -------- | ------------------------------ | -------------- |
-| macOS    | `sandbox-exec` (Seatbelt)      | Production     |
-| Linux    | `bwrap` (Bubblewrap)           | Available      |
-| Windows  | Restricted Token (Rust helper) | In development |
+| Platform | Backend                        | Installed         | Source-deploy                                      |
+| -------- | ------------------------------ | ----------------- | -------------------------------------------------- |
+| macOS    | `sandbox-exec` (Seatbelt)      | ✅ Out of the box | ✅ Out of the box                                  |
+| Linux    | `bwrap` + Rust helper          | ✅ Out of the box | `cargo build --release` + `apt install bubblewrap` |
+| Windows  | Restricted Token (Rust helper) | ✅ Out of the box | `cargo build --release`                            |
+
+> **Permission system** (profiles, ExecPolicy, approval gating) is pure TypeScript — works on all three platforms with zero setup, both installed and source-deploy.
 
 Sandbox mode is driven by the active control profile (`guarded`, `autonomous`, `full_access`), not by global config. The built-in profiles resolve sandbox as follows:
 
@@ -475,19 +489,30 @@ bun install
 
 ### Running locally
 
-#### Quick start
-
-`bun dev prepare` does everything in one step (install deps, generate SDK, build frontend). If you prefer manual control:
-
-1. `bun install`
-2. `./script/generate.ts` (or `bun dev prepare` to do all three)
-3. `bun run --cwd packages/app build`
-
-Then start the dev server:
+`bun dev prepare` handles everything in one step (install deps, generate SDK, build frontend):
 
 ```bash
-bun dev server      # start the server
-bun dev web --dev   # open the web UI (separate terminal)
+bun dev prepare
+```
+
+Start the dev server:
+
+```bash
+bun dev server
+```
+
+**Web UI (development mode)** — run in a separate terminal while the server is up:
+
+```bash
+bun dev web --dev
+```
+
+This launches a Vite dev server with hot-reload — no need to rebuild `packages/app/dist` each time.
+
+**One-off prompt:**
+
+```bash
+bun dev send "hello"
 ```
 
 After editing code:
@@ -497,21 +522,39 @@ bun dev build       # rebuild frontend (after app changes)
 bun dev server      # restart the server
 ```
 
-> **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.
+### Sandbox setup for source-deploy users
 
-**Web UI (development mode)** — run in a second terminal while the server is up:
+The sandbox gives OS-level security isolation for shell commands. On macOS it works out of the box (`/usr/bin/sandbox-exec` is built into the OS). On Linux and Windows you need to compile the sandbox helper binary once:
 
-```bash
-bun dev web --dev
-```
-
-This launches a Vite dev server for the frontend with hot-reload. Use this when working on the Web UI — no need to rebuild `packages/app/dist` each time.
-
-**One-off prompt** — send a single message without opening the Web UI:
+**Linux:**
 
 ```bash
-bun dev send "hello"
+cd packages/synergy/src/sandbox/helper-linux
+cargo build --release
+
+# Optional: register SHA-256 hash for precise verification
+cd ../../..  # back to packages/synergy
+bun run scripts/build-helper.ts linux --local
+
+# Install bwrap
+sudo apt install bubblewrap
+# or: bash scripts/download-bwrap.sh
 ```
+
+**Windows:**
+
+```bash
+cd packages/synergy/src/sandbox/helper
+cargo build --release
+
+# Optional: register SHA-256 hash
+cd ../../..  # back to packages/synergy
+bun run scripts/build-helper.ts windows --local --helper-path packages/synergy/src/sandbox/helper/target/release/synergy-sandbox-windows.exe
+```
+
+Restart the server after compiling the helper. Synergy auto-discovers the locally-built binary on startup.
+
+> If the hash table is empty (pre-release state), the helper is still usable — Synergy runs minimum plausibility checks (file size, executable permission) instead of precise SHA-256 verification. Running `--local` upgrades this to precise verification.
 
 ### Quality checks
 
@@ -522,34 +565,30 @@ bun run typecheck       # type-check all packages via turbo
 
 ### Tests
 
-Run tests from `packages/synergy` — the root `test` script intentionally blocks:
+Run TS tests from `packages/synergy` — the root `test` script intentionally blocks:
 
 ```bash
 cd packages/synergy
-bun test                            # full suite
-bun test test/tool/read.test.ts     # single file
-bun test --watch                    # watch mode
+bun test                                # full suite
+bun test test/sandbox/                  # sandbox tests
+bun test test/tool/read.test.ts         # single file
+bun test --watch                        # watch mode
+```
+
+Run Rust helper tests:
+
+```bash
+cd packages/synergy/src/sandbox/helper-linux && cargo test   # Linux helper
+cd packages/synergy/src/sandbox/helper && cargo test         # Windows helper
 ```
 
 ### Build and SDK generation
 
 ```bash
 ./packages/synergy/script/build.ts --single   # build the synergy CLI binary
-./script/generate.ts                           # regenerate the TypeScript SDK
+bun dev prepare                                # regenerate SDK + rebuild frontend
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.
 
 ## Documentation Rules
-
-This repository moves quickly. README drift is a real maintenance issue.
-
-Update documentation whenever you change:
-
-- CLI command names or recommended command flows
-- agent names, default roles, or user-facing descriptions
-- config paths or config schema expectations
-- package responsibilities in the monorepo
-- user-facing platform features such as MCP, channels, identity, web flows, agenda, notes, or community features
-
-If a change is visible to a user or another developer, it probably deserves a doc check.
