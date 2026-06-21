@@ -136,9 +136,9 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     patch.permission = advanced.permission || undefined
   }
 
-  const origQuestionTimeout = String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout)
-  if (advanced.question_timeout !== origQuestionTimeout) {
-    patch.question = { timeout: Number(advanced.question_timeout) }
+  const origAutoClassifier = (cfg as Record<string, unknown>).auto_classifier === true ? "true" : "false"
+  if (advanced.auto_classifier !== origAutoClassifier) {
+    patch.auto_classifier = advanced.auto_classifier === "true"
   }
 
   const origEmail = JSON.stringify(cfg.email ?? {})
