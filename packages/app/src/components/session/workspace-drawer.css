@@ -1,9 +1,10 @@
 .workspace-drawer {
+  overflow: hidden;
   transition: width 300ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .workspace-drawer--closing {
-  overflow: hidden;
+  /* kept for potential future closing-specific styling */
 }
 
 .workspace-drawer-panel {
