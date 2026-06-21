@@ -431,9 +431,8 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding-left: 24px;
+  padding-left: 6px;
 }
-
 .sb-session-row {
   display: flex;
   align-items: center;

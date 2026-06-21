@@ -282,7 +282,11 @@ function classifyPathCapability(
       paths: [pathInput],
     })
   } else {
-    uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [pathInput] })
+    uniqueCapability(caps, {
+      class: options.write ? "file_external_write" : "file_external_read",
+      nonBypassable: true,
+      paths: [pathInput],
+    })
   }
 }
 
@@ -472,7 +476,7 @@ export namespace EnforcementGate {
         for (const candidate of pathCandidates) {
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
-            uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [candidate] })
+            uniqueCapability(caps, { class: "file_external_read", nonBypassable: true, paths: [candidate] })
           }
         }
 
@@ -761,7 +765,7 @@ export namespace EnforcementGate {
       if (decision === "allow") {
         for (const cap of capabilities) {
           if (cap.paths?.length) {
-            if (cap.class === "file_read" || cap.class === "file_external") {
+            if (cap.class === "file_read" || cap.class === "file_external_read") {
               for (const p of cap.paths) approvedReadPaths.add(p)
             } else if (cap.class === "file_write") {
               for (const p of cap.paths) approvedWritePaths.add(p)

@@ -34,9 +34,11 @@ export interface ApprovalMetadata {
 }
 
 const HIGH_RISK = new Set([
-  "shell_destructive",
   "shell_hardline",
-  "file_external",
+  "shell_destructive",
+  "file_external_read",
+  "file_external_write",
+
   "mcp_invoke",
   "plugin_invoke",
   "identity_act",
@@ -60,8 +62,7 @@ const PERMISSION_CAPABILITY: Record<string, string> = {
   revise_file: "file_write",
   save_file: "file_write",
   bash: "shell",
-  shell_read: "shell_read",
-  external_directory: "file_external",
+  external_directory: "file_external_read",
   webfetch: "network_request",
   websearch: "network_request",
   arxiv_search: "network_request",
