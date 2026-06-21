@@ -109,6 +109,69 @@ const UIContribution = z
   })
   .partial()
   .optional()
+
+const PluginPermissionsSchema = z
+  .object({
+    /** UI surface permissions */
+    ui: z
+      .object({
+        toolRenderers: z.boolean().optional().default(false),
+        partRenderers: z.boolean().optional().default(false),
+        workspacePanels: z.boolean().optional().default(false),
+        globalPanels: z.boolean().optional().default(false),
+        settings: z.boolean().optional().default(false),
+        themes: z.boolean().optional().default(false),
+        icons: z.boolean().optional().default(false),
+        routes: z.boolean().optional().default(false),
+        /** Allow Tier 2 trusted host import (same-origin JS execution) */
+        trustedImport: z.boolean().optional().default(false),
+        /** Allow Tier 3 sandbox iframe */
+        sandboxIframe: z.boolean().optional().default(false),
+      })
+      .partial()
+      .optional(),
+
+    /** Network access */
+    network: z
+      .object({
+        /** Domains the plugin may connect to */
+        connectDomains: z.array(z.string()).optional().default([]),
+        /** Domains the plugin may fetch resources from (iframes, images) */
+        resourceDomains: z.array(z.string()).optional().default([]),
+        /** Domains allowed in iframe src */
+        frameDomains: z.array(z.string()).optional().default([]),
+      })
+      .partial()
+      .optional(),
+
+    /** Data access */
+    data: z
+      .object({
+        /** Session data access level */
+        session: z.enum(["none", "metadata", "read"]).optional().default("none"),
+        /** Workspace file access level */
+        workspace: z.enum(["none", "metadata", "read"]).optional().default("none"),
+        /** Config access scope */
+        config: z.enum(["plugin", "global"]).optional().default("plugin"),
+      })
+      .partial()
+      .optional(),
+
+    /** Tool execution permissions */
+    tools: z
+      .object({
+        /** Whether plugin tools can be invoked */
+        invoke: z.boolean().optional().default(true),
+        /** Whether plugin tools can access the shell */
+        shell: z.boolean().optional().default(false),
+        /** Whether plugin tools can access the filesystem */
+        filesystem: z.boolean().optional().default(false),
+      })
+      .partial()
+      .optional(),
+  })
+  .partial()
+  .optional()
 // PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
   .object({
@@ -138,6 +201,8 @@ export const PluginManifest = z
     // Dependencies on other plugins
     dependencies: z.record(z.string(), z.string()).optional(),
 
+    // Permission / trust declaration
+    permissions: PluginPermissionsSchema,
     // Declarative contributions
     contributes: z
       .object({
@@ -321,6 +386,7 @@ export const PluginManifest = z
           .optional(),
 
         extensionPack: z.array(z.string()).optional(),
+        permissions: PluginPermissionsSchema,
         ui: UIContribution,
       })
       .partial()
