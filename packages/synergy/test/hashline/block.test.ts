@@ -79,7 +79,7 @@ describe("resolveBlockEdits", () => {
 
   test("throws (default) when no resolver is wired", () => {
     const edits = parsePatch("SWAP.BLK 2:\n+X").edits
-    expect(() => resolveBlockEdits(edits, "ignored", PATH, undefined)).toThrow("not available here")
+    expect(() => resolveBlockEdits(edits, "ignored", PATH, undefined)).toThrow("not available")
   })
 
   test("drops an unresolvable block edit in `drop` mode", () => {
@@ -168,7 +168,7 @@ describe("PatchSection.applyTo / applyPartialTo with block edits", () => {
 
   test("applyTo throws when a block edit has no resolver", () => {
     const section = Patch.parseSingle(`[${PATH}#FFFF]\nSWAP.BLK 2:\n+X`)
-    expect(() => section.applyTo(text)).toThrow("no block resolver configured")
+    expect(() => section.applyTo(text)).toThrow("not available")
   })
 
   test("applyPartialTo drops an unresolvable block edit instead of throwing", () => {
