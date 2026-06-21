@@ -348,9 +348,13 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-function isDestructive(command: string): boolean {
+function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
-  return DESTRUCTIVE_PATTERNS.some((p) => lower.includes(p)) || DESTRUCTIVE_REGEX.test(lower)
+  for (const p of DESTRUCTIVE_PATTERNS) {
+    if (lower.includes(p)) return p
+  }
+  if (DESTRUCTIVE_REGEX.test(lower)) return "dd with raw device"
+  return null
 }
 
 function extractAbsolutePaths(command: string): string[] {
@@ -602,7 +606,11 @@ export namespace EnforcementGate {
         const risk = ShellSafety.classifyBashRisk(command)
 
         if (risk === "shell_hardline") {
-          caps.push({ class: "shell_hardline", nonBypassable: true })
+          caps.push({
+            class: "shell_hardline",
+            nonBypassable: true,
+            reason: `hardline rule matched: ${command.slice(0, 200)}`,
+          })
           return { capabilities: caps }
         }
 
@@ -619,8 +627,22 @@ export namespace EnforcementGate {
               reason: resilient.reason,
               metadata: { pattern: resilient.pattern },
             })
-          } else if (isDestructive(command)) {
-            caps.push({ class: "shell_destructive", nonBypassable: true })
+          } else {
+            const matched = isDestructive(command)
+            if (matched) {
+              caps.push({
+                class: "shell_destructive",
+                nonBypassable: true,
+                reason: `matched destructive pattern: ${matched}`,
+              })
+            }
+          }
+        } else {
+          // ShellSafety already classified as shell_destructive — annotate the
+          // existing capability with diagnostic reason from the pattern list.
+          const matched = isDestructive(command)
+          if (matched) {
+            caps[caps.length - 1].reason = `matched destructive pattern: ${matched}`
           }
         }
 
@@ -895,17 +917,20 @@ export namespace EnforcementGate {
       let refusal: Envelope["refusal"]
       if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"
+        const diagnosticReasons = capabilities
+          .filter((c) => c.reason)
+          .map((c) => c.reason)
+          .join("; ")
+
         refusal = {
-          reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
+          reason: diagnosticReasons
+            ? `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}" — ${diagnosticReasons}`
+            : `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
-          ...(isAutonomous && deniedCapClass
-            ? {
-                guidance:
-                  "Switch to guarded profile to approve this operation. Use `synergy profile guarded` or the profile switcher in the UI.",
-                amendment: generateAmendmentForCapability(deniedCapClass),
-              }
-            : {}),
+          guidance:
+            diagnosticReasons || (isAutonomous ? "Switch to guarded profile to approve this operation." : undefined),
+          amendment: isAutonomous && deniedCapClass ? generateAmendmentForCapability(deniedCapClass) : undefined,
         }
       }
 
