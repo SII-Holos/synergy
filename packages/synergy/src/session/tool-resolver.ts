@@ -278,9 +278,13 @@ export namespace ToolResolver {
     const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
     const decision = { ...policyDecision, action: envelope.decision }
     if (decision.action === "deny") {
-      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
-      const reason = envelope.refusal?.reason ?? decision.reason
-      throw new EnforcementError.PolicyDenied(reason, decision.capabilities, envelope.profileId)
+      // Use the refusal's diagnostic reason when available — this carries
+      // specific detail like "matched destructive pattern: git push" that
+      // should be visible both in the error message AND the frontend audit tooltip.
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
     if (decision.action === "allow") {
