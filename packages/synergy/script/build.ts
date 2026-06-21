@@ -93,7 +93,7 @@ const targets = singleFlag
     })
   : allTargets
 
-await $`rm -rf dist`
+fs.rmSync("dist", { recursive: true, force: true })
 
 console.log("building web app")
 await $`bun run --cwd ${path.resolve(dir, "../app")} build`
@@ -197,8 +197,8 @@ async function copySandboxHelper(item: { os: string; arch: string }, name: strin
   }
 
   console.log(`Copying sandbox helper: ${helperSrc} → ${helperDest}`)
-  await $`mkdir -p ${path.dirname(helperDest)}`
-  await $`cp ${helperSrc} ${helperDest}`
+  fs.mkdirSync(path.dirname(helperDest), { recursive: true })
+  fs.copyFileSync(helperSrc, helperDest)
 }
 
 export { binaries }
