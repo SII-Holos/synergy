@@ -672,7 +672,6 @@ describe("EnforcementGate profile integration", () => {
   })
 
   test("gate rejects full_access in unattended mode", async () => {
-
     // Creating a gate with full_access + unattended must fail
     expect(() =>
       EnforcementGate.create({

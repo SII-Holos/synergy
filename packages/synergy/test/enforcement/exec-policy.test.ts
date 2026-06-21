@@ -19,14 +19,8 @@ import type {
   RuleMatch,
 } from "../../src/enforcement/exec-policy"
 
-const {
-  evaluateCommand,
-  generateAmendment,
-  parseAskForApproval,
-  parseNetworkRule,
-  parsePrefixRule,
-  shouldPrompt,
-} = await import("../../src/enforcement/exec-policy")
+const { evaluateCommand, generateAmendment, parseAskForApproval, parseNetworkRule, parsePrefixRule, shouldPrompt } =
+  await import("../../src/enforcement/exec-policy")
 
 // ------------------------------------------------------------------
 // 1. Prefix Rule Matching
