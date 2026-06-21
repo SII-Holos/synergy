@@ -41,7 +41,10 @@ describe("GET /scope/index", () => {
     const scopeA = await tmpA.scope()
     const scopeB = await tmpB.scope()
 
-    // Create sessions in scopeA first (older), scopeB second (newer)
+    // Create sessions in scopeA first (older), scopeB second (newer).
+    // Use explicit timestamps to guarantee ordering — relying on wall-clock
+    // proximity makes this test flaky on fast CI runners where both creates
+    // can land in the same millisecond.
     await Instance.provide({
       scope: scopeA,
       fn: async () => {
@@ -51,7 +54,9 @@ describe("GET /scope/index", () => {
     await Instance.provide({
       scope: scopeB,
       fn: async () => {
-        await Session.create({ title: "B New" })
+        const s = await Session.create({ title: "B New" })
+        // Explicitly touch to ensure latestActivityAt is strictly newer
+        await Session.touch(s.id)
       },
     })
 
