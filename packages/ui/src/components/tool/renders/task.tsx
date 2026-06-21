@@ -36,15 +36,14 @@ ToolRegistry.register({
     return (
       <div data-component="tool-part-wrapper" data-permission={!!childPermission()}>
         <BasicTool
-          icon="list-todo"
           defaultOpen={true}
           hideDetails={summary().length === 0}
-          trigger={() => ({
+          trigger={{
+            icon: "list-todo",
             title: `${props.input.subagent_type || props.tool} Agent`,
-            titleClass: "capitalize",
             subtitle: props.input.description,
-            args: isBackground() ? ["background"] : [],
-          })}
+            tags: isBackground() ? [{ label: "background" }] : undefined,
+          }}
           onSubtitleClick={handleSubtitleClick}
         >
           <div

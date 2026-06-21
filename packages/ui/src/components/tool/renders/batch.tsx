@@ -31,12 +31,12 @@ for (const name of qzToolNames) {
       return (
         <BasicTool
           {...props}
-          icon={info.icon}
-          trigger={() => ({
+          trigger={{
+            icon: info.icon,
             title: info.title,
             subtitle: info.subtitle || "",
-            args: info.args || [],
-          })}
+            tags: info.args?.map((a) => ({ label: a })),
+          }}
         >
           <Show when={props.output}>
             {(output) => (
@@ -79,12 +79,12 @@ for (const name of inspireToolNames) {
       return (
         <BasicTool
           {...props}
-          icon={info().icon}
-          trigger={() => ({
+          trigger={{
+            icon: info().icon,
             title: info().title,
             subtitle: info().subtitle || "",
-            args: info().args || [],
-          })}
+            tags: info().args?.map((a) => ({ label: a })),
+          }}
         >
           <Show when={props.output}>
             {(output) => (
@@ -123,12 +123,12 @@ for (const name of researchToolNames) {
       return (
         <BasicTool
           {...props}
-          icon={info().icon}
-          trigger={() => ({
+          trigger={{
+            icon: info().icon,
             title: info().title,
             subtitle: info().subtitle || "",
-            args: info().args || [],
-          })}
+            tags: info().args?.map((a) => ({ label: a })),
+          }}
         >
           <Show when={props.output}>
             {(output) => (
@@ -155,12 +155,12 @@ for (const name of worktreeToolNames) {
       return (
         <BasicTool
           {...props}
-          icon={info().icon}
-          trigger={() => ({
+          trigger={{
+            icon: info().icon,
             title: info().title,
             subtitle: info().subtitle || "",
-            args: info().args || [],
-          })}
+            tags: info().args?.map((a) => ({ label: a })),
+          }}
         >
           <Show when={props.output}>
             {(output) => (

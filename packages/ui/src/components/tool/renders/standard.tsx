@@ -26,14 +26,14 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="glasses"
-        trigger={() => ({
+        trigger={{
+          icon: "glasses",
           title: "Read",
           subtitle: props.input.filePath
             ? getDirectory(props.input.filePath) + getFilename(props.input.filePath)
             : undefined,
-          args: rangeLabel() ? [rangeLabel()!] : [],
-        })}
+          tags: rangeLabel() ? [{ label: rangeLabel()! }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -53,11 +53,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="folder"
-        trigger={() => ({
+        trigger={{
+          icon: "folder",
           title: "List",
           subtitle: props.input.path ? getDirectory(props.input.path) + getFilename(props.input.path) : undefined,
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -78,12 +78,13 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="list"
-        trigger={() => ({
+        trigger={{
+          icon: "list",
           title: "Sessions",
           subtitle: props.input.scope || "",
-          args: count() != null ? [`${count()} session${count() === 1 ? "" : "s"}`] : [],
-        })}
+          tags:
+            count() != null ? [`${count()} session${count() === 1 ? "" : "s"}`].map((l) => ({ label: l })) : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -103,11 +104,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="message-square"
-        trigger={() => ({
+        trigger={{
+          icon: "message-square",
           title: "Read Session",
           subtitle: props.input.target || "",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -127,12 +128,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="quote"
-        trigger={() => ({
+        trigger={{
+          icon: "quote",
           title: "Search Sessions",
           subtitle: props.input.pattern || "",
-          args: props.input.scope ? [props.input.scope] : [],
-        })}
+          tags: props.input.scope ? [{ label: props.input.scope }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -152,12 +153,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="share"
-        trigger={() => ({
+        trigger={{
+          icon: "share",
           title: "Send Message",
           subtitle: props.input.target || "",
-          args: props.input.role ? [props.input.role] : [],
-        })}
+          tags: props.input.role ? [{ label: props.input.role }] : undefined,
+        }}
       />
     )
   },
@@ -170,12 +171,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon={info().icon}
-        trigger={() => ({
+        trigger={{
+          icon: info().icon,
           title: info().title,
           subtitle: info().subtitle || "",
-          args: props.input.action ? [props.input.action] : [],
-        })}
+          tags: props.input.action ? [{ label: props.input.action }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -195,10 +196,10 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="user"
-        trigger={() => ({
+        trigger={{
+          icon: "user",
           title: "Profile",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -218,11 +219,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="user"
-        trigger={() => ({
+        trigger={{
+          icon: "user",
           title: "Update Profile",
           subtitle: props.input.name || "",
-        })}
+        }}
       />
     )
   },
@@ -234,15 +235,15 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="search"
-        trigger={() => ({
+        trigger={{
+          icon: "search",
           title: "Grep",
           subtitle: getDirectory(props.input.path || "/"),
-          args: [
-            ...(props.input.pattern ? ["pattern=" + props.input.pattern] : []),
-            ...(props.input.include ? ["include=" + props.input.include] : []),
+          tags: [
+            ...(props.input.pattern ? [{ label: "pattern=" + props.input.pattern }] : []),
+            ...(props.input.include ? [{ label: "include=" + props.input.include }] : []),
           ],
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -262,11 +263,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="search"
-        trigger={() => ({
+        trigger={{
+          icon: "search",
           title: "Glob",
           subtitle: (props.input.pattern || "") as string,
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -286,18 +287,18 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="mouse-pointer-2"
         countdown={props.input.timeout ?? 30}
-        trigger={() => ({
+        trigger={{
+          icon: "mouse-pointer-2",
           title: "Webfetch",
           subtitle: props.input.url || "",
-          args: props.input.format ? ["format=" + props.input.format] : [],
+          tags: props.input.format ? [{ label: "format=" + props.input.format }] : undefined,
           action: (
             <div data-component="tool-action">
               <Icon name="arrow-up-right" size="small" />
             </div>
           ),
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -328,13 +329,13 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="terminal"
         countdown={countdown()}
-        trigger={() => ({
+        trigger={{
+          icon: "terminal",
           title: "Shell",
           subtitle: props.input.description,
-          args: cmd() ? [cmd()!] : [],
-        })}
+          tags: cmd() ? [{ label: cmd()! }] : undefined,
+        }}
       >
         <div data-component="tool-output" data-scrollable>
           <ToolTextOutput
@@ -365,12 +366,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="list-checks"
-        trigger={() => ({
+        trigger={{
+          icon: "list-checks",
           title: "To-dos",
           subtitle: firstTodo() || "",
-          args: ratio() ? [ratio()] : [],
-        })}
+          tags: ratio() ? [{ label: ratio() }] : undefined,
+        }}
       >
         <Show when={props.input.todos?.length}>
           <div data-component="todos">
@@ -396,10 +397,10 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="list-checks"
-        trigger={() => ({
+        trigger={{
+          icon: "list-checks",
           title: "Read to-dos",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -426,12 +427,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="message-circle"
         countdown={countdown()}
-        trigger={() => ({
+        trigger={{
+          icon: "message-circle",
           title: timedOut() ? "Question Timed Out" : "Questions",
           subtitle: timedOut() ? "No response received" : `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
-        })}
+        }}
       >
         <Show when={props.input.questions?.length}>
           <div data-component="tool-output">
@@ -459,18 +460,18 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "websearch",
   render(props) {
-    const args: string[] = []
-    if (props.input.categories) args.push(props.input.categories)
-    if (props.input.language) args.push(props.input.language)
     return (
       <BasicTool
         {...props}
-        icon="globe"
-        trigger={() => ({
+        trigger={{
+          icon: "globe",
           title: "Web Search",
           subtitle: props.input.query || "",
-          args,
-        })}
+          tags: [
+            ...(props.input.categories ? [{ label: props.input.categories }] : []),
+            ...(props.input.language ? [{ label: props.input.language }] : []),
+          ],
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -506,13 +507,13 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="eye"
         countdown={countdown()}
-        trigger={() => ({
+        trigger={{
+          icon: "eye",
           title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
           subtitle: props.input.goal || "",
-          args: subtitle() ? [subtitle()] : [],
-        })}
+          tags: subtitle() ? [{ label: subtitle() }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -538,12 +539,15 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="scan-document"
-        trigger={() => ({
+        trigger={{
+          icon: "scan-document",
           title: "Read Document",
           subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
-          args: args(),
-        })}
+          tags: (() => {
+            const a = args()
+            return a.length > 0 ? a.map((l) => ({ label: l })) : undefined
+          })(),
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -560,17 +564,15 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "ast_grep",
   render(props) {
-    const args: string[] = []
-    if (props.input.lang) args.push(props.input.lang)
     return (
       <BasicTool
         {...props}
-        icon="code"
-        trigger={() => ({
+        trigger={{
+          icon: "code",
           title: "AST Search",
           subtitle: props.input.pattern || "",
-          args,
-        })}
+          tags: props.input.lang ? [{ label: props.input.lang }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -590,11 +592,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="text-select"
-        trigger={() => ({
+        trigger={{
+          icon: "text-select",
           title: "Patch",
           subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -611,18 +613,18 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "lsp",
   render(props) {
-    const args: string[] = []
-    if (props.input.filePath) args.push(getFilename(props.input.filePath))
-    if (props.input.line) args.push(`L${props.input.line}`)
     return (
       <BasicTool
         {...props}
-        icon="server"
-        trigger={() => ({
+        trigger={{
+          icon: "server",
           title: "LSP",
           subtitle: props.input.operation || "",
-          args,
-        })}
+          tags: [
+            ...(props.input.filePath ? [{ label: getFilename(props.input.filePath) }] : []),
+            ...(props.input.line ? [{ label: `L${props.input.line}` }] : []),
+          ],
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -642,11 +644,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="sparkles"
-        trigger={() => ({
+        trigger={{
+          icon: "sparkles",
           title: "Skill",
           subtitle: props.input.name + (props.input.reference ? ` (${props.input.reference})` : "") || "",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -666,11 +668,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="file-text"
-        trigger={() => ({
+        trigger={{
+          icon: "file-text",
           title: "arXiv Search",
           subtitle: props.input.query || "",
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -690,12 +692,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="download"
-        trigger={() => ({
+        trigger={{
+          icon: "download",
           title: "arXiv Download",
           subtitle: props.input.arxivId || "",
-          args: props.input.outputPath ? [getFilename(props.input.outputPath)] : [],
-        })}
+          tags: props.input.outputPath ? [{ label: getFilename(props.input.outputPath) }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -736,13 +738,16 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="terminal"
         countdown={countdown()}
-        trigger={() => ({
+        trigger={{
+          icon: "terminal",
           title: "Process",
           subtitle: props.input.action || "",
-          args: args(),
-        })}
+          tags: (() => {
+            const a = args()
+            return a.length > 0 ? a.map((l) => ({ label: l })) : undefined
+          })(),
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -763,12 +768,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="list-todo"
-        trigger={() => ({
+        trigger={{
+          icon: "list-todo",
           title: "Task List",
           subtitle: "Visible background tasks",
-          args: count() != null ? [`${count()} task${count() === 1 ? "" : "s"}`] : [],
-        })}
+          tags: count() != null ? [{ label: `${count()} task${count() === 1 ? "" : "s"}` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -797,13 +802,13 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="list-todo"
         countdown={countdown()}
-        trigger={() => ({
+        trigger={{
+          icon: "list-todo",
           title: "Task Output",
           subtitle: description() || shortId(),
-          args: description() ? [shortId()] : [],
-        })}
+          tags: description() ? [{ label: shortId() }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -828,12 +833,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="x"
-        trigger={() => ({
+        trigger={{
+          icon: "x",
           title: "Task Cancel",
           subtitle: description() || shortId(),
-          args: description() ? [shortId()] : [],
-        })}
+          tags: description() ? [{ label: shortId() }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -854,12 +859,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="brain"
-        trigger={() => ({
+        trigger={{
+          icon: "brain",
           title: "Memory Search",
           subtitle: props.input.query || "",
-          args: count() != null ? [`${count()} result${count() === 1 ? "" : "s"}`] : [],
-        })}
+          tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -886,12 +891,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="brain"
-        trigger={() => ({
+        trigger={{
+          icon: "brain",
           title: "Memory Get",
           subtitle: idList(),
-          args: count() != null ? [`${count()} found`] : [],
-        })}
+          tags: count() != null ? [{ label: `${count()} found` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -917,12 +922,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="brain"
-        trigger={() => ({
+        trigger={{
+          icon: "brain",
           title: "Memory Write",
           subtitle: props.input.title || props.metadata?.title || "",
-          args: status() ? [status()!] : [],
-        })}
+          tags: status() ? [{ label: status()! }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -943,12 +948,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="brain"
-        trigger={() => ({
+        trigger={{
+          icon: "brain",
           title: "Memory Edit",
           subtitle: props.input.title || props.metadata?.title || "",
-          args: edited() ? ["Updated"] : [],
-        })}
+          tags: edited() ? [{ label: "Updated" }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -970,12 +975,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="notebook-pen"
-        trigger={() => ({
+        trigger={{
+          icon: "notebook-pen",
           title: "Notes",
           subtitle: scope(),
-          args: total() != null ? [`${total()} note${total() === 1 ? "" : "s"}`] : [],
-        })}
+          tags: total() != null ? [{ label: `${total()} note${total() === 1 ? "" : "s"}` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1006,11 +1011,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="notebook-pen"
-        trigger={() => ({
+        trigger={{
+          icon: "notebook-pen",
           title: "Read Note",
           subtitle: subtitle(),
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1041,12 +1046,15 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="notebook-pen"
-        trigger={() => ({
+        trigger={{
+          icon: "notebook-pen",
           title: "Note Search",
           subtitle: props.input.pattern || "",
-          args: args(),
-        })}
+          tags: (() => {
+            const a = args()
+            return a.length > 0 ? a.map((l) => ({ label: l })) : undefined
+          })(),
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1080,12 +1088,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="notebook-pen"
-        trigger={() => ({
+        trigger={{
+          icon: "notebook-pen",
           title: "Write Note",
           subtitle: noteTitle(),
-          args: actionLabel() ? [actionLabel()] : [],
-        })}
+          tags: actionLabel() ? [{ label: actionLabel() }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1107,12 +1115,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="notebook-pen"
-        trigger={() => ({
+        trigger={{
+          icon: "notebook-pen",
           title: "Edit Note",
           subtitle: noteTitle(),
-          args: replacements() ? [`${replacements()} change(s)`] : [],
-        })}
+          tags: replacements() ? [{ label: `${replacements()} change(s)` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1132,12 +1140,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="calendar-days"
-        trigger={() => ({
+        trigger={{
+          icon: "calendar-days",
           title: "Schedule Agenda",
           subtitle: (props.metadata?.title || props.input.title || "") as string,
-          args: props.metadata?.status ? [props.metadata.status as string] : [],
-        })}
+          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1157,12 +1165,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="eye"
-        trigger={() => ({
+        trigger={{
+          icon: "eye",
           title: "Watch",
           subtitle: (props.input.title || "") as string,
-          args: props.input.delay ? [props.input.delay as string] : [],
-        })}
+          tags: props.input.delay ? [{ label: props.input.delay as string }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1183,12 +1191,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="clipboard-list"
-        trigger={() => ({
+        trigger={{
+          icon: "clipboard-list",
           title: "Agenda",
           subtitle: props.input.status || "",
-          args: count() != null ? [`${count()} item${count() === 1 ? "" : "s"}`] : [],
-        })}
+          tags: count() != null ? [{ label: `${count()} item${count() === 1 ? "" : "s"}` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1208,12 +1216,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="refresh-ccw"
-        trigger={() => ({
+        trigger={{
+          icon: "refresh-ccw",
           title: "Update Agenda",
           subtitle: (props.metadata?.title || props.input.id || "") as string,
-          args: props.metadata?.status ? [props.metadata.status as string] : [],
-        })}
+          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1233,11 +1241,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="trash-2"
-        trigger={() => ({
+        trigger={{
+          icon: "trash-2",
           title: "Cancel Agenda",
           subtitle: (props.input.id || "") as string,
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1257,11 +1265,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="zap"
-        trigger={() => ({
+        trigger={{
+          icon: "zap",
           title: "Trigger Agenda",
           subtitle: (props.input.id || "") as string,
-        })}
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1282,12 +1290,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="clock"
-        trigger={() => ({
+        trigger={{
+          icon: "clock",
           title: "Agenda Logs",
           subtitle: (props.input.id || "") as string,
-          args: total() != null ? [`${total()} run${total() === 1 ? "" : "s"}`] : [],
-        })}
+          tags: total() != null ? [{ label: `${total()} run${total() === 1 ? "" : "s"}` }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1321,13 +1329,13 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="paperclip"
         defaultOpen
-        trigger={() => ({
+        trigger={{
+          icon: "paperclip",
           title: "Attach",
           subtitle: subtitle(),
-          args: files().length ? [totalSize()] : [],
-        })}
+          tags: files().length ? [{ label: totalSize() }] : undefined,
+        }}
       >
         <Show when={props.status === "completed" && files().length}>
           <AttachmentList files={files()} serverUrl={data.serverUrl} />
@@ -1348,12 +1356,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="mail"
-        trigger={() => ({
+        trigger={{
+          icon: "mail",
           title: "Send Email",
           subtitle: recipients(),
-          args: props.input.subject && recipients() ? [props.input.subject as string] : [],
-        })}
+          tags: props.input.subject && recipients() ? [{ label: props.input.subject as string }] : undefined,
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1373,22 +1381,24 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="mail-search"
-        trigger={() => {
-          const action = props.input.action as string
-          const folder = props.input.folder as string
-          return {
-            title:
-              action === "search"
-                ? "Search Email"
-                : action === "read"
-                  ? "Read Email"
-                  : action === "markSeen"
-                    ? "Mark Read"
-                    : "Email Inbox",
-            subtitle: (props.input.search?.from || props.input.search?.subject || folder || "INBOX") as string,
-            args: folder && folder !== "INBOX" ? [folder] : [],
-          }
+        trigger={{
+          icon: "mail-search",
+          title:
+            (props.input.action as string) === "search"
+              ? "Search Email"
+              : (props.input.action as string) === "read"
+                ? "Read Email"
+                : (props.input.action as string) === "markSeen"
+                  ? "Mark Read"
+                  : "Email Inbox",
+          subtitle: (props.input.search?.from ||
+            props.input.search?.subject ||
+            (props.input.folder as string) ||
+            "INBOX") as string,
+          tags:
+            (props.input.folder as string) && props.input.folder !== "INBOX"
+              ? [{ label: props.input.folder as string }]
+              : undefined,
         }}
       >
         <Show when={props.output}>
@@ -1429,12 +1439,15 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="cable"
-        trigger={() => ({
+        trigger={{
+          icon: "cable",
           title: "Connect",
           subtitle: props.input.envID || "",
-          args: [statusLabel() || actionLabel()].filter(Boolean),
-        })}
+          tags: (() => {
+            const l = statusLabel() || actionLabel()
+            return l ? [{ label: l }] : undefined
+          })(),
+        }}
       >
         <Show when={props.output}>
           {(output) => (
@@ -1483,12 +1496,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="refresh-ccw"
-        trigger={() => ({
+        trigger={{
+          icon: "refresh-ccw",
           title: "Runtime Reload",
           subtitle: targetLabel() || (props.input.reason as string) || "",
-          args: props.input.scope ? [props.input.scope as string] : [],
-        })}
+          tags: props.input.scope ? [{ label: props.input.scope as string }] : undefined,
+        }}
       >
         <div data-component="tool-output" data-scrollable>
           <Show
@@ -1514,12 +1527,12 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         forceOpen
-        icon="code"
-        trigger={() => ({
+        trigger={{
+          icon: "code",
           title: "Render",
           subtitle: props.input.title || "",
-          args: html() ? ["HTML preview"] : [],
-        })}
+          tags: html() ? [{ label: "HTML preview" }] : undefined,
+        }}
       >
         <Show
           when={html()}

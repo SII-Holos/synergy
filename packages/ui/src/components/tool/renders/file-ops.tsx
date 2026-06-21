@@ -4,7 +4,6 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { useDiffComponent } from "../../../context/diff"
 import { useCodeComponent } from "../../../context/code"
 import { BasicTool } from "../../basic-tool"
-import { DiffChanges } from "../../diff-changes"
 import {
   AnchoredParseCodeTool,
   AnchoredReviseTool,
@@ -12,8 +11,7 @@ import {
   AnchoredScanFilesTool,
   AnchoredViewTool,
 } from "../../anchored-tool-card"
-import { ToolRegistry, getDirectory, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -31,25 +29,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="pen-line"
-        trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Edit</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-              </div>
-            </div>
-            <div data-slot="message-part-actions">
-              <Show when={props.metadata.filediff}>
-                <DiffChanges changes={props.metadata.filediff} />
-              </Show>
-            </div>
-          </div>
-        }
+        trigger={{
+          icon: "pen-line",
+          title: "Edit",
+          subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
+          changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
+        }}
       >
         <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
           <div data-component="edit-content">
@@ -82,21 +67,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="text-select"
-        trigger={
-          <div data-component="write-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Write</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-              </div>
-            </div>
-            <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
-          </div>
-        }
+        trigger={{
+          icon: "text-select",
+          title: "Write",
+          subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
+        }}
       >
         <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
           <div data-component="write-content">
@@ -124,20 +99,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon="pen-line"
-        trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">Multi Edit</div>
-              <div data-slot="message-part-path">
-                <Show when={props.input.filePath?.includes("/")}>
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </Show>
-                <span data-slot="message-part-filename">{getFilename(props.input.filePath ?? "")}</span>
-              </div>
-            </div>
-          </div>
-        }
+        trigger={{
+          icon: "pen-line",
+          title: "Multi Edit",
+          subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
+        }}
       >
         <Show when={props.status !== "generating" && props.metadata.results}>
           {(results) => {

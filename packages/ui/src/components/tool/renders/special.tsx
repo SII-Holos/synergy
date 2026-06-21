@@ -31,12 +31,12 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         forceOpen
-        icon="layout-grid"
-        trigger={() => ({
+        trigger={{
+          icon: "layout-grid",
           title: "Diagram",
           subtitle: props.input.title || "",
-          args: statsLabel() ? [statsLabel()] : [],
-        })}
+          tags: statsLabel() ? [{ label: statsLabel() }] : undefined,
+        }}
       >
         <Show
           when={doc()}

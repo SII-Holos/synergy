@@ -38,12 +38,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon={getSemanticIcon("orchestration.dag")}
-        trigger={() => ({
+        trigger={{
+          icon: getSemanticIcon("orchestration.dag"),
           title: "DAG",
           subtitle: firstReady() || "",
-          args: ratio() ? [ratio()] : [],
-        })}
+          tags: ratio() ? [{ label: ratio() }] : undefined,
+        }}
       >
         <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
@@ -71,12 +71,12 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon={getSemanticIcon("orchestration.dag")}
-        trigger={() => ({
+        trigger={{
+          icon: getSemanticIcon("orchestration.dag"),
           title: "DAG",
           subtitle: "updated",
-          args: ratio() ? [ratio()] : [],
-        })}
+          tags: ratio() ? [{ label: ratio() }] : undefined,
+        }}
       >
         <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
@@ -104,11 +104,11 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        icon={getSemanticIcon("orchestration.dag")}
-        trigger={() => ({
+        trigger={{
+          icon: getSemanticIcon("orchestration.dag"),
           title: "Read DAG",
-          args: ratio() ? [ratio()] : [],
-        })}
+          tags: ratio() ? [{ label: ratio() }] : undefined,
+        }}
       >
         <Show when={(nodes()?.length ?? 0) > 0}>
           <DagGraph nodes={nodes()} ready={ready()} />
