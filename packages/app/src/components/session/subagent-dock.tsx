@@ -213,7 +213,7 @@ export function SubagentDock(props: SubagentDockProps) {
 
   return (
     <Show when={activeTasks().length > 0}>
-      <div class="flex items-center justify-center gap-2 pb-2">
+      <div class="flex items-center justify-center gap-2 pb-2 pointer-events-auto">
         <For each={activeTasks()}>
           {(task, index) => <SubagentAvatar task={task} index={index()} onCancel={handleCancel} />}
         </For>

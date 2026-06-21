@@ -54,11 +54,21 @@ export function PromptDock(props: {
     >
       <div
         classList={{
-          "w-full min-w-0 md:px-6 pointer-events-auto": true,
+          "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
           "md:max-w-[50rem]": !props.showTabs() && !workspaceOpen(),
           "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
         }}
       >
+        {/* Out-of-flow overlay anchored to the top of the content area:
+            subagent dock sits above, progress island below. Both float
+            outside normal flow so expanding the island never changes
+            --prompt-height. */}
+        <Show when={props.sessionID}>
+          <div class="absolute inset-x-0 bottom-full flex flex-col items-center pointer-events-none">
+            <SubagentDock sessionID={props.sessionID!} />
+            <SessionProgressPanel sessionID={props.sessionID!} />
+          </div>
+        </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
         </Show>
@@ -83,9 +93,6 @@ export function PromptDock(props: {
                       <QuestionPrompt request={request()} />
                     </div>
                   )}
-                </Show>
-                <Show when={props.sessionID}>
-                  <SubagentDock sessionID={props.sessionID!} />
                 </Show>
                 <Show when={props.meta().showBackToParent}>
                   <div class="flex items-center justify-center pb-2">
@@ -127,9 +134,6 @@ export function PromptDock(props: {
                     </div>
                   )}
                 </Show>
-                <Show when={props.sessionID}>
-                  <SessionProgressPanel sessionID={props.sessionID!} />
-                </Show>
                 <div class="relative">
                   <PromptInput
                     ref={props.inputRef}
@@ -143,9 +147,6 @@ export function PromptDock(props: {
           >
             <Show when={props.sessionID}>
               <PermissionDock sessionID={props.sessionID!} />
-            </Show>
-            <Show when={props.sessionID}>
-              <SessionProgressPanel sessionID={props.sessionID!} />
             </Show>
             <SubagentSessionFooter cortex={props.meta().cortex!} parentSessionID={props.meta().parentID ?? undefined} />
           </Show>

@@ -1,16 +1,8 @@
 .session-progress-island {
-  /* Absolutely positioned above the prompt input so that expanding the
-     island does NOT change the prompt dock's height. Previously the island
-     was in normal flow inside the dock, so expanding it grew the dock,
-     which changed the --prompt-height CSS var, which re-laid-out the
-     entire message list (~7000 elements, 60-80ms per expand). Now the
-     island floats as an overlay: visually it covers messages above, but
-     the dock height (and thus --prompt-height) stays constant. */
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  z-index: 2;
+  /* Now a normal-flow flex child inside the shared absolute wrapper at
+     prompt-dock.tsx:67 (absolute inset-x-0 bottom-full). The wrapper
+     guarantees that expanding the island never changes --prompt-height.
+     SubagentDock sits above, island below. */
   display: flex;
   width: 100%;
   justify-content: center;
