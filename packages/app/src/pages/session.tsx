@@ -826,18 +826,11 @@ function SessionPageContent() {
 
           <div
             class="@container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
-            data-compact={isDesktop() && workspaceOpen() ? "true" : undefined}
             classList={{
-              "flex-none": isDesktop() && workspaceOpen(),
-              "flex-1": !(isDesktop() && workspaceOpen()),
+              "flex-1": !(isDesktop() && showTabs()),
             }}
             style={{
-              width:
-                isDesktop() && workspaceOpen()
-                  ? `max(${WORKSPACE_SESSION_MIN_WIDTH}px, calc(100% - ${workspace().width()}px))`
-                  : isDesktop() && showTabs()
-                    ? `${layout.session.width()}px`
-                    : undefined,
+              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
               "min-width": isDesktop() && workspaceOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
