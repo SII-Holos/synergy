@@ -222,7 +222,7 @@ describe("EnforcementGate shell classification", () => {
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
   })
 
   test("command targeting external path produces file_external capability", async () => {
@@ -235,7 +235,7 @@ describe("EnforcementGate shell classification", () => {
       command: "cat /etc/passwd",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
     expect(external.paths).toContain("/etc/passwd")
@@ -889,7 +889,7 @@ describe("EnforcementGate multi-capability classification", () => {
     const classNames = result.capabilities.map((c: any) => c.class)
     expect(classNames).toContain("shell")
     expect(classNames).toContain("network_request")
-    expect(classNames).toContain("file_external_read")
+    expect(classNames).toContain("file_external_write")
   })
 
   test("multi-capability result preserves nonBypassable on external capabilities", async () => {
@@ -904,7 +904,7 @@ describe("EnforcementGate multi-capability classification", () => {
 
     // All capabilities that touch external should be nonBypassable
     for (const cap of result.capabilities) {
-      if (cap.class === "file_external_read" || cap.class === "network_request") {
+      if (cap.class === "file_external_write" || cap.class === "network_request") {
         expect(cap.nonBypassable).toBe(true)
       }
     }
@@ -1639,7 +1639,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cat /etc/hosts" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
   })
@@ -1689,7 +1689,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "chmod 755 /etc/secret" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/secret")
     expect(external.paths).not.toContain(expect.stringMatching(/755$/))
@@ -1717,7 +1717,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "tee /tmp/output.log" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/tmp/output.log")
   })
@@ -1728,7 +1728,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "ln -s /etc/hosts symlink", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     // /etc/hosts is external
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
@@ -1740,7 +1740,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "install /tmp/src /tmp/dst" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
   })
 

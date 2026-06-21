@@ -473,10 +473,17 @@ export namespace EnforcementGate {
         }
 
         const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
+        // shell_read → known read-only (cat, ls, grep, git log, etc.)
+        // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
+        const writeCapable = risk !== "shell_read"
         for (const candidate of pathCandidates) {
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
-            uniqueCapability(caps, { class: "file_external_read", nonBypassable: true, paths: [candidate] })
+            uniqueCapability(caps, {
+              class: writeCapable ? "file_external_write" : "file_external_read",
+              nonBypassable: true,
+              paths: [candidate],
+            })
           }
         }
 
