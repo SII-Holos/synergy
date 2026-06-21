@@ -504,7 +504,12 @@ export function Sidebar(props: SidebarProps) {
             <Show when={projectsSectionOpen()}>
               <For each={scopes()}>
                 {(scope) => {
-                  const isActive = () => scope.worktree === currentDirectory()
+                  const isActive = createMemo(() => {
+                    if (scope.worktree !== currentDirectory()) return false
+                    if (!params.id) return true
+                    if (!scope.expanded) return true
+                    return false
+                  })
                   const [menuOpen, setMenuOpen] = createSignal(false)
                   const isSupplemental = layout.scopes.isSupplemental(scope)
                   const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
