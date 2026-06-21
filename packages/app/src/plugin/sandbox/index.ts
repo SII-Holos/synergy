@@ -1,2 +1,2 @@
 export { SandboxShell } from "./sandbox-shell"
-export { type BridgeMessage, parseBridgeMessage } from "./postmessage-bridge"
+export { type BridgeMessage, parseBridgeMessage, isValidOrigin } from "./postmessage-bridge"

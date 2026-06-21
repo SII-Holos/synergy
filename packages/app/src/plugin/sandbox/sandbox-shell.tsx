@@ -1,6 +1,6 @@
 import { onMount, onCleanup, createSignal, Show } from "solid-js"
 import type { BridgeMessage } from "./postmessage-bridge"
-import { parseBridgeMessage } from "./postmessage-bridge"
+import { parseBridgeMessage, isValidOrigin } from "./postmessage-bridge"
 
 interface SandboxShellProps {
   src: string
@@ -15,7 +15,7 @@ export function SandboxShell(props: SandboxShellProps) {
 
   onMount(() => {
     const handler = (event: MessageEvent) => {
-      if (!isValidOrigin(event.origin)) return
+      if (!isValidOrigin(event.origin, window.location.origin)) return
       const msg = parseBridgeMessage(event.data)
       if (!msg) return
 
@@ -46,9 +46,4 @@ export function SandboxShell(props: SandboxShellProps) {
       />
     </div>
   )
-}
-
-function isValidOrigin(origin: string): boolean {
-  // Sandboxed iframes (without allow-same-origin) get an opaque origin serialized as "null"
-  return origin === window.location.origin || origin === "null"
 }

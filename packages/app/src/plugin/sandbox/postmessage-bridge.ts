@@ -25,3 +25,7 @@ export function parseBridgeMessage(data: unknown): BridgeMessage | null {
   if (!validTypes.has(msg.type)) return null
   return data as BridgeMessage
 }
+export function isValidOrigin(origin: string, hostOrigin: string): boolean {
+  // Sandboxed iframes (without allow-same-origin) get an opaque origin serialized as "null"
+  return origin === hostOrigin || origin === "null"
+}

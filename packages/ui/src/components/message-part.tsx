@@ -1524,71 +1524,30 @@ export function Part(props: MessagePartProps) {
   )
 }
 
-export interface ToolProps {
-  input: Record<string, any>
-  metadata: Record<string, any>
-  tool: string
-  title?: string
-  output?: string
-  status?: string
-  raw?: string
-  charsReceived?: number
-  hideDetails?: boolean
-  defaultOpen?: boolean
-  forceOpen?: boolean
-}
-
-export type ToolComponent = Component<ToolProps>
-
-const state: Record<
-  string,
-  {
-    name: string
-    render?: ToolComponent
-  }
-> = {}
-
-export function registerTool(input: { name: string; render?: ToolComponent }) {
-  state[input.name] = input
-  return input
-}
-
-export function getTool(name: string) {
-  return state[name]?.render
-}
-
-export const ToolRegistry = {
-  register: registerTool,
-  render: getTool,
-}
-// ── External (plugin) tool lookup extension point ──────────────────
-// Set by the app layer to bridge getToolRenderer from the plugin SDK.
-// When a tool name misses the built-in registry, this lookup is tried.
-let externalLookup: ((name: string) => ToolComponent | undefined) | undefined
-export function setExternalToolLookup(fn: (name: string) => ToolComponent | undefined) {
-  externalLookup = fn
-}
-// External fallback metadata lookup — injected by plugin ToolRegistry bridge.
-// Returns declarative icon/title/subtitleTemplate for Tier 1 tool renderers.
-let externalFallbackLookup:
-  | ((name: string) =>
-      | {
-          icon?: string
-          title?: string
-          subtitleTemplate?: string
-        }
-      | undefined)
-  | undefined
-export function setExternalFallbackLookup(
-  fn: (name: string) => { icon?: string; title?: string; subtitleTemplate?: string } | undefined,
-) {
-  externalFallbackLookup = fn
-}
-// Bumped by the app layer when a lazy-loaded plugin tool renderer becomes
-// available, so createMemo re-evaluates and picks up the new renderer.
-const [externalLoadNotify, setExternalLoadNotify] = createSignal(0)
-export function notifyExternalToolLoaded() {
-  setExternalLoadNotify((n) => n + 1)
+// ── Re-exported from tool-registry-lazy.ts for testability ────
+import type { ToolProps, ToolComponent as _ToolComponent } from "./tool-registry-lazy"
+export type { ToolProps }
+export type ToolComponent = _ToolComponent
+import {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
+  externalLookup,
+  externalFallbackLookup,
+  externalLoadNotify,
+} from "./tool-registry-lazy"
+export {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
 }
 
 function ToolAttachments(props: { attachments: FilePart[] }) {
@@ -1636,16 +1595,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
 
-  const render = createMemo(() => {
-    const name = part().tool
-    const builtin = ToolRegistry.render(name)
-    if (builtin) return builtin
-    if (externalLookup) {
-      externalLoadNotify() // subscribe to lazy-load completions
-      return externalLookup(name)
-    }
-    return undefined
-  })
+  const render = createMemo(() =>
+    resolveToolRenderer(part().tool, ToolRegistry, { externalLookup, externalLoadNotify }),
+  )
 
   // Smoothly animate charsReceived so tool cards don't jump
   const charsAnimated = createAnimatedNumber(() => {
