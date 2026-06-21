@@ -82,7 +82,7 @@ export function PermissionDock(props: PermissionDockProps) {
     return info.title
   })
 
-  const respond = (response: "once" | "session" | "reject") => {
+  const respond = (response: "once" | "session" | "always" | "reject") => {
     const item = activeItem()
     if (!item || !data.respondToPermission) return
     data.respondToPermission({
@@ -175,6 +175,9 @@ export function PermissionDock(props: PermissionDockProps) {
                     </Button>
                     <Button variant="ghost" size="small" onClick={() => respond("session")}>
                       Allow for session
+                    </Button>
+                    <Button variant="ghost" size="small" onClick={() => respond("always")}>
+                      Always allow
                     </Button>
                     <Button variant="primary" size="small" onClick={() => respond("once")}>
                       Allow once
