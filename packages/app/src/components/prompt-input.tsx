@@ -2280,6 +2280,44 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           </div>
                         )}
                       </List>
+                      <div class="border-t border-border-weak-base/40 mt-1 pt-2 px-2">
+                        <label class="flex items-start gap-2.5 cursor-pointer py-1">
+                          <input
+                            type="checkbox"
+                            class="mt-0.5 accent-icon-interactive-base"
+                            checked={(sync.data.config as Record<string, unknown>).auto_classifier === true}
+                            onChange={(e) => {
+                              const enabled = e.currentTarget.checked
+                              sdk.client.config
+                                .update({ config: { auto_classifier: enabled } as any })
+                                .then(() => {
+                                  showToast({
+                                    type: "info",
+                                    title: enabled ? "Auto Mode enabled" : "Auto Mode disabled",
+                                    description: enabled
+                                      ? "Safe operations will be auto-allowed by the LLM classifier."
+                                      : "All permission prompts will require manual approval.",
+                                  })
+                                })
+                                .catch(() => {
+                                  showToast({
+                                    type: "error",
+                                    title: "Failed to update Auto Mode",
+                                  })
+                                })
+                            }}
+                          />
+                          <div class="min-w-0 flex-1">
+                            <div class="text-13-medium text-text-base flex items-center gap-1.5">
+                              <Icon name="orbit" size="small" class="text-icon-interactive-base" />
+                              Auto Mode (Classifier)
+                            </div>
+                            <div class="mt-0.5 text-12-regular text-text-weak leading-snug">
+                              LLM auto-allows safe operations. Reduces ~90% of prompts.
+                            </div>
+                          </div>
+                        </label>
+                      </div>
                       <Show when={working()}>
                         <div class="px-3 pb-2 text-11-regular text-text-warning">
                           Stop the session before changing permission mode.
