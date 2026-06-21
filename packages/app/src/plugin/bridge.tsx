@@ -1,10 +1,17 @@
 import { onMount } from "solid-js"
-import { setExternalToolLookup, notifyExternalToolLoaded } from "@ericsanchezok/synergy-ui/message-part"
-import { getToolRenderer, onToolLoaded } from "./registries/tool-registry"
+import {
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+} from "@ericsanchezok/synergy-ui/message-part"
+import { getToolRenderer, getToolFallback, onToolLoaded } from "./registries/tool-registry"
 
-// Wire up at module load time — setExternalToolLookup is non-reactive, safe to call outside a root.
+// Wire up at module load time — setExternalToolLookup / setExternalFallbackLookup are non-reactive, safe to call outside a root.
 setExternalToolLookup((name: string) => {
   return getToolRenderer(name)
+})
+setExternalFallbackLookup((name: string) => {
+  return getToolFallback(name)
 })
 
 /**

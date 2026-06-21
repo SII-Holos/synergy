@@ -48,10 +48,12 @@ export {
 } from "./registries/route-registry"
 
 export {
+  type ToolFallbackMeta,
   type ToolRendererProps,
   type ToolRenderer,
   registerToolRenderer,
   getToolRenderer,
+  getToolFallback,
   hasToolRenderer,
   onToolLoaded,
   clearAllToolRenderers,
@@ -75,3 +77,5 @@ export {
   HOST_UI_API_VERSION,
 } from "./lifecycle"
 export { PluginToolBridge } from "./bridge"
+export { PluginErrorBoundary } from "./components/plugin-error-boundary"
+export { initDevReload } from "./dev-reload"

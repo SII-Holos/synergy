@@ -2,6 +2,12 @@ import type { Component } from "solid-js"
 import { createSignal, createEffect } from "solid-js"
 import { ToolRegistry } from "@ericsanchezok/synergy-ui/message-part"
 
+export interface ToolFallbackMeta {
+  icon?: string
+  title?: string
+  subtitleTemplate?: string
+}
+
 export interface ToolRendererProps {
   input: Record<string, unknown>
   metadata: Record<string, unknown>
@@ -23,6 +29,7 @@ interface ToolEntry {
   loader?: () => Promise<{ default: ToolRenderer }>
   loading?: boolean
   error?: Error
+  fallback?: ToolFallbackMeta
 }
 
 const state: Record<string, ToolEntry> = {}
@@ -42,15 +49,21 @@ export function registerToolRenderer(input: {
   name: string
   render?: ToolRenderer
   loader?: () => Promise<{ default: ToolRenderer }>
+  fallback?: ToolFallbackMeta
 }): () => void {
   state[input.name] = {
     render: input.render,
     loader: input.loader,
     loading: false,
+    fallback: input.fallback,
   }
   return () => {
     delete state[input.name]
   }
+}
+
+export function getToolFallback(name: string): ToolFallbackMeta | undefined {
+  return state[name]?.fallback
 }
 
 export function getToolRenderer(name: string): ToolRenderer | undefined {

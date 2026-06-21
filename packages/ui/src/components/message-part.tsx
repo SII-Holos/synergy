@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundary,
   createEffect,
   createMemo,
   createSignal,
@@ -1496,18 +1497,29 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
     </For>
   )
 }
-
 export function Part(props: MessagePartProps) {
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
-      <Dynamic
-        component={component()}
-        part={props.part}
-        message={props.message}
-        hideDetails={props.hideDetails}
-        defaultOpen={props.defaultOpen}
-      />
+      <ErrorBoundary
+        fallback={(err) => (
+          <div class="plugin-error-card">
+            <div class="plugin-error-header">
+              <Icon name="alert-triangle" />
+              <span>Part Render Error: {props.part.type}</span>
+            </div>
+            <div class="plugin-error-message">{err?.message || String(err)}</div>
+          </div>
+        )}
+      >
+        <Dynamic
+          component={component()}
+          part={props.part}
+          message={props.message}
+          hideDetails={props.hideDetails}
+          defaultOpen={props.defaultOpen}
+        />
+      </ErrorBoundary>
     </Show>
   )
 }
@@ -1555,6 +1567,22 @@ export const ToolRegistry = {
 let externalLookup: ((name: string) => ToolComponent | undefined) | undefined
 export function setExternalToolLookup(fn: (name: string) => ToolComponent | undefined) {
   externalLookup = fn
+}
+// External fallback metadata lookup — injected by plugin ToolRegistry bridge.
+// Returns declarative icon/title/subtitleTemplate for Tier 1 tool renderers.
+let externalFallbackLookup:
+  | ((name: string) =>
+      | {
+          icon?: string
+          title?: string
+          subtitleTemplate?: string
+        }
+      | undefined)
+  | undefined
+export function setExternalFallbackLookup(
+  fn: (name: string) => { icon?: string; title?: string; subtitleTemplate?: string } | undefined,
+) {
+  externalFallbackLookup = fn
 }
 // Bumped by the app layer when a lazy-loaded plugin tool renderer becomes
 // available, so createMemo re-evaluates and picks up the new renderer.
@@ -1626,7 +1654,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   })
 
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
-  // which classifies by semantic category for appropriate icon/title/subtitle
+  // which classifies by semantic category for appropriate icon/title/subtitle.
+  // When plugin Tier 1 declarative fallback metadata is available, it overrides
+  // the auto-classified icon/title/subtitle.
   const fallbackRender = (p: any) => (
     <SmartTool
       tool={p.tool}
@@ -1637,6 +1667,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       charsReceived={p.charsReceived}
       metadata={p.metadata}
       hideDetails={p.hideDetails}
+      fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
   )
 

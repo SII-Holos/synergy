@@ -64,6 +64,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
                 default: c as ToolRenderer,
               }))
           : undefined,
+        fallback: tr.fallback,
       })
       disposers.push(dispose)
     }
@@ -85,7 +86,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         label: wp.label,
         icon: wp.icon,
         sandbox: wp.sandbox,
-        sandboxUrl: wp.sandboxEntry,
+        sandboxUrl: wp.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${wp.id}` : undefined,
         pluginId: contrib.pluginId,
         exportName: wp.exportName,
       })
@@ -101,7 +102,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         label: gp.label,
         icon: gp.icon,
         sandbox: gp.sandbox,
-        sandboxUrl: gp.sandboxEntry,
+        sandboxUrl: gp.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${gp.id}` : undefined,
         pluginId: contrib.pluginId,
         exportName: gp.exportName,
       })
@@ -118,7 +119,7 @@ async function activatePlugin(contrib: PluginContribution): Promise<void> {
         icon: s.icon,
         group: s.group,
         sandbox: s.sandbox,
-        sandboxUrl: s.sandboxEntry,
+        sandboxUrl: s.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${s.id}` : undefined,
         pluginId: contrib.pluginId,
         exportName: s.exportName,
       })
