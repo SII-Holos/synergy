@@ -2,6 +2,7 @@ export {
   type WorkspacePanelEntry,
   registerWorkspacePanel,
   listWorkspacePanels,
+  getWorkspacePanel,
   clearWorkspacePanels,
 } from "./registries/workspace-registry"
 
@@ -9,10 +10,16 @@ export {
   type GlobalPanelEntry,
   registerGlobalPanel,
   listGlobalPanels,
+  getGlobalPanel,
   clearGlobalPanels,
 } from "./registries/panel-registry"
 
-export { type SettingsSection, registerSettingsSection, getSettingsSections } from "./registries/settings-registry"
+export {
+  type SettingsSection,
+  registerSettingsSection,
+  getSettingsSections,
+  getSettingsSection,
+} from "./registries/settings-registry"
 
 export {
   type ThemeDefinition,
@@ -62,7 +69,9 @@ export {
   discoverAndActivate,
   deactivatePlugin,
   getActivePlugins,
+  getPluginContribution,
   type PluginInstance,
   type PluginLifecycleState,
   HOST_UI_API_VERSION,
 } from "./lifecycle"
+export { PluginToolBridge } from "./bridge"

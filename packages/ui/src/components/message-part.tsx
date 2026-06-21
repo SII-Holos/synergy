@@ -1549,6 +1549,19 @@ export const ToolRegistry = {
   register: registerTool,
   render: getTool,
 }
+// ── External (plugin) tool lookup extension point ──────────────────
+// Set by the app layer to bridge getToolRenderer from the plugin SDK.
+// When a tool name misses the built-in registry, this lookup is tried.
+let externalLookup: ((name: string) => ToolComponent | undefined) | undefined
+export function setExternalToolLookup(fn: (name: string) => ToolComponent | undefined) {
+  externalLookup = fn
+}
+// Bumped by the app layer when a lazy-loaded plugin tool renderer becomes
+// available, so createMemo re-evaluates and picks up the new renderer.
+const [externalLoadNotify, setExternalLoadNotify] = createSignal(0)
+export function notifyExternalToolLoaded() {
+  setExternalLoadNotify((n) => n + 1)
+}
 
 function ToolAttachments(props: { attachments: FilePart[] }) {
   const data = useData()
@@ -1595,7 +1608,16 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
 
-  const render = createMemo(() => ToolRegistry.render(part().tool))
+  const render = createMemo(() => {
+    const name = part().tool
+    const builtin = ToolRegistry.render(name)
+    if (builtin) return builtin
+    if (externalLookup) {
+      externalLoadNotify() // subscribe to lazy-load completions
+      return externalLookup(name)
+    }
+    return undefined
+  })
 
   // Smoothly animate charsReceived so tool cards don't jump
   const charsAnimated = createAnimatedNumber(() => {
