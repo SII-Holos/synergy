@@ -3,7 +3,10 @@ import * as path from "path"
 import * as fs from "fs"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper, SeatbeltProfileOpts } from "./types"
 import { DEFAULT_PROTECTED_PATHS, uniqueRoots, traversalLiterals, defaultRuntimeReadRoots } from "./policy"
-import { getTempDir, detectPlatform } from "./platform"
+import { detectPlatform } from "./detect"
+import { getTempDir } from "./platform"
+import { MacOSPolicy } from "./macos-policy"
+import { buildPermissionProfile } from "./policy-engine"
 
 function randomId(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -11,19 +14,18 @@ function randomId(): string {
 
 export namespace MacBackend {
   /**
-   * Generate a macOS Seatbelt profile as an ordered array of lines.
+   * Generate the legacy macOS Seatbelt profile as an ordered array of lines.
    *
-   * macOS `sandbox-exec` is not usable for normal shell commands with a pure
-   * `(deny default)` baseline without a very large platform-specific allowlist.
-   * This backend therefore uses `(allow default)` for process viability, then
-   * denies broad user-data roots (for example the home directory) and re-allows
-   * only the active workspace / controlled temp paths. This preserves the
-   * important Synergy boundary: commands cannot read or write sibling worktrees,
-   * the original checkout, or other user data under home unless the active
-   * workspace explicitly covers them.
+   * This function is used only by the explicit
+   * `seatbelt-legacy-allow-default` backend. The default macOS sandbox path is
+   * the Codex-parity deny-default compiler (`buildPermissionProfile` +
+   * `MacOSPolicy.compileProfile`).
    *
-   * Order matters (last-match-wins): broad user-data denies come before active
-   * workspace allows; protected write denies come last.
+   * The legacy profile keeps `(allow default)` for process viability, then
+   * denies broad user-data roots and re-allows only the active workspace /
+   * controlled temp paths. Order matters in this legacy profile
+   * (last-match-wins): broad user-data denies come before active workspace
+   * allows; protected write denies come last.
    */
   export function generateSeatbeltProfile(opts: SeatbeltProfileOpts): string[] {
     const { workspace, sandboxMode, runtimeReadRoots, writableRoots, protectedPaths } = opts
@@ -92,6 +94,43 @@ export namespace MacBackend {
       }
     }
 
+    // ── Deny-default (Codex parity) SBPL path (DEFAULT) ──────────
+    // Unless explicitly overridden to "seatbelt-legacy-allow-default",
+    // use the parameterized (deny default) profile compiler. The deny-default
+    // path intentionally does not consume legacy dataDenyRoots directly;
+    // `MacOSPolicy.compileProfile` enforces user-data isolation through
+    // sibling-blocking so broad parent denies cannot override workspace allows.
+    // This matches Codex's macOS sandbox behavior.
+    if (opts.backend !== "seatbelt-legacy-allow-default") {
+      const runtimeReadRoots = [
+        ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
+        ...(opts.extraReadRoots ?? []),
+      ]
+      const writableRoots = [...(opts.writableRoots ?? [workspace]), ...(opts.extraWritableRoots ?? [])]
+      const policyProfile = buildPermissionProfile({
+        workspace,
+        executionCwd: opts.executionCwd ?? workspace,
+        sandboxMode,
+        approvedReadPaths: runtimeReadRoots,
+        approvedWritePaths: writableRoots,
+        approvedNetwork: false,
+        approvedUnixSockets: [],
+      })
+      const sbplContent = MacOSPolicy.compileProfile(policyProfile)
+      const params = MacOSPolicy.generateParams(policyProfile)
+      const tempPath = writeTempString(sbplContent)
+
+      const dArgs = Object.entries(params).flatMap(([key, value]) => ["-D", `${key}=${value}`])
+
+      return {
+        command: "sandbox-exec",
+        args: ["-f", tempPath, ...dArgs, command, ...args],
+        sandboxed: true,
+        tempPath,
+      }
+    }
+
+    // ── Legacy allow-default path ─────────────────────────────────────
     const runtimeReadRoots = uniqueRoots([
       ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(os.homedir())),
       ...(opts.extraReadRoots ?? []),
@@ -141,6 +180,12 @@ export namespace MacBackend {
   function writeTempProfile(profileLines: string[]): string {
     const filePath = path.join(getTempDir(), `synergy-sandbox-${randomId()}.sb`)
     fs.writeFileSync(filePath, profileLines.join("\n"), "utf-8")
+    return filePath
+  }
+
+  function writeTempString(content: string): string {
+    const filePath = path.join(getTempDir(), `synergy-sandbox-${randomId()}.sb`)
+    fs.writeFileSync(filePath, content, "utf-8")
     return filePath
   }
 }

@@ -102,10 +102,12 @@ describe("prepareWrapper dispatch routing", () => {
     expect(wrapper.sandboxed).toBe(true)
     expect(wrapper.skipReason).toBeUndefined()
 
-    // Args structure: ["-f", <tempPath>, command, ...args]
+    // Args structure with deny-default: ["-f", <tempPath>, ...-D params..., command, ...args]
+    // Use dynamic command lookup instead of fixed positions.
     expect(wrapper.args[0]).toBe("-f")
-    expect(wrapper.args[2]).toBe("echo")
-    expect(wrapper.args[3]).toBe("dispatch-test")
+    const cmdIndex = wrapper.args.indexOf("echo")
+    expect(cmdIndex).toBeGreaterThan(0)
+    expect(wrapper.args[cmdIndex + 1]).toBe("dispatch-test")
 
     // Temp profile file exists and has .sb suffix
     const tempPath = wrapper.args[1]
@@ -168,6 +170,7 @@ describe("prepareLinuxWrapper backward compat", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots,
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     expect(wrapper.command).toBe("bwrap")
@@ -261,7 +264,6 @@ describe("execute fallback", () => {
 // ------------------------------------------------------------------
 describe("execute sandboxed temp cleanup", () => {
   test("sandboxed=true runs wrapper and cleans up temp on success", () => {
-    // This test spawns sandbox-exec — only valid on macOS
     if (os.platform() !== "darwin") return
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
@@ -269,6 +271,7 @@ describe("execute sandboxed temp cleanup", () => {
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
       forcePlatform: "macos",
+      backend: "seatbelt-legacy-allow-default",
     })
 
     const tempPath = wrapper.tempPath
@@ -329,5 +332,86 @@ describe("execute sandboxed temp cleanup", () => {
 
     expect(wrapper.sandboxed).toBe(false)
     expect(wrapper.tempPath).toBeUndefined()
+  })
+})
+
+// ------------------------------------------------------------------
+// 7. prepareWrapper Linux dispatch (dispatch → LinuxBackend)
+// ------------------------------------------------------------------
+describe("prepareWrapper Linux dispatch", () => {
+  test("forcePlatform linux dispatches to LinuxBackend and returns bwrap wrapper", () => {
+    const workspace = "/home/user/project"
+    const runtimeReadRoots = ["/usr/lib", "/lib64"]
+
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "echo",
+      args: ["linux-dispatch-test"],
+      workspace,
+      sandboxMode: "workspace_write",
+      runtimeReadRoots,
+      forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
+    })
+
+    // Dispatch must route to LinuxBackend
+    expect(wrapper.command).toBe("bwrap")
+    expect(wrapper.sandboxed).toBe(true)
+    expect(wrapper.skipReason).toBeUndefined()
+
+    // Verify arg structure
+    const args = wrapper.args
+
+    // Runtime read roots are individually mounted
+    for (const root of runtimeReadRoots) {
+      expect(args).toContain(root)
+    }
+
+    // Workspace is mounted
+    expect(args).toContain(workspace)
+
+    // Controlled tmp is bind-mounted
+    expect(args).toContain("/tmp")
+
+    // Separator
+    const sepIdx = args.indexOf("--")
+    expect(sepIdx).toBeGreaterThan(0)
+
+    // Command + args after separator
+    expect(args[sepIdx + 1]).toBe("echo")
+    expect(args[sepIdx + 2]).toBe("linux-dispatch-test")
+
+    // No --ro-bind of /
+    const hasRootRoBind = args.some((a: string, i: number) => a === "--ro-bind" && args[i + 1] === "/")
+    expect(hasRootRoBind).toBe(false)
+  })
+
+  test("prepareWrapper Linux matches prepareLinuxWrapper output shape", () => {
+    const workspace = "/home/user/project"
+    const runtimeReadRoots = ["/usr/lib"]
+
+    // Via dispatch
+    const dispatchWrapper = SandboxBackend.prepareWrapper({
+      command: "echo",
+      args: ["test"],
+      workspace,
+      sandboxMode: "workspace_write",
+      runtimeReadRoots,
+      forcePlatform: "linux",
+    })
+
+    // Via backward compat API
+    const compatWrapper = SandboxBackend.prepareLinuxWrapper({
+      command: "echo",
+      args: ["test"],
+      workspace,
+      sandboxMode: "workspace_write",
+      runtimeReadRoots,
+      forcePlatform: "linux",
+    })
+
+    // Both should produce identical output
+    expect(dispatchWrapper.command).toBe(compatWrapper.command)
+    expect(dispatchWrapper.sandboxed).toBe(compatWrapper.sandboxed)
+    expect(dispatchWrapper.args).toEqual(compatWrapper.args)
   })
 })

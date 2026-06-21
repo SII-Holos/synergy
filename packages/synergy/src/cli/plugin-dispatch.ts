@@ -51,6 +51,7 @@ const BUILTIN_COMMANDS = new Set([
   "stop",
   "restart",
   "status",
+  "doctor",
   "logs",
   "plugin",
   "data",

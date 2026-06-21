@@ -258,6 +258,7 @@ import type {
   RuntimeReloadResponses,
   RuntimeReloadScope,
   RuntimeReloadTarget,
+  SandboxReadinessResponses,
   SandboxStatusResponses,
   ScopeCurrentResponses,
   ScopeIndexResponses,
@@ -3470,6 +3471,25 @@ export class Sandbox extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<SandboxStatusResponses, unknown, ThrowOnError>({
       url: "/sandbox/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get sandbox readiness
+   *
+   * Platform-specific sandbox health checks. Returns readiness status with per-check diagnostics for macOS, Linux, and Windows.
+   */
+  public readiness<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SandboxReadinessResponses, unknown, ThrowOnError>({
+      url: "/sandbox/readiness",
       ...options,
       ...params,
     })

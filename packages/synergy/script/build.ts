@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import path from "path"
+import fs from "fs"
 import { $ } from "bun"
 import { fileURLToPath } from "url"
 
@@ -166,6 +167,38 @@ for (const item of targets) {
     ),
   )
   binaries[name] = Script.version
+
+  // Copy sandbox helper into dist for tarball embedding
+  await copySandboxHelper(item, name)
+}
+
+async function copySandboxHelper(item: { os: string; arch: string }, name: string): Promise<void> {
+  // macOS uses sandbox-exec built into the OS — no helper needed
+  if (item.os === "darwin") return
+
+  let helperSrc: string
+  let helperDest: string
+
+  if (item.os === "linux") {
+    const helperDir = path.resolve(dir, "src", "sandbox", "helper-linux", "target", "release")
+    helperSrc = path.join(helperDir, "synergy-sandbox-linux")
+    helperDest = path.join("dist", name, "sandbox", "synergy-sandbox-linux")
+  } else if (item.os === "win32") {
+    const helperDir = path.resolve(dir, "src", "sandbox", "helper", "target", "release")
+    helperSrc = path.join(helperDir, "synergy-sandbox-windows.exe")
+    helperDest = path.join("dist", name, "sandbox", "synergy-sandbox-windows.exe")
+  } else {
+    return
+  }
+
+  if (!fs.existsSync(helperSrc)) {
+    console.warn(`Sandbox helper not found at ${helperSrc} — skipping embed. Build the Rust helper first.`)
+    return
+  }
+
+  console.log(`Copying sandbox helper: ${helperSrc} → ${helperDest}`)
+  await $`mkdir -p ${path.dirname(helperDest)}`
+  await $`cp ${helperSrc} ${helperDest}`
 }
 
 export { binaries }

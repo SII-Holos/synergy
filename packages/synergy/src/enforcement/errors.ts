@@ -1,3 +1,5 @@
+import type { SandboxBlockExplanation } from "@/sandbox/explain"
+
 /**
  * Structured error types for enforcement and sandbox denials.
  */
@@ -28,15 +30,18 @@ export namespace EnforcementError {
   export class SandboxBlocked extends Error {
     readonly kind = "sandbox_blocked" as const
     readonly retryable = false as const
+    readonly explanation: SandboxBlockExplanation | null = null
 
     constructor(
       message: string,
       public readonly exitCode: number | null,
       public readonly matchedKeyword: string | null,
       public readonly rawOutput: string,
+      explanation?: SandboxBlockExplanation,
     ) {
       super(message)
       this.name = "SandboxBlocked"
+      this.explanation = explanation ?? null
     }
   }
 

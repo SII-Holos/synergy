@@ -1,9 +1,40 @@
-import path from "node:path"
+export interface ApprovalCacheEntry {
+  decision: "approved_for_session" | "denied"
+  timestamp: number
+}
+
+export class ApprovalCache {
+  private cache = new Map<string, ApprovalCacheEntry>()
+
+  get(capabilityKey: string): "approved_for_session" | "denied" | null {
+    const entry = this.cache.get(capabilityKey)
+    if (!entry) return null
+    return entry.decision
+  }
+
+  put(capabilityKey: string, decision: "approved_for_session" | "denied"): void {
+    this.cache.set(capabilityKey, { decision, timestamp: Date.now() })
+  }
+
+  clear(): void {
+    this.cache.clear()
+  }
+}
+
+import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier } from "./classify"
 import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
+import {
+  type PrefixRule,
+  evaluateCommand,
+  generateAmendment,
+  generateAmendmentForCapability,
+  type ExecPolicyAmendment,
+  type RuleMatch,
+} from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 
 export interface Capability {
@@ -34,7 +65,11 @@ export interface Envelope {
     reason: string
     permanent: boolean
     matchedPermission: string
+    guidance?: string
+    amendment?: ExecPolicyAmendment
   }
+  /** Populated when execPolicy generates an amendment for "ask" decisions */
+  amendment?: ExecPolicyAmendment
 }
 
 export interface GateOptions {
@@ -48,6 +83,7 @@ export interface GateOptions {
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
+  execPolicy?: { rules: PrefixRule[] }
 }
 
 const DESTRUCTIVE_PATTERNS = [
@@ -264,7 +300,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(path.isAbsolute(raw) ? raw : path.join(cwd, raw))
+      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
     }
   }
   return paths
@@ -283,7 +319,7 @@ function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: Profi
 }
 
 export namespace EnforcementGate {
-  export function create(options: GateOptions) {
+  export async function create(options: GateOptions) {
     const {
       activeWorkspace,
       workspaceType,
@@ -293,10 +329,11 @@ export namespace EnforcementGate {
       registeredPluginTools = new Set<string>(),
       originalCheckout,
       readRoots,
+      execPolicy,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
-    const resolved = ControlProfileCompiler.resolve(profileId, {
+    const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
       interactionMode,
@@ -305,9 +342,13 @@ export namespace EnforcementGate {
     if (!resolved.valid) {
       throw new Error(resolved.reason ?? "Invalid profile for this context")
     }
-
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
+    // Accumulated sandbox-approved paths across all evaluate() calls
+    const approvedReadPaths = new Set<string>()
+    const approvedWritePaths = new Set<string>()
+    let approvedNetwork = false
+    const approvalCache = new ApprovalCache()
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
@@ -582,7 +623,64 @@ export namespace EnforcementGate {
       return { capabilities: caps }
     }
 
+    function buildCapabilityKey(caps: Capability[]): string {
+      const classes = [...new Set(caps.filter((c) => c.class !== "file_read").map((c) => c.class))].sort()
+      return classes.join("|") || "file_read"
+    }
+
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      // ── ExecPolicy: bash command routing ──────────────────────────────
+      let execPolicyMatch: RuleMatch | undefined
+      let amendment: ExecPolicyAmendment | undefined
+
+      if (execPolicy && toolName === "bash") {
+        const rawCmd: string = args.command ?? ""
+        const words = rawCmd.trim().split(/\s+/).filter(Boolean)
+        if (words.length > 0) {
+          execPolicyMatch = evaluateCommand(words, execPolicy.rules)
+        }
+      }
+
+      if (execPolicyMatch) {
+        // "allow" → gate passes; no capabilities needed (policy-authorised)
+        if (execPolicyMatch.action === "allow") {
+          return {
+            decision: "allow",
+            profileId,
+            opaque: false,
+            capabilities: [],
+            amendment,
+            canAutoApprove() {
+              return true
+            },
+          }
+        }
+
+        // "deny" → hardline forbid
+        if (execPolicyMatch.action === "deny") {
+          const caps: Capability[] = [{ class: "shell_hardline", nonBypassable: true }]
+          auditRecords.push({ tool: toolName, capabilities: caps, timestamp: Date.now() })
+          return {
+            decision: "deny",
+            profileId,
+            opaque: false,
+            capabilities: caps,
+            amendment,
+            refusal: {
+              reason: `ExecPolicy forbids command prefix [${execPolicyMatch.matchedRule?.prefix?.join(" ") ?? ""}]`,
+              permanent: true,
+              matchedPermission: "shell_hardline",
+            },
+            canAutoApprove() {
+              return false
+            },
+          }
+        }
+
+        // "ask" → generate amendment, then fall through to normal classify
+        amendment = generateAmendment(execPolicyMatch) ?? undefined
+      }
+
       const { capabilities } = classify(toolName, args)
 
       let decision: "allow" | "ask" | "deny" = "allow"
@@ -602,19 +700,54 @@ export namespace EnforcementGate {
           decision = "ask"
           continue // Keep checking — a later deny overrides
         }
-        // rule.action === "allow" — profile explicitly allows this capability.
-        // NonBypassable/opaque affect explicit asks and metadata, not an
-        // already-allowed profile decision.
-        // Allow stands unless overridden
+      }
+
+      // When execPolicy says "ask", override profile decision to "ask"
+      if (execPolicyMatch?.action === "ask") {
+        decision = "ask"
+      }
+
+      // Approval cache: if the profile says "ask" but the capability was
+      // previously approved for this session, skip the prompt.
+      if (decision === "ask") {
+        const key = buildCapabilityKey(capabilities)
+        const cached = approvalCache.get(key)
+        if (cached === "approved_for_session") {
+          decision = "allow"
+        }
       }
 
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
       if (decision === "deny") {
+        const isAutonomous = profileId === "autonomous"
         refusal = {
           reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
+          ...(isAutonomous && deniedCapClass
+            ? {
+                guidance:
+                  "Switch to guarded profile to approve this operation. Use `synergy profile guarded` or the profile switcher in the UI.",
+                amendment: generateAmendmentForCapability(deniedCapClass),
+              }
+            : {}),
+        }
+      }
+
+      // Accumulate sandbox-approved paths when the profile auto-allows
+      if (decision === "allow") {
+        for (const cap of capabilities) {
+          if (cap.paths?.length) {
+            if (cap.class === "file_read" || cap.class === "file_external") {
+              for (const p of cap.paths) approvedReadPaths.add(p)
+            } else if (cap.class === "file_write") {
+              for (const p of cap.paths) approvedWritePaths.add(p)
+            }
+          }
+          if (cap.class === "network_request") {
+            approvedNetwork = true
+          }
         }
       }
 
@@ -638,6 +771,7 @@ export namespace EnforcementGate {
         opaque,
         capabilities,
         refusal,
+        amendment,
         canAutoApprove() {
           return !capabilities.some((c) => c.nonBypassable || c.opaque)
         },
@@ -673,6 +807,43 @@ export namespace EnforcementGate {
       },
       resolveCapability(className: string) {
         pendingCapabilities.delete(className)
+      },
+      /** Register approval-granted external paths from outside the gate (e.g. tool-resolver). */
+      registerApprovedPaths(readPaths: string[], writePaths: string[], network: boolean) {
+        for (const p of readPaths) approvedReadPaths.add(p)
+        for (const p of writePaths) approvedWritePaths.add(p)
+        if (network) approvedNetwork = true
+      },
+      /**
+       * Build the aggregated sandbox permission profile from all accumulated
+       * approved paths. Returns null when sandbox is disabled.
+       */
+      getSandboxPolicy(): SynergySandboxPermissionProfile | null {
+        const sandbox = resolved.sandbox
+        if (sandbox.mode === "none") return null
+        return buildPermissionProfile({
+          workspace: activeWorkspace,
+          executionCwd: activeWorkspace,
+          sandboxMode: sandbox.mode,
+          approvedReadPaths: [...approvedReadPaths],
+          approvedWritePaths: [...approvedWritePaths],
+          approvedNetwork,
+          approvedUnixSockets: [],
+        })
+      },
+      /** Record a session-level approval for the capability classes in this envelope. */
+      approveCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "approved_for_session")
+      },
+      /** Record a session-level denial for the capability classes in this envelope. */
+      denyCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "denied")
+      },
+      /** Clear all session-level approval cache entries. */
+      clearApprovalCache() {
+        approvalCache.clear()
       },
     }
   }

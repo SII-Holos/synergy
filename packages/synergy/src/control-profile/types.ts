@@ -18,6 +18,8 @@ export interface ProfileNetwork {
 export interface ProfileSandbox {
   mode: "none" | "workspace_write" | "read_only"
   fallback: "deny" | "warn" | "allow"
+  backend?: string
+  windowsLevel?: string
 }
 
 export type ApprovalMode = "guarded" | "autonomous" | "full_access"

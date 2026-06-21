@@ -1,3 +1,6 @@
+import { Config } from "../config/config"
+import { Log } from "../util/log"
+import type { ProfileSandbox } from "./types"
 import type {
   ControlProfile,
   ProfileApproval,
@@ -65,6 +68,25 @@ function guardedRules() {
   })
 }
 
+function autonomousRules() {
+  return CAPABILITY_PERMISSIONS.map((permission) => {
+    if (permission === "shell_hardline") return rule(permission, "deny", true)
+    if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
+    if (permission === "file_write") return rule(permission, "allow")
+    if (permission === "shell") return rule(permission, "allow")
+    if (permission === "network_request") return rule(permission, "allow")
+    if (permission === "file_external") return rule(permission, "allow")
+    if (permission === "mcp_invoke") return rule(permission, "allow")
+    if (permission === "plugin_invoke") return rule(permission, "allow")
+    if (permission === "identity_act") return rule(permission, "allow")
+    if (permission === "communication_email") return rule(permission, "allow")
+    if (permission === "channel_outbound") return rule(permission, "allow")
+    if (permission === "platform_control") return rule(permission, "allow")
+    if (permission === "shell_destructive") return rule(permission, "deny")
+    return rule(permission, "allow")
+  })
+}
+
 function workspaceFs(workspace: string) {
   return {
     readRoots: [workspace],
@@ -73,11 +95,27 @@ function workspaceFs(workspace: string) {
   }
 }
 
+function autonomousFs(workspace: string) {
+  return {
+    readRoots: ["/"],
+    writeRoots: [workspace],
+    protectedPaths: [],
+  }
+}
+
+function autonomousPolicy(workspace: string) {
+  return {
+    filesystem: autonomousFs(workspace),
+    network: { mode: "restricted" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
+  }
+}
+
 function workspacePolicy(workspace: string) {
   return {
     filesystem: workspaceFs(workspace),
     network: { mode: "restricted" as const },
-    sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
   }
 }
 
@@ -127,9 +165,80 @@ export function normalizeProfileId(id: string | undefined): ProfileId {
   return "guarded"
 }
 
-export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): ResolvedProfile {
+const LOG = Log.create({ service: "control-profile" })
+
+export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<ProfileSandbox> {
+  const defaults: Record<ProfileId, ProfileSandbox> = {
+    guarded: { mode: "workspace_write", fallback: "warn" },
+    autonomous: { mode: "workspace_write", fallback: "warn" },
+    full_access: { mode: "none", fallback: "allow" },
+  }
+  const profile = { ...defaults[profileId] }
+
+  let sandboxCfg: any = null
+  try {
+    const cfg = await Config.get()
+    sandboxCfg = cfg.sandbox
+  } catch {
+    LOG.debug("no config context available for sandbox resolution, using profile defaults", { profile: profileId })
+  }
+
+  if (!sandboxCfg) {
+    LOG.debug("no sandbox config found, using profile defaults", { profile: profileId, defaults: profile })
+    return profile
+  }
+
+  LOG.debug("sandbox config loaded", {
+    profile: profileId,
+    enabled: sandboxCfg.enabled,
+    fallbackPolicy: sandboxCfg.fallbackPolicy,
+    backend: sandboxCfg.backend,
+    hasWindowsConfig: Boolean(sandboxCfg.windows),
+    hasNetworkConfig: Boolean(sandboxCfg.network),
+    hasMacosConfig: Boolean(sandboxCfg.macos),
+    hasLinuxConfig: Boolean(sandboxCfg.linux),
+  })
+
+  if (sandboxCfg.enabled === false && profile.mode !== "none") {
+    LOG.warn("sandbox.enabled=false in config overrides profile sandbox. Sandbox is disabled.", {
+      profile: profileId,
+      profileMode: profile.mode,
+    })
+    return { mode: "none", fallback: "allow" }
+  }
+
+  if (sandboxCfg.fallbackPolicy) {
+    profile.fallback = sandboxCfg.fallbackPolicy
+    LOG.info("sandbox fallback policy overridden by config", {
+      profile: profileId,
+      fallbackPolicy: sandboxCfg.fallbackPolicy,
+    })
+  }
+
+  if (sandboxCfg.backend && sandboxCfg.backend !== "auto") {
+    profile.backend = sandboxCfg.backend
+    LOG.info("sandbox backend overridden by config", {
+      profile: profileId,
+      backend: sandboxCfg.backend,
+    })
+  }
+
+  if (sandboxCfg.windows?.level) {
+    profile.windowsLevel = sandboxCfg.windows.level
+    LOG.info("sandbox windows level overridden by config", {
+      profile: profileId,
+      windowsLevel: sandboxCfg.windows.level,
+    })
+  }
+
+  LOG.debug("resolved effective sandbox", { profile: profileId, effective: profile })
+  return profile
+}
+
+export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
   const { workspace, interactionMode } = ctx
+  const effectiveSandbox = await resolveEffectiveSandbox(id)
 
   switch (id) {
     case "guarded": {
@@ -141,24 +250,27 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
           "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
         ruleset: guardedRules(),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("guarded"),
       }
       return { ...profile, summary: summary(id, profile, [], workspace) }
     }
 
     case "autonomous": {
-      const policy = workspacePolicy(workspace)
+      const policy = autonomousPolicy(workspace)
       const profile = {
         valid: true,
         label: "Autonomous",
-        description: "Keep working unattended. High-risk actions are denied with guidance instead of prompting.",
-        ruleset: rulesFor({ low: "allow", medium: "allow", high: "deny" }),
+        description:
+          "Unattended development with full tool access. Network, external reads, and extensions are available. Only destructive shell commands are blocked with recovery guidance.",
+        ruleset: autonomousRules(),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("autonomous"),
       }
       return {
         ...profile,
-        summary: summary(id, profile, HIGH_RISK_PERMISSIONS, workspace),
+        summary: summary(id, profile, ["shell_hardline", "shell_destructive"], workspace),
       }
     }
 
@@ -183,6 +295,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
         description: "Allow all tool requests without workspace, shell, or network approval prompts.",
         ruleset: rulesFor({ low: "allow", medium: "allow", high: "allow" }),
         ...policy,
+        sandbox: effectiveSandbox,
         approval: approval("full_access"),
       }
       return { ...profile, summary: summary(id, profile, [], workspace) }
@@ -190,6 +303,7 @@ export function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionCo
   }
 }
 
-export function getProfileLabel(id: string): string {
-  return buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" }).label
+export async function getProfileLabel(id: string): Promise<string> {
+  const profile = await buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" })
+  return profile.label
 }

@@ -5,6 +5,7 @@
 export type SandboxMode = "none" | "read_only" | "workspace_write"
 
 export type FallbackPolicy = "warn" | "allow" | "deny"
+export type SandboxNetworkMode = "full" | "restricted" | "proxy_only"
 
 export interface PlatformInfo {
   platform: string
@@ -19,12 +20,18 @@ export interface PrepareWrapperOpts {
   executionCwd?: string
   sandboxMode: SandboxMode
   forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "sandbox-exec", "seatbelt-deny-default") */
+  backend?: string
   runtimeReadRoots?: string[]
   extraReadRoots?: string[]
   writableRoots?: string[]
   extraWritableRoots?: string[]
   protectedPaths?: string[]
   dataDenyRoots?: string[]
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
 }
 
 export interface PrepareLinuxWrapperOpts {
@@ -33,7 +40,15 @@ export interface PrepareLinuxWrapperOpts {
   workspace: string
   sandboxMode: SandboxMode
   runtimeReadRoots?: string[]
+  extraReadRoots?: string[]
+  extraWritableRoots?: string[]
   forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
+  backend?: string
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
 }
 
 export interface SeatbeltProfileOpts {
@@ -53,11 +68,45 @@ export interface SandboxExecutionWrapper {
   tempPath?: string
 }
 
-export interface ExecuteOpts {
-  fallbackPolicy?: FallbackPolicy
+export interface SandboxExecuteOpts {
+  fallbackPolicy: FallbackPolicy
+  env?: Record<string, string>
+  cwd?: string
+  signal?: AbortSignal
+  timeoutMs?: number
+  maxOutputBytes?: number
+  onStdout?: (chunk: Buffer) => void
+  onStderr?: (chunk: Buffer) => void
+  after_spawn?: (pid: number) => void | Promise<void>
+  networkMode?: SandboxNetworkMode
 }
 
-export interface ExecuteResult {
-  exitCode: number | null
+export interface SandboxExecuteResult {
+  exitCode: number
   stdout: string
+  stderr: string
+  timedOut: boolean
+  truncated: boolean
+}
+/** Recovery action for a failed readiness check. */
+export interface ReadinessRecoveryAction {
+  action: string
+  label: string
+  command: string
+}
+
+export interface SandboxReadinessCheck {
+  id: string
+  label: string
+  status: "pass" | "warn" | "fail"
+  detail: string
+  recovery?: ReadinessRecoveryAction
+}
+
+export interface SandboxReadiness {
+  platform: "macos" | "linux" | "windows" | "unsupported"
+  backend: string | null
+  ready: boolean
+  checks: SandboxReadinessCheck[]
+  summary: string
 }

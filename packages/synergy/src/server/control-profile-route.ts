@@ -54,15 +54,19 @@ export const ControlProfileRoute = new Hono()
       },
     }),
     async (c) => {
-      const profiles = ControlProfileCompiler.profileIds.map((id) => ({
-        id,
-        label: ControlProfileCompiler.getProfile(id).label,
-        description: ControlProfileCompiler.resolve(id, {
-          workspace: "/",
-          workspaceType: "main",
-          interactionMode: "attended",
-        }).description,
-      }))
+      const profiles = await Promise.all(
+        ControlProfileCompiler.profileIds.map(async (id) => {
+          const [label, resolved] = await Promise.all([
+            ControlProfileCompiler.getProfile(id),
+            ControlProfileCompiler.resolve(id, {
+              workspace: "/",
+              workspaceType: "main",
+              interactionMode: "attended",
+            }),
+          ])
+          return { id, label: label.label, description: resolved.description }
+        }),
+      )
       return c.json(profiles)
     },
   )
@@ -110,11 +114,9 @@ export const ControlProfileRoute = new Hono()
       const source = agentProfile ? "agent" : topLevelProfile ? "config" : "default"
 
       try {
-        const label = ControlProfileCompiler.getProfile(effectiveId)
+        const label = await ControlProfileCompiler.getProfile(effectiveId)
         resolvedLabel = label.label
-      } catch {
-        resolvedLabel = "Guarded"
-      }
+      } catch {}
 
       return c.json({
         profileId: effectiveId,

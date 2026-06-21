@@ -35,18 +35,19 @@ The sandbox system lives in `packages/synergy/src/sandbox/`:
 
 ```
 sandbox/
-  backend.ts       — Unified dispatch: types, platform detection, macOS Seatbelt,
-                     Linux bwrap (separate function), execution, cleanup
-  helper/          — Windows sandbox helper (Rust native binary)
-    Cargo.toml
-    src/config.rs  — JSON config struct for the helper (stdin or --config)
+  backend.ts       — Unified dispatch + shared execution/cleanup
+  macos.ts         — macOS Seatbelt backend
+  linux.ts         — Linux helper-backed backend; inline bwrap is debug-only
+  helper-linux/    — Linux Rust sandbox helper
+  helper/          — Windows Rust sandbox helper (`synergy-sandbox-windows.exe`)
+    src/config.rs  — Shared PermissionProfile JSON contract
 ```
 
 **Design principles:**
 
-- `prepareWrapper()` for macOS wraps commands with `sandbox-exec -f <profile>` using a generated Seatbelt `.sb` temp profile. Uses `allow-default` then denies user-data roots and re-allows the active workspace.
-- `prepareLinuxWrapper()` is a standalone function for Linux bwrap. It never uses `--ro-bind /`. Runtime roots, workspace, and controlled tmp are bound individually.
-- On Windows, `platformInfo()` currently reports the platform as unavailable. The Rust helper binary (`helper/`) implements a restricted-token sandbox with Job Object isolation. The `prepareWrapper()` dispatch does not yet route to it.
+- `prepareWrapper()` for macOS wraps commands with `sandbox-exec -f <profile>` using a generated deny-default Seatbelt profile by default; `seatbelt-legacy-allow-default` is explicit opt-out.
+- Linux production dispatch uses `synergy-sandbox-linux`; inline bwrap is available only through `backend: "bwrap-inline-debug"`.
+- On Windows, `prepareWrapper()` dispatches to `synergy-sandbox-windows.exe` when a verified helper is present. The helper consumes the shared `SynergySandboxPermissionProfile` JSON shape.
 
 **Integration layers:**
 
@@ -61,29 +62,34 @@ sandbox/
 
 **Adding a new backend:**
 
-1. Add a `prepare<Nix>Wrapper()` function in `backend.ts` following the same signature as `prepareLinuxWrapper()`.
-2. Wire it into `prepareWrapper()` dispatch (or keep separate for now — the Windows helper is not yet wired).
-3. Update `platformInfo()` for availability detection.
+1. Add or update the platform backend module under `src/sandbox/` and keep dispatch centralized in `backend.ts`.
+2. Wire it into `prepareWrapper()` dispatch and `platformInfo()` availability detection.
+3. Keep helper-backed platforms on the shared `SynergySandboxPermissionProfile` JSON contract.
 4. Add denial patterns to `enforcement/sandbox-detector.ts` if the new backend produces distinct error messages.
 
 **Windows helper binary (Rust):**
 
-The helper lives in `sandbox/helper/` and reads its config as JSON from stdin:
+The helper lives in `sandbox/helper/`, builds as `synergy-sandbox-windows.exe`,
+and consumes the shared `SynergySandboxPermissionProfile` JSON contract used by
+the Linux helper. The profile is passed with `--permission-profile <path>` and
+the child command follows `--`:
+
+```bash
+synergy-sandbox-windows.exe --permission-profile <profile.json> --cwd <workspace> -- <command> <args...>
+```
+
+The config shape is:
 
 ```rust
-pub struct SandboxConfig {
-    pub level: String,         // "restricted-token" | "elevated"
-    pub mode: String,          // "read_only" | "workspace_write"
-    pub workspace: String,
-    pub execution_cwd: String,
-    pub writable_roots: Vec<String>,
-    pub read_roots: Vec<String>,
-    pub protected_paths: Vec<String>,
-    pub data_deny_roots: Vec<String>,
-    pub command: String,
-    pub args: Vec<String>,
+pub struct PermissionProfile {
+    pub file_system: FileSystemPolicy, // serde rename: "fileSystem"
+    pub network: NetworkPolicy,
 }
 ```
+
+Do not reintroduce the old flat `SandboxConfig { level, mode, command, args }`
+shape. The TS backend passes process command/args through argv, not through the
+profile JSON.
 
 The helper uses `windows-sys` crate for native Win32 APIs. Cross-compile from non-Windows with:
 
@@ -92,3 +98,20 @@ rustup target add x86_64-pc-windows-msvc
 cargo install --locked cargo-xwin
 cargo xwin build --target x86_64-pc-windows-msvc --release
 ```
+
+**Bundled bwrap binary:** The Linux sandbox helper can discover a bundled
+bwrap binary placed at `helper-linux/bwrap/bwrap` relative to the helper
+executable. In CI/release builds, the bwrap binary is placed here during
+the packaging step.
+
+To build with bundled bwrap:
+
+1. Obtain a static bwrap binary for the target architecture
+2. Place it at `src/sandbox/helper-linux/bwrap/bwrap`
+3. The Rust helper will discover it automatically via `bwrap_binary()`
+
+Discovery order (in `bwrap_binary()`):
+
+1. `SYNERGY_BWRAP` environment variable (if set and non-empty)
+2. Bundled `bwrap/bwrap` relative to the helper binary's directory
+3. `bwrap` from system `PATH` (fallback)

@@ -17,8 +17,8 @@ import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import { defer } from "../util/defer"
-import { WorktreeCommand } from "../project/worktree-command"
 import { Command } from "../command/command"
+import "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -32,6 +32,8 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -73,7 +75,14 @@ export namespace SessionInvoke {
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-    PermissionNext.clearForSession(sessionID)
+
+    // Clean up all pending PermissionNext entries for this session before
+    // releasing the runtime. Otherwise the promises block forever and the
+    // entries remain in the pending map as orphans.
+    PermissionNext.clearForSession(sessionID).catch((err) => {
+      log.error("permission cleanup failed", { sessionID, error: err })
+    })
+
     SessionManager.signalAbort(sessionID)
   }
 
@@ -141,9 +150,8 @@ export namespace SessionInvoke {
     scopeID: string,
     sessionMessages: MessageV2.WithParts[],
     isTopSession: boolean,
-    isGenesis: boolean,
   ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
-    if (step === 1 && isTopSession && !isGenesis) {
+    if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.get()
       return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
@@ -162,8 +170,7 @@ export namespace SessionInvoke {
     }
     if (step === 1 && !isTopSession) {
       const cfg = await Config.get()
-      const engram = cfg.engram
-      if (engram?.autonomy !== false) {
+      if (cfg.engram?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }
@@ -181,10 +188,9 @@ export namespace SessionInvoke {
       })
     }
 
-    using _ = defer(() => {
-      SessionManager.release(sessionID).catch((err) => {
-        log.error("release failed", { sessionID, error: err })
-      })
+    await using _ = defer(async () => {
+      evictRecallCache(sessionID)
+      await SessionManager.release(sessionID)
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)
@@ -207,7 +213,7 @@ export namespace SessionInvoke {
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
-          if (!lastUser && msg.info.role === "user") {
+          if (!lastUser && msg.info.role === "user" && MessageV2.isPromptVisible(msg)) {
             const user = msg.info as MessageV2.User
             if (SessionProgress.isReplyRequiredUser(user)) {
               lastUser = user
@@ -266,6 +272,26 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
+        // Drain user mails that arrived while the agent was working.
+        const userMails = SessionManager.drainMails(sessionID, "user")
+        if (userMails.length > 0) {
+          const userModel = await lastModel(sessionID).catch(() => undefined)
+          for (const mail of userMails) {
+            const mailModel = mail.model ?? userModel
+            if (!mailModel) continue
+            const created = await createUserMessage({
+              sessionID,
+              agent: mail.agent,
+              model: mailModel,
+              parts: partsFromMail(mail),
+              noReply: mail.noReply,
+              summary: mail.summary,
+            })
+            msgs.push(created)
+          }
+          log.info("drained user mails into session", { sessionID, count: userMails.length })
+        }
+
         const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
 
         let agentName = lastUser.agent
@@ -277,32 +303,28 @@ export namespace SessionInvoke {
           hasExternal: !!agent.external,
           adapter: agent.external?.adapter,
         })
+
         if (agent.external) {
-          const profile = session.controlProfile
+          const topLevelProfile = await Config.get()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const profileId = ControlProfileCompiler.normalize(
+            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
+          )
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
           }
 
-          const runConfig = applyExternalPermissionMode(
-            {
-              ...(agent.external.path ? { path: agent.external.path } : {}),
-              ...agent.external.config,
-            },
-            adapter.name,
-            profile,
-          )
-          const nativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
-          const override = nativeAuth ? undefined : await resolveExternalModelOverride(lastUser.model, adapter.name)
+          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
+          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
 
           const env: Record<string, string> | undefined =
-            !nativeAuth && override?.apiKey && adapter.name === "codex"
-              ? { SYNERGY_CODEX_API_KEY: override.apiKey }
-              : undefined
+            override?.apiKey && adapter.name === "codex" ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined
 
           if (!adapter.started) {
             await adapter.start({
@@ -312,13 +334,12 @@ export namespace SessionInvoke {
             })
           } else {
             const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
-            if (cfg) Object.assign(cfg, runConfig)
-            const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
-            if (adapter.name === "codex" && adapterEnv) {
-              for (const key of Object.keys(adapterEnv)) delete adapterEnv[key]
-              Object.assign(adapterEnv, env ?? {})
-            } else if (env && adapterEnv) {
-              Object.assign(adapterEnv, env)
+            if (cfg) {
+              Object.assign(cfg, runConfig)
+            }
+            if (env) {
+              const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
+              if (adapterEnv) Object.assign(adapterEnv, env)
             }
           }
 
@@ -419,7 +440,6 @@ export namespace SessionInvoke {
         // prompt assembly, cortex context, and memory recall (flashback) all
         // run concurrently to minimise time-to-first-token.
         const isTopSession = !session.parentID
-        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
         const [
           toolDefinitions,
@@ -444,7 +464,7 @@ export namespace SessionInvoke {
           buildCortexExecutionContext(sessionID),
           buildCortexReminder(sessionID),
           buildAgendaReminder(sessionID, scopeID),
-          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
         ])
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
@@ -453,6 +473,31 @@ export namespace SessionInvoke {
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
+
+        // Layer 1.5: Semi-static — permission context (stable per session)
+        try {
+          const workspace = Instance.directory
+          const workspaceInfo = Instance.workspace
+          const interaction = session?.interaction
+          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+          const topLevelProfile = await Config.get()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const profileId = ControlProfileCompiler.normalize(
+            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
+          )
+          const resolved = await ControlProfileCompiler.resolve(profileId, {
+            workspace,
+            workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            interactionMode,
+          })
+          if (resolved.valid) {
+            const ctx = buildPermissionContext(resolved, workspace)
+            systemParts.push(ctx)
+          }
+        } catch {
+          // Profile resolution failure is non-fatal — skip permission context
+        }
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
@@ -651,7 +696,6 @@ export namespace SessionInvoke {
             parts: partsFromMail(mail),
             noReply: !needsReply,
             summary: mail.summary,
-            metadata: mail.metadata,
           })
         }
         if (needsReply) continue outer
@@ -669,7 +713,7 @@ export namespace SessionInvoke {
 
     // Clear pendingReply — the loop has fully completed and the assistant has
     // replied. Without this, a crashed/restarted server would see pendingReply=true
-    // on already-finished sessions and incorrectly re-trigger loop() via resumePending().
+    // on already-finished sessions and incorrectly mark them as pending resume.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
@@ -677,6 +721,18 @@ export namespace SessionInvoke {
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
+    }
+    // If the assistant message is marked with an error (LLM API error, auth
+    // error, output length exceeded, abort, or unknown), propagate it as an
+    // exception so cortex/runTask records task.status = "error" instead of
+    // silently marking the task as "completed".
+    if (resultMessage.info.role === "assistant" && resultMessage.info.error) {
+      const err = resultMessage.info.error
+      throw new MessageV2.SessionTerminalError({
+        errorName: err.name,
+        message:
+          err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
+      })
     }
     for (const q of runtime.waiters) {
       q.onComplete(resultMessage)
@@ -834,20 +890,80 @@ export namespace SessionInvoke {
     return [{ type: "text" as const, text: "" }]
   }
 
-  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
-    const role = Cortex.list().find((task) => task.sessionID === sessionID)?.executionRole
-    if (role !== "delegated_subagent") return undefined
+  async function buildDagUpstreamContext(
+    sessionID: string,
+    parentSessionID: string,
+    dagNodeId?: string,
+  ): Promise<string | undefined> {
+    if (!dagNodeId) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(parentSessionID)
+    const current = nodes.find((n) => n.id === dagNodeId)
+    if (!current || current.deps.length === 0) return undefined
+
+    const upstreamResults: string[] = []
+    let totalChars = 0
+    const MAX_PER_NODE = 4096
+    const MAX_TOTAL = 16384
+
+    for (const depId of current.deps) {
+      const depNode = nodes.find((n) => n.id === depId)
+      if (!depNode || depNode.status !== "completed" || !depNode.result) continue
+
+      let result = depNode.result
+      if (result.length > MAX_PER_NODE) {
+        result = result.slice(0, MAX_PER_NODE - 3) + "..."
+      }
+
+      const block = [
+        `## Node: ${depNode.id} — ${depNode.content}`,
+        depNode.assign ? `**Agent**: @${depNode.assign}` : "",
+        "**Result**:",
+        result,
+      ]
+        .filter(Boolean)
+        .join("\n")
+
+      const blockSize = block.length + 2 // +2 for the blank line separator
+      if (totalChars + blockSize > MAX_TOTAL) break
+
+      upstreamResults.push(block)
+      totalChars += blockSize
+    }
+
+    if (upstreamResults.length === 0) return undefined
 
     return [
-      "<cortex-execution>",
-      "Execution role: delegated_subagent",
-      "You are executing a delegated task.",
-      "Default to direct execution and return your result to the parent agent.",
-      "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
-      "Never call task_output speculatively.",
-      "</cortex-execution>",
+      "<upstream-results>",
+      "The following upstream DAG nodes have completed. Their results are provided as context for your task. Use these findings — do not redo work already done.",
+      "",
+      ...upstreamResults,
+      "</upstream-results>",
     ].join("\n")
+  }
+
+  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
+    const { Cortex } = await import("../cortex/manager")
+    const task = Cortex.list().find((task) => task.sessionID === sessionID)
+    if (!task || task.executionRole !== "delegated_subagent") return undefined
+
+    const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
+
+    const parts: string[] = []
+    if (upstreamContext) parts.push(upstreamContext)
+    parts.push(
+      [
+        "<cortex-execution>",
+        "Execution role: delegated_subagent",
+        "You are executing a delegated task.",
+        "Default to direct execution and return your result to the parent agent.",
+        "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
+        "Never call task_output speculatively.",
+        "</cortex-execution>",
+      ].join("\n"),
+    )
+    return parts.join("\n")
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
@@ -988,19 +1104,19 @@ export namespace SessionInvoke {
   export function applyExternalPermissionMode(
     config: Record<string, unknown>,
     adapterName: string,
-    profile: string | undefined,
+    controlProfile: string,
   ): Record<string, unknown> {
-    const allowAll = profile === "full_access"
-    config.controlProfile = profile
-    config.allowAll = allowAll
+    config.controlProfile = controlProfile
 
     if (adapterName === "claude-code") {
       delete config.skipPermissions
-      config.permissionMode = allowAll ? "bypassPermissions" : "default"
+      config.permissionMode = controlProfile === "full_access" ? "bypassPermissions" : "default"
+      return config
     }
 
     return config
   }
+
   function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
     switch (adapterName) {
       case "codex":
@@ -1090,15 +1206,28 @@ export namespace SessionInvoke {
   const placeholderRegex = /\$(\d+)/g
   const quoteTrimRegex = /^["']|["']$/g
 
-  async function deterministicCommandResult(
-    input: CommandInput,
-    result: { title: string; output: string; metadata?: Record<string, any> },
-  ) {
+  function commandMetadata(command: Command.Info) {
+    return {
+      command: {
+        name: command.name,
+        kind: command.kind,
+        action: command.action,
+        promptVisible: command.promptVisible,
+      },
+      promptVisible: command.promptVisible,
+      source: "command",
+      // Denormalized for easier frontend access (metadata.commandName vs. metadata.command?.name)
+      commandName: command.name,
+    }
+  }
+
+  async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
     const userID = input.messageID ?? Identifier.ascending("message")
     const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
     const parsedModel = input.model
       ? Provider.parseModel(input.model)
       : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
+    const metadata = commandMetadata(command)
 
     const user = await Session.updateMessage({
       id: userID,
@@ -1107,7 +1236,7 @@ export namespace SessionInvoke {
       time: { created: Date.now() },
       agent: agentName,
       model: parsedModel,
-      metadata: { command: input.command, promptVisible: false },
+      metadata,
     })
     await Session.updatePart({
       id: Identifier.ascending("part"),
@@ -1116,6 +1245,7 @@ export namespace SessionInvoke {
       type: "text",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
     })
+
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -1133,7 +1263,7 @@ export namespace SessionInvoke {
       finish: "stop",
       modelID: parsedModel.modelID,
       providerID: parsedModel.providerID,
-      metadata: { promptVisible: false },
+      metadata,
     }
     await Session.updateMessage(msg)
     await Session.updatePart({
@@ -1155,19 +1285,21 @@ export namespace SessionInvoke {
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.get(input.command)
-    if (command?.action === "worktree") {
+    const command = await Command.require(input.command)
+    if (command.kind === "action") {
+      if (!command.action) throw new Command.UnknownActionError({ action: "" })
       return SessionManager.run(input.sessionID, async () => {
-        const result = await WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
-        return deterministicCommandResult(input, result)
+        const result = await Command.runAction({ action: command.action!, input, command })
+        return deterministicCommandResult(input, command, result)
       })
     }
+    if (!command.template) throw new Command.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
     const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
 
-    const templateCommand = (await command.template) ?? ""
+    const templateCommand = await command.template
 
     const placeholders = templateCommand.match(placeholderRegex) ?? []
     let last = 0
@@ -1299,7 +1431,7 @@ export namespace SessionInvoke {
 
       if (!pendingReply) continue
 
-      SessionManager.run(sessionID, () => loop(sessionID)).catch(() => {})
+      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
   }
 
