@@ -32,3 +32,13 @@ export function clearGlobalPanels(pluginId?: string): void {
     entries.clear()
   }
 }
+// Built-in panels — register at module init
+const BUILTIN_PANELS: GlobalPanelEntry[] = [
+  { id: "engram", label: "Library", icon: "book-open", pluginId: "" },
+  { id: "agenda", label: "Agenda", icon: "clipboard-list", pluginId: "" },
+  { id: "lucid", label: "Lucid", icon: "sparkles", pluginId: "" },
+]
+
+for (const panel of BUILTIN_PANELS) {
+  registerGlobalPanel(panel)
+}

@@ -25,7 +25,7 @@ export function getSettingsSections(): SettingsSection[] {
   return [...sections]
 }
 
-// Built-in settings sections — mirror the existing NAV_GROUPS from components/settings/types.ts
+// Built-in settings sections — registered at module init, consumed by SettingsDialog via getSettingsSections()
 const BUILTIN_SECTIONS: SettingsSection[] = [
   { id: "general", label: "General", icon: "sliders-horizontal", group: "Core" },
   { id: "models", label: "Models", icon: "cpu", group: "Core" },

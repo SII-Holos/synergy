@@ -1,8 +1,9 @@
 import { createEffect, createMemo, createResource, createSignal, Show, For } from "solid-js"
 import { createStore, produce } from "solid-js/store"
+import { Dynamic } from "solid-js/web"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
@@ -11,6 +12,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
+import { getSettingsSections, type SettingsSection } from "@/plugin"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
 import type {
@@ -22,7 +24,7 @@ import type {
   SettingsEditMode,
   DialogSettingsProps,
 } from "./types"
-import { groupByProvider, emptyMcp, NAV_GROUPS } from "./types"
+import { groupByProvider, emptyMcp } from "./types"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
@@ -365,6 +367,39 @@ export function SettingsDialog(props: DialogSettingsProps) {
     }
   }
 
+  // Build nav groups from the settings registry, ordered by first-seen group.
+  const settingsSections = createMemo(() => getSettingsSections())
+  const navGroups = createMemo(() => {
+    const sections = settingsSections()
+    const order: string[] = []
+    const map = new Map<string, SettingsSection[]>()
+    for (const section of sections) {
+      if (!map.has(section.group)) {
+        map.set(section.group, [])
+        order.push(section.group)
+      }
+      map.get(section.group)!.push(section)
+    }
+    return order.map((label) => ({
+      label,
+      sections: map.get(label)!,
+    }))
+  })
+
+  // Sections that are NOT built-in — rendered via Dynamic component when they have a component
+  const BUILTIN_IDS = new Set([
+    "general",
+    "models",
+    "mcp",
+    "plugins",
+    "channels",
+    "email",
+    "identity",
+    "advanced",
+    "config-sets",
+  ])
+  const pluginSections = createMemo(() => settingsSections().filter((s) => !BUILTIN_IDS.has(s.id)))
+
   return (
     <Dialog class="dialog-settings-v2">
       {ready() ? (
@@ -399,18 +434,18 @@ export function SettingsDialog(props: DialogSettingsProps) {
               </div>
             </div>
 
-            {/* Navigation groups */}
+            {/* Navigation groups — driven by settings registry */}
             <div class="flex-1 overflow-y-auto px-2 pb-3">
-              <For each={NAV_GROUPS}>
+              <For each={navGroups()}>
                 {(group) => (
                   <AppPanel.NavSection label={group.label}>
-                    <For each={group.items}>
-                      {(item) => (
+                    <For each={group.sections}>
+                      {(section) => (
                         <AppPanel.NavItem
-                          icon={item.icon}
-                          label={item.label}
-                          active={activeTab() === item.id}
-                          onClick={() => setActiveTab(item.id)}
+                          icon={section.icon as IconName}
+                          label={section.label}
+                          active={activeTab() === section.id}
+                          onClick={() => setActiveTab(section.id)}
                         />
                       )}
                     </For>
@@ -553,6 +588,24 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   onCreateSet={() => save.handleCreateSet(createSetName())}
                 />
               </Show>
+
+              {/* Plugin-contributed sections — rendered via Dynamic */}
+              <For each={pluginSections()}>
+                {(section) => (
+                  <Show when={editMode() === "form" && activeTab() === section.id}>
+                    <Show
+                      when={section.component}
+                      fallback={
+                        <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
+                          {section.label} is not available
+                        </div>
+                      }
+                    >
+                      <Dynamic component={section.component} />
+                    </Show>
+                  </Show>
+                )}
+              </For>
 
               <Show when={editMode() === "raw"}>
                 <RawEditorPanel
