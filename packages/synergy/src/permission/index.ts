@@ -29,7 +29,7 @@ export namespace Permission {
     })
   export type Info = z.infer<typeof Info>
 
-  export const Response = z.enum(["once", "session", "reject"])
+  export const Response = z.enum(["once", "session", "always", "reject"])
   export type Response = z.infer<typeof Response>
 
   export const Event = {
@@ -188,7 +188,7 @@ export namespace Permission {
     })
   }
 
-  export function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
+  export async function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
     log.info("response", input)
     const { pending } = state()
     const match = pending[input.sessionID]?.[input.permissionID]
@@ -202,6 +202,22 @@ export namespace Permission {
     if (input.response === "reject") {
       match.reject(new RejectedError(input.sessionID, input.permissionID, match.info.callID, match.info.metadata))
       return
+    }
+
+    if (input.response === "always") {
+      // Persist as a user rule so it never prompts again
+      const { PermissionRules } = await import("./rules")
+      const pattern = PermissionRules.extractPattern(match.info.type, match.info.metadata as Record<string, any>)
+      await PermissionRules.addUserRule({
+        permission: match.info.type,
+        pattern,
+        action: "allow",
+      })
+      log.info("recorded persistent user rule", {
+        sessionID: input.sessionID,
+        permission: match.info.type,
+        pattern,
+      })
     }
 
     if (input.response === "session") {
