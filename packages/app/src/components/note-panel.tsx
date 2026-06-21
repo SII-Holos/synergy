@@ -26,6 +26,7 @@ import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
+import "./note-panel.css"
 
 function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
   const title = note.title || "Untitled"
@@ -58,7 +59,7 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () 
   return (
     <button
       type="button"
-      class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer"
+      class="group note-card relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer"
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
@@ -146,7 +147,7 @@ function MiniNoteCard(props: { note: NoteMetaInfo; originName?: string; onClick:
   return (
     <button
       type="button"
-      class="min-w-0 rounded-xl border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985]"
+      class="mini-note-card min-w-0 rounded-xl border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985]"
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
@@ -478,7 +479,7 @@ export function NotePanel() {
             </div>
 
             <Show when={allTags().length > 0}>
-              <div class="mt-2 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div class="notes-tag-bar mt-2 flex items-center gap-1.5 overflow-x-auto">
                 <Show when={selectedTags().size > 0}>
                   <button
                     type="button"

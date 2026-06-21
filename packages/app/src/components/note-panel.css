@@ -1,0 +1,39 @@
+/* Smooth hover lift/shadow on note cards using project motion tokens */
+.note-card,
+.mini-note-card {
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-base) var(--motion-ease-standard),
+    border-color var(--motion-duration-base) var(--motion-ease-standard),
+    background-color var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+/* Horizontal scrollbar for the tag filter bar when tags overflow */
+.notes-tag-bar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--icon-weak-base) transparent;
+}
+
+.notes-tag-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.notes-tag-bar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notes-tag-bar::-webkit-scrollbar-thumb {
+  background-color: var(--icon-weak-base);
+  border-radius: var(--radius-full);
+}
+
+.notes-tag-bar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--icon-weak-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-card,
+  .mini-note-card {
+    transition: none;
+  }
+}
