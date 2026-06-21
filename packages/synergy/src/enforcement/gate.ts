@@ -607,7 +607,9 @@ export namespace EnforcementGate {
           return { capabilities: caps }
         }
 
-        caps.push({ class: risk, nonBypassable: false })
+        // shell_destructive is high-risk by definition; it must always be a hard
+        // boundary so the classifier can never bypass a profile deny on it.
+        caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
 
         if (risk !== "shell_destructive") {
           const resilient = analyzeDestructiveCommand(command)

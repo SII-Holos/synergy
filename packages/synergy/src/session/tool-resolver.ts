@@ -280,20 +280,34 @@ export namespace ToolResolver {
     const profile = gate.getProfileInfo()
     const approval = profile.approval
     const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
+    // envelope.decision is authoritative — the gate already merged profile rules,
+    // exec-policy, and approval cache. policyDecision provides risk/capabilities
+    // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
-    // Classifier (auto mode): evaluates the operation with the LLM risk
-    // classifier BEFORE the profile decision is enforced. This is critical —
-    // placing the classifier after the profile meant 'autonomous' (which
-    // turns high-risk into deny) would short-circuit before the classifier
-    // ever ran, making Auto Mode ineffective under the profile where it's
-    // most useful (unattended work). Now the classifier runs first for
-    // bypassable operations: if it says safe + high-confidence, auto-allow
-    // regardless of profile. Non-bypassable capabilities (protected_op,
-    // identity_act) always skip the classifier — those are hard boundaries.
+    // Deny is a hard policy boundary (profile-level security decision). It
+    // must be enforced before anything else — the classifier and user rules
+    // exist only to save a confirmation prompt, never to override a deny.
+    if (decision.action === "deny") {
+      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
+      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
+    }
+
+    // Profile already permits the operation — no need for the classifier.
+    if (decision.action === "allow") {
+      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+
+    // Classifier (auto mode): may promote an ask → allow to save the user a
+    // confirmation prompt. It must NEVER run for a non-bypassable ask
+    // (protected_op, file_external, identity_act, shell_destructive) — those
+    // are hard boundaries that must always reach the user. Nor can it ever
+    // promote a deny, which was already handled above.
     const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
     if (!hasNonBypassable) {
       const cfg = await Config.get()
-      const autoEnabled = (cfg as any)?.auto_classifier === true
+      const autoEnabled = cfg.auto_classifier === true
       if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
         const caps = envelope.capabilities.map((c) => c.class)
         const classification = await RiskClassifier.classify({
@@ -315,18 +329,6 @@ export namespace ToolResolver {
           ;(ctx.extra as any).classifierRisk = classification
         }
       }
-    }
-
-    // Now enforce the profile decision (allow/deny/ask).
-    if (decision.action === "deny") {
-      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
-      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
-    }
-
-    if (decision.action === "allow") {
-      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
-      if (toolName === "bash") markShellSandboxBypass(ctx)
-      return
     }
 
     // Provenance: sessions created by system scheduling (e.g. agenda wake)
