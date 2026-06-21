@@ -537,6 +537,3 @@
     transform: translateX(0);
   }
 }
-/* Compact mode: hide file path and action chips when workspace squeezes the conversation */
-  display: none;
-}

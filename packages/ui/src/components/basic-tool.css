@@ -8,7 +8,6 @@
   justify-content: space-between;
   padding: 8px 12px;
 
-  /* New ToolTrigger slots */
   [data-slot="tool-trigger-left"] {
     width: 100%;
     display: flex;
@@ -132,6 +131,7 @@
     letter-spacing: var(--letter-spacing-normal);
     color: var(--text-weak);
   }
+}
 
 /* Compact mode: hide tags, path, and right-side content when workspace squeezes the conversation */
 [data-compact="true"] [data-slot="tool-trigger-tag"],
