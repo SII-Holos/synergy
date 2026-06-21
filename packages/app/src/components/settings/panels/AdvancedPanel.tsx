@@ -69,6 +69,27 @@ export function AdvancedPanel(props: {
       </div>
 
       <div class="ds-setting-section">
+        <SectionLabel title="Permission" />
+        <SettingRow
+          title="Auto Mode (Classifier)"
+          description="Use a lightweight LLM to auto-allow safe operations. Reduces ~90% of prompts. Protected paths and identity ops always ask."
+          trailing={
+            <SegmentPill
+              value={props.advanced.auto_classifier}
+              options={[
+                { value: "false", label: "Off" },
+                { value: "true", label: "On" },
+              ]}
+              onChange={(value) => props.onAdvancedChange("auto_classifier", value)}
+              showReset
+              defaultValue="false"
+              onReset={() => props.onAdvancedChange("auto_classifier", "false")}
+            />
+          }
+        />
+      </div>
+
+      <div class="ds-setting-section">
         <SectionLabel title="Question" />
         <SettingRow
           title="Response Timeout"
