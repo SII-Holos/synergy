@@ -44,8 +44,7 @@ describe("block edit recovery through Patcher", () => {
 
     const patch = Patch.parse(`[${path}#${tag}]\nSWAP.BLK 1:\n+import x\n`)
     const patcher = new Patcher({ fs, snapshots })
-
-    await expect(patcher.prepare(patch.sections[0])).rejects.toThrow(/block resolver/i)
+    await expect(patcher.prepare(patch.sections[0])).rejects.toThrow(/Block ops not available/i)
   })
 
   test("lowers INS.BLK.POST to anchored insert when unresolved", async () => {
