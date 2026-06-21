@@ -34,9 +34,9 @@ function detailText(snapshot: ProgressIslandSnapshot): string | undefined {
 
 export function SessionProgressIsland(props: SessionProgressIslandProps) {
   let rootRef: HTMLDivElement | undefined
-  let panelRef: HTMLDivElement | undefined
-  let bodyRef: HTMLDivElement | undefined
 
+  const [panelRef, setPanelRef] = createSignal<HTMLDivElement | undefined>(undefined)
+  const [bodyRef, setBodyRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [panelHeight, setPanelHeight] = createSignal<number | undefined>(undefined)
 
   const label = createMemo(() => formatProgressIslandLabel(props.snapshot, props.activeLabel))
@@ -79,20 +79,21 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
       return
     }
 
-    const body = bodyRef
-    const panel = panelRef
+    const body = bodyRef()
+    const panel = panelRef()
     if (!body || !panel) return
 
     const measure = () => {
-      const bodyHeight = body.scrollHeight
-      if (bodyHeight <= 0) return
+      const content = body.firstElementChild as HTMLElement | null
+      const contentHeight = content?.scrollHeight ?? body.scrollHeight
+      if (contentHeight <= 0) return
 
       const topline = panel.querySelector(".session-progress-island-panel-topline")
       const tabs = panel.querySelector(".session-progress-island-tabs")
       const overhead = (topline?.scrollHeight ?? 0) + (tabs?.scrollHeight ?? 0)
       const maxH = Math.min(window.innerHeight * 0.52, 560)
 
-      setPanelHeight(Math.min(bodyHeight + overhead, maxH))
+      setPanelHeight(Math.min(contentHeight + overhead, maxH))
     }
 
     // Initial measure after the DOM has settled, then watch for content
@@ -169,7 +170,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
             id="session-progress-island-panel"
             class="session-progress-island-panel"
             ref={(el) => {
-              panelRef = el
+              setPanelRef(el)
             }}
             style={panelHeight() != null ? { height: `${panelHeight()}px` } : undefined}
           >
@@ -195,7 +196,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
             <div
               class="session-progress-island-body"
               ref={(el) => {
-                bodyRef = el
+                setBodyRef(el)
               }}
             >
               {props.children}
