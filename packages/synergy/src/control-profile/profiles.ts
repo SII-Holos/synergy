@@ -21,8 +21,8 @@ const CAPABILITY_PERMISSIONS = [
   "shell_hardline",
   "file_external_read",
   "file_external_write",
+  "network_read",
   "network_request",
-
   "mcp_invoke",
   "plugin_invoke",
   "identity_act",
