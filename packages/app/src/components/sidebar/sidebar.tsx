@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useNavigate, useParams } from "@solidjs/router"
@@ -116,6 +116,95 @@ export function Sidebar(props: SidebarProps) {
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
   const scopes = createMemo(() => layout.scopes.list())
+
+  let scopeListRef!: HTMLDivElement
+  let prevSnapshot = new Map<string, number>()
+
+  createEffect(
+    on(
+      () => scopes().map((s) => s.id || s.worktree),
+      () => {
+        const container = scopeListRef
+        if (!container) return
+
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        if (reduceMotion) return
+
+        requestAnimationFrame(() => {
+          const items = container.querySelectorAll<HTMLElement>("[data-scope-id]")
+          const newSnapshot = new Map<string, number>()
+          items.forEach((item) => {
+            const id = item.dataset.scopeId!
+            newSnapshot.set(id, item.getBoundingClientRect().top)
+          })
+
+          if (prevSnapshot.size === 0) {
+            prevSnapshot = newSnapshot
+            return
+          }
+
+          // Cancel any in-flight animations before starting new ones
+          items.forEach((it) => {
+            if (it.style.transition) {
+              it.style.transition = ""
+              it.style.transform = ""
+              it.style.opacity = ""
+            }
+          })
+          items.forEach((item) => {
+            const id = item.dataset.scopeId!
+            const oldY = prevSnapshot.get(id)
+            const newY = newSnapshot.get(id)
+
+            if (oldY === undefined) {
+              // New project: slide in from right + fade in
+              item.style.opacity = "0"
+              item.style.transform = "translateX(16px)"
+              item.style.transition = "none"
+              void item.offsetHeight // force reflow
+              item.style.transition =
+                "opacity 350ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1)"
+              item.style.opacity = "1"
+              item.style.transform = "translateX(0)"
+              item.addEventListener(
+                "transitionend",
+                () => {
+                  item.style.transition = ""
+                  item.style.transform = ""
+                  item.style.opacity = ""
+                },
+                { once: true },
+              )
+              return
+            }
+
+            if (newY === undefined) return
+            const delta = oldY - newY
+            if (Math.abs(delta) < 0.5) return
+
+            // FLIP: invert -> play
+            item.style.transform = `translateY(${delta}px)`
+            item.style.transition = "none"
+            void item.offsetHeight
+            item.style.transition = "transform 350ms cubic-bezier(0.16, 1, 0.3, 1)"
+            item.style.transform = "translateY(0)"
+
+            item.addEventListener(
+              "transitionend",
+              () => {
+                item.style.transition = ""
+                item.style.transform = ""
+              },
+              { once: true },
+            )
+          })
+
+          prevSnapshot = newSnapshot
+        })
+      },
+      { defer: true },
+    ),
+  )
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
 
@@ -530,125 +619,127 @@ export function Sidebar(props: SidebarProps) {
               </div>
 
               <Show when={projectsSectionOpen()}>
-                <For each={scopes()}>
-                  {(scope) => {
-                    const isActive = () => scope.worktree === currentDirectory()
-                    const [menuOpen, setMenuOpen] = createSignal(false)
-                    const isSupplemental = layout.scopes.isSupplemental(scope)
-                    const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
+                <div ref={scopeListRef}>
+                  <For each={scopes()}>
+                    {(scope) => {
+                      const isActive = () => scope.worktree === currentDirectory()
+                      const [menuOpen, setMenuOpen] = createSignal(false)
+                      const isSupplemental = layout.scopes.isSupplemental(scope)
+                      const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
 
-                    return (
-                      <div class="sb-project-group">
-                        <div
-                          classList={{
-                            "sb-project-row": true,
-                            "sb-project-active": isActive(),
-                          }}
-                        >
-                          <button
-                            type="button"
-                            class="sb-project-chevron-btn"
-                            onClick={(e) => handleProjectToggle(e, scope)}
+                      return (
+                        <div class="sb-project-group" data-scope-id={scope.id || scope.worktree}>
+                          <div
+                            classList={{
+                              "sb-project-row": true,
+                              "sb-project-active": isActive(),
+                            }}
                           >
-                            <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
-                          </button>
-                          <button
-                            type="button"
-                            class="sb-project-body"
-                            onClick={() => handleProjectClick(scope.worktree)}
-                          >
-                            <Icon name="folder" size="normal" class="sb-project-folder" />
-                            <span class="sb-project-name">{getScopeLabel(scope)}</span>
-                          </button>
-                          <div class="sb-project-actions">
                             <button
                               type="button"
-                              classList={{
-                                "sb-project-menu-btn": true,
-                                "sb-project-menu-active": menuOpen(),
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setMenuOpen((v) => !v)
-                              }}
+                              class="sb-project-chevron-btn"
+                              onClick={(e) => handleProjectToggle(e, scope)}
                             >
-                              <Icon name="ellipsis" size="small" />
+                              <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
                             </button>
                             <button
                               type="button"
-                              class="sb-project-plus-btn"
-                              onClick={(e) => handleProjectPlus(e, scope)}
+                              class="sb-project-body"
+                              onClick={() => handleProjectClick(scope.worktree)}
                             >
-                              <Icon name="square-pen" size="small" />
+                              <Icon name="folder" size="normal" class="sb-project-folder" />
+                              <span class="sb-project-name">{getScopeLabel(scope)}</span>
                             </button>
-                            <Show when={menuOpen()}>
-                              <>
-                                <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                                <div class="sb-project-menu">
-                                  <button type="button" class="sb-menu-item" disabled>
-                                    <Icon name="pin" size="small" />
-                                    <span>Pin</span>
-                                    <span class="sb-menu-disabled-label">Coming soon</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    class="sb-menu-item"
-                                    onClick={(e) => handleProjectEdit(e, scope)}
-                                  >
-                                    <Icon name="pencil" size="small" />
-                                    <span>Edit</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    class="sb-menu-item sb-menu-item-danger"
-                                    onClick={(e) => handleProjectDelete(e, scope)}
-                                  >
-                                    <Icon name="trash-2" size="small" />
-                                    <span>Delete</span>
-                                  </button>
-                                </div>
-                              </>
-                            </Show>
-                          </div>
-                        </div>
-
-                        {/* Sessions under expanded project */}
-                        <Show when={scope.expanded}>
-                          <div class="sb-sessions">
-                            <Show
-                              when={!isSupplemental || navLoaded()}
-                              fallback={
-                                <button
-                                  type="button"
-                                  class="sb-load-more-btn"
-                                  onClick={() => layout.nav.loadScopeNav(scope.worktree)}
-                                >
-                                  Load sessions
-                                </button>
-                              }
-                            >
-                              <GroupedSessionList
-                                entries={layout.nav.projectNavEntries(scope)}
-                                scope={scope}
-                                activeID={params.id}
-                                onSessionClick={(entry) => handleSessionClick(scope, entry)}
-                              />
-                              <Show when={hasMoreForProject(scope)}>
-                                <button
-                                  type="button"
-                                  class="sb-load-more-btn"
-                                  onClick={() => layout.nav.loadMoreNav(scope.worktree)}
-                                >
-                                  Load more
-                                </button>
+                            <div class="sb-project-actions">
+                              <button
+                                type="button"
+                                classList={{
+                                  "sb-project-menu-btn": true,
+                                  "sb-project-menu-active": menuOpen(),
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setMenuOpen((v) => !v)
+                                }}
+                              >
+                                <Icon name="ellipsis" size="small" />
+                              </button>
+                              <button
+                                type="button"
+                                class="sb-project-plus-btn"
+                                onClick={(e) => handleProjectPlus(e, scope)}
+                              >
+                                <Icon name="square-pen" size="small" />
+                              </button>
+                              <Show when={menuOpen()}>
+                                <>
+                                  <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                                  <div class="sb-project-menu">
+                                    <button type="button" class="sb-menu-item" disabled>
+                                      <Icon name="pin" size="small" />
+                                      <span>Pin</span>
+                                      <span class="sb-menu-disabled-label">Coming soon</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="sb-menu-item"
+                                      onClick={(e) => handleProjectEdit(e, scope)}
+                                    >
+                                      <Icon name="pencil" size="small" />
+                                      <span>Edit</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="sb-menu-item sb-menu-item-danger"
+                                      onClick={(e) => handleProjectDelete(e, scope)}
+                                    >
+                                      <Icon name="trash-2" size="small" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </>
                               </Show>
-                            </Show>
+                            </div>
                           </div>
-                        </Show>
-                      </div>
-                    )
-                  }}
-                </For>
+
+                          {/* Sessions under expanded project */}
+                          <Show when={scope.expanded}>
+                            <div class="sb-sessions">
+                              <Show
+                                when={!isSupplemental || navLoaded()}
+                                fallback={
+                                  <button
+                                    type="button"
+                                    class="sb-load-more-btn"
+                                    onClick={() => layout.nav.loadScopeNav(scope.worktree)}
+                                  >
+                                    Load sessions
+                                  </button>
+                                }
+                              >
+                                <GroupedSessionList
+                                  entries={layout.nav.projectNavEntries(scope)}
+                                  scope={scope}
+                                  activeID={params.id}
+                                  onSessionClick={(entry) => handleSessionClick(scope, entry)}
+                                />
+                                <Show when={hasMoreForProject(scope)}>
+                                  <button
+                                    type="button"
+                                    class="sb-load-more-btn"
+                                    onClick={() => layout.nav.loadMoreNav(scope.worktree)}
+                                  >
+                                    Load more
+                                  </button>
+                                </Show>
+                              </Show>
+                            </div>
+                          </Show>
+                        </div>
+                      )
+                    }}
+                  </For>
+                </div>
               </Show>
             </div>
           </Show>

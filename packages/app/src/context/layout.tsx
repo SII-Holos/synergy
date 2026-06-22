@@ -473,6 +473,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             refreshGlobalRecent()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
+        const scopeIndexPending = navRefreshTimers.get("__scopeIndex__")
+        if (scopeIndexPending) clearTimeout(scopeIndexPending)
+        navRefreshTimers.set(
+          "__scopeIndex__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__scopeIndex__")
+            loadScopeIndex()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
         if (scope.id === "global") {
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
