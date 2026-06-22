@@ -2,48 +2,8 @@ import { BrowserRuntime } from "./runtime.js"
 import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
-export interface BrowserAnnotation {
-  id: string
-  tabURL: string
-  tabID: string
-  ref?: string
-  element?: string
-  comment: string
-  styleFeedback?: Record<string, string>
-  resolved: boolean
-  createdAt: number
-}
-
-export interface BrowserAnnotationInput {
-  ref?: string
-  element?: string
-  comment: string
-  styleFeedback?: Record<string, string>
-  createdBy: "user" | "agent"
-  tabID?: string
-  tabURL?: string
-}
-export interface BrowserSession {
-  readonly owner: BrowserOwner.Info
-  readonly tabs: readonly BrowserTab[]
-  readonly activeTab: BrowserTab | null
-  readonly annotations: BrowserAnnotation[]
-
-  createTab(url?: string): Promise<BrowserTab>
-  switchTab(tabID: string): void
-  closeTab(tabID: string): Promise<void>
-  getTab(tabID: string): BrowserTab | undefined
-
-  addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation
-  removeAnnotation(id: string): boolean
-  clearAnnotations(): void
-  formatAnnotationsForContext(): string
-
-  save(): Promise<void>
-  restore(): Promise<boolean>
-
-  dispose(): Promise<void>
-}
+import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession } from "./types.js"
+export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
 
 const MAX_TABS = 10
 
@@ -69,7 +29,7 @@ export class BrowserSessionImpl implements BrowserSession {
     this.owner = owner
 
     // Register session with runtime
-    BrowserRuntime.registerSession(owner, this as unknown as import("./runtime.js").BrowserSession)
+    BrowserRuntime.registerSession(owner, this)
 
     // Restore saved state asynchronously (don't block constructor)
     this.restore().catch(() => {
@@ -187,10 +147,6 @@ export class BrowserSessionImpl implements BrowserSession {
     return `<browser-annotations>\n${items}\n</browser-annotations>`
   }
 
-  private toOwner(): BrowserOwner.Info {
-    return this.owner
-  }
-
   async save(): Promise<void> {
     const state: BrowserStorage.SessionState = {
       tabs: this._tabs.map((tab, i) => ({
@@ -204,11 +160,11 @@ export class BrowserSessionImpl implements BrowserSession {
       timestamp: Date.now(),
       annotations: this._annotations,
     }
-    await BrowserStorage.save(this.toOwner(), state)
+    await BrowserStorage.save(this.owner, state)
   }
 
   async restore(): Promise<boolean> {
-    const data = await BrowserStorage.load(this.toOwner())
+    const data = await BrowserStorage.load(this.owner)
     if (!data) return false
 
     const state = BrowserRuntime.state()

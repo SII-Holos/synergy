@@ -206,7 +206,10 @@ export class BrowserTabImpl implements BrowserTab {
   }
 
   private sendCmd(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    return this.browserCdp.send(method, params, this.sessionId!)
+    if (!this.sessionId) {
+      throw new Error("Browser tab is not attached to a CDP session. Call ensureSession() first.")
+    }
+    return this.browserCdp.send(method, params, this.sessionId)
   }
 
   private setupEventListeners(): void {

@@ -13,7 +13,7 @@ const ACTIONS = [
   { id: "inspect" as DevPanel, label: "Inspect", icon: "scan-eye" },
   { id: "console" as DevPanel, label: "Console", icon: "terminal" },
   { id: "network" as DevPanel, label: "Network", icon: "signal" },
-  { id: "elements" as DevPanel, label: "Annotate", icon: "pen" },
+  { id: "elements" as DevPanel, label: "Elements", icon: "pen" },
 ]
 
 export function DevToolbar() {

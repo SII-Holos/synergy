@@ -15,12 +15,7 @@ export const BrowserNavigateTool = Tool.define("browser_navigate", {
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: owner.scopeID,
-      directory: owner.directory,
-      sessionID: owner.sessionID,
-    }
-    const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.getTab(owner, params.tabId)
 
     const result = await tab.navigate(params.url)
     const snapshot = await tab.snapshot()

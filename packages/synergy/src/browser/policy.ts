@@ -2,7 +2,7 @@ import { realpathSync } from "fs"
 import path from "path"
 
 export namespace BrowserPolicy {
-  export type Decision = "allow" | "ask" | "deny"
+  export type Decision = "allow" | "blocked" | "deny"
 
   export interface PolicyResult {
     decision: Decision
@@ -138,15 +138,15 @@ export namespace BrowserPolicy {
       }
 
       return {
-        decision: "ask",
+        decision: "blocked",
         reason: `Localhost port ${port} requires user approval`,
         permanent: false,
       }
     }
 
-    // Public URLs — ask on first visit
+    // Public URLs — blocked on first visit
     return {
-      decision: "ask",
+      decision: "blocked",
       reason: `External URL requires user approval: ${parsed.hostname}`,
       permanent: false,
     }

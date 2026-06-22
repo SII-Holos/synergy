@@ -4,12 +4,8 @@ import { CdpClient } from "./cdp.js"
 import { BrowserInstall } from "./install.js"
 import { BrowserOwner } from "./owner.js"
 
-// ── BrowserSession placeholder (full interface in session.ts) ─────────
-
-export interface BrowserSession {
-  readonly owner: BrowserOwner.Info
-  dispose(): Promise<void>
-}
+import type { BrowserSession } from "./types.js"
+export { type BrowserSession } from "./types.js"
 
 // ── BrowserRuntime namespace ──────────────────────────────────────────
 export namespace BrowserRuntime {
@@ -355,7 +351,7 @@ export namespace BrowserRuntime {
     const existing = sessions.get(k)
     if (existing) return existing
     const { BrowserSessionImpl } = await import("./session.js")
-    const session = new BrowserSessionImpl(owner) as unknown as BrowserSession
+    const session = new BrowserSessionImpl(owner)
     sessions.set(k, session)
     return session
   }

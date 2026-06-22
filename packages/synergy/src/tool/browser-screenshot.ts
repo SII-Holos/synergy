@@ -17,12 +17,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: owner.scopeID,
-      directory: owner.directory,
-      sessionID: owner.sessionID,
-    }
-    const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.getTab(owner, params.tabId)
 
     const { buffer, width, height } = await tab.screenshot(params.format, undefined, params.fullPage)
     const mime = params.format === "jpeg" ? "image/jpeg" : "image/png"

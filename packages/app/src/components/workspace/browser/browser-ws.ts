@@ -37,7 +37,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
       let msg: any
       try {
         msg = JSON.parse(event.data)
-      } catch {
+      } catch (e) {
+        console.warn("Invalid browser WS message", String(e))
         return
       }
 

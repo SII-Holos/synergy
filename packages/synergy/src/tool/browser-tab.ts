@@ -30,12 +30,7 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: owner.scopeID,
-      directory: owner.directory,
-      sessionID: owner.sessionID,
-    }
-    const session = await BrowserToolHelper.getOrCreateSession(helperCtx)
+    const session = await BrowserToolHelper.getOrCreateSession(owner)
 
     switch (params.action) {
       case "list": {

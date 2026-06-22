@@ -1,4 +1,3 @@
-import type { BrowserSession } from "../browser/session.js"
 import type { BrowserTab } from "../browser/tab.js"
 import { Hono } from "hono"
 import { upgradeWebSocket } from "hono/bun"
@@ -54,21 +53,24 @@ export const BrowserRoute = new Hono().get(
 
     log.info("browser WebSocket connected", { directory, ownerKey: BrowserOwner.key(owner) })
 
+    /** Shorthand: send a JSON payload over the WebSocket. */
+    function s(ws: WebSocket, payload: Record<string, unknown>) {
+      ws.send(JSON.stringify(payload))
+    }
+
     async function sendBrowserScreenshot(ws: WebSocket, tab: BrowserTab, reason: string) {
       try {
         const shot = await tab.screenshot()
-        ws.send(
-          JSON.stringify({
-            type: "screenshot",
-            tabId: tab.id,
-            dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
-            width: shot.width,
-            height: shot.height,
-          }),
-        )
+        s(ws, {
+          type: "screenshot",
+          tabId: tab.id,
+          dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
+          width: shot.width,
+          height: shot.height,
+        })
       } catch (e: any) {
         log.warn("browser screenshot failed", { reason, error: e?.message ?? String(e) })
-        ws.send(JSON.stringify({ type: "error", message: "Screenshot failed" }))
+        s(ws, { type: "error", message: "Screenshot failed" })
       }
     }
 
@@ -76,18 +78,16 @@ export const BrowserRoute = new Hono().get(
       onOpen: async (_event, ws) => {
         try {
           await BrowserRuntime.ensure()
-          const session = (await BrowserRuntime.getOrCreateSession(owner)) as BrowserSession
+          const session = await BrowserRuntime.getOrCreateSession(owner)
           const tabs = session.tabs.map((t) => ({ id: t.id, url: t.url, title: t.title }))
-          ws.send(
-            JSON.stringify({
-              type: "session.state",
-              tabs,
-              activeTabId: session.activeTab?.id ?? null,
-            }),
-          )
+          s(ws, {
+            type: "session.state",
+            tabs,
+            activeTabId: session.activeTab?.id ?? null,
+          })
         } catch (e: any) {
           log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
-          ws.send(JSON.stringify({ type: "error", message: e?.message ?? "Failed to open browser session" }))
+          s(ws, { type: "error", message: e?.message ?? "Failed to open browser session" })
           ws.close(1011, "Failed to open browser session")
         }
       },
@@ -95,29 +95,28 @@ export const BrowserRoute = new Hono().get(
         let msg: any
         try {
           msg = JSON.parse(event.data as string)
-        } catch {
+        } catch (e) {
+          log.warn("browser WS invalid message", { error: String(e) })
           return
         }
 
         try {
-          const session = (await BrowserRuntime.getOrCreateSession(owner)) as BrowserSession
+          const session = await BrowserRuntime.getOrCreateSession(owner)
 
           switch (msg.type) {
             case "navigate": {
               const tab = session.activeTab
               if (!tab) {
-                ws.send(JSON.stringify({ type: "error", message: "No active tab" }))
+                s(ws, { type: "error", message: "No active tab" })
                 return
               }
               await tab.navigate(msg.url)
-              ws.send(
-                JSON.stringify({
-                  type: "tab.navigated",
-                  tabId: tab.id,
-                  url: tab.url,
-                  title: tab.title,
-                }),
-              )
+              s(ws, {
+                type: "tab.navigated",
+                tabId: tab.id,
+                url: tab.url,
+                title: tab.title,
+              })
               await sendBrowserScreenshot(ws, tab, "navigate")
               break
             }
@@ -132,37 +131,41 @@ export const BrowserRoute = new Hono().get(
               const tab = session.activeTab
               if (!tab) break
               await tab.type(msg.text)
+              await sendBrowserScreenshot(ws, tab, "type")
               break
             }
             case "scroll": {
               const tab = session.activeTab
               if (!tab) break
               await tab.scroll(msg.deltaX ?? 0, msg.deltaY ?? 0)
+              await sendBrowserScreenshot(ws, tab, "scroll")
               break
             }
             case "createTab": {
               const tab = await session.createTab(msg.url)
-              ws.send(
-                JSON.stringify({
-                  type: "tab.created",
-                  tab: { id: tab.id, url: tab.url, title: tab.title },
-                  active: !session.activeTab || session.activeTab === tab,
-                }),
-              )
+              s(ws, {
+                type: "tab.created",
+                tab: { id: tab.id, url: tab.url, title: tab.title },
+                active: !session.activeTab || session.activeTab === tab,
+              })
               break
             }
             case "closeTab": {
               await session.closeTab(msg.tabId)
-              ws.send(JSON.stringify({ type: "tab.closed", tabId: msg.tabId }))
+              s(ws, { type: "tab.closed", tabId: msg.tabId })
               break
             }
             case "switchTab": {
               session.switchTab(msg.tabId)
+              if (session.activeTab) await sendBrowserScreenshot(ws, session.activeTab, "switchTab")
               break
             }
             case "reload": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
-              if (tab) await tab.reload()
+              if (tab) {
+                await tab.reload()
+                await sendBrowserScreenshot(ws, tab, "reload")
+              }
               break
             }
             case "requestScreenshot": {
@@ -175,39 +178,33 @@ export const BrowserRoute = new Hono().get(
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const snap = await tab.snapshot()
-              ws.send(
-                JSON.stringify({
-                  type: "snapshot",
-                  tabId: tab.id,
-                  elements: snap.elements,
-                }),
-              )
+              s(ws, {
+                type: "snapshot",
+                tabId: tab.id,
+                elements: snap.elements,
+              })
               break
             }
             case "requestConsole": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const entries = await tab.consoleEntries(msg.maxEntries ?? 50)
-              ws.send(
-                JSON.stringify({
-                  type: "console",
-                  tabId: tab.id,
-                  entries,
-                }),
-              )
+              s(ws, {
+                type: "console",
+                tabId: tab.id,
+                entries,
+              })
               break
             }
             case "requestNetwork": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const requests = await tab.networkRequests(msg.maxEntries ?? 20)
-              ws.send(
-                JSON.stringify({
-                  type: "network",
-                  tabId: tab.id,
-                  requests,
-                }),
-              )
+              s(ws, {
+                type: "network",
+                tabId: tab.id,
+                requests,
+              })
               break
             }
             case "createAnnotation": {
@@ -217,12 +214,10 @@ export const BrowserRoute = new Hono().get(
                 createdBy: "user",
                 tabID: msg.tabId,
               })
-              ws.send(
-                JSON.stringify({
-                  type: "annotation.created",
-                  annotation: ann,
-                }),
-              )
+              s(ws, {
+                type: "annotation.created",
+                annotation: ann,
+              })
               break
             }
             default:
@@ -230,7 +225,7 @@ export const BrowserRoute = new Hono().get(
           }
         } catch (e: any) {
           log.error("browser WS dispatch error", { error: e?.message ?? String(e) })
-          ws.send(JSON.stringify({ type: "error", message: e?.message ?? "Browser operation failed" }))
+          s(ws, { type: "error", message: e?.message ?? "Browser operation failed" })
         }
       },
       onClose(_event, _ws) {

@@ -21,12 +21,7 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: owner.scopeID,
-      directory: owner.directory,
-      sessionID: owner.sessionID,
-    }
-    const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.getTab(owner, params.tabId)
 
     const snapshot = await tab.snapshot()
     const text = formatSnapshotText(snapshot.elements, {

@@ -29,12 +29,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: owner.scopeID,
-      directory: owner.directory,
-      sessionID: owner.sessionID,
-    }
-    const session = await BrowserToolHelper.getOrCreateSession(helperCtx)
+    const session = await BrowserToolHelper.getOrCreateSession(owner)
 
     switch (params.action) {
       case "list": {
@@ -78,7 +73,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
         }
       }
       case "create": {
-        const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
+        const tab = await BrowserToolHelper.getTab(owner, params.tabId)
         const comment = params.comment
         if (!comment)
           return { title: "Missing comment", output: "The 'comment' field is required for create.", metadata: {} }

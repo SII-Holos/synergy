@@ -1,26 +1,11 @@
 import type { Tool } from "./tool"
-import { Instance } from "../scope/instance"
 
 import { BrowserRuntime } from "../browser/runtime"
-import type { BrowserSession } from "../browser/session"
+import type { BrowserSession } from "../browser/types.js"
 import type { BrowserTab } from "../browser/tab"
 import { BrowserOwner } from "../browser/owner"
 
 // ── Shared error classes ───────────────────────────────────────────────
-
-export class BrowserNotReadyError extends Error {
-  constructor(message = "Browser runtime is not ready") {
-    super(message)
-    this.name = "BrowserNotReadyError"
-  }
-}
-
-export class BrowserPolicyDeniedError extends Error {
-  constructor(reason: string) {
-    super(`Browser policy denied: ${reason}`)
-    this.name = "BrowserPolicyDeniedError"
-  }
-}
 
 export class BrowserTabNotFoundError extends Error {
   constructor(tabID?: string) {
@@ -29,41 +14,23 @@ export class BrowserTabNotFoundError extends Error {
   }
 }
 
-// ── Shared helper namespace ────────────────────────────────────────────
-
 export namespace BrowserToolHelper {
-  export interface Context {
-    scopeID: string
-    directory: string
-    sessionID?: string
-    browserSession?: BrowserSession
-  }
-
-  /** Resolve a BrowserSession from tool context. Creates one if needed. */
-  export async function getOrCreateSession(ctx: Context): Promise<BrowserSession> {
-    if (ctx.browserSession) return ctx.browserSession
-
-    const owner: BrowserOwner.Info = {
-      mode: ctx.sessionID ? "session" : "scope",
-      scopeID: ctx.scopeID,
-      directory: ctx.directory,
-      sessionID: ctx.sessionID,
-    }
-
-    return (await BrowserRuntime.getOrCreateSession(owner)) as unknown as BrowserSession
+  /** Resolve a BrowserSession from a BrowserOwner. Creates one if needed. */
+  export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
+    return BrowserRuntime.getOrCreateSession(owner)
   }
 
   /** Resolve the active tab, or throw BrowserTabNotFoundError. */
-  export async function getActiveTab(ctx: Context): Promise<BrowserTab> {
-    const session = await getOrCreateSession(ctx)
+  export async function getActiveTab(owner: BrowserOwner.Info): Promise<BrowserTab> {
+    const session = await getOrCreateSession(owner)
     const tab = session.activeTab
     if (!tab) throw new BrowserTabNotFoundError()
     return tab
   }
 
   /** Resolve a specific tab by ID, or active if no ID given. */
-  export async function getTab(ctx: Context, tabID?: string): Promise<BrowserTab> {
-    const session = await getOrCreateSession(ctx)
+  export async function getTab(owner: BrowserOwner.Info, tabID?: string): Promise<BrowserTab> {
+    const session = await getOrCreateSession(owner)
     if (tabID) {
       const tab = session.getTab(tabID)
       if (!tab) throw new BrowserTabNotFoundError(tabID)
@@ -74,15 +41,10 @@ export namespace BrowserToolHelper {
     return tab
   }
 
-  /** One-call convenience: ensure runtime, create context, resolve tab. */
+  /** One-call convenience: ensure runtime, derive owner, resolve tab. */
   export async function resolveTab(ctx: Tool.Context, tabId?: string): Promise<BrowserTab> {
     await BrowserRuntime.ensure()
-    const helperCtx: Context = {
-      scopeID: Instance.scope.id,
-      directory: Instance.directory,
-      sessionID: ctx.sessionID,
-    }
-    return getTab(helperCtx, tabId)
+    return getTab(BrowserOwner.fromToolContext(ctx), tabId)
   }
 }
 
