@@ -440,6 +440,23 @@ export const PluginManifest = z
         update: z.string().optional(),
       })
       .optional(),
+
+    // Runtime preferences
+    runtime: z
+      .object({
+        mode: z.enum(["in-process", "worker", "process"]).optional(),
+        minRuntimeApiVersion: z.string().optional(),
+        resources: z
+          .object({
+            memoryMb: z.number().positive().optional(),
+            startupTimeoutMs: z.number().positive().optional(),
+            requestTimeoutMs: z.number().positive().optional(),
+            maxConcurrentRequests: z.number().positive().optional(),
+            maxLogBytesPerMinute: z.number().positive().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .strict()
 

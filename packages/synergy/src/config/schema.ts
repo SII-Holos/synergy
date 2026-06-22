@@ -970,6 +970,35 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
+export const PluginApprovalPolicy = z
+  .object({
+    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
+    autoApproveBuiltin: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Auto-approve builtin plugins without user consent"),
+    denyHighRiskThirdParty: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Block third-party plugins with high-risk capabilities"),
+    requireSignatureForMarketplace: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Require cryptographic signature for non-local plugins"),
+  })
+  .strict()
+  .meta({ ref: "PluginApprovalPolicyConfig" })
+export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
+
+export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
+  allowUnsignedLocal: true,
+  autoApproveBuiltin: true,
+  denyHighRiskThirdParty: true,
+  requireSignatureForMarketplace: false,
+} as const satisfies Required<PluginApprovalPolicy>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1035,6 +1064,7 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
+    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
     snapshot: z.boolean().optional(),
     autoupdate: z
       .union([z.boolean(), z.literal("notify")])

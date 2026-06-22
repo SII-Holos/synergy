@@ -6,6 +6,12 @@ import {
   type HookDescriptor,
 } from "@ericsanchezok/synergy-plugin/hooks"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginRuntimeCommand } from "./plugin-runtime"
+import { PluginTestCommand } from "./plugin-test"
+import { PluginPublishCommand } from "./plugin-publish"
+import { PluginInfoCommand } from "./plugin-info"
+import { PluginPermissionsCommand } from "./plugin-permissions"
+import { PluginApproveCommand } from "./plugin-approve"
 import { PluginBuildCommand } from "./plugin-build"
 import { PluginPackCommand } from "./plugin-pack"
 import { PluginValidateCommand } from "./plugin-validate"
@@ -26,6 +32,16 @@ import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
 import { read as readManifestFile } from "../../plugin/manifest-reader"
+import { BunProc } from "../../util/bun"
+import { findPackageRoot } from "../../plugin/loader"
+import { diffPermissions } from "../../plugin/consent/diff"
+import { baseCapabilities } from "../../plugin/capability"
+import { computeRisk } from "../../plugin/consent/risk"
+import { saveApproval, computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
+import * as Lockfile from "../../plugin/lockfile"
+import { Global } from "../../global"
+import type { PluginSource } from "../../plugin/trust"
+import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -261,10 +277,16 @@ export const PluginUpdateCommand = cmd({
   command: "update [id]",
   describe: "update plugins to their latest version",
   builder: (yargs: Argv) =>
-    yargs.positional("id", {
-      type: "string",
-      describe: "plugin id to update (omit to update all)",
-    }),
+    yargs
+      .positional("id", {
+        type: "string",
+        describe: "plugin id to update (omit to update all)",
+      })
+      .option("auto-approve", {
+        type: "boolean",
+        describe: "auto-approve permission changes without prompting (low-security convenience)",
+        default: false,
+      }),
   async handler(args) {
     await Instance.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
@@ -277,6 +299,9 @@ export const PluginUpdateCommand = cmd({
           return
         }
 
+        const autoApprove = args["auto-approve"] as boolean
+        const isInteractive = interactive()
+
         // Determine which specs to update
         let specsToUpdate: { spec: string; id: string }[] = []
 
@@ -287,7 +312,6 @@ export const PluginUpdateCommand = cmd({
             UI.error(`Plugin not found: ${targetId}`)
             return
           }
-          // Find the config spec matching this plugin
           const matchedSpec = await findConfigSpec(targetPlugin.pluginDir, configSpecs)
           if (!matchedSpec) {
             UI.error(`Could not find config entry for plugin "${targetId}". Update the spec manually in synergy.jsonc.`)
@@ -295,7 +319,6 @@ export const PluginUpdateCommand = cmd({
           }
           specsToUpdate.push({ spec: matchedSpec, id: targetId })
         } else {
-          // Update all — find loaded plugin for each config spec
           for (const spec of configSpecs) {
             const plugin = await Plugin.lookupSpec(spec)
             if (plugin) {
@@ -309,13 +332,80 @@ export const PluginUpdateCommand = cmd({
           return
         }
 
+        // Resolve new manifests and compute consent diffs
+        let consented: { spec: string; id: string }[] = []
+
+        for (const { spec, id } of specsToUpdate) {
+          const oldPlugin = await Plugin.get(id)
+          const oldManifest = oldPlugin ? await Plugin.manifest(id) : null
+
+          // Fetch the new manifest
+          const resolved = await resolveNewManifest(spec)
+          const newManifest = resolved?.manifest ?? null
+
+          if (!newManifest) {
+            UI.error(`Could not resolve manifest for: ${spec}`)
+            continue
+          }
+
+          // Compute permission diff
+          const oldCaps = oldManifest ? baseCapabilities(oldManifest) : []
+          const newCaps = baseCapabilities(newManifest)
+          const diff = diffPermissions(id, oldManifest, newManifest, oldCaps, newCaps)
+
+          if (!diff.requiresApproval) {
+            consented.push({ spec, id })
+            continue
+          }
+
+          printDiff(diff)
+
+          if (autoApprove) {
+            consented.push({ spec, id })
+            continue
+          }
+
+          // Block in non-interactive mode
+          if (!isInteractive) {
+            UI.println(
+              `${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Permission changes require approval. Run interactively or use \`synergy plugin approve ${id}\`.${EOL}` +
+                `  Use ${UI.Style.TEXT_DIM}--auto-approve${UI.Style.TEXT_NORMAL} to skip prompts (low-security convenience).`,
+            )
+            continue
+          }
+
+          // Prompt for approval
+          const approved = await prompts.confirm({
+            message: `Approve permission changes for ${SpecToDisplay(spec)}?`,
+          })
+          if (approved === true) {
+            consented.push({ spec, id })
+          } else {
+            UI.println(UI.Style.TEXT_DIM + `Skipped ${SpecToDisplay(spec)}.${UI.Style.TEXT_NORMAL}`)
+          }
+        }
+
+        if (consented.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No updates to apply." + UI.Style.TEXT_NORMAL)
+          return
+        }
+
         let succeeded = 0
         let failed = 0
 
-        // Phase 1: remove all with autoReload: false
-        for (const { spec, id } of specsToUpdate) {
+        for (const { spec, id } of consented) {
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
+
+          // Save backup of current lockfile entry for rollback
+          let backupEntry: import("../../plugin/lockfile-schema").PluginLockEntry | null = null
+          try {
+            const { pkg } = PluginSpec.parse(spec)
+            const currentLockfile = await Lockfile.read()
+            backupEntry = currentLockfile.plugins[pkg] ?? null
+          } catch {
+            // No existing lockfile entry
+          }
 
           try {
             const plugin = await Plugin.get(id)
@@ -324,9 +414,30 @@ export const PluginUpdateCommand = cmd({
             await Plugin.remove(id, { autoReload: false })
             await Plugin.add(spec, { autoReload: false })
 
-            // Read new version after install
             const updatedPlugin = await Plugin.get(id)
             const newVersion = updatedPlugin ? readPkgVersion(updatedPlugin.pluginDir) : undefined
+
+            // Write new approval record
+            const updatedManifest = updatedPlugin ? await Plugin.manifest(id) : null
+            if (updatedManifest) {
+              const caps = baseCapabilities(updatedManifest)
+              const source = updatedPlugin ? derivePluginSource(updatedPlugin.pluginDir) : "local"
+              const risk = computeRisk(caps, updatedManifest)
+              await saveApproval({
+                pluginId: id,
+                source,
+                version: updatedManifest.version ?? "0.0.0",
+                manifestHash: computeManifestHash(updatedManifest),
+                permissionsHash: computePermissionsHash(updatedManifest, caps),
+                approvedAt: Date.now(),
+                approvedBy: "user",
+                trustTier: "trusted-import",
+                approvedCapabilities: caps,
+                approvedNetworkDomains: updatedManifest.permissions?.network?.connectDomains ?? [],
+                approvedUISurfaces: [],
+                risk,
+              })
+            }
 
             const versionInfo =
               oldVersion && newVersion
@@ -339,6 +450,23 @@ export const PluginUpdateCommand = cmd({
             const message = e instanceof Error ? e.message : String(e)
             spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}`)
             UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
+
+            // Rollback: restore old lockfile entry and re-install old version
+            if (backupEntry) {
+              try {
+                const { pkg } = PluginSpec.parse(spec)
+                const currentLockfile = await Lockfile.read()
+                const restoredLockfile = Lockfile.addEntry(currentLockfile, pkg, backupEntry)
+                await Lockfile.write(restoredLockfile)
+                UI.println(
+                  `  ${UI.Style.TEXT_WARNING}↩${UI.Style.TEXT_NORMAL} Rolled back lockfile for ${SpecToDisplay(spec)}`,
+                )
+              } catch {
+                UI.println(
+                  `  ${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Could not roll back lockfile for ${SpecToDisplay(spec)}`,
+                )
+              }
+            }
             failed++
           }
         }
@@ -526,6 +654,106 @@ export const PluginSearchCommand = cmd({
 // Helpers (dependency)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Consent gate helpers
+// ---------------------------------------------------------------------------
+
+function derivePluginSource(pluginDir: string): PluginSource {
+  const cacheRoot = Global.Path.cache
+  const relative = path.relative(cacheRoot, pluginDir)
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return "local"
+  }
+  return "npm"
+}
+
+function severityColor(severity: string): string {
+  switch (severity) {
+    case "high":
+      return UI.Style.TEXT_DANGER
+    case "medium":
+      return UI.Style.TEXT_WARNING
+    default:
+      return UI.Style.TEXT_DIM
+  }
+}
+
+function severityLabel(severity: string): string {
+  return `${severityColor(severity)}${severity}${UI.Style.TEXT_NORMAL}`
+}
+
+function printDiff(diff: PluginPermissionDiff) {
+  UI.println()
+  UI.println(
+    `${UI.Style.TEXT_NORMAL_BOLD}Permission changes:${UI.Style.TEXT_NORMAL} ${diff.fromVersion ?? "none"} → ${diff.toVersion}`,
+  )
+
+  if (diff.riskBefore || diff.riskAfter) {
+    const before = diff.riskBefore ? severityLabel(diff.riskBefore) : "—"
+    const after = diff.riskAfter ? severityLabel(diff.riskAfter) : "—"
+    UI.println(`  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${before} → ${after}`)
+  }
+
+  if (diff.added.length > 0) {
+    UI.println(`  ${severityColor("high")}Added:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.added) {
+      UI.println(
+        `    ${severityLabel(item.severity)} ${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`,
+      )
+    }
+  }
+
+  if (diff.removed.length > 0) {
+    UI.println(`  ${severityColor("low")}Removed:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.removed) {
+      UI.println(`    ${item.title}`)
+    }
+  }
+
+  if (diff.unchanged.length > 0) {
+    UI.println(`  ${UI.Style.TEXT_SUCCESS}Unchanged:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.unchanged) {
+      UI.println(`    ${severityLabel(item.severity)} ${item.title}`)
+    }
+  }
+
+  if (diff.changed.length > 0) {
+    UI.println(`  ${UI.Style.TEXT_INFO}Changed severity:${UI.Style.TEXT_NORMAL}`)
+    for (const c of diff.changed) {
+      const before = severityLabel(c.before ?? "none")
+      const after = severityLabel(c.after ?? "none")
+      UI.println(`    ${c.key}: ${before} → ${after}`)
+    }
+  }
+
+  UI.println()
+}
+
+/**
+ * Resolve a new plugin manifest from a spec string by installing it to the
+ * cache and reading plugin.json. Returns the manifest, the installed pluginDir,
+ * and the resolved package/version.
+ */
+async function resolveNewManifest(spec: string): Promise<{
+  manifest: PluginManifest | null
+  pluginDir: string
+  pkg: string
+  version: string
+} | null> {
+  const { pkg, version } = PluginSpec.parse(spec)
+  try {
+    const result = await BunProc.install(pkg, version)
+    const pluginDir = findPackageRoot(result.entryPath)
+    const manifest = await readManifest(pluginDir)
+    return { manifest, pluginDir, pkg, version }
+  } catch {
+    return null
+  }
+}
+
+function interactive(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY)
+}
 function SpecToDisplay(spec: string): string {
   return PluginSpec.displayName(spec)
 }
@@ -559,6 +787,12 @@ export const PluginCommand = cmd({
       .command(PluginSearchCommand)
       .command(PluginValidateCommand)
       .command(PluginDevCommand)
+      .command(PluginRuntimeCommand)
+      .command(PluginTestCommand)
+      .command(PluginPublishCommand)
+      .command(PluginInfoCommand)
+      .command(PluginPermissionsCommand)
+      .command(PluginApproveCommand)
       .demandCommand(),
   async handler() {},
 })

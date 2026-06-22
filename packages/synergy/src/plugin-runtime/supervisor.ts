@@ -1,8 +1,17 @@
 import { Log } from "@/util/log"
+import { recordEvent } from "../plugin/audit.js"
+import { Worker } from "node:worker_threads"
 import type { PluginToHost, IsolatedPluginInputData } from "./protocol.js"
-import { spawnPluginProcess } from "./process-host.js"
+import { spawnPluginProcess, type HostBridgeHandler } from "./process-host.js"
 import { startHeartbeatMonitor, enforceStartupTimeout, DEFAULT_LIMITS } from "./health.js"
+import { ConcurrencyLimiter, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
+import { readRuntimeState } from "./state-persist.js"
+import { writeRuntimeState } from "./state-persist.js"
+import { createBridgeEnforcementHandler } from "./bridge-enforcement.js"
+import { getApproval } from "../plugin/consent/approval-store.js"
 
+import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import * as ManifestReader from "../plugin/manifest-reader"
 const log = Log.create({ service: "plugin-runtime.supervisor" })
 
 // === Types ===
@@ -22,6 +31,10 @@ export interface RuntimeEntry {
   startedAt?: number
   lastError?: string
   process?: Bun.Subprocess
+  worker?: Worker
+  concurrencyLimiter?: ConcurrencyLimiter
+  memoryMonitor?: { stop: () => void }
+  logRateLimiter?: LogRateLimiter
 }
 
 // === Heartbeat monitors ===
@@ -37,6 +50,9 @@ function stopHeartbeatMonitor(pluginId: string): void {
 }
 // === Registry ===
 
+function saveState(): void {
+  void writeRuntimeState(Array.from(runtimeRegistry.values()))
+}
 const runtimeRegistry = new Map<string, RuntimeEntry>()
 
 export function getRuntime(pluginId: string): RuntimeEntry | undefined {
@@ -51,6 +67,26 @@ export function getRuntimeState(pluginId: string): RuntimeState {
   return runtimeRegistry.get(pluginId)?.state ?? "stopped"
 }
 
+export async function restoreRuntimeState(): Promise<void> {
+  const savedState = await readRuntimeState()
+  for (const persisted of savedState) {
+    const entry: RuntimeEntry = {
+      pluginId: persisted.pluginId,
+      mode: persisted.mode as RuntimeMode,
+      pid: persisted.pid,
+      state: persisted.state,
+      restarts: persisted.restarts,
+      lastHeartbeatAt: persisted.lastHeartbeatAt,
+      startedAt: persisted.startedAt,
+      lastError: persisted.lastError,
+    }
+    runtimeRegistry.set(persisted.pluginId, entry)
+  }
+  if (savedState.length > 0) {
+    log.info("restored runtime state", { count: savedState.length })
+  }
+}
+
 // === Lifecycle ===
 
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000
@@ -58,7 +94,7 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000
 export async function startRuntime(
   pluginId: string,
   options: {
-    mode: RuntimeMode
+    mode?: RuntimeMode
     entryPath: string
     pluginDir: string
     scope?: import("../scope/types.js").Info
@@ -79,27 +115,130 @@ export async function startRuntime(
         ? existing.restarts
         : 0
 
+  // Read manifest for runtime preferences (mode, resources)
+  let manifest: PluginManifestType | null = null
+  try {
+    manifest = await ManifestReader.read(options.pluginDir)
+  } catch {
+    // Manifest may be missing or invalid; fall through with defaults
+  }
+
+  // Resolve runtime mode: caller wins, then manifest, then default
+  const resolvedMode: RuntimeMode = options.mode ?? manifest?.runtime?.mode ?? "in-process"
+
+  // Resolve resource limits: manifest resources overlay DEFAULT_LIMITS
+  const manifestResources = manifest?.runtime?.resources
+  const resolvedStartupTimeoutMs = manifestResources?.startupTimeoutMs ?? DEFAULT_LIMITS.STARTUP_TIMEOUT_MS
+
   const entry: RuntimeEntry = {
     pluginId,
-    mode: options.mode,
+    mode: resolvedMode,
     state: "starting",
     restarts,
     startedAt: Date.now(),
   }
-
   runtimeRegistry.set(pluginId, entry)
 
-  if (options.mode === "in-process") {
+  if (resolvedMode === "in-process") {
     log.info("plugin registered in-process", { pluginId })
     entry.state = "ready"
+    saveState()
+
+    // Audit: runtime started
+    void recordEvent({ pluginId: entry.pluginId, type: "runtime_started", details: { mode: resolvedMode } })
     return entry
   }
 
-  if (options.mode === "worker") {
-    log.error("worker mode not yet implemented", { pluginId })
-    entry.state = "crashed"
-    entry.lastError = "worker mode not yet implemented"
-    return entry
+  if (resolvedMode === "worker") {
+    // worker mode — spawn a node:worker_threads Worker for plugin isolation
+    try {
+      const scope =
+        options.scope ??
+        ({
+          id: "global",
+          type: "global" as const,
+          directory: options.pluginDir,
+          worktree: options.pluginDir,
+          time: { created: 0, updated: 0 },
+          sandboxes: [],
+        } as IsolatedPluginInputData["scope"])
+      const serverUrl = options.serverUrl ?? "http://localhost:3000"
+
+      const input: IsolatedPluginInputData = {
+        pluginId,
+        pluginDir: options.pluginDir,
+        directory: scope.directory,
+        scope,
+        serverUrl,
+      }
+
+      const worker = new Worker(options.entryPath, {
+        workerData: input,
+      })
+
+      entry.worker = worker
+      entry.pid = worker.threadId
+
+      worker.on("message", (msg: PluginToHost) => {
+        if (msg.type === "heartbeat") {
+          entry.lastHeartbeatAt = Date.now()
+        }
+        if (msg.type === "ready") {
+          entry.state = "ready"
+          log.info("plugin ready", { pluginId })
+        }
+      })
+
+      worker.on("error", (err: Error) => {
+        log.error("worker error", { pluginId, error: err.message })
+        entry.state = "crashed"
+        entry.lastError = err.message
+        saveState()
+        // Audit: runtime crashed
+        void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "worker_error", error: err.message } })
+      })
+
+      worker.on("exit", () => {
+        if (entry.state !== "stopped") {
+          entry.state = "stopped"
+          entry.worker = undefined
+          entry.pid = undefined
+          saveState()
+        }
+      })
+
+      // Startup timeout enforcement
+      enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
+        log.error("startup timeout", { pluginId: timedOutPluginId })
+        const e = runtimeRegistry.get(timedOutPluginId)
+        if (e && e.state === "starting") {
+          e.state = "crashed"
+          e.lastError = "Startup timeout"
+          forceStop(e)
+          saveState()
+          // Audit: runtime crashed
+          void recordEvent({
+            pluginId: timedOutPluginId,
+            type: "runtime_crashed",
+            details: { reason: "startup_timeout" },
+          })
+        }
+      })
+
+      log.info("plugin worker spawned", { pluginId, threadId: worker.threadId })
+
+      // Audit: runtime started
+      void recordEvent({ pluginId, type: "runtime_started", details: { mode: resolvedMode } })
+      return entry
+    } catch (err: any) {
+      log.error("failed to spawn plugin worker", { pluginId, error: err.message })
+      entry.state = "crashed"
+      entry.lastError = `Worker spawn failed: ${err.message}`
+      saveState()
+      // Audit: runtime crashed
+      void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "spawn_failed", error: err.message } })
+      return entry
+    }
   }
 
   // process mode — Fix 3: spawn real process via spawnPluginProcess
@@ -123,13 +262,27 @@ export async function startRuntime(
       scope,
       serverUrl,
     }
+    // Resolve approved capabilities and create bridge enforcement handler
+    const approval = await getApproval(pluginId)
+    const approvedCapabilities = approval?.approvedCapabilities ?? []
+    const enforcer = createBridgeEnforcementHandler(pluginId, approvedCapabilities)
+    const enforcementHandler: HostBridgeHandler = async (_requestId, method, params) => {
+      const result = enforcer(method, params)
+      if (!result.allowed) {
+        // Audit: capability denied
+        void recordEvent({ pluginId, type: "capability_denied", details: { method, reason: result.reason } })
+        throw new Error(result.reason ?? "Bridge request denied by enforcement")
+      }
+      // Bridge method execution will be wired by the plugin runtime system
+      return undefined
+    }
 
     const spawned = await spawnPluginProcess({
       pluginId,
       pluginDir: options.pluginDir,
       entryPath: options.entryPath,
       input,
-      hostBridgeHandler: undefined, // will be wired by the plugin runtime system
+      hostBridgeHandler: enforcementHandler,
     })
 
     entry.process = spawned.process
@@ -154,27 +307,72 @@ export async function startRuntime(
       if (e) {
         e.state = "unhealthy"
         e.lastError = `Missed ${missCount} heartbeats`
+        saveState()
+        if (missCount >= DEFAULT_LIMITS.HEARTBEAT_MISSES_BEFORE_KILL) {
+          log.error("killing plugin after heartbeat misses exceeded limit", {
+            pluginId: missedPluginId,
+            missCount,
+            limit: DEFAULT_LIMITS.HEARTBEAT_MISSES_BEFORE_KILL,
+          })
+          killRuntime(missedPluginId)
+        }
       }
     })
     heartbeatMonitors.set(pluginId, monitor)
 
     // Startup timeout enforcement
-    enforceStartupTimeout(pluginId, entry.startedAt!, DEFAULT_LIMITS.STARTUP_TIMEOUT_MS, (timedOutPluginId) => {
+    enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
       log.error("startup timeout", { pluginId: timedOutPluginId })
       const e = runtimeRegistry.get(timedOutPluginId)
       if (e && e.state === "starting") {
         e.state = "crashed"
         e.lastError = "Startup timeout"
         forceStop(e)
+        saveState()
+        // Audit: runtime crashed
+        void recordEvent({
+          pluginId: timedOutPluginId,
+          type: "runtime_crashed",
+          details: { reason: "startup_timeout" },
+        })
       }
     })
 
     log.info("plugin process spawned", { pluginId, pid: entry.pid })
+
+    // Resource limits
+    const concurrency = new ConcurrencyLimiter(DEFAULT_LIMITS.CONCURRENT_REQUESTS)
+    entry.concurrencyLimiter = concurrency
+
+    const memoryMonitor = startMemoryMonitor(
+      pluginId,
+      entry.pid!,
+      DEFAULT_LIMITS.MEMORY_MB,
+      10_000,
+      (exceededPluginId, currentMb, maxMb) => {
+        log.warn(`Plugin ${exceededPluginId} memory exceeded: ${currentMb}MB / ${maxMb}MB — killing`, {
+          pluginId: exceededPluginId,
+          currentMb,
+          maxMb,
+        })
+        killRuntime(exceededPluginId)
+      },
+    )
+    entry.memoryMonitor = memoryMonitor
+
+    const logLimiter = new LogRateLimiter(DEFAULT_LIMITS.MAX_LOG_BYTES_PER_MINUTE)
+    entry.logRateLimiter = logLimiter
+
+    // Audit: runtime started
+    void recordEvent({ pluginId, type: "runtime_started", details: { mode: resolvedMode, pid: entry.pid } })
     return entry
   } catch (err: any) {
     log.error("failed to spawn plugin process", { pluginId, error: err.message })
     entry.state = "crashed"
     entry.lastError = `Spawn failed: ${err.message}`
+    saveState()
+    // Audit: runtime crashed
+    void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "spawn_failed", error: err.message } })
     return entry
   }
 }
@@ -189,8 +387,12 @@ export async function stopRuntime(pluginId: string, graceful: boolean): Promise<
   if (entry.state === "stopped") return
 
   stopHeartbeatMonitor(pluginId)
+  entry.memoryMonitor?.stop()
 
-  if (graceful && entry.process) {
+  if (entry.worker) {
+    // Workers use terminate() — no graceful shutdown protocol yet
+    forceStop(entry)
+  } else if (graceful && entry.process) {
     log.info("sending shutdown to plugin", { pluginId })
     // TODO: Send "shutdown" message over IPC
     const timeout = setTimeout(() => {
@@ -211,12 +413,22 @@ export async function stopRuntime(pluginId: string, graceful: boolean): Promise<
 
   entry.state = "stopped"
   entry.process = undefined
+  entry.worker = undefined
   entry.pid = undefined
   runtimeRegistry.set(pluginId, entry)
+  saveState()
   log.info("plugin stopped", { pluginId })
 }
 
 function forceStop(entry: RuntimeEntry): void {
+  if (entry.worker) {
+    try {
+      entry.worker.terminate()
+    } catch {
+      // Worker may already be dead
+    }
+    entry.worker = undefined
+  }
   if (entry.process) {
     try {
       entry.process.kill("SIGKILL")
@@ -252,10 +464,16 @@ export async function killRuntime(pluginId: string): Promise<void> {
 
   if (entry.state === "stopped") return
 
+  stopHeartbeatMonitor(pluginId)
+  entry.memoryMonitor?.stop()
   forceStop(entry)
   entry.state = "stopped"
   entry.process = undefined
+  entry.worker = undefined
   entry.pid = undefined
   runtimeRegistry.set(pluginId, entry)
+  saveState()
+  // Audit: runtime killed
+  void recordEvent({ pluginId, type: "runtime_killed", details: { reason: "explicit_kill" } })
   log.info("plugin killed", { pluginId })
 }

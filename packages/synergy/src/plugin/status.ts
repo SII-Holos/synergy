@@ -12,6 +12,8 @@ import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
 import { getRuntime } from "../plugin-runtime/supervisor"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
+import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
+import { baseCapabilities } from "./capability"
 
 // ---------------------------------------------------------------------------
 // Comprehensive status — returned by GET /plugin/:id/status
@@ -145,28 +147,31 @@ function deriveSource(pluginDir: string): PluginSource {
 function isDevMode(): boolean {
   return Installation.CHANNEL === "local"
 }
-
-/** Resolve integrity status from the lockfile by finding the entry whose resolved path is under pluginDir. */
-async function resolveIntegrity(pluginDir: string): Promise<"verified" | "unverified" | "failed"> {
+/** Find the lockfile entry whose resolved path is under pluginDir. */
+async function findLockfileEntry(pluginDir: string): Promise<import("./lockfile-schema").PluginLockEntry | null> {
   try {
     const lockfile = await readLockfile()
-    // Lockfile entries are keyed by npm package name, not pluginId.
-    // Find the entry whose resolved entry path lives inside the pluginDir.
     for (const entry of Object.values(lockfile.plugins)) {
       const resolved = path.resolve(entry.resolved)
       const relative = path.relative(pluginDir, resolved)
       if (relative === "" || relative.startsWith("..") === false) {
-        if (!entry.integrity) return "unverified"
-        const ok = await checkIntegrity(entry)
-        return ok ? "verified" : "failed"
+        return entry
       }
     }
-    return "unverified"
+    return null
   } catch {
-    return "unverified"
+    return null
   }
 }
 
+/** Resolve integrity status from the lockfile by finding the entry whose resolved path is under pluginDir. */
+async function resolveIntegrity(pluginDir: string): Promise<"verified" | "unverified" | "failed"> {
+  const entry = await findLockfileEntry(pluginDir)
+  if (!entry) return "unverified"
+  if (!entry.integrity) return "unverified"
+  const ok = await checkIntegrity(entry)
+  return ok ? "verified" : "failed"
+}
 /** Derive secrets store type from presence of auth.json. */
 async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintext" | "keychain"> {
   const home = process.env.HOME || process.env.USERPROFILE || "~"
@@ -301,6 +306,26 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
         lastError: runtimeEntry.lastError,
       }
     : undefined
+
+  // ── Hash consistency warnings ──
+  const lockfileEntry = await findLockfileEntry(plugin.pluginDir)
+  if (lockfileEntry && manifest) {
+    const capabilities = baseCapabilities(manifest)
+    const currentPermissionsHash = computePermissionsHash(manifest, capabilities)
+    const currentManifestHash = computeManifestHash(manifest)
+    if (lockfileEntry.permissionsHash && lockfileEntry.permissionsHash !== currentPermissionsHash) {
+      warnings.push({
+        type: "hash_mismatch",
+        message: "Permissions have changed since install — re-approval may be required.",
+      })
+    }
+    if (lockfileEntry.manifestHash && lockfileEntry.manifestHash !== currentManifestHash) {
+      warnings.push({
+        type: "hash_mismatch",
+        message: "Manifest has changed since install.",
+      })
+    }
+  }
 
   // ── Assemble warnings ──
   for (const w of capabilityResult.warnings) {

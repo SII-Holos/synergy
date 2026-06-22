@@ -6,6 +6,7 @@ import { Instance } from "../scope/instance"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import * as ManifestReader from "./manifest-reader"
 import { state, getPlugin, incrementReloadVersion } from "./loader"
+import { restoreRuntimeState } from "../plugin-runtime/supervisor.js"
 import { PluginToolId } from "./ids"
 
 const log = Log.create({ service: "plugin.lifecycle" })
@@ -95,8 +96,10 @@ export async function reload() {
 }
 
 export async function init() {
-  const loaded = await state().then((x) => x.loaded)
+  await restoreRuntimeState()
   const config = await Config.get()
+
+  const loaded = await state().then((x) => x.loaded)
   for (const { id, hooks } of loaded) {
     await hooks.config?.(config)
     const m = await manifest(id)

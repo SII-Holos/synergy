@@ -23,6 +23,7 @@ export {
   stopRuntime,
   reloadRuntime,
   killRuntime,
+  restoreRuntimeState,
 } from "./supervisor.js"
 
 // Process host

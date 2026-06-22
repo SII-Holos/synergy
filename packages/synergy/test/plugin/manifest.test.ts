@@ -103,6 +103,53 @@ describe("PluginManifest schema", () => {
     expect(result.success).toBe(true)
   })
 
+  test("runtime field with mode and resources passes", () => {
+    const result = PluginManifest.safeParse({
+      name: "runtime-plugin",
+      version: "1.0.0",
+      description: "A plugin with runtime preferences",
+      runtime: {
+        mode: "process",
+        minRuntimeApiVersion: "1.0.0",
+        resources: {
+          memoryMb: 512,
+          startupTimeoutMs: 10000,
+          requestTimeoutMs: 60000,
+          maxConcurrentRequests: 16,
+          maxLogBytesPerMinute: 256000,
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.runtime?.mode).toBe("process")
+      expect(result.data.runtime?.resources?.memoryMb).toBe(512)
+      expect(result.data.runtime?.resources?.startupTimeoutMs).toBe(10000)
+    }
+  })
+
+  test("runtime field omitted (backward compatible)", () => {
+    const result = PluginManifest.safeParse({
+      name: "old-plugin",
+      version: "1.0.0",
+      description: "No runtime field",
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.runtime).toBeUndefined()
+    }
+  })
+
+  test("runtime mode must be valid enum value", () => {
+    const result = PluginManifest.safeParse({
+      name: "bad-plugin",
+      version: "1.0.0",
+      description: "Invalid runtime mode",
+      runtime: { mode: "thread" },
+    })
+    expect(result.success).toBe(false)
+  })
+
   test("unknown extra fields are rejected (strict mode)", () => {
     const result = PluginManifest.safeParse({
       name: "my-plugin",

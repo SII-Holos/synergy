@@ -6,6 +6,7 @@ import type {
   HostBridgeMethod,
 } from "./protocol.js"
 import { MESSAGE_DELIMITER } from "./protocol.js"
+import { getRuntime } from "./supervisor.js"
 
 // ── Plugin process state ─────────────────────────────────────────
 
@@ -95,9 +96,26 @@ export async function spawnPluginProcess(options: {
         break
       }
       case "hostRequest": {
+        const runtimeEntry = getRuntime(pluginId)
+        if (runtimeEntry?.concurrencyLimiter && !runtimeEntry.concurrencyLimiter.acquire()) {
+          proc.send(
+            JSON.stringify({
+              type: "bridgeResponse",
+              requestId: msg.requestId,
+              ok: false,
+              error: {
+                name: "Error",
+                message: `Concurrency limit exceeded for plugin "${pluginId}"`,
+              },
+            } satisfies HostToPlugin) + MESSAGE_DELIMITER,
+          )
+          break
+        }
+        const onComplete = () => runtimeEntry?.concurrencyLimiter?.release()
         if (hostBridgeHandler) {
           hostBridgeHandler(msg.requestId, msg.method, msg.params)
             .then((value) => {
+              onComplete()
               proc.send(
                 JSON.stringify({
                   type: "bridgeResponse",
@@ -108,6 +126,7 @@ export async function spawnPluginProcess(options: {
               )
             })
             .catch((err: Error) => {
+              onComplete()
               proc.send(
                 JSON.stringify({
                   type: "bridgeResponse",
@@ -122,6 +141,7 @@ export async function spawnPluginProcess(options: {
               )
             })
         } else {
+          onComplete()
           // No bridge handler registered — reject with an error
           proc.send(
             JSON.stringify({
@@ -138,11 +158,14 @@ export async function spawnPluginProcess(options: {
         break
       }
       case "log": {
-        // Emit to plugin log stream — forwarded to the caller via onMessage
+        const entry = getRuntime(pluginId)
+        if (entry?.logRateLimiter && !entry.logRateLimiter.allow(msg.message.length)) return
         break
       }
       case "heartbeat": {
         pluginState.lastHeartbeat = Date.now()
+        const entry = getRuntime(pluginId)
+        if (entry) entry.lastHeartbeatAt = Date.now()
         break
       }
     }

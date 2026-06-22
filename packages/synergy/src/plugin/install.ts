@@ -1,4 +1,5 @@
 import type { LoadedPlugin } from "./loader"
+import { recordEvent } from "./audit.js"
 import path from "path"
 import z from "zod"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
@@ -10,6 +11,20 @@ import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
 import { findPackageRoot, resolveSpecPluginDir, state, specToPluginId } from "./loader"
 import { reload } from "./lifecycle"
+import { baseCapabilities } from "./capability"
+import { computeRisk } from "./consent/risk"
+import {
+  type PluginApprovalRecord,
+  computePermissionsHash,
+  computeManifestHash,
+  getApproval,
+  verifyApproval,
+  saveApproval,
+} from "./consent/approval-store"
+import { decideTrust, type PluginSource } from "./trust"
+import { evaluatePolicy } from "./consent/policy"
+import { type PluginApprovalPolicy, PLUGIN_APPROVAL_POLICY_DEFAULTS } from "../config/schema"
+import * as Signature from "./signature"
 
 const log = Log.create({ service: "plugin.install" })
 
@@ -30,84 +45,216 @@ function satisfiesMinVersion(current: string, required: string): boolean {
 // Add / remove
 // ---------------------------------------------------------------------------
 
-export async function add(spec: string, opts: { autoReload?: boolean } = {}): Promise<LoadedPlugin> {
+export async function add(
+  spec: string,
+  opts: { autoReload?: boolean; skipConsent?: boolean } = {},
+): Promise<LoadedPlugin> {
   const { pkg, version } = PluginSpec.parse(spec)
 
-  // Explicit installs should refresh cached registry/git packages.
-  await BunProc.invalidateCache(pkg)
+  // Audit: install requested
+  void recordEvent({ pluginId: spec, type: "install_requested", details: { spec, version } })
 
-  // Install the plugin package
-  const result = await BunProc.install(pkg, version)
-
-  // Read and validate plugin.json manifest if it exists
-  const pluginDir = findPackageRoot(result.entryPath)
-  const pluginJsonPath = path.join(pluginDir, "plugin.json")
-  let manifestData: z.infer<typeof PluginManifest> | null = null
   try {
-    const raw = await Bun.file(pluginJsonPath).text()
-    const parsed = JSON.parse(raw)
-    manifestData = PluginManifest.parse(parsed)
-    log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
+    // Explicit installs should refresh cached registry/git packages.
+    await BunProc.invalidateCache(pkg)
+
+    // Install the plugin package
+    const result = await BunProc.install(pkg, version)
+
+    // Read and validate plugin.json manifest if it exists
+    const pluginDir = findPackageRoot(result.entryPath)
+    const pluginJsonPath = path.join(pluginDir, "plugin.json")
+    let manifestData: z.infer<typeof PluginManifest> | null = null
+    try {
+      const raw = await Bun.file(pluginJsonPath).text()
+      const parsed = JSON.parse(raw)
+      manifestData = PluginManifest.parse(parsed)
+      log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
+    } catch (err) {
+      log.warn("no valid plugin.json found, skipping manifest check", { path: spec, err: String(err) })
+    }
+
+    // Check minSynergyVersion compatibility
+    if (manifestData?.minSynergyVersion && Installation.VERSION !== "local") {
+      const currentVersion = Installation.VERSION
+      if (!satisfiesMinVersion(currentVersion, manifestData.minSynergyVersion)) {
+        throw new Error(
+          `Plugin ${spec} requires Synergy >= ${manifestData.minSynergyVersion}, but current version is ${currentVersion}`,
+        )
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Signature: read signature file (verify later when hashes are available)
+    // -----------------------------------------------------------------------
+    let sigMeta: Signature.SignatureMetadata | null = null
+    if (!spec.startsWith("file://")) {
+      const sigPath = path.join(pluginDir, "plugin.sig")
+      sigMeta = Signature.readSignatureFile(sigPath)
+      if (sigMeta) {
+        log.info("plugin signature file found", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Consent gate: check risk and approval before installing dependencies
+    // -----------------------------------------------------------------------
+    let permissionsHash: string | undefined
+    let manifestHash: string | undefined
+    if (manifestData) {
+      const capabilities = baseCapabilities(manifestData)
+      const risk = computeRisk(capabilities, manifestData)
+      permissionsHash = computePermissionsHash(manifestData, capabilities)
+      manifestHash = computeManifestHash(manifestData)
+
+      // Verify signature against computed hashes
+      if (sigMeta && permissionsHash && manifestHash) {
+        const valid = await Signature.verifySignatureFromHashes(sigMeta, manifestHash, permissionsHash)
+        if (valid) {
+          log.info("plugin signature verified", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
+        } else {
+          log.warn("plugin signature verification failed", {
+            plugin: spec,
+            signer: sigMeta.signer.slice(0, 16) + "...",
+          })
+          sigMeta = null
+        }
+      }
+
+      // Derive plugin source from spec
+      const nonRegistry = PluginSpec.isNonRegistry(spec)
+      const isLocal = spec.startsWith("file://")
+      const source: PluginSource = isLocal ? "local" : nonRegistry ? "git" : "npm"
+      const devMode = Installation.CHANNEL === "local"
+      const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
+      const config = await Config.get()
+      const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
+
+      // Evaluate policy — may deny or auto-approve before consent
+      const decision = evaluatePolicy({
+        source,
+        verified: sigMeta != null,
+        risk,
+        runtimeMode: "in-process",
+        trustTier: trust.tier,
+        signed: sigMeta != null,
+        policy,
+      })
+
+      if (!decision.allowed) {
+        throw new Error(`Plugin ${spec} installation denied by policy: ${decision.reason}`)
+      }
+
+      const autoApprove =
+        decision.autoApproved ||
+        opts.skipConsent === true ||
+        (devMode && source === "local") ||
+        trust.tier === "trusted-import"
+
+      if (!autoApprove) {
+        // Check for existing approval
+        const existingApproval = await getApproval(pkg)
+        if (existingApproval && verifyApproval(existingApproval, manifestData, capabilities)) {
+          log.info("plugin consent: existing approval matches", { plugin: spec })
+        } else {
+          throw new Error(
+            `Plugin ${spec} requires approval before installation. ` +
+              `Use \`synergy plugin approve ${spec}\` or the consent API first.`,
+          )
+        }
+      }
+
+      // Write approval record
+      const approvedBy: PluginApprovalRecord["approvedBy"] =
+        opts.skipConsent === true
+          ? "policy"
+          : devMode && source === "local"
+            ? "policy"
+            : trust.tier === "trusted-import"
+              ? "builtin"
+              : "user"
+      await saveApproval({
+        pluginId: pkg,
+        source,
+        version,
+        manifestHash,
+        permissionsHash,
+        approvedAt: Date.now(),
+        approvedBy,
+        trustTier: trust.tier,
+        approvedCapabilities: capabilities,
+        approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
+        approvedUISurfaces: [],
+        risk,
+      })
+      log.info("plugin consent: approval recorded", { plugin: spec, risk, approvedBy })
+    }
+
+    // Install declared dependencies
+    if (manifestData?.dependencies && Object.keys(manifestData.dependencies).length > 0) {
+      for (const [depName, depVersion] of Object.entries(manifestData.dependencies)) {
+        await BunProc.install(depName, depVersion)
+        log.info("plugin dependency installed", { plugin: spec, dependency: depName, version: depVersion })
+      }
+    }
+
+    // Update lockfile with installed plugin entry (including integrity + consent hashes)
+    const lockfile = await Lockfile.read()
+    const integrity = await Lockfile.computeIntegrity(result.entryPath)
+    const runtimeMode: "in-process" | "worker" | "process" = "in-process"
+    const updatedLockfile = Lockfile.addEntry(lockfile, pkg, {
+      spec,
+      version,
+      resolved: result.entryPath,
+      ...(integrity ? { integrity } : {}),
+      ...(permissionsHash ? { permissionsHash } : {}),
+      ...(manifestHash ? { manifestHash } : {}),
+      ...(sigMeta ? { signature: Signature.toLockfileSignature(sigMeta) } : {}),
+      runtimeMode,
+      ...(manifestData ? { approvalId: pkg } : {}),
+    })
+    await Lockfile.write(updatedLockfile)
+
+    // Add to config.plugin[] array
+    const config = await Config.get()
+    const currentPlugins = config.plugin ?? []
+    if (!currentPlugins.includes(spec)) {
+      await Config.updateGlobal({ plugin: [...currentPlugins, spec] } as any)
+      await Config.reload("global")
+    }
+
+    // Reload plugins to load the new one
+    if (opts.autoReload !== false) {
+      await reload()
+    }
+
+    // Find the newly loaded plugin
+    const { loaded } = await state()
+    const plugin = loaded.find((p) => {
+      // Match by checking if any plugin in the same pluginDir has a matching spec
+      // For non-registry specs, match by the actual entry path
+      return p.pluginDir === pluginDir
+    })
+
+    if (!plugin) {
+      throw new Error(`Plugin was installed but failed to load: ${spec}`)
+    }
+
+    specToPluginId.set(spec, plugin.id)
+
+    // Audit: install approved
+    void recordEvent({ pluginId: plugin.id, type: "install_approved", details: { spec, version } })
+
+    return plugin
   } catch (err) {
-    log.warn("no valid plugin.json found, skipping manifest check", { path: spec, err: String(err) })
+    // Audit: install blocked
+    void recordEvent({
+      pluginId: spec,
+      type: "install_blocked",
+      details: { spec, version, error: err instanceof Error ? err.message : String(err) },
+    })
+    throw err
   }
-
-  // Check minSynergyVersion compatibility
-  if (manifestData?.minSynergyVersion && Installation.VERSION !== "local") {
-    const currentVersion = Installation.VERSION
-    if (!satisfiesMinVersion(currentVersion, manifestData.minSynergyVersion)) {
-      throw new Error(
-        `Plugin ${spec} requires Synergy >= ${manifestData.minSynergyVersion}, but current version is ${currentVersion}`,
-      )
-    }
-  }
-
-  // Install declared dependencies
-  if (manifestData?.dependencies && Object.keys(manifestData.dependencies).length > 0) {
-    for (const [depName, depVersion] of Object.entries(manifestData.dependencies)) {
-      await BunProc.install(depName, depVersion)
-      log.info("plugin dependency installed", { plugin: spec, dependency: depName, version: depVersion })
-    }
-  }
-
-  // Update lockfile with installed plugin entry (including integrity hash)
-  const lockfile = await Lockfile.read()
-  const integrity = await Lockfile.computeIntegrity(result.entryPath)
-  const updatedLockfile = Lockfile.addEntry(lockfile, pkg, {
-    spec,
-    version,
-    resolved: result.entryPath,
-    ...(integrity ? { integrity } : {}),
-  })
-  await Lockfile.write(updatedLockfile)
-
-  // Add to config.plugin[] array
-  const config = await Config.get()
-  const currentPlugins = config.plugin ?? []
-  if (!currentPlugins.includes(spec)) {
-    await Config.updateGlobal({ plugin: [...currentPlugins, spec] } as any)
-    await Config.reload("global")
-  }
-
-  // Reload plugins to load the new one
-  if (opts.autoReload !== false) {
-    await reload()
-  }
-
-  // Find the newly loaded plugin
-  const { loaded } = await state()
-  const plugin = loaded.find((p) => {
-    // Match by checking if any plugin in the same pluginDir has a matching spec
-    // For non-registry specs, match by the actual entry path
-    return p.pluginDir === pluginDir
-  })
-
-  if (!plugin) {
-    throw new Error(`Plugin was installed but failed to load: ${spec}`)
-  }
-
-  specToPluginId.set(spec, plugin.id)
-  return plugin
 }
 
 export async function remove(pluginId: string, opts: { autoReload?: boolean } = {}): Promise<void> {

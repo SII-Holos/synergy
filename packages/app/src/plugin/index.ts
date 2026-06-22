@@ -69,3 +69,10 @@ export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
 export { fetchUIContributions } from "./api"
+
+// Consent UI components
+export { PermissionDiffList, PermissionRiskBadge, TrustTierExplanation, InstallConsentDialog } from "./consent"
+export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff, TrustTier } from "./consent"
+
+// Marketplace components
+export { VerifiedBadge, MarketplacePage, PluginDetailPage } from "./marketplace"
