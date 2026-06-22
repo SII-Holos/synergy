@@ -1,0 +1,64 @@
+import type { NetworkRequest } from "./tab.js"
+
+export namespace BrowserAssets {
+  export interface PageAsset {
+    id: string
+    tabID: string
+    url: string
+    type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
+    mimeType?: string
+    status?: number
+    size?: number
+    initiator?: string
+  }
+
+  const MIME_TO_TYPE: [RegExp, PageAsset["type"]][] = [
+    [/^image\//, "image"],
+    [/^text\/javascript$/, "script"],
+    [/^application\/javascript$/, "script"],
+    [/^application\/x-javascript$/, "script"],
+    [/^text\/css$/, "stylesheet"],
+    [/^font\//, "font"],
+    [/^application\/font-/, "font"],
+    [/^video\//, "media"],
+    [/^audio\//, "media"],
+    [/^text\/html$/, "document"],
+    [/^application\/xhtml\+xml$/, "document"],
+    [/^application\/pdf$/, "document"],
+  ]
+
+  // ── classifyByMime ──────────────────────────────────────────────────
+
+  export function classifyByMime(mimeType: string): PageAsset["type"] {
+    const normalized = mimeType.trim().toLowerCase()
+    if (!normalized) return "other"
+    for (const [pattern, type] of MIME_TO_TYPE) {
+      if (pattern.test(normalized)) return type
+    }
+    return "other"
+  }
+
+  // ── fromNetworkBuffer ───────────────────────────────────────────────
+
+  export function fromNetworkBuffer(requests: NetworkRequest[], tabID: string): PageAsset[] {
+    return requests.map((req) => ({
+      id: req.requestId,
+      tabID,
+      url: req.url,
+      type: classifyByMime(req.mimeType ?? ""),
+      mimeType: req.mimeType,
+      status: req.status,
+      size: undefined,
+      initiator: undefined,
+    }))
+  }
+
+  // ── filterByType ────────────────────────────────────────────────────
+
+  export function filterByType(assets: PageAsset[], types: PageAsset["type"][]): PageAsset[] {
+    const typeSet = new Set(types)
+    return assets.filter((a) => typeSet.has(a.type))
+  }
+}
+
+export const { classifyByMime, fromNetworkBuffer, filterByType } = BrowserAssets
