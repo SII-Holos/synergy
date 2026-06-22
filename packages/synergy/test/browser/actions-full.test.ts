@@ -415,7 +415,7 @@ describe("validateAction covers all 12 browser actions", () => {
 
   for (const { name, input } of allActions) {
     test(`validateAction returns ok for valid ${name}`, () => {
-      expect(ActionNames).toContain(name)
+      expect(ActionNames as readonly string[]).toContain(name)
       const r = validateAction(input)
       if (!r.ok) {
         // If the action isn't in the schema yet, that's the RED signal

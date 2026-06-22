@@ -51,7 +51,7 @@ describe("BrowserActions", () => {
       "scroll",
     ]) {
       test(`"${name}" is a valid action name`, () => {
-        expect(ActionNames).toContain(name)
+        expect(ActionNames as readonly string[]).toContain(name)
       })
     }
 
