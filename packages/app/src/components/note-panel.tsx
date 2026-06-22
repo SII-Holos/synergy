@@ -93,32 +93,15 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () 
         </Show>
       </Show>
 
-      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
-        <div class="flex items-center gap-1.5">
+      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-2.5">
+        <div class="flex items-center justify-between">
           <Show when={props.note.pinned}>
             <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
               <Icon name="pin" size="small" class="size-3" />
             </span>
           </Show>
-          <span class="flex-1 line-clamp-1 text-12-medium leading-snug text-text-strong">
-            {props.note.title || "Untitled"}
-          </span>
+          <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
         </div>
-        <Show when={(props.note.tags ?? []).length > 0}>
-          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <For each={(props.note.tags ?? []).slice(0, 3)}>
-              {(tag) => (
-                <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-[10px] font-medium leading-none text-text-weak">
-                  {tag}
-                </span>
-              )}
-            </For>
-            <Show when={(props.note.tags ?? []).length > 3}>
-              <span class="text-10-medium text-text-weaker">+{(props.note.tags ?? []).length - 3}</span>
-            </Show>
-          </div>
-        </Show>
-        <span class="mt-2 block text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
       </div>
     </button>
   )
@@ -133,9 +116,8 @@ function NoteCardSkeleton() {
         <div class="h-2.5 w-3/4 rounded bg-surface-inset-base/70" />
         <div class="h-2.5 w-1/2 rounded bg-surface-inset-base/70" />
       </div>
-      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-3">
-        <div class="h-3 w-2/3 rounded bg-surface-inset-base/70" />
-        <div class="mt-3 h-2.5 w-1/3 rounded bg-surface-inset-base/70" />
+      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-2.5">
+        <div class="h-3 w-1/4 rounded bg-surface-inset-base/70" />
       </div>
     </div>
   )
