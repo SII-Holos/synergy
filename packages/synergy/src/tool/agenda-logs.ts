@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { AgendaStore } from "../agenda"
@@ -32,8 +33,8 @@ export const AgendaLogsTool = Tool.define("agenda_logs", {
       if (run.sessionID) parts.push(`  Session: ${run.sessionID}`)
       if (run.duration !== undefined) parts.push(`  Duration: ${run.duration}ms`)
       if (run.error) parts.push(`  Error: ${run.error}`)
-      parts.push(`  Started: ${new Date(run.time.started).toISOString()}`)
-      if (run.time.completed) parts.push(`  Completed: ${new Date(run.time.completed).toISOString()}`)
+      parts.push(`  Started: ${formatLocalDateTime(run.time.started)}`)
+      if (run.time.completed) parts.push(`  Completed: ${formatLocalDateTime(run.time.completed)}`)
       return parts.join("\n")
     })
 

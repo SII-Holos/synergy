@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
@@ -43,7 +44,7 @@ function formatScopeLabel(scope: Scope): string {
 function formatSessionEntry(session: Session.Info, extra?: string): string {
   const scope = session.scope as Scope
   const pinned = session.pinned ? " [pinned]" : ""
-  const updated = new Date(session.time.updated).toISOString()
+  const updated = formatLocalDateTime(session.time.updated)
   const parts = [`- [${session.id}] "${session.title}"${pinned} — updated ${updated}`]
   parts.push(`  Scope: ${formatScopeLabel(scope)}`)
   if (extra) parts.push(`  ${extra}`)

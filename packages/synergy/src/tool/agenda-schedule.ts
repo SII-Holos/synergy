@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
@@ -81,7 +82,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       `Title: ${item.title}`,
       `Schedule: ${formatTrigger(params.trigger)}`,
     ]
-    if (item.state.nextRunAt) lines.push(`Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
+    if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
     if (item.tags?.length) lines.push(`Tags: ${item.tags.join(", ")}`)
     if (item.global) lines.push(`Scope: global`)
     if (item.wake === false) lines.push(`Wake: disabled`)
@@ -114,7 +115,7 @@ function formatTrigger(t: AgendaTypes.ScheduleTrigger): string {
     case "every":
       return `every ${t.interval}`
     case "at":
-      return `at ${new Date(t.at).toISOString()}`
+      return `at ${formatLocalDateTime(t.at)}`
     case "delay":
       return `delay ${t.delay}`
   }

@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "../../util/time-format"
 import { cmd } from "./cmd"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -563,7 +564,7 @@ export const McpDebugCommand = cmd({
           if (entry.tokens.expiresAt) {
             const expiresDate = new Date(entry.tokens.expiresAt * 1000)
             const isExpired = entry.tokens.expiresAt < Date.now() / 1000
-            prompts.log.info(`  Expires: ${expiresDate.toISOString()} ${isExpired ? "(EXPIRED)" : ""}`)
+            prompts.log.info(`  Expires: ${formatLocalDateTime(expiresDate.getTime())} ${isExpired ? "(EXPIRED)" : ""}`)
           }
           if (entry.tokens.refreshToken) {
             prompts.log.info(`  Refresh token: present`)
@@ -573,7 +574,7 @@ export const McpDebugCommand = cmd({
           prompts.log.info(`  Client ID: ${entry.clientInfo.clientId}`)
           if (entry.clientInfo.clientSecretExpiresAt) {
             const expiresDate = new Date(entry.clientInfo.clientSecretExpiresAt * 1000)
-            prompts.log.info(`  Client secret expires: ${expiresDate.toISOString()}`)
+            prompts.log.info(`  Client secret expires: ${formatLocalDateTime(expiresDate.getTime())}`)
           }
         }
 

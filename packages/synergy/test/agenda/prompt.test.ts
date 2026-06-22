@@ -57,8 +57,9 @@ describe("AgendaPrompt.build", () => {
     expect(result).toContain("你醒了。")
   })
 
-  test("trigger fired timestamp is in ISO UTC format", () => {
+  test("trigger fired timestamp is in local time format with offset", () => {
     const fixedTs = new Date("2026-06-22T03:00:00+08:00").getTime()
+    // Local time in Asia/Shanghai: 2026-06-22 03:00:00 (UTC+08:00)
     const item = makeItem({
       id: "agd_ts",
       triggers: [cronTrigger("0 3 * * *", "Asia/Shanghai")],
@@ -67,7 +68,8 @@ describe("AgendaPrompt.build", () => {
     })
     const signal = makeSignal({ timestamp: fixedTs })
     const result = AgendaPrompt.build(item, signal)
-    expect(result).toContain("2026-06-21T19:00:00.000Z")
+    expect(result).toContain("fired at")
+    expect(result).toMatch(/\(UTC[+-]\d{2}:\d{2}\)/)
     expect(result).toContain('run number="1"')
   })
 

@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
@@ -64,7 +65,7 @@ export const NoteListTool = Tool.define("note_list", {
       if (note.pinned) parts.push("[pinned]")
       if (note.global) parts.push("[global]")
       if (note.tags.length > 0) parts.push(`— tags: ${note.tags.join(", ")}`)
-      parts.push(`— updated ${new Date(note.time.updated).toISOString()}`)
+      parts.push(`— updated ${formatLocalDateTime(note.time.updated)}`)
       return parts.join(" ")
     })
 

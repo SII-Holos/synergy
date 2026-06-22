@@ -1,3 +1,4 @@
+import { formatLocalDate, formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { EmailImap } from "@/email/imap"
@@ -68,7 +69,7 @@ export const EmailReadTool = Tool.define("email_read", {
         }
         const summaries = await EmailImap.fetchSummaries(folder, uids.slice(0, limit))
         const lines = summaries.map((s) => {
-          const date = s.date.toISOString().split("T")[0]
+          const date = formatLocalDate(s.date.getTime())
           const status = s.seen ? "✓" : "○"
           return `[${status}] ${date} | ${s.from} | ${s.subject}`
         })
@@ -95,7 +96,7 @@ export const EmailReadTool = Tool.define("email_read", {
             results.push(`--- UID ${uid} ---\n(not found)`)
             continue
           }
-          const date = email.date.toISOString()
+          const date = formatLocalDateTime(email.date.getTime())
           const body = email.text ?? email.html ?? "(no body content)"
           results.push(
             `--- UID ${email.uid} ---\n` +

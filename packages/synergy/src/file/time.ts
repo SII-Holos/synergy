@@ -1,4 +1,5 @@
 import { Instance } from "../scope/instance"
+import { formatLocalDateTime } from "../util/time-format"
 import { Log } from "../util/log"
 
 export namespace FileTime {
@@ -83,7 +84,7 @@ export namespace FileTime {
     const stats = await Bun.file(filepath).stat()
     if (stats.mtime.getTime() > time.getTime()) {
       throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
+        `File ${filepath} has been modified since it was last read.\nLast modification: ${formatLocalDateTime(stats.mtime.getTime())}\nLast read: ${formatLocalDateTime(time.getTime())}\n\nPlease read the file again before modifying it.`,
       )
     }
   }
