@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserPolicy } from "../browser/policy"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
@@ -26,7 +27,13 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       filtered = requests.filter((r) => filterRegex.test(r.url))
     }
 
-    if (filtered.length === 0) {
+    // Strip sensitive headers before formatting output
+    const sanitized = filtered.map((r) => ({
+      ...r,
+      responseHeaders: r.responseHeaders ? BrowserPolicy.sanitizeHeaders(r.responseHeaders) : undefined,
+    }))
+
+    if (sanitized.length === 0) {
       return {
         title: `Network requests (0, tab: ${tab.id})`,
         output: "No network requests captured.",
@@ -34,7 +41,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       }
     }
 
-    const lines = filtered.map((req) => {
+    const lines = sanitized.map((req) => {
       const ts = new Date(req.timestamp).toISOString()
       const method = req.method.padEnd(7)
       const status = req.status != null ? String(req.status).padStart(3) : "---"
@@ -43,9 +50,9 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     })
 
     return {
-      title: `Network requests (${filtered.length}, tab: ${tab.id})`,
+      title: `Network requests (${sanitized.length}, tab: ${tab.id})`,
       output: lines.join("\n"),
-      metadata: { requestCount: filtered.length },
+      metadata: { requestCount: sanitized.length },
     }
   },
 })

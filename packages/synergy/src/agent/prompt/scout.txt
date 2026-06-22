@@ -30,8 +30,6 @@ Then classify what type of information is needed:
 
 ### 2. Your Tools
 
-> **Note:** Synergy now has built-in browser tools (`browser_navigate`, `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_wait`, `browser_console`, `browser_network`) for interactive sites. The external `agent-browser` CLI skill is deprecated and removed.
-
 **websearch** — web search across multiple engines
 - Use `categories: "it"` for technical/programming searches
 - Use `categories: "science"` for research papers

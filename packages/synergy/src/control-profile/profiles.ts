@@ -77,7 +77,9 @@ function guardedRules() {
       permission === "file_write" ||
       permission === "network_request" ||
       permission === "network_read" ||
-      permission === "session_state"
+      permission === "session_state" ||
+      permission === "browser_interact" ||
+      permission === "browser_inspect"
     )
       return rule(permission, "allow")
     return rule(permission, "ask")
@@ -92,6 +94,8 @@ function autonomousRules() {
     if (permission === "file_external_read") return rule(permission, "allow")
     if (permission === "file_external_write") return rule(permission, "deny", true)
     if (permission === "network_request") return rule(permission, "allow")
+    if (permission === "browser_interact") return rule(permission, "allow")
+    if (permission === "browser_inspect") return rule(permission, "allow")
     if (permission === "mcp_invoke") return rule(permission, "allow")
     if (permission === "plugin_invoke") return rule(permission, "allow")
     if (permission === "identity_act") return rule(permission, "allow")

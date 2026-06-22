@@ -22,6 +22,7 @@ export interface NetworkRequest {
   method: string
   status?: number
   mimeType?: string
+  responseHeaders?: Record<string, string>
   timestamp: number
 }
 
@@ -270,10 +271,15 @@ export class BrowserTabImpl implements BrowserTab {
     this.onResponseReceived = (params: Record<string, unknown>) => {
       const existing = this.networkBuffer.find((r) => r.requestId === params.requestId)
       if (existing) {
-        const response = params.response as { status: number; mimeType: string } | undefined
+        const response = params.response as
+          | { status: number; mimeType: string; headers?: Record<string, string> }
+          | undefined
         if (response) {
           existing.status = response.status
           existing.mimeType = response.mimeType
+          if (response.headers) {
+            existing.responseHeaders = response.headers
+          }
         }
       }
     }
