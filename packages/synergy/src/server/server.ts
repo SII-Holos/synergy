@@ -92,7 +92,7 @@ export namespace Server {
     "default-src 'self'; " +
     "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data: https:; " +
+    "img-src 'self' data: https: blob:; " +
     "font-src 'self'; " +
     "connect-src 'self' ws: wss:; " +
     "media-src 'none'; " +
