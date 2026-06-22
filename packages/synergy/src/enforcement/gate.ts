@@ -649,6 +649,78 @@ export namespace EnforcementGate {
         }
         return { capabilities: caps }
       }
+      // Browser tools
+      if (toolName === "browser_navigate") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_click" ||
+        toolName === "browser_clipboard" ||
+        toolName === "browser_type" ||
+        toolName === "browser_scroll" ||
+        toolName === "browser_action"
+      ) {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_viewport") {
+        caps.push({ class: "browser_viewport", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_snapshot" ||
+        toolName === "browser_screenshot" ||
+        toolName === "browser_inspect" ||
+        toolName === "browser_wait"
+      ) {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_console" || toolName === "browser_network") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_tab") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_download") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_downloads") {
+        caps.push({ class: "browser_download", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_annotate") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_navigation") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_list") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_read") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_assets") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_eval") {
+        caps.push({ class: "browser_eval_readonly", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_view") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

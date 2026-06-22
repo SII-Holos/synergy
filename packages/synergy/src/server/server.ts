@@ -64,6 +64,7 @@ import { SessionNavRoute } from "./session-nav"
 import { GlobalNavRoute } from "./global-nav"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
+import { BrowserRoute } from "./browser-route"
 import { RuntimeReload } from "../runtime/reload"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -93,8 +94,7 @@ export namespace Server {
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
-    "connect-src 'self'; " +
-    "frame-src 'self'; " +
+    "connect-src 'self' ws: wss:; " +
     "media-src 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
@@ -716,6 +716,7 @@ export namespace Server {
         .route("/asset", AssetRoute)
         .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
+        .route("", BrowserRoute)
         .route("/plugin", PluginRoute)
 
         .post(

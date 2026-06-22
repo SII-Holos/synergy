@@ -30,8 +30,15 @@ const CAPABILITY_PERMISSIONS = [
   "channel_outbound",
   "platform_control",
 
-  "network_read",
   "session_state",
+
+  "browser_interact",
+  "browser_inspect",
+  "browser_eval_readonly",
+  "browser_eval_trusted",
+  "browser_clipboard",
+  "browser_download",
+  "browser_viewport",
 ]
 
 const HIGH_RISK_PERMISSIONS = [
@@ -75,7 +82,9 @@ function guardedRules() {
       permission === "file_write" ||
       permission === "network_request" ||
       permission === "network_read" ||
-      permission === "session_state"
+      permission === "session_state" ||
+      permission === "browser_interact" ||
+      permission === "browser_inspect"
     )
       return rule(permission, "allow")
     return rule(permission, "ask")
@@ -90,6 +99,8 @@ function autonomousRules() {
     if (permission === "file_external_read") return rule(permission, "allow")
     if (permission === "file_external_write") return rule(permission, "deny", true)
     if (permission === "network_request") return rule(permission, "allow")
+    if (permission === "browser_interact") return rule(permission, "allow")
+    if (permission === "browser_inspect") return rule(permission, "allow")
     if (permission === "mcp_invoke") return rule(permission, "allow")
     if (permission === "plugin_invoke") return rule(permission, "allow")
     if (permission === "identity_act") return rule(permission, "allow")
@@ -97,6 +108,7 @@ function autonomousRules() {
     if (permission === "channel_outbound") return rule(permission, "allow")
     if (permission === "platform_control") return rule(permission, "allow")
     if (permission === "shell_destructive") return rule(permission, "deny")
+    if (permission === "browser_eval_trusted") return rule(permission, "deny", true)
     return rule(permission, "allow")
   })
 }
