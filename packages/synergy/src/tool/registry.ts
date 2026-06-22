@@ -88,6 +88,7 @@ import { BrowserTabTool } from "./browser-tab"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
 import { BrowserDownloadTool } from "./browser-download"
+import { BrowserViewportTool } from "./browser-viewport"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -274,6 +275,7 @@ export namespace ToolRegistry {
       BrowserConsoleTool,
       BrowserNetworkTool,
       BrowserDownloadTool,
+      BrowserViewportTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...custom,
     ]
