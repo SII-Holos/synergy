@@ -1,5 +1,5 @@
 import { onMount, onCleanup } from "solid-js"
-import { useWorkspace } from "../workspace-context"
+import { useWorkspace } from "@/context/workspace"
 import { BrowserPanel } from "./browser/browser-panel"
 
 /**
