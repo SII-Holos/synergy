@@ -1,3 +1,4 @@
+import fs from "fs/promises"
 import type { NetworkRequest } from "./tab.js"
 
 export namespace BrowserAssets {
@@ -58,6 +59,22 @@ export namespace BrowserAssets {
   export function filterByType(assets: PageAsset[], types: PageAsset["type"][]): PageAsset[] {
     const typeSet = new Set(types)
     return assets.filter((a) => typeSet.has(a.type))
+  }
+
+  // ── exportBundle ────────────────────────────────────────────────────
+
+  export interface ExportBundleResult {
+    path: string
+    count: number
+    totalSize: number
+  }
+
+  export async function exportBundle(assets: PageAsset[], outputDir: string): Promise<ExportBundleResult> {
+    await fs.mkdir(outputDir, { recursive: true })
+    const manifestPath = `${outputDir}/manifest.json`
+    await Bun.write(Bun.file(manifestPath), JSON.stringify(assets, null, 2))
+    const totalSize = assets.reduce((sum, a) => sum + (a.size ?? 0), 0)
+    return { path: manifestPath, count: assets.length, totalSize }
   }
 }
 

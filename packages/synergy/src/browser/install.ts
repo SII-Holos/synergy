@@ -110,9 +110,20 @@ export namespace BrowserInstall {
     return null
   }
 
-  /** Install Chromium via playwright-core. Returns path to executable. */
+  /** Install/find Chromium. Uses discovery first, then playwright-core as fallback. Returns path to executable. */
   export async function installChromium(): Promise<string> {
-    // TODO: use playwright-core's browser fetcher when it's a dependency
+    const discovered = await discoverChromium()
+    if (discovered) return discovered
+
+    try {
+      // @ts-expect-error — playwright-core is an optional peer dependency
+      const { chromium } = await import("playwright-core")
+      const execPath = chromium.executablePath()
+      if (await fileExists(execPath)) return execPath
+    } catch {
+      // playwright-core not available
+    }
+
     throw new Error("Chromium not found. Install it via playwright-core or set CHROMIUM_PATH.")
   }
 

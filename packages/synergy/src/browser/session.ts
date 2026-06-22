@@ -3,6 +3,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
 import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession } from "./types.js"
+import { BrowserAnnotationHelper } from "./annotation.js"
 export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
 
 const MAX_TABS = 10
@@ -74,6 +75,9 @@ export class BrowserSessionImpl implements BrowserSession {
   switchTab(tabID: string): void {
     const tab = this._tabs.find((t) => t.id === tabID)
     if (tab) {
+      if (this._activeTab && this._activeTab !== tab) {
+        this._activeTab.lastActiveAt = Date.now()
+      }
       this._activeTab = tab
     }
   }
@@ -98,23 +102,39 @@ export class BrowserSessionImpl implements BrowserSession {
     await this.save()
   }
 
+  async closeOthers(tabID: string): Promise<void> {
+    const keepTab = this._tabs.find((t) => t.id === tabID)
+    if (!keepTab) return
+
+    const toClose = this._tabs.filter((t) => {
+      if (t.id === tabID) return false
+      if (t.pinned || t.kept) return false
+      return true
+    })
+
+    for (const tab of toClose) {
+      await tab.close()
+      const idx = this._tabs.indexOf(tab)
+      if (idx !== -1) this._tabs.splice(idx, 1)
+    }
+
+    if (!this._tabs.includes(this._activeTab!)) {
+      if (this._tabs.length > 0) {
+        this._activeTab = this._tabs[0]
+      } else {
+        this._activeTab = null
+      }
+    }
+
+    await this.save()
+  }
+
   getTab(tabID: string): BrowserTab | undefined {
     return this._tabs.find((t) => t.id === tabID)
   }
 
   addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation {
-    const id = crypto.randomUUID()
-    const annotation: BrowserAnnotation = {
-      id,
-      tabURL: input.tabURL ?? "",
-      tabID: input.tabID ?? "",
-      ref: input.ref,
-      element: input.element,
-      comment: input.comment,
-      styleFeedback: input.styleFeedback,
-      resolved: false,
-      createdAt: Date.now(),
-    }
+    const annotation = BrowserAnnotationHelper.create(input)
     this._annotations.push(annotation)
     this.save()
     return annotation
@@ -134,17 +154,7 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   formatAnnotationsForContext(): string {
-    const pending = this._annotations.filter((a) => !a.resolved)
-    if (pending.length === 0) return ""
-    const items = pending
-      .map(
-        (a) =>
-          `  <browser-annotation id="${a.id}"${a.ref ? ` ref="${a.ref}"` : ""}${a.element ? ` element="${a.element}"` : ""}${a.tabURL ? ` tab="${a.tabURL}"` : ""}>
-    ${a.comment}${a.styleFeedback ? `\n    style-feedback: ${JSON.stringify(a.styleFeedback)}` : ""}
-  </browser-annotation>`,
-      )
-      .join("\n")
-    return `<browser-annotations>\n${items}\n</browser-annotations>`
+    return BrowserAnnotationHelper.formatForContext(this._annotations)
   }
 
   async save(): Promise<void> {
@@ -154,6 +164,9 @@ export class BrowserSessionImpl implements BrowserSession {
         url: tab.url,
         title: tab.title,
         order: i,
+        pinned: tab.pinned,
+        kept: tab.kept,
+        lastActiveAt: tab.lastActiveAt,
       })),
       activeTabID: this._activeTab?.id ?? null,
       panelWidth: 400,
@@ -187,6 +200,9 @@ export class BrowserSessionImpl implements BrowserSession {
       const tab = new BrowserTabImpl({ browserCdp: state.cdpConnection, directory: this.owner.directory, id: saved.id })
       tab.url = saved.url
       tab.title = saved.title
+      tab.pinned = saved.pinned ?? false
+      tab.kept = saved.kept ?? false
+      tab.lastActiveAt = saved.lastActiveAt ?? null
       this._tabs.push(tab)
     }
 

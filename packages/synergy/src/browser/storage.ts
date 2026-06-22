@@ -2,6 +2,7 @@ import path from "path"
 import os from "os"
 import fs from "fs/promises"
 import { BrowserOwner } from "./owner.js"
+import { BrowserMigration } from "./migration.js"
 
 export namespace BrowserStorage {
   export interface StoredAnnotation {
@@ -17,7 +18,15 @@ export namespace BrowserStorage {
   }
 
   export interface SessionState {
-    tabs: { id: string; url: string; title: string; order: number }[]
+    tabs: {
+      id: string
+      url: string
+      title: string
+      order: number
+      pinned?: boolean
+      kept?: boolean
+      lastActiveAt?: number | null
+    }[]
     activeTabID: string | null
     panelWidth?: number
     timestamp: number
@@ -46,6 +55,7 @@ export namespace BrowserStorage {
 
   /** Read state. Returns null if no state file or on any read error. */
   export async function load(owner: BrowserOwner.Info): Promise<SessionState | null> {
+    await BrowserMigration.run(owner)
     const fp = stateFilePath(owner)
     try {
       const file = Bun.file(fp)

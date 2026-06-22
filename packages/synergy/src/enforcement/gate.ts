@@ -717,6 +717,10 @@ export namespace EnforcementGate {
         caps.push({ class: "browser_eval_readonly", nonBypassable: false })
         return { capabilities: caps }
       }
+      if (toolName === "browser_view") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

@@ -1,4 +1,4 @@
-import type { BrowserTab, AccessibilityElement } from "./tab.js"
+import type { BrowserTab } from "./tab.js"
 import { BrowserLocator } from "./locator.js"
 
 type LocatorInput = BrowserLocator.LocatorInput
@@ -25,32 +25,11 @@ export namespace BrowserWait {
     if (signal?.aborted) throw new Error("Aborted")
   }
 
-  function matchesValue(pattern: string | RegExp, text: string, exact?: boolean): boolean {
-    if (pattern instanceof RegExp) return pattern.test(text)
-    if (exact) return text === pattern
-    return text.includes(pattern)
-  }
-
-  function findInTree(
-    elements: AccessibilityElement[],
-    predicate: (el: AccessibilityElement) => boolean,
-  ): AccessibilityElement | null {
-    for (const el of elements) {
-      if (predicate(el)) return el
-      if (el.children.length > 0) {
-        const found = findInTree(el.children, predicate)
-        if (found) return found
-      }
-    }
-    return null
-  }
-
   // ── public API ───────────────────────────────────────────────────
 
   /**
    * Wait for a locator to appear in the page.
-   * Uses accessibility snapshot polling for ref/role/text/label/placeholder,
-   * and DOM evaluation for css/xpath/testId.
+   * Delegates to BrowserLocator.resolve for polling.
    */
   export async function waitForLocator(
     tab: BrowserTab,
@@ -67,7 +46,7 @@ export namespace BrowserWait {
     while (Date.now() < deadline) {
       checkSignal(opts?.signal)
 
-      const result = await tryResolveLocator(tab, locator)
+      const result = await BrowserLocator.resolve(tab, locator)
       if (result) return result
 
       await sleep(pollMs)
@@ -76,97 +55,6 @@ export namespace BrowserWait {
     throw new Error(
       `waitForLocator timed out after ${timeoutMs / 1000}s (kind=${locator.kind}, value=${String(locator.value)})`,
     )
-  }
-
-  async function tryResolveLocator(tab: BrowserTab, locator: LocatorInput): Promise<ResolvedElement | null> {
-    const snapshot = await tab.snapshot().catch(() => ({ elements: [] as AccessibilityElement[], truncated: false }))
-
-    switch (locator.kind) {
-      case "ref": {
-        const el = findInTree(snapshot.elements, (e) => e.ref === locator.value)
-        if (!el?.ref) return null
-        return resolveRefElement(tab, el.ref)
-      }
-      case "role": {
-        const el = findInTree(snapshot.elements, (e) => {
-          if (e.role !== locator.value) return false
-          if (locator.name === undefined) return true
-          return matchesValue(locator.name, e.name)
-        })
-        if (!el?.ref) return null
-        return resolveRefElement(tab, el.ref)
-      }
-      case "text":
-      case "label": {
-        const el = findInTree(snapshot.elements, (e) => matchesValue(locator.value, e.name, locator.exact))
-        if (!el?.ref) return null
-        return resolveRefElement(tab, el.ref)
-      }
-      case "placeholder": {
-        const el = findInTree(snapshot.elements, (e) => {
-          const v = e.value ?? ""
-          return matchesValue(locator.value, v, locator.exact)
-        })
-        if (!el?.ref) return null
-        return resolveRefElement(tab, el.ref)
-      }
-      case "css": {
-        return evaluateBox(
-          tab,
-          `!!document.querySelector(${JSON.stringify(locator.value)})`,
-          `(function(){const e=document.querySelector(${JSON.stringify(locator.value)});if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()`,
-        )
-      }
-      case "xpath": {
-        const escaped = locator.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
-        return evaluateBox(
-          tab,
-          `!!document.evaluate("${escaped}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue`,
-          `(function(){const e=document.evaluate("${escaped}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()`,
-        )
-      }
-      case "testId": {
-        return evaluateBox(
-          tab,
-          `!!document.querySelector('[data-testid=${JSON.stringify(locator.value)}]')`,
-          `(function(){const e=document.querySelector('[data-testid=${JSON.stringify(locator.value)}]');if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()`,
-        )
-      }
-      default:
-        return null
-    }
-  }
-
-  async function resolveRefElement(tab: BrowserTab, ref: string): Promise<ResolvedElement | null> {
-    const resolved = await tab.resolveRef(ref)
-    if (!resolved) return null
-    return {
-      visible: resolved.width > 0 && resolved.height > 0,
-      enabled: true,
-      editable: false,
-      x: resolved.x,
-      y: resolved.y,
-      width: resolved.width,
-      height: resolved.height,
-    }
-  }
-
-  async function evaluateBox(tab: BrowserTab, existsExpr: string, boxExpr: string): Promise<ResolvedElement | null> {
-    const exists = await tab.evaluate(existsExpr)
-    if (!exists) return null
-    const box = (await tab.evaluate(boxExpr)) as {
-      x: number
-      y: number
-      width: number
-      height: number
-    } | null
-    if (!box) return null
-    return {
-      visible: box.width > 0 && box.height > 0,
-      enabled: true,
-      editable: false,
-      ...box,
-    }
   }
 
   // ── waitForText ──────────────────────────────────────────────────

@@ -47,9 +47,7 @@ describe("BrowserActions", () => {
       "check",
       "uncheck",
       "hover",
-      "focus",
       "type",
-      "uploadFile",
       "scroll",
     ]) {
       test(`"${name}" is a valid action name`, () => {
@@ -170,11 +168,6 @@ describe("BrowserActions", () => {
       ok(ActionInputSchema, { action: "hover", locator: loc })
     })
 
-    // ── focus ─────────────────────────────────────────────────────
-    test("focus: locator is required", () => {
-      ok(ActionInputSchema, { action: "focus", locator: loc })
-    })
-
     // ── type ──────────────────────────────────────────────────────
     test("type: locator and text are required", () => {
       ok(ActionInputSchema, { action: "type", locator: loc, text: "hello" })
@@ -184,25 +177,6 @@ describe("BrowserActions", () => {
     })
     test("type: empty text → fail", () => {
       fails(ActionInputSchema, { action: "type", locator: loc, text: "" })
-    })
-
-    // ── uploadFile ────────────────────────────────────────────────
-    test("uploadFile: locator and filePaths are required", () => {
-      ok(ActionInputSchema, {
-        action: "uploadFile",
-        locator: loc,
-        filePaths: ["/tmp/a.png"],
-      })
-    })
-    test("uploadFile: missing filePaths → fail", () => {
-      fails(ActionInputSchema, { action: "uploadFile", locator: loc })
-    })
-    test("uploadFile: empty filePaths → fail", () => {
-      fails(ActionInputSchema, {
-        action: "uploadFile",
-        locator: loc,
-        filePaths: [],
-      })
     })
 
     // ── scroll ────────────────────────────────────────────────────
@@ -397,13 +371,6 @@ describe("BrowserActions", () => {
       expect((cmds[0].params as Record<string, unknown>).type).toBe("mouseMoved")
     })
 
-    // ── focus → evaluate to focus ─────────────────────────────────
-    test("focus produces Runtime.evaluate", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "focus", locator: loc }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0].method).toBe("Runtime.evaluate")
-    })
-
     // ── type → keyDown + keyUp per character ─────────────────────
     test("type produces keyDown+keyUp pair per character", () => {
       const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "type", locator: loc, text: "ab" }))
@@ -422,33 +389,6 @@ describe("BrowserActions", () => {
       const keys = keyEvents.map((c) => (c.params as Record<string, unknown>).key)
       expect(keys).toContain("a")
       expect(keys).toContain("b")
-    })
-
-    // ── uploadFile → DOM.setFileInputFiles ───────────────────────
-    test("uploadFile produces DOM.setFileInputFiles", () => {
-      const cmds = buildCdpCommands(
-        ok(ActionInputSchema, {
-          action: "uploadFile",
-          locator: loc,
-          filePaths: ["/tmp/a.png"],
-        }),
-      )
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0]).toMatchObject({ method: "DOM.setFileInputFiles" })
-      const files = (cmds[0].params as Record<string, unknown>).files as string[]
-      expect(files).toEqual(["/tmp/a.png"])
-    })
-
-    test("uploadFile supports multiple file paths", () => {
-      const cmds = buildCdpCommands(
-        ok(ActionInputSchema, {
-          action: "uploadFile",
-          locator: loc,
-          filePaths: ["/tmp/a.png", "/tmp/b.jpg"],
-        }),
-      )
-      const files = (cmds[0].params as Record<string, unknown>).files as string[]
-      expect(files).toEqual(["/tmp/a.png", "/tmp/b.jpg"])
     })
 
     // ── scroll → mouseWheel ──────────────────────────────────────
@@ -511,16 +451,8 @@ describe("BrowserActions", () => {
       expect(requiredParams("hover")).toEqual(["locator"])
     })
 
-    test("focus requires locator", () => {
-      expect(requiredParams("focus")).toEqual(["locator"])
-    })
-
     test("type requires locator, text", () => {
       expect(requiredParams("type")).toEqual(["locator", "text"])
-    })
-
-    test("uploadFile requires locator, filePaths", () => {
-      expect(requiredParams("uploadFile")).toEqual(["locator", "filePaths"])
     })
 
     test("scroll requires nothing", () => {
@@ -528,7 +460,6 @@ describe("BrowserActions", () => {
     })
 
     test("unknown action returns empty array", () => {
-      // @ts-expect-error testing unknown action
       expect(requiredParams("nonexistent")).toEqual([])
     })
   })

@@ -5,15 +5,28 @@ import { BrowserDownloads } from "../browser/downloads"
 interface BrowserDownloadsMetadata {
   records?: BrowserDownloads.DownloadRecord[]
   removed?: string
+  download?: BrowserDownloads.DownloadRecord
 }
 
-const parameters = z.object({
-  action: z.enum(["list", "remove"]).describe("Action: list all download records or remove one by id"),
-  id: z.string().optional().describe("Download record ID to remove (required for remove action)"),
-})
+const parameters = z
+  .object({
+    action: z
+      .enum(["list", "remove", "wait"])
+      .describe("Action: list downloads, remove one by id, or wait for one to complete"),
+    id: z.string().optional().describe("Download record ID (required for remove and wait actions)"),
+    timeoutMs: z.number().int().positive().optional().describe("Maximum wait time in milliseconds (default 30s)"),
+  })
+  .refine(
+    (v) => {
+      if ((v.action === "remove" || v.action === "wait") && !v.id) return false
+      return true
+    },
+    { message: "id is required for remove and wait actions" },
+  )
 
 export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownloadsMetadata>("browser_downloads", {
-  description: "Manage browser download records: list all downloads or remove a download by its ID.",
+  description:
+    "Manage browser download records: list downloads, wait for one to complete, or remove a download by its ID.",
   parameters,
   async execute(params, _ctx) {
     switch (params.action) {
@@ -33,6 +46,16 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
           title: "Removed",
           output: `Removed download record ${params.id}`,
           metadata: { removed: params.id },
+        }
+      }
+      case "wait": {
+        // schema.refine already ensures id is present for wait action
+        const id = params.id!
+        const result = await BrowserDownloads.waitForDownload(id, params.timeoutMs)
+        return {
+          title: `Download ${result.id} (${result.state})`,
+          output: JSON.stringify(result, null, 2),
+          metadata: { download: result },
         }
       }
       default:

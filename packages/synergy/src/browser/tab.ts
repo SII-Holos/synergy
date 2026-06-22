@@ -33,6 +33,9 @@ export interface BrowserTab {
   url: string
   title: string
   loading: boolean
+  pinned: boolean
+  kept: boolean
+  lastActiveAt: number | null
   readonly cdp: CdpClient.Connection | null
 
   navigate(url: string): Promise<{ url: string; title: string }>
@@ -49,6 +52,7 @@ export interface BrowserTab {
     format?: "jpeg" | "png",
     quality?: number,
     fullPage?: boolean,
+    clip?: { x: number; y: number; width: number; height: number; scale?: number },
   ): Promise<{ buffer: Buffer; width: number; height: number }>
   snapshot(): Promise<{ elements: AccessibilityElement[]; truncated: boolean }>
   consoleEntries(maxEntries?: number): Promise<ConsoleMessage[]>
@@ -58,7 +62,7 @@ export interface BrowserTab {
     ref: string,
   ): Promise<{ backendNodeId: number; x: number; y: number; width: number; height: number } | null>
 
-  evaluate(expression: string): Promise<unknown>
+  evaluate(expression: string, opts?: { throwOnSideEffect?: boolean }): Promise<unknown>
   waitFor(condition: WaitCondition, timeoutMs?: number): Promise<boolean>
 
   close(): Promise<void>
@@ -151,6 +155,9 @@ export class BrowserTabImpl implements BrowserTab {
   url: string = ""
   title: string = ""
   loading: boolean = false
+  pinned: boolean = false
+  kept: boolean = false
+  lastActiveAt: number | null = null
 
   private _cdp: CdpClient.Connection | null = null
   get cdp(): CdpClient.Connection | null {
@@ -371,11 +378,20 @@ export class BrowserTabImpl implements BrowserTab {
     format?: "jpeg" | "png",
     quality?: number,
     fullPage?: boolean,
+    clip?: { x: number; y: number; width: number; height: number; scale?: number },
   ): Promise<{ buffer: Buffer; width: number; height: number }> {
     const params: Record<string, unknown> = {}
     if (format) params.format = format
     if (quality !== undefined) params.quality = quality
     if (fullPage) params.captureBeyondViewport = true
+    if (clip) params.clip = { x: clip.x, y: clip.y, width: clip.width, height: clip.height, scale: clip.scale ?? 1 }
+
+    if (clip) {
+      const width = clip.width
+      const height = clip.height
+      const result = (await this.sendCmd("Page.captureScreenshot", params)) as { data: string }
+      return { buffer: Buffer.from(result.data, "base64"), width, height }
+    }
 
     const layout = (await this.sendCmd("Page.getLayoutMetrics")) as {
       cssContentSize?: { width: number; height: number }
@@ -514,9 +530,13 @@ export class BrowserTabImpl implements BrowserTab {
     return stored
   }
 
-  async evaluate(expression: string): Promise<unknown> {
+  async evaluate(expression: string, opts?: { throwOnSideEffect?: boolean }): Promise<unknown> {
     await this.ensureSession()
-    const result = await this.sendCmd("Runtime.evaluate", { expression, returnByValue: true })
+    const result = await this.sendCmd("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      ...opts,
+    })
     return (result as { result?: { value?: unknown } }).result?.value
   }
 

@@ -34,6 +34,7 @@ export interface BrowserSession {
   createTab(url?: string): Promise<BrowserTab>
   switchTab(tabID: string): void
   closeTab(tabID: string): Promise<void>
+  closeOthers(tabID: string): Promise<void>
   getTab(tabID: string): BrowserTab | undefined
 
   addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation

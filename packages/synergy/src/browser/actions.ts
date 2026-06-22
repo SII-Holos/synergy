@@ -91,9 +91,9 @@ export const ActionNames = [
   "check",
   "uncheck",
   "hover",
-  "focus",
   "type",
-  "uploadFile",
+  "mouseMove",
+  "drag",
   "scroll",
 ] as const
 
@@ -110,7 +110,7 @@ export function requiredParams(action: string): string[] {
     case "check":
     case "uncheck":
     case "hover":
-    case "focus":
+    case "mouseMove":
       return ["locator"]
     case "press":
       return ["key"]
@@ -120,8 +120,8 @@ export function requiredParams(action: string): string[] {
       return ["locator", "values"]
     case "type":
       return ["locator", "text"]
-    case "uploadFile":
-      return ["locator", "filePaths"]
+    case "drag":
+      return ["locator", "target"]
     case "scroll":
       return []
     default:
@@ -157,12 +157,19 @@ export namespace BrowserActions {
     z.object({ action: z.literal("check"), locator: LocatorSchema }),
     z.object({ action: z.literal("uncheck"), locator: LocatorSchema }),
     z.object({ action: z.literal("hover"), locator: LocatorSchema }),
-    z.object({ action: z.literal("focus"), locator: LocatorSchema }),
     z.object({ action: z.literal("type"), locator: LocatorSchema, text: z.string().min(1) }),
     z.object({
-      action: z.literal("uploadFile"),
+      action: z.literal("mouseMove"),
       locator: LocatorSchema,
-      filePaths: z.array(z.string()).min(1),
+      x: z.number().optional(),
+      y: z.number().optional(),
+    }),
+    z.object({
+      action: z.literal("drag"),
+      locator: LocatorSchema,
+      target: LocatorSchema,
+      button: z.enum(["left", "right", "middle"]).optional(),
+      steps: z.number().int().min(2).optional(),
     }),
     z.object({
       action: z.literal("scroll"),
@@ -262,6 +269,35 @@ export namespace BrowserActions {
       },
     ]
   }
+
+  export function buildDrag(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    button: "left" | "right" | "middle" = "left",
+    steps = 2,
+  ): CDPCommand[] {
+    const cmds: CDPCommand[] = []
+    cmds.push({
+      method: "Input.dispatchMouseEvent",
+      params: { type: "mousePressed", x: startX, y: startY, button, clickCount: 1 },
+    })
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1)
+      const x = Math.round(startX + (endX - startX) * t)
+      const y = Math.round(startY + (endY - startY) * t)
+      cmds.push({
+        method: "Input.dispatchMouseEvent",
+        params: { type: "mouseMoved", x, y, button },
+      })
+    }
+    cmds.push({
+      method: "Input.dispatchMouseEvent",
+      params: { type: "mouseReleased", x: endX, y: endY, button, clickCount: 1 },
+    })
+    return cmds
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -272,6 +308,10 @@ export function validateAction(input: unknown): { ok: boolean; message?: string 
   const result = BrowserActions.ActionInputSchema.safeParse(input)
   if (result.success) return { ok: true }
   return { ok: false, message: result.error.message }
+}
+
+function escapeExpr(s: string): string {
+  return JSON.stringify(s)
 }
 
 export function buildCdpCommands(action: BrowserActions.ActionInput): BrowserActions.CDPCommand[] {
@@ -331,16 +371,48 @@ export function buildCdpCommands(action: BrowserActions.ActionInput): BrowserAct
         { method: "Input.insertText", params: { text: action.value } },
         { method: "Runtime.evaluate", params: { expression: "this.dispatchEvent(new Event('input',{bubbles:true}))" } },
       ]
-    case "selectOption":
-      return [{ method: "Runtime.evaluate", params: { expression: "/* selectOption */" } }]
+    case "selectOption": {
+      const vals = action.values.map((v) => escapeExpr(v))
+      return [
+        {
+          method: "Runtime.evaluate",
+          params: {
+            expression: `(() => {
+  const vals = [${vals.join(", ")}];
+  const set = new Set(vals);
+  const opts = this.options;
+  for (let i = 0; i < opts.length; i++) {
+    opts[i].selected = set.has(opts[i].value);
+  }
+  this.dispatchEvent(new Event('input', { bubbles: true }));
+  this.dispatchEvent(new Event('change', { bubbles: true }));
+})()`,
+          },
+        },
+      ]
+    }
     case "check":
-      return [{ method: "Runtime.evaluate", params: { expression: "this.checked = true" } }]
+      return [
+        {
+          method: "Runtime.evaluate",
+          params: {
+            expression:
+              "if (!this.checked) { this.click(); this.dispatchEvent(new Event('change', { bubbles: true })) }",
+          },
+        },
+      ]
     case "uncheck":
-      return [{ method: "Runtime.evaluate", params: { expression: "this.checked = false" } }]
+      return [
+        {
+          method: "Runtime.evaluate",
+          params: {
+            expression:
+              "if (this.checked) { this.click(); this.dispatchEvent(new Event('change', { bubbles: true })) }",
+          },
+        },
+      ]
     case "hover":
       return [{ method: "Input.dispatchMouseEvent", params: { type: "mouseMoved", x: 0, y: 0 } }]
-    case "focus":
-      return [{ method: "Runtime.evaluate", params: { expression: "this.focus()" } }]
     case "type": {
       const cmds: BrowserActions.CDPCommand[] = []
       for (const ch of action.text) {
@@ -349,8 +421,15 @@ export function buildCdpCommands(action: BrowserActions.ActionInput): BrowserAct
       }
       return cmds
     }
-    case "uploadFile":
-      return [{ method: "DOM.setFileInputFiles", params: { files: action.filePaths } }]
+    case "mouseMove":
+      return [
+        {
+          method: "Input.dispatchMouseEvent",
+          params: { type: "mouseMoved", x: action.x ?? 0, y: action.y ?? 0 },
+        },
+      ]
+    case "drag":
+      return BrowserActions.buildDrag(0, 0, 0, 0, action.button ?? "left", action.steps ?? 2)
     case "scroll":
       return [
         {

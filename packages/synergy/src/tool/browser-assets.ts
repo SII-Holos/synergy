@@ -5,14 +5,15 @@ import { BrowserAssets } from "../browser/assets"
 
 export const BrowserAssetsTool = Tool.define("browser_assets", {
   description:
-    "List assets loaded by a browser tab (images, scripts, stylesheets, fonts, media, documents, other). Returns assets classified by MIME type with URL, status, and size. Use this to inspect page resources and download candidates.",
+    "List or export assets loaded by a browser tab (images, scripts, stylesheets, fonts, media, documents, other). Returns assets classified by MIME type with URL, status, and size. Use this to inspect page resources and download candidates.",
   parameters: z.object({
-    action: z.enum(["list"]).describe("Action to perform. Currently only 'list' is supported."),
+    action: z.enum(["list", "export"]).describe("Action to perform: list assets or export them as a bundle."),
     types: z
       .array(z.enum(["image", "script", "stylesheet", "font", "media", "document", "other"]))
       .describe("Filter by asset type. Returns all types if omitted.")
       .optional(),
     tabId: z.string().describe("Browser tab ID. Uses the active tab if omitted.").optional(),
+    outputDir: z.string().describe("Directory to write exported assets. Required for export action.").optional(),
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
@@ -22,6 +23,16 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
 
     if (params.types && params.types.length > 0) {
       assets = BrowserAssets.filterByType(assets, params.types)
+    }
+
+    if (params.action === "export") {
+      if (!params.outputDir) throw new Error("outputDir is required for export action")
+      const result = await BrowserAssets.exportBundle(assets, params.outputDir)
+      return {
+        title: `Exported ${result.count} assets (${result.totalSize}B)`,
+        output: `Wrote ${result.path} with ${result.count} assets, ${result.totalSize} total bytes`,
+        metadata: { assetCount: result.count, assets },
+      }
     }
 
     if (assets.length === 0) {

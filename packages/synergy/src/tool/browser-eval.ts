@@ -14,6 +14,10 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       .describe("Eval mode: readonly=no side effects, trusted=allow mutations."),
     maxBytes: z.number().int().default(64000).describe("Maximum output size in bytes."),
     tabId: z.string().optional(),
+    throwOnSideEffect: z
+      .boolean()
+      .optional()
+      .describe("Enable CDP throwOnSideEffect. Set automatically by readonly mode."),
   }),
   async execute(params, ctx) {
     if (!BrowserEval.isEvalAllowed(params.mode)) {
@@ -22,7 +26,15 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
 
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     const start = Date.now()
-    const raw = await tab.evaluate(params.expression)
+
+    const isReadonly = params.mode === "readonly"
+    const evalPayload = isReadonly
+      ? BrowserEval.buildReadonlyEval(params.expression)
+      : BrowserEval.buildTrustedEval(params.expression)
+
+    const raw = await tab.evaluate(evalPayload.expression, {
+      throwOnSideEffect: isReadonly ? true : undefined,
+    })
     const duration = Date.now() - start
     const output = BrowserEval.sanitizeEvalResult(raw, params.maxBytes)
 
