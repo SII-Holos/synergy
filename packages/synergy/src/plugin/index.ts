@@ -53,7 +53,11 @@ export namespace Plugin {
   }
 
   // ---------------------------------------------------------------------------
-  // Plugin auth store — plaintext credentials at ~/.synergy/data/plugin/{id}/auth.json
+  // Plugin auth store
+  //
+  // WARNING: Credentials are stored as unencrypted JSON on disk at
+  // ~/.synergy/data/plugin/{id}/auth.json. Protect your filesystem.
+  // Future versions will use system keychain encryption.
   // ---------------------------------------------------------------------------
 
   function resolveAuthPath(pluginId: string) {
@@ -78,6 +82,11 @@ export namespace Plugin {
   }
 
   function createAuthStore(pluginId: string): PluginAuthStore {
+    // TODO(v3): Migrate to PluginSecretStore using OS keychain.
+    // 1. On startup, detect old ~/.synergy/data/plugin/{id}/auth.json
+    // 2. Migrate credentials to system keychain
+    // 3. Rename old file to auth.json.bak
+    // 4. Expose secret backend via PluginStatus
     return {
       async get(key) {
         const data = await readAuthFile(pluginId)

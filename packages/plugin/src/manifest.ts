@@ -124,65 +124,64 @@ const UIContribution = z
 
 const PluginPermissionsSchema = z
   .object({
-    /** UI surface permissions */
-    ui: z
+    /** Tool execution permissions */
+    tools: z
       .object({
-        toolRenderers: z.boolean().optional().default(false),
-        partRenderers: z.boolean().optional().default(false),
-        workspacePanels: z.boolean().optional().default(false),
-        globalPanels: z.boolean().optional().default(false),
-        settings: z.boolean().optional().default(false),
-        themes: z.boolean().optional().default(false),
-        icons: z.boolean().optional().default(false),
-        routes: z.boolean().optional().default(false),
-        /** Allow Tier 2 trusted host import (same-origin JS execution) */
-        trustedImport: z.boolean().optional().default(false),
-        /** Allow Tier 3 sandbox iframe */
-        sandboxIframe: z.boolean().optional().default(false),
+        invoke: z.boolean().default(true),
+        shell: z.boolean().default(false),
+        filesystem: z.enum(["none", "read", "write"]).default("none"),
+        network: z.boolean().default(false),
+        mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
       })
-      .partial()
-      .optional(),
-
-    /** Network access */
-    network: z
-      .object({
-        /** Domains the plugin may connect to */
-        connectDomains: z.array(z.string()).optional().default([]),
-        /** Domains the plugin may fetch resources from (iframes, images) */
-        resourceDomains: z.array(z.string()).optional().default([]),
-        /** Domains allowed in iframe src */
-        frameDomains: z.array(z.string()).optional().default([]),
-      })
-      .partial()
       .optional(),
 
     /** Data access */
     data: z
       .object({
-        /** Session data access level */
-        session: z.enum(["none", "metadata", "read"]).optional().default("none"),
-        /** Workspace file access level */
-        workspace: z.enum(["none", "metadata", "read"]).optional().default("none"),
-        /** Config access scope */
-        config: z.enum(["plugin", "global"]).optional().default("plugin"),
+        session: z.enum(["none", "metadata", "read"]).default("none"),
+        workspace: z.enum(["none", "metadata", "read"]).default("none"),
+        config: z.enum(["plugin", "global"]).default("plugin"),
+        secrets: z.enum(["none", "own"]).default("none"),
       })
-      .partial()
       .optional(),
 
-    /** Tool execution permissions */
-    tools: z
+    /** Network access */
+    network: z
       .object({
-        /** Whether plugin tools can be invoked */
-        invoke: z.boolean().optional().default(true),
-        /** Whether plugin tools can access the shell */
-        shell: z.boolean().optional().default(false),
-        /** Whether plugin tools can access the filesystem */
-        filesystem: z.boolean().optional().default(false),
+        connectDomains: z.array(z.string()).default([]),
+        resourceDomains: z.array(z.string()).default([]),
+        frameDomains: z.array(z.string()).default([]),
       })
-      .partial()
+      .optional(),
+
+    /** UI surface permissions */
+    ui: z
+      .object({
+        toolRenderers: z.boolean().default(false),
+        partRenderers: z.boolean().default(false),
+        workspacePanels: z.boolean().default(false),
+        globalPanels: z.boolean().default(false),
+        settings: z.boolean().default(false),
+        themes: z.boolean().default(false),
+        icons: z.boolean().default(false),
+        routes: z.boolean().default(false),
+        trustedImport: z.boolean().default(false),
+        sandboxIframe: z.boolean().default(false),
+      })
+      .optional(),
+
+    /** Hook permission declarations */
+    hooks: z
+      .object({
+        events: z.enum(["none", "selected", "all"]).default("selected"),
+        eventNames: z.array(z.string()).default([]),
+        toolExecute: z.enum(["none", "own", "declared", "all"]).default("own"),
+        permissionAsk: z.enum(["none", "own", "all"]).default("none"),
+        promptTransform: z.boolean().default(false),
+        compactionTransform: z.boolean().default(false),
+      })
       .optional(),
   })
-  .partial()
   .optional()
 // PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
@@ -213,6 +212,16 @@ export const PluginManifest = z
     // Dependencies on other plugins
     dependencies: z.record(z.string(), z.string()).optional(),
 
+    // Schema version
+    schemaVersion: z.literal(3).optional(),
+
+    // Trust tier request
+    trust: z
+      .object({
+        requestedTier: z.enum(["declarative", "trusted-import", "sandbox"]).optional(),
+        reason: z.string().optional(),
+      })
+      .optional(),
     // Permission / trust declaration
     permissions: PluginPermissionsSchema,
     // Declarative contributions
@@ -221,9 +230,24 @@ export const PluginManifest = z
         tools: z
           .array(
             z.object({
+              id: z.string().optional(),
               name: z.string(),
+              title: z.string().optional(),
               description: z.string(),
+              icon: z.string().optional(),
+              category: z.string().optional(),
               kind: z.string().optional(),
+              capabilities: z
+                .object({
+                  filesystem: z.enum(["none", "read", "write"]).optional(),
+                  network: z.boolean().optional(),
+                  shell: z.boolean().optional(),
+                  session: z.enum(["none", "metadata", "read"]).optional(),
+                  workspace: z.enum(["none", "metadata", "read"]).optional(),
+                  config: z.enum(["none", "plugin", "global"]).optional(),
+                })
+                .optional(),
+              risk: z.enum(["low", "medium", "high"]).optional(),
             }),
           )
           .optional(),

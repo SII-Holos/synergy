@@ -59,6 +59,7 @@ import path from "path"
 import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
+import { PluginToolId } from "../plugin/ids.js"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
@@ -115,7 +116,7 @@ export namespace ToolRegistry {
   }
 
   function fromPlugin(id: string, def: ToolDefinition, pluginId?: string): Tool.Info {
-    const fullId = pluginId ? `plugin__${pluginId}__${id}` : id
+    const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
     return {
       id: fullId,
       init: async (initCtx) => ({

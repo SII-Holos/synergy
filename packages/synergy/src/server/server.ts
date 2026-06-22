@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
-import { Hono, type Context, type Next } from "hono"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -93,7 +93,7 @@ export namespace Server {
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
-    "connect-src 'self'; " +
+    "connect-src 'self' ws: wss:; " +
     "frame-src 'self'; " +
     "media-src 'none'; " +
     "object-src 'none'; " +
@@ -108,6 +108,17 @@ export namespace Server {
     const sources = [CSP_THEME_SCRIPT_HASH]
     if (nonce) sources.push(`'nonce-${nonce}'`)
     return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      c.res.headers.set("X-Content-Type-Options", "nosniff")
+      c.res.headers.set("X-Frame-Options", "DENY")
+    }
   }
 
   let _url: URL | undefined
@@ -244,6 +255,7 @@ export namespace Server {
           }),
         )
         .use(provideRequestScope)
+        .use(cspMiddleware())
         .get(
           "/global/health",
           describeRoute({

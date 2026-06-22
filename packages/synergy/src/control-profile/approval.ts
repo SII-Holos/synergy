@@ -41,6 +41,11 @@ const HIGH_RISK = new Set([
 
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",

@@ -36,6 +36,7 @@ import {
   type RuleMatch,
 } from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
+import { PluginToolId } from "../plugin/ids.js"
 
 export interface Capability {
   class: string
@@ -47,6 +48,13 @@ export interface Capability {
 
 export interface ClassifyResult {
   capabilities: Capability[]
+}
+
+export interface PluginToolCapabilityMap {
+  /** Capability strings from the plugin manifest (e.g. "filesystem:read", "shell", "network") */
+  capabilities: string[]
+  /** Risk level from manifest */
+  risk: "low" | "medium" | "high"
 }
 
 export interface AuditRecord {
@@ -80,6 +88,8 @@ export interface GateOptions {
   interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
+  /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
+  pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -336,6 +346,7 @@ export namespace EnforcementGate {
       interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
+      pluginToolCapabilities = {},
       originalCheckout,
       readRoots,
       execPolicy,
@@ -369,10 +380,56 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Plugin tools: plugin__plugin__action
-      if (toolName.startsWith("plugin__")) {
-        const opaque = !registeredPluginTools.has(toolName)
-        caps.push({ class: "plugin_invoke", nonBypassable: true, opaque })
+      // Plugin tools: plugin__pluginId__toolId
+      if (PluginToolId.is(toolName)) {
+        const entry = pluginToolCapabilities[toolName]
+        const known = registeredPluginTools.has(toolName) || !!entry
+        const opaque = !known
+
+        // Always emit plugin_invoke as the base capability
+        caps.push({
+          class: "plugin_invoke",
+          nonBypassable: true,
+          opaque,
+        })
+
+        // If we have resolved capabilities from the plugin manifest, decompose them
+        if (entry) {
+          const manifestCaps = entry.capabilities
+          const hasCap = (c: string) => manifestCaps.includes(c)
+
+          if (hasCap("filesystem:read")) {
+            caps.push({ class: "plugin_file_read", nonBypassable: false })
+          }
+          if (hasCap("filesystem:write")) {
+            caps.push({ class: "plugin_file_write", nonBypassable: true })
+          }
+          if (hasCap("shell")) {
+            caps.push({ class: "plugin_shell", nonBypassable: true })
+          }
+          if (hasCap("network")) {
+            caps.push({ class: "plugin_network", nonBypassable: true })
+          }
+          if (hasCap("session_data")) {
+            caps.push({ class: "plugin_session_read", nonBypassable: false })
+          }
+          if (hasCap("workspace_data")) {
+            caps.push({ class: "plugin_workspace_read", nonBypassable: false })
+          }
+          if (hasCap("config:read")) {
+            caps.push({ class: "plugin_config_read", nonBypassable: false })
+          }
+          if (hasCap("config:write")) {
+            caps.push({ class: "plugin_config_write", nonBypassable: true })
+          }
+          if (hasCap("secrets")) {
+            caps.push({ class: "plugin_secret_read", nonBypassable: true })
+          }
+        } else if (opaque) {
+          // Tool is undeclared — opaque and high risk
+          caps[0].opaque = true
+        }
+
         return { capabilities: caps }
       }
 

@@ -6,6 +6,7 @@ import { Identifier } from "@/id/id"
 import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
 import { Plugin } from "@/plugin"
+import { PluginToolId } from "../plugin/ids.js"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -79,7 +80,7 @@ export namespace ToolResolver {
       const ids = new Set<string>()
       for (const plugin of await Plugin.hooks()) {
         for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-          ids.add(`plugin__${plugin.id}__${toolId}`)
+          ids.add(PluginToolId.format(plugin.id, toolId))
         }
       }
       _cachedPluginToolIds = ids

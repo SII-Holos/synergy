@@ -39,6 +39,13 @@ export interface PluginConfigAccessor {
   set(values: Record<string, any>): Promise<void>
 }
 
+/**
+ * Plugin credential store (plaintext JSON on disk).
+ *
+ * WARNING: Credentials are stored as unencrypted JSON in the plugin data directory
+ * at ~/.synergy/data/plugin/{id}/auth.json. Protect your filesystem.
+ * Future versions will use system keychain encryption.
+ */
 export interface PluginAuthStore {
   /** Read a credential by key */
   get(key: string): Promise<string | undefined>
