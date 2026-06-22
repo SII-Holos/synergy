@@ -130,6 +130,66 @@ function loadImage(file: File) {
   })
 }
 
+/**
+ * Strip the cICP (Coding-Independent Code Points) chunk from a PNG file.
+ *
+ * macOS screenshots on Display P3 monitors produce PNGs with both cICP and
+ * iCCP chunks. Chromium's compositor can reject this combination when loaded
+ * via URL.createObjectURL() + new Image(). Removing the ancillary cICP chunk
+ * lets the decoder fall through to the standard iCCP path.
+ *
+ * This is a zero-dependency byte walker — no pixel decode, no decompression.
+ * Cost: ~microseconds for typical PNGs.
+ */
+async function stripCicpFromPng(file: File): Promise<File> {
+  const buffer = await file.arrayBuffer()
+  if (buffer.byteLength < 20) return file // PNG sig (8) + min chunk (12)
+
+  const bytes = new Uint8Array(buffer)
+
+  // PNG signature: \x89 P N G \r \n \x1a \n
+  if (
+    bytes[0] !== 0x89 ||
+    bytes[1] !== 0x50 ||
+    bytes[2] !== 0x4e ||
+    bytes[3] !== 0x47 ||
+    bytes[4] !== 0x0d ||
+    bytes[5] !== 0x0a ||
+    bytes[6] !== 0x1a ||
+    bytes[7] !== 0x0a
+  ) {
+    return file
+  }
+
+  let offset = 8
+  while (offset + 12 <= bytes.length) {
+    // Chunk length: big-endian uint32
+    const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]
+    const chunkEnd = offset + 12 + length
+    if (chunkEnd > bytes.length) return file // truncated chunk → bail
+
+    // cICP chunk type bytes: 'c' 'I' 'C' 'P'
+    if (
+      bytes[offset + 4] === 0x63 &&
+      bytes[offset + 5] === 0x49 &&
+      bytes[offset + 6] === 0x43 &&
+      bytes[offset + 7] === 0x50
+    ) {
+      // Rebuild buffer without this chunk
+      const before = new Uint8Array(buffer, 0, offset)
+      const after = new Uint8Array(buffer, chunkEnd)
+      const result = new Uint8Array(before.length + after.length)
+      result.set(before, 0)
+      result.set(after, before.length)
+      return new File([result], file.name, { type: file.type })
+    }
+
+    offset = chunkEnd
+  }
+
+  return file // cICP not found, pass through
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality?: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality))
 }
@@ -161,6 +221,27 @@ export async function preparePromptAttachment(file: File): Promise<PreparedPromp
     }
   }
 
+  if (file.type === "image/gif") {
+    if (file.size > TARGET_IMAGE_BYTES) {
+      throw new PromptAttachmentError(
+        "GIF too large",
+        "Animated GIFs must already be small enough to attach. Use a smaller GIF or attach a still image instead.",
+      )
+    }
+    return {
+      mime: file.type,
+      dataUrl: await readAsDataUrl(file),
+    }
+  }
+
+  // Strip cICP chunk from PNGs before decode — Chromium's compositor
+  // rejects Display P3 PNGs when both cICP and iCCP chunks are present.
+  // Removing the ancillary cICP chunk lets the decoder fall through to
+  // the iCCP profile path, which handles P3 correctly.
+  if (file.type === "image/png") {
+    file = await stripCicpFromPng(file)
+  }
+
   let image: HTMLImageElement
   try {
     image = await loadImage(file)
@@ -169,27 +250,6 @@ export async function preparePromptAttachment(file: File): Promise<PreparedPromp
       "Couldn’t attach image",
       error instanceof Error ? error.message : "This image couldn’t be processed.",
     )
-  }
-
-  if (file.type === "image/gif") {
-    if (file.size > TARGET_IMAGE_BYTES) {
-      throw new PromptAttachmentError(
-        "GIF too large",
-        "Animated GIFs must already be small enough to attach. Use a smaller GIF or attach a still image instead.",
-      )
-    }
-
-    return {
-      mime: file.type,
-      dataUrl: await readAsDataUrl(file),
-    }
-  }
-
-  if (file.size <= TARGET_IMAGE_BYTES) {
-    return {
-      mime: file.type,
-      dataUrl: await readAsDataUrl(file),
-    }
   }
 
   for (const mime of outputMimes(file.type)) {
