@@ -1,5 +1,3 @@
-import { Log } from "../util/log"
-import { pushWarning } from "./runtime-registry.js"
 import { Worker } from "node:worker_threads"
 import type {
   PluginToHost,
@@ -8,13 +6,15 @@ import type {
   RuntimeToolDescriptor,
   HostBridgeHandler,
 } from "./protocol.js"
-import type { PluginLogBuffer } from "./logs.js"
+import type { PluginLogEntry } from "./logs.js"
+import type { RuntimeExit } from "./errors.js"
+import { classifyRuntimeExit, PluginRuntimeError } from "./errors.js"
 
 // ---------------------------------------------------------------------------
 // Worker state
 // ---------------------------------------------------------------------------
 
-interface WorkerState {
+export interface WorkerState {
   ready: boolean
   tools: RuntimeToolDescriptor[]
   hooks: string[]
@@ -37,15 +37,22 @@ export interface SpawnedWorkerRuntime {
 // spawnPluginWorker
 // ---------------------------------------------------------------------------
 
-export async function spawnPluginWorker(options: {
+export interface SpawnPluginWorkerOptions {
   pluginId: string
   pluginDir: string
   entryPath: string
   input: IsolatedPluginInputData
   hostBridgeHandler?: HostBridgeHandler
-  logBuffer?: PluginLogBuffer
-}): Promise<SpawnedWorkerRuntime> {
-  const { entryPath, input, hostBridgeHandler, logBuffer } = options
+  onHeartbeat?: () => void
+  onReady?: () => void
+  onLog?: (entry: PluginLogEntry) => void
+  onError?: (error: PluginRuntimeError) => void
+  onExit?: (exit: RuntimeExit) => void
+}
+
+export async function spawnPluginWorker(options: SpawnPluginWorkerOptions): Promise<SpawnedWorkerRuntime> {
+  const { pluginId, pluginDir, entryPath, input, hostBridgeHandler } = options
+  const { onHeartbeat, onReady, onLog, onError, onExit } = options
 
   const workerState: WorkerState = {
     ready: false,
@@ -66,6 +73,7 @@ export async function spawnPluginWorker(options: {
         workerState.ready = true
         workerState.tools = msg.tools ?? []
         workerState.hooks = msg.hooks ?? []
+        onReady?.()
         break
       }
       case "hostRequest": {
@@ -98,18 +106,19 @@ export async function spawnPluginWorker(options: {
             ok: false,
             error: {
               name: "Error",
-              message: `No host bridge handler registered for plugin "${options.pluginId}"`,
+              message: `No host bridge handler registered for plugin "${pluginId}"`,
             },
           } satisfies HostToPlugin)
         }
         break
       }
       case "log": {
-        logBuffer?.append(options.pluginId, { timestamp: Date.now(), level: msg.level, message: msg.message })
+        onLog?.({ timestamp: Date.now(), level: msg.level, message: msg.message })
         break
       }
       case "heartbeat": {
         workerState.lastHeartbeat = Date.now()
+        onHeartbeat?.()
         break
       }
     }
@@ -132,12 +141,16 @@ export async function spawnPluginWorker(options: {
   })
 
   worker.on("error", (err: Error) => {
-    Log.Default.error("plugin worker error", { pluginId: options.pluginId, error: err.message })
-    pushWarning(options.pluginId, "worker_error", err.message)
+    onError?.(new PluginRuntimeError(pluginId, "worker_error", err.message, { cause: err }))
   })
 
   worker.on("exit", (code: number) => {
     workerState.exitCode = code
+    onExit?.({
+      exitCode: code,
+      signalCode: null,
+      classification: classifyRuntimeExit(code, null),
+    })
   })
 
   return {

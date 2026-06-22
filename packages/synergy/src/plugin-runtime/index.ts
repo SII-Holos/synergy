@@ -10,8 +10,8 @@ export type {
   IsolatedPluginInputData,
   RuntimeToolDescriptor,
   SerializedError,
+  HostBridgeHandler,
 } from "./protocol.js"
-export type { HostBridgeHandler } from "./protocol.js"
 export { MESSAGE_DELIMITER } from "./protocol.js"
 
 // Supervisor
@@ -20,6 +20,7 @@ export {
   getRuntime,
   getAllRuntimes,
   getRuntimeState,
+  getRuntimeHealth,
   getLogBuffer,
   startRuntime,
   stopRuntime,
@@ -27,6 +28,9 @@ export {
   killRuntime,
   restoreRuntimeState,
 } from "./supervisor.js"
+
+// Registry
+export { RuntimeRegistry, defaultRuntimeRegistry, type PersistedRuntimeEntry, type RuntimeHealth } from "./registry.js"
 
 export { spawnPluginProcess } from "./process-host.js"
 
@@ -38,7 +42,7 @@ export type { ConfigBridge, SecretBridge, CacheBridge, HostBridge } from "./brid
 export { REQUEST_TIMEOUT_MS, createBridgeClient } from "./bridge.js"
 
 // Health
-export { DEFAULT_LIMITS, startHeartbeatMonitor } from "./health.js"
+export { DEFAULT_LIMITS } from "./health.js"
 
 // Resource limits
 export { ConcurrencyLimiter, getProcessMemoryMb, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"

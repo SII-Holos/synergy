@@ -83,6 +83,15 @@ export function deserializeError(serialized: SerializedError): Error {
 export type ExitClassification = "normal" | "crash" | "terminated" | "killed" | "signaled"
 
 /**
+ * Structured exit information for a plugin runtime process or worker.
+ */
+export interface RuntimeExit {
+  exitCode: number | null
+  signalCode: string | null
+  classification: ExitClassification
+}
+
+/**
  * Classify a process exit based on its exit code and signal.
  *
  * @param exitCode  - The numeric exit code, or null if unavailable.

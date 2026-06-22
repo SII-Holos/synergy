@@ -1,5 +1,5 @@
 import type { PluginSource, TrustTier } from "../trust.js"
-import type { RuntimeMode } from "../../plugin-runtime/supervisor.js"
+import type { RuntimeMode } from "../../plugin-runtime/index.js"
 import type { PluginApprovalPolicy } from "../../config/schema.js"
 
 // ---------------------------------------------------------------------------

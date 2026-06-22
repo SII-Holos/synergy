@@ -21,7 +21,7 @@
  */
 
 import type { PluginSource } from "../plugin/trust.js"
-import type { RuntimeMode } from "./supervisor.js"
+import type { RuntimeMode } from "./registry.js"
 import { type PluginRuntimePolicy, PLUGIN_RUNTIME_POLICY_DEFAULTS } from "../config/schema"
 
 export type { PluginSource, RuntimeMode }

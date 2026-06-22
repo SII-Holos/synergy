@@ -12,20 +12,26 @@ let mockStartRuntimeCalls: Array<{
 }> = []
 let mockStartRuntimeError: Error | null = null
 
-mock.module("../../src/plugin-runtime/supervisor.js", () => ({
-  startRuntime: mock((pluginId: string, options: Record<string, unknown>) => {
-    mockStartRuntimeCalls.push({ pluginId, options })
-    if (mockStartRuntimeError) throw mockStartRuntimeError
-    return { pluginId, mode: options.mode ?? "process", state: "ready" }
-  }),
-  getRuntime: () => undefined,
-  getAllRuntimes: () => [],
-  getRuntimeState: () => "stopped",
-  stopRuntime: () => Promise.resolve(),
-  reloadRuntime: () => Promise.resolve({}),
-  killRuntime: () => Promise.resolve(),
-  restoreRuntimeState: () => Promise.resolve(),
-}))
+// Import the real module exports before mocking, so other test files
+// that import supervisor get real implementations (not stubs).
+// Only startRuntime is replaced with a spy that registers in the real registry
+// (so health/supervisor tests can find entries).
+const realSupervisor = await import("../../src/plugin-runtime/supervisor.js")
+const { defaultRuntimeRegistry } = await import("../../src/plugin-runtime/registry.js")
+
+mock.module("../../src/plugin-runtime/supervisor.js", () => {
+  const { startRuntime: _realStart, ...rest } = realSupervisor
+  return {
+    ...rest,
+    startRuntime: mock((pluginId: string, options: Record<string, unknown>) => {
+      mockStartRuntimeCalls.push({ pluginId, options })
+      if (mockStartRuntimeError) throw mockStartRuntimeError
+      const entry = { pluginId, mode: options.mode ?? "process", state: "ready" as const, restarts: 0, warnings: [] }
+      defaultRuntimeRegistry.set(entry as any)
+      return entry
+    }),
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Import the function under test after the mock is in place.

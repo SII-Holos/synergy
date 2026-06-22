@@ -6,10 +6,10 @@ import type {
   HostBridgeHandler,
 } from "./protocol.js"
 import { MESSAGE_DELIMITER } from "./protocol.js"
-import { getRuntime } from "./runtime-registry.js"
-import { pushWarning } from "./runtime-registry.js"
-import type { PluginLogBuffer } from "./logs.js"
-import { deserializeError } from "./errors.js"
+import { deserializeError, classifyRuntimeExit } from "./errors.js"
+import type { RuntimeExit, PluginRuntimeError } from "./errors.js"
+import type { PluginLogEntry } from "./logs.js"
+import type { ConcurrencyLimiter } from "./resource-limits.js"
 
 // ── Plugin process state ─────────────────────────────────────────
 
@@ -33,21 +33,28 @@ type MessageHandler = (msg: PluginToHost) => void
 
 // ── spawnPluginProcess ────────────────────────────────────────────
 
-export async function spawnPluginProcess(options: {
+export interface SpawnPluginProcessOptions {
   pluginId: string
   pluginDir: string
   entryPath: string
   input: IsolatedPluginInputData
   hostBridgeHandler?: HostBridgeHandler
-  logBuffer?: PluginLogBuffer
-}): Promise<{
+  concurrencyLimiter?: ConcurrencyLimiter
+  onHeartbeat?: () => void
+  onReady?: () => void
+  onLog?: (entry: PluginLogEntry) => void
+  onError?: (error: PluginRuntimeError) => void
+  onExit?: (exit: RuntimeExit) => void
+}
+
+export async function spawnPluginProcess(options: SpawnPluginProcessOptions): Promise<{
   process: Bun.Subprocess
   onMessage: (handler: MessageHandler) => void
   send: (msg: HostToPlugin) => void
   kill: () => void
-  state: PluginState
 }> {
-  const { pluginId, pluginDir, entryPath, input, hostBridgeHandler, logBuffer } = options
+  const { pluginId, pluginDir, entryPath, input, hostBridgeHandler, concurrencyLimiter } = options
+  const { onHeartbeat, onReady, onLog, onError, onExit } = options
 
   const pluginState: PluginState = {
     ready: false,
@@ -69,6 +76,7 @@ export async function spawnPluginProcess(options: {
         pluginState.ready = true
         pluginState.tools = msg.tools
         pluginState.hooks = msg.hooks
+        onReady?.()
         break
       }
       case "response": {
@@ -85,8 +93,7 @@ export async function spawnPluginProcess(options: {
         break
       }
       case "hostRequest": {
-        const runtimeEntry = getRuntime(pluginId)
-        if (runtimeEntry?.concurrencyLimiter && !runtimeEntry.concurrencyLimiter.acquire()) {
+        if (concurrencyLimiter && !concurrencyLimiter.acquire()) {
           proc.send(
             JSON.stringify({
               type: "bridgeResponse",
@@ -100,7 +107,7 @@ export async function spawnPluginProcess(options: {
           )
           break
         }
-        const onComplete = () => runtimeEntry?.concurrencyLimiter?.release()
+        const onComplete = () => concurrencyLimiter?.release()
         if (hostBridgeHandler) {
           hostBridgeHandler(msg.requestId, msg.method, msg.params)
             .then((value) => {
@@ -147,18 +154,12 @@ export async function spawnPluginProcess(options: {
         break
       }
       case "log": {
-        const entry = getRuntime(pluginId)
-        if (entry?.logRateLimiter && !entry.logRateLimiter.allow(msg.message.length)) {
-          pushWarning(pluginId, "log_rate_limited", `Log rate limit exceeded — message dropped`)
-          return
-        }
-        logBuffer?.append(pluginId, { timestamp: Date.now(), level: msg.level, message: msg.message })
+        onLog?.({ timestamp: Date.now(), level: msg.level, message: msg.message })
         break
       }
       case "heartbeat": {
         pluginState.lastHeartbeat = Date.now()
-        const entry = getRuntime(pluginId)
-        if (entry) entry.lastHeartbeatAt = Date.now()
+        onHeartbeat?.()
         break
       }
     }
@@ -185,6 +186,11 @@ export async function spawnPluginProcess(options: {
     onExit: (_proc, exitCode, signalCode, _error) => {
       pluginState.exitCode = exitCode
       pluginState.signalCode = signalCode?.toString() ?? null
+      onExit?.({
+        exitCode,
+        signalCode: signalCode?.toString() ?? null,
+        classification: classifyRuntimeExit(exitCode, signalCode?.toString() ?? null),
+      })
     },
   })
 
@@ -199,8 +205,6 @@ export async function spawnPluginProcess(options: {
   )
 
   return {
-    // Bun.spawn with ipc + no stdin infers Subprocess<"ignore", "pipe", "pipe">
-    // which is assignable to Bun.Subprocess (default type params).
     process: proc,
     onMessage: (handler: MessageHandler) => {
       messageHandler = handler
@@ -211,6 +215,5 @@ export async function spawnPluginProcess(options: {
     kill: () => {
       proc.kill()
     },
-    state: pluginState,
   }
 }

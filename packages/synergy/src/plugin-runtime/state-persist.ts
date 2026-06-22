@@ -1,21 +1,10 @@
 import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
-import type { RuntimeEntry, RuntimeState } from "./supervisor.js"
+import type { PersistedRuntimeEntry, RuntimeEntry } from "./registry.js"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "plugin-runtime.state-persist" })
-
-export interface PersistedRuntimeEntry {
-  pluginId: string
-  mode: string
-  pid?: number
-  state: RuntimeState
-  restarts: number
-  lastHeartbeatAt?: number
-  startedAt?: number
-  lastError?: string
-}
 
 const STATE_FILE = "plugin-runtime-state.json"
 
