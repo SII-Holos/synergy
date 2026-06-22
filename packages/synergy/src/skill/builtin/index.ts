@@ -1,6 +1,5 @@
 import { skillCreator } from "./skill-creator"
 import { gitGuide } from "./git-guide"
-import { agentBrowser } from "./agent-browser"
 import { synergyConfig } from "./synergy-config"
 
 export interface BuiltinSkill {
@@ -13,4 +12,4 @@ export interface BuiltinSkill {
   condition?: () => Promise<boolean> | boolean
 }
 
-export const BUILTIN_SKILLS: BuiltinSkill[] = [skillCreator, gitGuide, agentBrowser, synergyConfig]
+export const BUILTIN_SKILLS: BuiltinSkill[] = [skillCreator, gitGuide, synergyConfig]

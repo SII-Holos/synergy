@@ -3,6 +3,18 @@ import fs from "fs/promises"
 import { Global } from "../global"
 
 export namespace BrowserStorage {
+  export interface StoredAnnotation {
+    id: string
+    tabURL: string
+    tabID: string
+    ref?: string
+    element?: string
+    comment: string
+    styleFeedback?: Record<string, string>
+    resolved: boolean
+    createdAt: number
+  }
+
   export interface SessionState {
     scopeID: string
     sessionID?: string
@@ -10,6 +22,7 @@ export namespace BrowserStorage {
     activeTabID: string | null
     panelWidth: number
     timestamp: number
+    annotations: StoredAnnotation[]
   }
 
   function sessionsDir(scopeID: string): string {

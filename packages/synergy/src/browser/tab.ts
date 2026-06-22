@@ -56,6 +56,8 @@ export interface BrowserTab {
   resolveRef(
     ref: string,
   ): Promise<{ backendNodeId: number; x: number; y: number; width: number; height: number } | null>
+
+  evaluate(expression: string): Promise<unknown>
   waitFor(condition: WaitCondition, timeoutMs?: number): Promise<boolean>
 
   close(): Promise<void>
@@ -493,6 +495,12 @@ export class BrowserTabImpl implements BrowserTab {
     }
 
     return stored
+  }
+
+  async evaluate(expression: string): Promise<unknown> {
+    await this.ensureSession()
+    const result = await this.sendCmd("Runtime.evaluate", { expression, returnByValue: true })
+    return (result as { result?: { value?: unknown } }).result?.value
   }
 
   // ── wait ───────────────────────────────────────────────────────────

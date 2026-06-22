@@ -2,10 +2,22 @@ import { BrowserRuntime, setSessionFactory } from "./runtime.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
 
+export interface BrowserAnnotation {
+  id: string
+  tabURL: string
+  tabID: string
+  ref?: string
+  element?: string
+  comment: string
+  styleFeedback?: Record<string, string>
+  resolved: boolean
+  createdAt: number
+}
 export interface BrowserSession {
   readonly key: BrowserRuntime.SessionKey
   readonly tabs: readonly BrowserTab[]
   readonly activeTab: BrowserTab | null
+  readonly annotations: BrowserAnnotation[]
 
   createTab(url?: string): Promise<BrowserTab>
   switchTab(tabID: string): void
@@ -24,6 +36,7 @@ export class BrowserSessionImpl implements BrowserSession {
   readonly key: BrowserRuntime.SessionKey
   private _tabs: BrowserTabImpl[] = []
   private _activeTab: BrowserTabImpl | null = null
+  private _annotations: BrowserAnnotation[] = []
   private workspace: string
 
   get tabs(): readonly BrowserTab[] {
@@ -32,6 +45,10 @@ export class BrowserSessionImpl implements BrowserSession {
 
   get activeTab(): BrowserTab | null {
     return this._activeTab
+  }
+
+  get annotations(): BrowserAnnotation[] {
+    return this._annotations
   }
 
   constructor(key: BrowserRuntime.SessionKey, workspace: string) {
@@ -116,6 +133,7 @@ export class BrowserSessionImpl implements BrowserSession {
       activeTabID: this._activeTab?.id ?? null,
       panelWidth: 400,
       timestamp: Date.now(),
+      annotations: this._annotations,
     }
     await BrowserStorage.save(state)
   }
@@ -153,6 +171,9 @@ export class BrowserSessionImpl implements BrowserSession {
     if (!this._activeTab && this._tabs.length > 0) {
       this._activeTab = this._tabs[0]
     }
+
+    // Restore annotations
+    this._annotations = (data.annotations ?? []) as BrowserAnnotation[]
 
     return true
   }

@@ -75,6 +75,19 @@ import { RuntimeReloadTool } from "./runtime-reload"
 import { WorktreeEnterTool } from "./worktree-enter"
 import { WorktreeLeaveTool } from "./worktree-leave"
 import { WorktreeListTool } from "./worktree-list"
+import { BrowserAnnotateTool } from "./browser-annotate"
+import { BrowserNavigateTool } from "./browser-navigate"
+import { BrowserSnapshotTool } from "./browser-snapshot"
+import { BrowserScreenshotTool } from "./browser-screenshot"
+import { BrowserInspectTool } from "./browser-inspect"
+import { BrowserWaitTool } from "./browser-wait"
+import { BrowserClickTool } from "./browser-click"
+import { BrowserTypeTool } from "./browser-type"
+import { BrowserScrollTool } from "./browser-scroll"
+import { BrowserTabTool } from "./browser-tab"
+import { BrowserConsoleTool } from "./browser-console"
+import { BrowserNetworkTool } from "./browser-network"
+import { BrowserDownloadTool } from "./browser-download"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -248,6 +261,19 @@ export namespace ToolRegistry {
       WorktreeEnterTool,
       WorktreeLeaveTool,
       WorktreeListTool,
+      BrowserAnnotateTool,
+      BrowserNavigateTool,
+      BrowserSnapshotTool,
+      BrowserScreenshotTool,
+      BrowserInspectTool,
+      BrowserWaitTool,
+      BrowserClickTool,
+      BrowserTypeTool,
+      BrowserScrollTool,
+      BrowserTabTool,
+      BrowserConsoleTool,
+      BrowserNetworkTool,
+      BrowserDownloadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...custom,
     ]
