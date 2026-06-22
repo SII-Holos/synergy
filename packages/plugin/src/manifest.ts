@@ -129,7 +129,14 @@ const PluginPermissionsSchema = z
       .object({
         invoke: z.boolean().default(true),
         shell: z.boolean().default(false),
-        filesystem: z.enum(["none", "read", "write"]).default("none"),
+        filesystem: z.preprocess(
+          (val) => {
+            if (val === true) return "write"
+            if (val === false) return "none"
+            return val
+          },
+          z.enum(["none", "read", "write"]).default("none"),
+        ),
         network: z.boolean().default(false),
         mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
       })

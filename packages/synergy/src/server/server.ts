@@ -53,7 +53,7 @@ import { EngramRoute } from "./engram"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
-import { PluginRoute } from "./plugin-routes"
+import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
 import { StatsRoute } from "./stats"
 import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
@@ -729,6 +729,7 @@ export namespace Server {
         .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
         .route("/plugin", PluginRoute)
+        .route("/api/plugins", ApiPluginRoute)
 
         .post(
           "/log",

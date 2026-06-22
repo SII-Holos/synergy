@@ -12,9 +12,9 @@ export interface CapabilityWarning {
 
 export interface ResolvedPluginCapability {
   pluginId: string
-  /** Capability class strings (plugin_invoke, plugin_file_read, etc.) */
+  /** Capability strings matching gate.ts manifest-style format (e.g. "filesystem:read", "shell", "network") */
   base: string[]
-  /** Tool ID (short name) → per-tool capability class strings */
+  /** Tool ID (short name) → per-tool capability strings */
   tools: Record<string, string[]>
   /** High-level risk summary */
   overallRisk: "low" | "medium" | "high"
@@ -34,27 +34,30 @@ function baseCapabilities(manifest: PluginManifest): string[] {
   const pt = manifest.permissions?.tools
 
   if (pt) {
-    if (pt.filesystem === "read") caps.add("plugin_file_read")
+    if (pt.filesystem === "read") caps.add("filesystem:read")
     if (pt.filesystem === "write") {
-      caps.add("plugin_file_read")
-      caps.add("plugin_file_write")
+      caps.add("filesystem:read")
+      caps.add("filesystem:write")
     }
-    if (pt.shell) caps.add("plugin_shell")
-    if (pt.network) caps.add("plugin_network")
-    if (pt.mcp === "invoke") caps.add("plugin_mcp_invoke")
-    if (pt.mcp === "spawn") caps.add("plugin_mcp_spawn")
+    if (pt.shell) caps.add("shell")
+    if (pt.network) caps.add("network")
+    if (pt.mcp === "invoke") caps.add("mcp:invoke")
+    if (pt.mcp === "spawn") {
+      caps.add("mcp:invoke")
+      caps.add("mcp:spawn")
+    }
   }
 
   const pd = manifest.permissions?.data
   if (pd) {
-    if (pd.session === "read") caps.add("plugin_session_read")
-    if (pd.workspace === "read") caps.add("plugin_workspace_read")
+    if (pd.session === "read") caps.add("session_data")
+    if (pd.workspace === "read") caps.add("workspace_data")
     if (pd.config === "global") {
-      caps.add("plugin_config_read")
-      caps.add("plugin_config_write")
+      caps.add("config:read")
+      caps.add("config:write")
     }
-    if (pd.config === "plugin") caps.add("plugin_config_read")
-    if (pd.secrets === "own") caps.add("plugin_secret_read")
+    if (pd.config === "plugin") caps.add("config:read")
+    if (pd.secrets === "own") caps.add("secrets")
   }
 
   return [...caps].sort()
@@ -69,42 +72,45 @@ function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): s
 
   // Filesystem — tool-level wins over plugin-wide default
   const fs = tc?.filesystem ?? pt?.filesystem ?? "none"
-  if (fs === "read") caps.add("plugin_file_read")
+  if (fs === "read") caps.add("filesystem:read")
   if (fs === "write") {
-    caps.add("plugin_file_read")
-    caps.add("plugin_file_write")
+    caps.add("filesystem:read")
+    caps.add("filesystem:write")
   }
 
   // Network — tool-level wins
   const net = tc?.network ?? pt?.network ?? false
-  if (net) caps.add("plugin_network")
+  if (net) caps.add("network")
 
   // Shell — tool-level wins
   const shell = tc?.shell ?? pt?.shell ?? false
-  if (shell) caps.add("plugin_shell")
+  if (shell) caps.add("shell")
 
   // MCP — plugin-wide only (no per-tool override in manifest)
-  if (pt?.mcp === "invoke") caps.add("plugin_mcp_invoke")
-  if (pt?.mcp === "spawn") caps.add("plugin_mcp_spawn")
+  if (pt?.mcp === "invoke") caps.add("mcp:invoke")
+  if (pt?.mcp === "spawn") {
+    caps.add("mcp:invoke")
+    caps.add("mcp:spawn")
+  }
 
   // Session — tool-level wins over plugin-wide default
   const sess = tc?.session ?? pd?.session ?? "none"
-  if (sess === "read") caps.add("plugin_session_read")
+  if (sess === "read") caps.add("session_data")
 
   // Workspace — tool-level wins
   const ws = tc?.workspace ?? pd?.workspace ?? "none"
-  if (ws === "read") caps.add("plugin_workspace_read")
+  if (ws === "read") caps.add("workspace_data")
 
   // Config — tool-level wins
   const cfg = tc?.config ?? pd?.config ?? "plugin"
   if (cfg === "global") {
-    caps.add("plugin_config_read")
-    caps.add("plugin_config_write")
+    caps.add("config:read")
+    caps.add("config:write")
   }
-  if (cfg === "plugin") caps.add("plugin_config_read")
+  if (cfg === "plugin") caps.add("config:read")
 
   // Secrets — plugin-wide only (no per-tool override in manifest)
-  if (pd?.secrets === "own") caps.add("plugin_secret_read")
+  if (pd?.secrets === "own") caps.add("secrets")
 
   return [...caps].sort()
 }

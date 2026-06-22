@@ -26,7 +26,7 @@ import { InputProvider } from "@/context/input"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
-import { PluginToolBridge } from "@/plugin"
+import { PluginToolBridge, PluginHostProvider } from "@/plugin"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
@@ -156,40 +156,42 @@ function ConnectedApp() {
                   </span>
                 </div>
               </Show>
-              <GlobalSyncProvider>
-                <PluginToolBridge />
-                <Router
-                  base={proxyPrefix()}
-                  root={(props) => (
-                    <LayoutProvider>
-                      <NotificationProvider>
-                        <CommandProvider>
-                          <Layout>{props.children}</Layout>
-                        </CommandProvider>
-                      </NotificationProvider>
-                    </LayoutProvider>
-                  )}
-                >
-                  <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />
-                  <Route path="/:dir" component={DirectoryLayout}>
-                    <Route path="/" component={() => <Navigate href="session" />} />
-                    <Route
-                      path="/session/:id?"
-                      component={() => (
-                        <TerminalProvider>
-                          <FileProvider>
-                            <PromptProvider>
-                              <Suspense fallback={<Loading />}>
-                                <Session />
-                              </Suspense>
-                            </PromptProvider>
-                          </FileProvider>
-                        </TerminalProvider>
-                      )}
-                    />
-                  </Route>
-                </Router>
-              </GlobalSyncProvider>
+              <PluginHostProvider>
+                <GlobalSyncProvider>
+                  <PluginToolBridge />
+                  <Router
+                    base={proxyPrefix()}
+                    root={(props) => (
+                      <LayoutProvider>
+                        <NotificationProvider>
+                          <CommandProvider>
+                            <Layout>{props.children}</Layout>
+                          </CommandProvider>
+                        </NotificationProvider>
+                      </LayoutProvider>
+                    )}
+                  >
+                    <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />
+                    <Route path="/:dir" component={DirectoryLayout}>
+                      <Route path="/" component={() => <Navigate href="session" />} />
+                      <Route
+                        path="/session/:id?"
+                        component={() => (
+                          <TerminalProvider>
+                            <FileProvider>
+                              <PromptProvider>
+                                <Suspense fallback={<Loading />}>
+                                  <Session />
+                                </Suspense>
+                              </PromptProvider>
+                            </FileProvider>
+                          </TerminalProvider>
+                        )}
+                      />
+                    </Route>
+                  </Router>
+                </GlobalSyncProvider>
+              </PluginHostProvider>
             </Match>
           </Switch>
         </InputProvider>

@@ -114,3 +114,71 @@ describe("PluginManifest schema", () => {
     expect(result.success).toBe(false)
   })
 })
+
+test('filesystem: true is migrated to "write" (backward compat)', () => {
+  const result = PluginManifest.safeParse({
+    name: "old-plugin",
+    version: "1.0.0",
+    description: "Uses legacy boolean filesystem",
+    permissions: {
+      tools: {
+        filesystem: true,
+      },
+    },
+  })
+  expect(result.success).toBe(true)
+  if (result.success) {
+    expect(result.data.permissions?.tools?.filesystem).toBe("write")
+  }
+})
+
+test('filesystem: false is migrated to "none" (backward compat)', () => {
+  const result = PluginManifest.safeParse({
+    name: "old-plugin",
+    version: "1.0.0",
+    description: "Uses legacy boolean filesystem",
+    permissions: {
+      tools: {
+        filesystem: false,
+      },
+    },
+  })
+  expect(result.success).toBe(true)
+  if (result.success) {
+    expect(result.data.permissions?.tools?.filesystem).toBe("none")
+  }
+})
+
+test('filesystem: "read" passes through unchanged', () => {
+  const result = PluginManifest.safeParse({
+    name: "new-plugin",
+    version: "1.0.0",
+    description: "Uses enum filesystem",
+    permissions: {
+      tools: {
+        filesystem: "read",
+      },
+    },
+  })
+  expect(result.success).toBe(true)
+  if (result.success) {
+    expect(result.data.permissions?.tools?.filesystem).toBe("read")
+  }
+})
+
+test('filesystem: "write" passes through unchanged', () => {
+  const result = PluginManifest.safeParse({
+    name: "new-plugin",
+    version: "1.0.0",
+    description: "Uses enum filesystem",
+    permissions: {
+      tools: {
+        filesystem: "write",
+      },
+    },
+  })
+  expect(result.success).toBe(true)
+  if (result.success) {
+    expect(result.data.permissions?.tools?.filesystem).toBe("write")
+  }
+})

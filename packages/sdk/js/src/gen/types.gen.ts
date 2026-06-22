@@ -3645,6 +3645,71 @@ export type HolosRetryResponse = {
 
 export type MailboxMessageList = Array<unknown>
 
+export type PluginUiContribution = {
+  pluginId: string
+  name?: string
+  version: string
+  trustTier: "trusted" | "sandbox"
+  ui?: {
+    [key: string]: unknown
+  } | null
+  permissions?: {
+    [key: string]: unknown
+  } | null
+}
+
+export type PluginInteractResult = {
+  status: string
+  type: string
+}
+
+export type PluginConfigSchema = {
+  [key: string]: unknown
+}
+
+export type PluginConfig = {
+  [key: string]: unknown
+}
+
+export type PluginStatus = {
+  pluginId: string
+  loaded: boolean
+  name?: string
+  version?: string
+  hasManifest: boolean
+  trustTier: "trusted" | "sandbox"
+  manifest?: {
+    [key: string]: unknown
+  } | null
+}
+
+export type ApiPluginInfo = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "trusted" | "sandbox"
+  hasManifest: boolean
+  pluginDir: string
+  cliCommands: Array<string>
+  skillCount: number
+  agentCount: number
+}
+
+export type ApiPluginDetail = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "trusted" | "sandbox"
+  hasManifest: boolean
+  pluginDir: string
+  manifest?: {
+    [key: string]: unknown
+  } | null
+  cliCommands: Array<string>
+  skills: Array<string>
+  agents: Array<string>
+}
+
 export type ExternalAgentInfo = {
   adapter: string
   path?: string
@@ -9336,6 +9401,296 @@ export type HolosThreadGetResponses = {
 }
 
 export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type PluginListUiContributionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/ui/contributions"
+}
+
+export type PluginListUiContributionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PluginListUiContributionsError = PluginListUiContributionsErrors[keyof PluginListUiContributionsErrors]
+
+export type PluginListUiContributionsResponses = {
+  /**
+   * List of plugin UI contributions
+   */
+  200: Array<PluginUiContribution>
+}
+
+export type PluginListUiContributionsResponse =
+  PluginListUiContributionsResponses[keyof PluginListUiContributionsResponses]
+
+export type PluginServeAssetData = {
+  body?: never
+  path: {
+    pluginId: string
+    versionHash: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/assets/{pluginId}/{versionHash}/*"
+}
+
+export type PluginServeAssetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAssetErrors]
+
+export type PluginServeAssetResponses = {
+  /**
+   * Plugin static asset
+   */
+  200: unknown
+}
+
+export type PluginSandboxData = {
+  body?: never
+  path: {
+    pluginId: string
+    panelId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/sandbox/{panelId}"
+}
+
+export type PluginSandboxErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginSandboxError = PluginSandboxErrors[keyof PluginSandboxErrors]
+
+export type PluginSandboxResponses = {
+  /**
+   * Sandbox HTML page
+   */
+  200: unknown
+}
+
+export type PluginInteractData = {
+  body?: {
+    type: string
+    payload?: unknown
+    source?: string
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/interact"
+}
+
+export type PluginInteractErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginInteractError = PluginInteractErrors[keyof PluginInteractErrors]
+
+export type PluginInteractResponses = {
+  /**
+   * Interaction relayed
+   */
+  200: PluginInteractResult
+}
+
+export type PluginInteractResponse = PluginInteractResponses[keyof PluginInteractResponses]
+
+export type PluginConfigSchemaData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config-schema"
+}
+
+export type PluginConfigSchemaErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginConfigSchemaError = PluginConfigSchemaErrors[keyof PluginConfigSchemaErrors]
+
+export type PluginConfigSchemaResponses = {
+  /**
+   * Plugin config schema
+   */
+  200: PluginConfigSchema
+}
+
+export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
+
+export type PluginUpdateConfigData = {
+  body?: {
+    [key: string]: unknown
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginUpdateConfigErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginUpdateConfigError = PluginUpdateConfigErrors[keyof PluginUpdateConfigErrors]
+
+export type PluginUpdateConfigResponses = {
+  /**
+   * Updated plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginUpdateConfigResponse = PluginUpdateConfigResponses[keyof PluginUpdateConfigResponses]
+
+export type PluginStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/status"
+}
+
+export type PluginStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginStatusError = PluginStatusErrors[keyof PluginStatusErrors]
+
+export type PluginStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
+
+export type ApiPluginsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins"
+}
+
+export type ApiPluginsListResponses = {
+  /**
+   * List of loaded plugins
+   */
+  200: Array<ApiPluginInfo>
+}
+
+export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
+
+export type ApiPluginsGetData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}"
+}
+
+export type ApiPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetError = ApiPluginsGetErrors[keyof ApiPluginsGetErrors]
+
+export type ApiPluginsGetResponses = {
+  /**
+   * Plugin detail
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsGetResponse = ApiPluginsGetResponses[keyof ApiPluginsGetResponses]
+
+export type ApiPluginsStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/status"
+}
+
+export type ApiPluginsStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsStatusError = ApiPluginsStatusErrors[keyof ApiPluginsStatusErrors]
+
+export type ApiPluginsStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
 
 export type AppLogData = {
   body?: {

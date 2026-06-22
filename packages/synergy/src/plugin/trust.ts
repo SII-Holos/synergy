@@ -14,7 +14,6 @@ export interface PluginTrustDecision {
   source: PluginSource
   userTrusted: boolean
   verifiedIntegrity: boolean
-  signed?: boolean
   reason: string
 }
 
@@ -37,8 +36,6 @@ export interface PluginTrustDecision {
  */
 export function decideTrust(input: {
   source: PluginSource
-  pluginDir: string
-  globalCacheDir?: string
   userTrusted: boolean
   verifiedIntegrity: boolean
   devMode: boolean
@@ -60,13 +57,8 @@ export function decideTrust(input: {
       break
 
     case "local":
-      if (devMode) {
-        tier = "trusted-import"
-        reason = "local plugin in dev mode"
-      } else {
-        tier = "trusted-import"
-        reason = "local plugin"
-      }
+      tier = "trusted-import"
+      reason = devMode ? "local plugin in dev mode" : "local plugin"
       break
 
     case "npm":
@@ -113,7 +105,6 @@ export function trustReason(decision: PluginTrustDecision): string {
 
   if (decision.userTrusted) factors.push("user-trusted")
   if (decision.verifiedIntegrity) factors.push("integrity verified")
-  if (decision.signed) factors.push("signed")
 
   const factorText = factors.length > 0 ? ` (${factors.join(", ")})` : ""
   return `${decision.reason} → ${decision.tier}${factorText}`

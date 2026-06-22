@@ -10251,6 +10251,561 @@
         ]
       }
     },
+    "/plugin/ui/contributions": {
+      "get": {
+        "operationId": "plugin.listUIContributions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List plugin UI contributions",
+        "description": "Return aggregated UI manifests for all loaded plugins.",
+        "responses": {
+          "200": {
+            "description": "List of plugin UI contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginUIContribution"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.listUIContributions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/assets/{pluginId}/{versionHash}/*": {
+      "get": {
+        "operationId": "plugin.serveAsset",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "versionHash",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin static asset",
+        "description": "Serve a static file from a plugin's directory with immutable cache headers.",
+        "responses": {
+          "200": {
+            "description": "Plugin static asset"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.serveAsset({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/sandbox/{panelId}": {
+      "get": {
+        "operationId": "plugin.sandbox",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin sandbox iframe shell",
+        "description": "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
+        "responses": {
+          "200": {
+            "description": "Sandbox HTML page"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.sandbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/interact": {
+      "post": {
+        "operationId": "plugin.interact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Relay plugin interaction",
+        "description": "Relay a postMessage interaction for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Interaction relayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginInteractResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "payload": {},
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.interact({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config-schema": {
+      "get": {
+        "operationId": "plugin.configSchema",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin config schema",
+        "description": "Return the plugin's contributed config schema from its manifest.",
+        "responses": {
+          "200": {
+            "description": "Plugin config schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.configSchema({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config": {
+      "patch": {
+        "operationId": "plugin.updateConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Update plugin config",
+        "description": "Merge values into the plugin's configuration namespace.",
+        "responses": {
+          "200": {
+            "description": "Updated plugin config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.updateConfig({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/status": {
+      "get": {
+        "operationId": "plugin.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin status",
+        "description": "Report the current status of a loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "operationId": "api.plugins.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List all loaded plugins",
+        "description": "Return metadata for all currently loaded plugins.",
+        "responses": {
+          "200": {
+            "description": "List of loaded plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApiPluginInfo"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}": {
+      "get": {
+        "operationId": "api.plugins.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin detail",
+        "description": "Return detailed metadata for a single loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPluginDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/status": {
+      "get": {
+        "operationId": "api.plugins.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin status",
+        "description": "Report the current status of a loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/log": {
       "post": {
         "operationId": "app.log",
@@ -19817,6 +20372,212 @@
       "MailboxMessageList": {
         "type": "array",
         "items": {}
+      },
+      "PluginUIContribution": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "ui": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["pluginId", "version", "trustTier"]
+      },
+      "PluginInteractResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "type"]
+      },
+      "PluginConfigSchema": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginConfig": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginStatus": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["pluginId", "loaded", "hasManifest", "trustTier"]
+      },
+      "ApiPluginInfo": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "pluginDir": {
+            "type": "string"
+          },
+          "cliCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skillCount": {
+            "type": "number"
+          },
+          "agentCount": {
+            "type": "number"
+          }
+        },
+        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skillCount", "agentCount"]
+      },
+      "ApiPluginDetail": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "pluginDir": {
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cliCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skills", "agents"]
       },
       "ExternalAgentInfo": {
         "type": "object",

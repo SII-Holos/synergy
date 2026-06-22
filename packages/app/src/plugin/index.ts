@@ -48,6 +48,9 @@ export {
 } from "./registries/route-registry"
 
 export {
+  ToolRendererRegistry,
+  toolRendererRegistry,
+  type ToolRendererEntry,
   type ToolFallbackMeta,
   type ToolRendererProps,
   type ToolRenderer,
@@ -58,7 +61,6 @@ export {
   onToolLoaded,
   clearAllToolRenderers,
 } from "./registries/tool-registry"
-
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
 export {
   fetchContributions,
@@ -79,3 +81,5 @@ export {
 export { PluginToolBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
+export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { fetchUIContributions } from "./api"

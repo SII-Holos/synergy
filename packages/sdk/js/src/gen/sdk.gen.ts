@@ -37,6 +37,11 @@ import type {
   AgendaUpdateResponses,
   AgendaWebhookErrors,
   AgendaWebhookResponses,
+  ApiPluginsGetErrors,
+  ApiPluginsGetResponses,
+  ApiPluginsListResponses,
+  ApiPluginsStatusErrors,
+  ApiPluginsStatusResponses,
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
@@ -230,6 +235,20 @@ import type {
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
+  PluginConfigSchemaErrors,
+  PluginConfigSchemaResponses,
+  PluginInteractErrors,
+  PluginInteractResponses,
+  PluginListUiContributionsErrors,
+  PluginListUiContributionsResponses,
+  PluginSandboxErrors,
+  PluginSandboxResponses,
+  PluginServeAssetErrors,
+  PluginServeAssetResponses,
+  PluginStatusErrors,
+  PluginStatusResponses,
+  PluginUpdateConfigErrors,
+  PluginUpdateConfigResponses,
   ProviderAuthResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -5335,6 +5354,312 @@ export class Stats extends HeyApiClient {
   }
 }
 
+export class Plugin extends HeyApiClient {
+  /**
+   * List plugin UI contributions
+   *
+   * Return aggregated UI manifests for all loaded plugins.
+   */
+  public listUiContributions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      PluginListUiContributionsResponses,
+      PluginListUiContributionsErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/ui/contributions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin static asset
+   *
+   * Serve a static file from a plugin's directory with immutable cache headers.
+   */
+  public serveAsset<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      versionHash: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "versionHash" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
+      url: "/plugin/assets/{pluginId}/{versionHash}/*",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin sandbox iframe shell
+   *
+   * Serve an HTML shell for loading a plugin panel in a sandboxed iframe.
+   */
+  public sandbox<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      panelId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "panelId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/sandbox/{panelId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Relay plugin interaction
+   *
+   * Relay a postMessage interaction for a plugin.
+   */
+  public interact<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      type?: string
+      payload?: unknown
+      source?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "type" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "source" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginInteractResponses, PluginInteractErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/interact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin config schema
+   *
+   * Return the plugin's contributed config schema from its manifest.
+   */
+  public configSchema<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginConfigSchemaResponses, PluginConfigSchemaErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config-schema",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update plugin config
+   *
+   * Merge values into the plugin's configuration namespace.
+   */
+  public updateConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      body?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ in: "path", key: "pluginId" }, { in: "query", key: "directory" }, { in: "body" }] }],
+    )
+    return (options?.client ?? this.client).patch<PluginUpdateConfigResponses, PluginUpdateConfigErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin status
+   *
+   * Report the current status of a loaded plugin.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginStatusResponses, PluginStatusErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/status",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Plugins extends HeyApiClient {
+  /**
+   * List all loaded plugins
+   *
+   * Return metadata for all currently loaded plugins.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
+      url: "/api/plugins",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin detail
+   *
+   * Return detailed metadata for a single loaded plugin.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApiPluginsGetResponses, ApiPluginsGetErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin status
+   *
+   * Report the current status of a loaded plugin.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApiPluginsStatusResponses, ApiPluginsStatusErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/status",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Api extends HeyApiClient {
+  plugins = new Plugins({ client: this.client })
+}
+
 export class App extends HeyApiClient {
   /**
    * Write log
@@ -6151,6 +6476,10 @@ export class SynergyClient extends HeyApiClient {
   asset = new Asset({ client: this.client })
 
   stats = new Stats({ client: this.client })
+
+  plugin = new Plugin({ client: this.client })
+
+  api = new Api({ client: this.client })
 
   app = new App({ client: this.client })
 

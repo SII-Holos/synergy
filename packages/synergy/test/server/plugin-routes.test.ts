@@ -5,7 +5,6 @@ import { Instance } from "../../src/scope/instance"
 import { Server } from "../../src/server/server"
 import { Plugin } from "../../src/plugin"
 import { Config } from "../../src/config/config"
-import { Global } from "../../src/global"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
@@ -53,6 +52,7 @@ afterEach(() => {
   ;(Plugin as any).get = _origPlugin.get
   ;(Plugin as any).manifest = _origPlugin.manifest
   ;(Plugin as any).loaded = _origPlugin.loaded
+  ;(Plugin as any).getStatus = _origPluginStatus.getStatus
   ;(Config as any).get = _origConfig.get
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
 })
@@ -129,15 +129,48 @@ describe("GET /plugin/assets/:pluginId/:versionHash/* — asset edge cases", () 
 })
 
 // ---------------------------------------------------------------------------
-// 3. Plugin status — trust tier
+// 3. Plugin status — enriched comprehensive status
 // ---------------------------------------------------------------------------
+const _origPluginStatus = {
+  getStatus: Plugin.getStatus,
+}
+function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any {
+  return {
+    id: "test-plugin",
+    name: "Test Plugin",
+    version: "1.0.0",
+    source: "local",
+    trust: {
+      tier: "trusted-import",
+      source: "local",
+      userTrusted: true,
+      verifiedIntegrity: false,
+      reason: "local plugin",
+    },
+    loaded: true,
+    manifestValid: true,
+    integrity: "unverified",
+    permissions: {
+      base: ["plugin_invoke"],
+      tools: {},
+      overallRisk: "low",
+      warnings: [],
+    },
+    routes: [],
+    tools: [],
+    ui: { contributions: 0, errors: [] },
+    stores: { config: true, secrets: "none" },
+    warnings: [{ type: "integrity", message: "Plugin integrity has not been verified against a lockfile hash." }],
+    ...overrides,
+  }
+}
 
-describe("GET /plugin/:pluginId/status — trust tier", () => {
-  test("returns trusted for file:// plugin (outside cache)", async () => {
+describe("GET /plugin/:pluginId/status — comprehensive status", () => {
+  test("returns enriched status for a loaded plugin", async () => {
     await using tmp = await tmpdir({ git: true })
-    const plugin = buildLoadedPlugin({ pluginDir: "/home/user/dev/my-plugin" })
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Plugin as any).getStatus = mock(async () =>
+      buildStatusResponse({ source: "local", trust: { ...buildStatusResponse().trust, tier: "trusted-import" } }),
+    )
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -146,21 +179,34 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.pluginId).toBe("test-plugin")
+        expect(body.id).toBe("test-plugin")
         expect(body.loaded).toBe(true)
-        expect(body.trustTier).toBe("trusted")
-        expect(body.hasManifest).toBe(true)
+        expect(body.source).toBe("local")
+        expect(body.trust.tier).toBe("trusted-import")
+        expect(body.manifestValid).toBe(true)
         expect(body.version).toBe("1.0.0")
+        expect(body.permissions).toBeDefined()
+        expect(body.tools).toBeDefined()
+        expect(body.stores).toBeDefined()
+        expect(body.warnings).toBeDefined()
       },
     })
   })
 
-  test("returns sandbox for cached npm plugin (inside cache)", async () => {
+  test("returns sandbox trust for npm plugins", async () => {
     await using tmp = await tmpdir({ git: true })
-    const cachedDir = path.join(Global.Path.cache, "node_modules", "some-plugin")
-    const plugin = buildLoadedPlugin({ pluginDir: cachedDir })
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Plugin as any).getStatus = mock(async () =>
+      buildStatusResponse({
+        source: "npm",
+        trust: {
+          tier: "sandbox",
+          source: "npm",
+          userTrusted: false,
+          verifiedIntegrity: false,
+          reason: "npm plugin requires explicit user trust and verified integrity",
+        },
+      }),
+    )
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -169,16 +215,15 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.trustTier).toBe("sandbox")
+        expect(body.trust.tier).toBe("sandbox")
+        expect(body.source).toBe("npm")
       },
     })
   })
 
-  test("returns hasManifest=false and manifest=null when manifest is unavailable", async () => {
+  test("returns manifestValid=false when manifest is unavailable", async () => {
     await using tmp = await tmpdir({ git: true })
-    const plugin = buildLoadedPlugin()
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => null)
+    ;(Plugin as any).getStatus = mock(async () => buildStatusResponse({ manifestValid: false, version: undefined }))
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -187,15 +232,15 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.hasManifest).toBe(false)
-        expect(body.manifest).toBeNull()
+        expect(body.manifestValid).toBe(false)
+        expect(body.version).toBeUndefined()
       },
     })
   })
 
   test("returns 404 for a plugin that does not exist", async () => {
     await using tmp = await tmpdir({ git: true })
-    ;(Plugin as any).get = mock(async () => undefined)
+    ;(Plugin as any).getStatus = mock(async () => null)
 
     await Instance.provide({
       scope: await tmp.scope(),
