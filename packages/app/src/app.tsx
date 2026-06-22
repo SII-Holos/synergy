@@ -26,6 +26,7 @@ import { InputProvider } from "@/context/input"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
+import { PluginToolBridge } from "@/plugin"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
@@ -156,6 +157,7 @@ function ConnectedApp() {
                 </div>
               </Show>
               <GlobalSyncProvider>
+                <PluginToolBridge />
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (

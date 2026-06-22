@@ -53,7 +53,7 @@ export namespace Plugin {
   }
 
   // ---------------------------------------------------------------------------
-  // Plugin auth store — encrypted credentials at ~/.synergy/data/plugin/{id}/auth.json
+  // Plugin auth store — plaintext credentials at ~/.synergy/data/plugin/{id}/auth.json
   // ---------------------------------------------------------------------------
 
   function resolveAuthPath(pluginId: string) {
@@ -352,6 +352,10 @@ export namespace Plugin {
   /** Return all loaded plugin hooks (for tool/auth/event consumers) */
   export async function list() {
     return state().then((x) => x.loaded.map((p) => p.hooks))
+  }
+  /** Return loaded plugin IDs and hooks (for consumers that need both) */
+  export async function hooks() {
+    return state().then((x) => x.loaded.map((p) => ({ id: p.id, hooks: p.hooks })))
   }
 
   /** Return loaded plugin metadata */

@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundary,
   createEffect,
   createMemo,
   createSignal,
@@ -1496,58 +1497,57 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
     </For>
   )
 }
-
 export function Part(props: MessagePartProps) {
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
-      <Dynamic
-        component={component()}
-        part={props.part}
-        message={props.message}
-        hideDetails={props.hideDetails}
-        defaultOpen={props.defaultOpen}
-      />
+      <ErrorBoundary
+        fallback={(err) => (
+          <div class="plugin-error-card">
+            <div class="plugin-error-header">
+              <Icon name="alert-triangle" />
+              <span>Part Render Error: {props.part.type}</span>
+            </div>
+            <div class="plugin-error-message">{err?.message || String(err)}</div>
+          </div>
+        )}
+      >
+        <Dynamic
+          component={component()}
+          part={props.part}
+          message={props.message}
+          hideDetails={props.hideDetails}
+          defaultOpen={props.defaultOpen}
+        />
+      </ErrorBoundary>
     </Show>
   )
 }
 
-export interface ToolProps {
-  input: Record<string, any>
-  metadata: Record<string, any>
-  tool: string
-  title?: string
-  output?: string
-  status?: string
-  raw?: string
-  charsReceived?: number
-  hideDetails?: boolean
-  defaultOpen?: boolean
-  forceOpen?: boolean
-}
-
-export type ToolComponent = Component<ToolProps>
-
-const state: Record<
-  string,
-  {
-    name: string
-    render?: ToolComponent
-  }
-> = {}
-
-export function registerTool(input: { name: string; render?: ToolComponent }) {
-  state[input.name] = input
-  return input
-}
-
-export function getTool(name: string) {
-  return state[name]?.render
-}
-
-export const ToolRegistry = {
-  register: registerTool,
-  render: getTool,
+// ── Re-exported from tool-registry-lazy.ts for testability ────
+import type { ToolProps, ToolComponent as _ToolComponent } from "./tool-registry-lazy"
+export type { ToolProps }
+export type ToolComponent = _ToolComponent
+import {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
+  externalLookup,
+  externalFallbackLookup,
+  externalLoadNotify,
+} from "./tool-registry-lazy"
+export {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
 }
 
 function ToolAttachments(props: { attachments: FilePart[] }) {
@@ -1595,7 +1595,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
 
-  const render = createMemo(() => ToolRegistry.render(part().tool))
+  const render = createMemo(() =>
+    resolveToolRenderer(part().tool, ToolRegistry, { externalLookup, externalLoadNotify }),
+  )
 
   // Smoothly animate charsReceived so tool cards don't jump
   const charsAnimated = createAnimatedNumber(() => {
@@ -1604,7 +1606,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   })
 
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
-  // which classifies by semantic category for appropriate icon/title/subtitle
+  // which classifies by semantic category for appropriate icon/title/subtitle.
+  // When plugin Tier 1 declarative fallback metadata is available, it overrides
+  // the auto-classified icon/title/subtitle.
   const fallbackRender = (p: any) => (
     <SmartTool
       tool={p.tool}
@@ -1615,6 +1619,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       charsReceived={p.charsReceived}
       metadata={p.metadata}
       hideDetails={p.hideDetails}
+      fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
   )
 
