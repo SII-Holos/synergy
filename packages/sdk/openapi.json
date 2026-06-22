@@ -10539,6 +10539,56 @@
       }
     },
     "/plugin/{pluginId}/config": {
+      "get": {
+        "operationId": "plugin.getConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin config",
+        "description": "Return the current config values for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.getConfig({\n  ...\n})"
+          }
+        ]
+      },
       "patch": {
         "operationId": "plugin.updateConfig",
         "parameters": [
@@ -10802,6 +10852,372 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/search": {
+      "get": {
+        "operationId": "registry.plugins.search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "summary": "Search plugin registry",
+        "description": "Search plugins by keyword in name, description, and keywords with pagination.",
+        "responses": {
+          "200": {
+            "description": "Search results with pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plugins": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RegistryPluginSummary"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "offset": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["plugins", "total", "offset", "limit"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.search({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}": {
+      "get": {
+        "operationId": "registry.plugins.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin entry",
+        "description": "Return the full registry entry for a plugin, including its latest version.",
+        "responses": {
+          "200": {
+            "description": "Plugin registry entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/versions": {
+      "get": {
+        "operationId": "registry.plugins.versions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "summary": "List plugin versions",
+        "description": "Return all published versions for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin version list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryPluginVersion"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.versions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/versions/{version}": {
+      "get": {
+        "operationId": "registry.plugins.version",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "version",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin version",
+        "description": "Return details for a specific version of a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin version details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.version({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/download/{version}": {
+      "get": {
+        "operationId": "registry.plugins.download",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "version",
+            "required": true
+          }
+        ],
+        "summary": "Download plugin version",
+        "description": "Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.",
+        "responses": {
+          "200": {
+            "description": "Plugin archive binary"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Download not yet implemented for this entry"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.download({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/publish": {
+      "post": {
+        "operationId": "registry.plugins.publish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Publish plugin entry",
+        "description": "Publish a new plugin entry or update an existing one. Dev mode only — no authentication required.",
+        "responses": {
+          "200": {
+            "description": "Published plugin entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryPublishInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.publish({\n  ...\n})"
           }
         ]
       }
@@ -20387,7 +20803,7 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["trusted", "sandbox"]
+            "enum": ["declarative", "trusted-import", "sandbox"]
           },
           "ui": {
             "anyOf": [
@@ -20449,11 +20865,8 @@
       "PluginStatus": {
         "type": "object",
         "properties": {
-          "pluginId": {
+          "id": {
             "type": "string"
-          },
-          "loaded": {
-            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -20461,29 +20874,189 @@
           "version": {
             "type": "string"
           },
-          "hasManifest": {
+          "source": {
+            "type": "string",
+            "enum": ["local", "npm", "git", "url", "builtin", "official"]
+          },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "tier": {
+                "type": "string",
+                "enum": ["declarative", "trusted-import", "sandbox"]
+              },
+              "source": {
+                "type": "string",
+                "enum": ["local", "npm", "git", "url", "builtin", "official"]
+              },
+              "userTrusted": {
+                "type": "boolean"
+              },
+              "verifiedIntegrity": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+          },
+          "loaded": {
             "type": "boolean"
           },
-          "trustTier": {
-            "type": "string",
-            "enum": ["trusted", "sandbox"]
+          "loadError": {
+            "type": "string"
           },
-          "manifest": {
-            "anyOf": [
-              {
+          "manifestValid": {
+            "type": "boolean"
+          },
+          "integrity": {
+            "type": "string",
+            "enum": ["verified", "unverified", "failed"]
+          },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "base": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tools": {
                 "type": "object",
                 "propertyNames": {
                   "type": "string"
                 },
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
               },
-              {
-                "type": "null"
+              "overallRisk": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "toolId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type", "message"]
+                }
               }
-            ]
+            },
+            "required": ["base", "tools", "overallRisk", "warnings"]
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "fullId": {
+                  "type": "string"
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["id", "fullId", "capabilities", "warnings"]
+            }
+          },
+          "ui": {
+            "type": "object",
+            "properties": {
+              "contributions": {
+                "type": "number"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["contributions", "errors"]
+          },
+          "stores": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "boolean"
+              },
+              "secrets": {
+                "type": "string",
+                "enum": ["none", "plaintext", "keychain"]
+              },
+              "cacheBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["config", "secrets"]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "toolId": {
+                  "type": "string"
+                }
+              },
+              "required": ["type", "message"]
+            }
           }
         },
-        "required": ["pluginId", "loaded", "hasManifest", "trustTier"]
+        "required": [
+          "id",
+          "source",
+          "trust",
+          "loaded",
+          "manifestValid",
+          "integrity",
+          "permissions",
+          "routes",
+          "tools",
+          "ui",
+          "stores",
+          "warnings"
+        ]
       },
       "ApiPluginInfo": {
         "type": "object",
@@ -20499,7 +21072,7 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["trusted", "sandbox"]
+            "enum": ["declarative", "trusted-import", "sandbox"]
           },
           "hasManifest": {
             "type": "boolean"
@@ -20536,7 +21109,7 @@
           },
           "trustTier": {
             "type": "string",
-            "enum": ["trusted", "sandbox"]
+            "enum": ["declarative", "trusted-import", "sandbox"]
           },
           "hasManifest": {
             "type": "boolean"
@@ -20578,6 +21151,281 @@
           }
         },
         "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skills", "agents"]
+      },
+      "RegistryPluginSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latestVersion": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "name", "description", "author", "verified", "official", "keywords", "updatedAt"]
+      },
+      "RegistryPluginSignature": {
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "number"
+          }
+        },
+        "required": ["algorithm", "value"]
+      },
+      "RegistryPermissionItem": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "granted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["key", "description", "risk"]
+      },
+      "RegistryPluginVersion": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "manifestHash": {
+            "type": "string"
+          },
+          "permissionsHash": {
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/RegistryPluginSignature"
+          },
+          "downloadUrl": {
+            "type": "string"
+          },
+          "integrity": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPermissionItem"
+            }
+          },
+          "publishedAt": {
+            "type": "number"
+          },
+          "changelog": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "manifestHash",
+          "permissionsHash",
+          "integrity",
+          "risk",
+          "permissionsSummary",
+          "publishedAt"
+        ]
+      },
+      "RegistryPluginEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPluginVersion"
+            }
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "verified",
+          "official",
+          "keywords",
+          "compatibility",
+          "versions",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "RegistryPublishInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPluginVersion"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "verified",
+          "official",
+          "keywords",
+          "compatibility",
+          "versions"
+        ]
       },
       "ExternalAgentInfo": {
         "type": "object",

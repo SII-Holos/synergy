@@ -237,6 +237,8 @@ import type {
   PermissionRespondResponses,
   PluginConfigSchemaErrors,
   PluginConfigSchemaResponses,
+  PluginGetConfigErrors,
+  PluginGetConfigResponses,
   PluginInteractErrors,
   PluginInteractResponses,
   PluginListUiContributionsErrors,
@@ -272,6 +274,17 @@ import type {
   QuestionRejectResponses,
   QuestionReplyErrors,
   QuestionReplyResponses,
+  RegistryPluginsDownloadErrors,
+  RegistryPluginsDownloadResponses,
+  RegistryPluginsPublishErrors,
+  RegistryPluginsPublishResponses,
+  RegistryPluginsSearchErrors,
+  RegistryPluginsSearchResponses,
+  RegistryPluginsVersionErrors,
+  RegistryPluginsVersionResponses,
+  RegistryPluginsVersionsErrors,
+  RegistryPluginsVersionsResponses,
+  RegistryPublishInput,
   RewardsInfo,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
@@ -5514,6 +5527,36 @@ export class Plugin extends HeyApiClient {
   }
 
   /**
+   * Get plugin config
+   *
+   * Return the current config values for a plugin.
+   */
+  public getConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginGetConfigResponses, PluginGetConfigErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Update plugin config
    *
    * Merge values into the plugin's configuration namespace.
@@ -5654,9 +5697,196 @@ export class Plugins extends HeyApiClient {
       ...params,
     })
   }
+
+  /**
+   * Search plugin registry
+   *
+   * Search plugins by keyword in name, description, and keywords with pagination.
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      q?: string
+      offset?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "q" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsSearchResponses,
+      RegistryPluginsSearchErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List plugin versions
+   *
+   * Return all published versions for a plugin.
+   */
+  public versions<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsVersionsResponses,
+      RegistryPluginsVersionsErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/versions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin version
+   *
+   * Return details for a specific version of a plugin.
+   */
+  public version<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      version: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "version" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsVersionResponses,
+      RegistryPluginsVersionErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/versions/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download plugin version
+   *
+   * Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      version: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "version" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsDownloadResponses,
+      RegistryPluginsDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/download/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Publish plugin entry
+   *
+   * Publish a new plugin entry or update an existing one. Dev mode only — no authentication required.
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      registryPublishInput?: RegistryPublishInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "registryPublishInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RegistryPluginsPublishResponses,
+      RegistryPluginsPublishErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/publish",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
 }
 
 export class Api extends HeyApiClient {
+  plugins = new Plugins({ client: this.client })
+}
+
+export class Registry extends HeyApiClient {
   plugins = new Plugins({ client: this.client })
 }
 
@@ -6480,6 +6710,8 @@ export class SynergyClient extends HeyApiClient {
   plugin = new Plugin({ client: this.client })
 
   api = new Api({ client: this.client })
+
+  registry = new Registry({ client: this.client })
 
   app = new App({ client: this.client })
 

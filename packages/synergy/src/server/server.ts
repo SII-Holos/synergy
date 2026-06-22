@@ -54,6 +54,8 @@ import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
 import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
+import { PluginRuntimeRoute } from "./plugin-runtime-routes"
+import { RegistryRoute } from "./plugin-registry-routes"
 import { StatsRoute } from "./stats"
 import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
@@ -731,6 +733,8 @@ export namespace Server {
         .route("/holos", HolosDataRoute)
         .route("/plugin", PluginRoute)
         .route("/api/plugins", ApiPluginRoute)
+        .route("/api/plugins", PluginRuntimeRoute)
+        .route("/api/registry", RegistryRoute)
 
         .post(
           "/log",

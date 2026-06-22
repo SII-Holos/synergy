@@ -37,12 +37,14 @@ import {
 } from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 import { PluginToolId } from "../plugin/ids.js"
+import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 
 export interface Capability {
   class: string
   nonBypassable: boolean
   reason?: string
   opaque?: boolean
+  approved?: boolean
   paths?: string[]
 }
 
@@ -90,6 +92,8 @@ export interface GateOptions {
   registeredPluginTools?: Set<string>
   /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
   pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
+  /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
+  pluginApprovals?: Record<string, PluginApprovalRecord>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -212,6 +216,19 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_cancel",
   "agenda_trigger",
 ])
+
+/** Maps gate.ts capability class names to plugin manifest capability strings. */
+const GATE_TO_MANIFEST_CAP: Record<string, string> = {
+  plugin_file_read: "filesystem:read",
+  plugin_file_write: "filesystem:write",
+  plugin_shell: "shell",
+  plugin_network: "network",
+  plugin_session_read: "session_data",
+  plugin_workspace_read: "workspace_data",
+  plugin_config_read: "config:read",
+  plugin_config_write: "config:write",
+  plugin_secret_read: "secrets",
+}
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
@@ -347,6 +364,7 @@ export namespace EnforcementGate {
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
       pluginToolCapabilities = {},
+      pluginApprovals,
       originalCheckout,
       readRoots,
       execPolicy,
@@ -434,6 +452,26 @@ export namespace EnforcementGate {
         } else if (opaque) {
           // Tool is undeclared — opaque and high risk
           caps[0].opaque = true
+        }
+
+        // Approval check: mark sub-capabilities that haven't been approved by the user
+        if (pluginApprovals) {
+          const parsed = PluginToolId.parse(toolName)
+          if (parsed) {
+            const approval = pluginApprovals[parsed.pluginId]
+            const approvedSet = new Set(approval?.approvedCapabilities ?? [])
+            for (let i = 1; i < caps.length; i++) {
+              const cap = caps[i]
+              const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
+              if (manifestCap && !approvedSet.has(manifestCap)) {
+                cap.opaque = true
+                cap.approved = false
+                cap.reason = "unapproved"
+              } else {
+                cap.approved = true
+              }
+            }
+          }
         }
 
         return { capabilities: caps }

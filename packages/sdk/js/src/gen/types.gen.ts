@@ -3649,7 +3649,7 @@ export type PluginUiContribution = {
   pluginId: string
   name?: string
   version: string
-  trustTier: "trusted" | "sandbox"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   ui?: {
     [key: string]: unknown
   } | null
@@ -3672,22 +3672,61 @@ export type PluginConfig = {
 }
 
 export type PluginStatus = {
-  pluginId: string
-  loaded: boolean
+  id: string
   name?: string
   version?: string
-  hasManifest: boolean
-  trustTier: "trusted" | "sandbox"
-  manifest?: {
-    [key: string]: unknown
-  } | null
+  source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+  trust: {
+    tier: "declarative" | "trusted-import" | "sandbox"
+    source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+    userTrusted: boolean
+    verifiedIntegrity: boolean
+    reason: string
+  }
+  loaded: boolean
+  loadError?: string
+  manifestValid: boolean
+  integrity: "verified" | "unverified" | "failed"
+  permissions: {
+    base: Array<string>
+    tools: {
+      [key: string]: Array<string>
+    }
+    overallRisk: "low" | "medium" | "high"
+    warnings: Array<{
+      type: string
+      message: string
+      toolId?: string
+    }>
+  }
+  routes: Array<string>
+  tools: Array<{
+    id: string
+    fullId: string
+    capabilities: Array<string>
+    warnings: Array<string>
+  }>
+  ui: {
+    contributions: number
+    errors: Array<string>
+  }
+  stores: {
+    config: boolean
+    secrets: "none" | "plaintext" | "keychain"
+    cacheBytes?: number
+  }
+  warnings: Array<{
+    type: string
+    message: string
+    toolId?: string
+  }>
 }
 
 export type ApiPluginInfo = {
   pluginId: string
   name?: string
   version?: string
-  trustTier: "trusted" | "sandbox"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   hasManifest: boolean
   pluginDir: string
   cliCommands: Array<string>
@@ -3699,7 +3738,7 @@ export type ApiPluginDetail = {
   pluginId: string
   name?: string
   version?: string
-  trustTier: "trusted" | "sandbox"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   hasManifest: boolean
   pluginDir: string
   manifest?: {
@@ -3708,6 +3747,87 @@ export type ApiPluginDetail = {
   cliCommands: Array<string>
   skills: Array<string>
   agents: Array<string>
+}
+
+export type RegistryPluginSummary = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  latestVersion?: string
+  updatedAt: number
+}
+
+export type RegistryPluginSignature = {
+  algorithm: string
+  value: string
+  keyId?: string
+  timestamp?: number
+}
+
+export type RegistryPermissionItem = {
+  key: string
+  description: string
+  risk: "low" | "medium" | "high"
+  granted?: boolean
+}
+
+export type RegistryPluginVersion = {
+  version: string
+  manifestHash: string
+  permissionsHash: string
+  signature?: RegistryPluginSignature
+  downloadUrl?: string
+  integrity: string
+  risk: "low" | "medium" | "high"
+  permissionsSummary: Array<RegistryPermissionItem>
+  publishedAt: number
+  changelog?: string
+}
+
+export type RegistryPluginEntry = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
+  createdAt: number
+  updatedAt: number
+}
+
+export type RegistryPublishInput = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
 }
 
 export type ExternalAgentInfo = {
@@ -9552,6 +9672,35 @@ export type PluginConfigSchemaResponses = {
 
 export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
 
+export type PluginGetConfigData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginGetConfigErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginGetConfigError = PluginGetConfigErrors[keyof PluginGetConfigErrors]
+
+export type PluginGetConfigResponses = {
+  /**
+   * Plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginGetConfigResponse = PluginGetConfigResponses[keyof PluginGetConfigResponses]
+
 export type PluginUpdateConfigData = {
   body?: {
     [key: string]: unknown
@@ -9691,6 +9840,188 @@ export type ApiPluginsStatusResponses = {
 }
 
 export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
+
+export type RegistryPluginsSearchData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    q?: string
+    offset?: number
+    limit?: number
+  }
+  url: "/api/registry/search"
+}
+
+export type RegistryPluginsSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
+
+export type RegistryPluginsSearchResponses = {
+  /**
+   * Search results with pagination metadata
+   */
+  200: {
+    plugins: Array<RegistryPluginSummary>
+    total: number
+    offset: number
+    limit: number
+  }
+}
+
+export type RegistryPluginsSearchResponse = RegistryPluginsSearchResponses[keyof RegistryPluginsSearchResponses]
+
+export type RegistryPluginsGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}"
+}
+
+export type RegistryPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
+
+export type RegistryPluginsGetResponses = {
+  /**
+   * Plugin registry entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsGetResponse = RegistryPluginsGetResponses[keyof RegistryPluginsGetResponses]
+
+export type RegistryPluginsVersionsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/versions"
+}
+
+export type RegistryPluginsVersionsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
+
+export type RegistryPluginsVersionsResponses = {
+  /**
+   * Plugin version list
+   */
+  200: Array<RegistryPluginVersion>
+}
+
+export type RegistryPluginsVersionsResponse = RegistryPluginsVersionsResponses[keyof RegistryPluginsVersionsResponses]
+
+export type RegistryPluginsVersionData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/versions/{version}"
+}
+
+export type RegistryPluginsVersionErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
+
+export type RegistryPluginsVersionResponses = {
+  /**
+   * Plugin version details
+   */
+  200: RegistryPluginVersion
+}
+
+export type RegistryPluginsVersionResponse = RegistryPluginsVersionResponses[keyof RegistryPluginsVersionResponses]
+
+export type RegistryPluginsDownloadData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/download/{version}"
+}
+
+export type RegistryPluginsDownloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Download not yet implemented for this entry
+   */
+  501: unknown
+}
+
+export type RegistryPluginsDownloadError = RegistryPluginsDownloadErrors[keyof RegistryPluginsDownloadErrors]
+
+export type RegistryPluginsDownloadResponses = {
+  /**
+   * Plugin archive binary
+   */
+  200: unknown
+}
+
+export type RegistryPluginsPublishData = {
+  body?: RegistryPublishInput
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/publish"
+}
+
+export type RegistryPluginsPublishErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsPublishError = RegistryPluginsPublishErrors[keyof RegistryPluginsPublishErrors]
+
+export type RegistryPluginsPublishResponses = {
+  /**
+   * Published plugin entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
 
 export type AppLogData = {
   body?: {

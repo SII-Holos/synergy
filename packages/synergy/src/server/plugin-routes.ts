@@ -11,9 +11,19 @@ import { Config } from "../config/config"
 import { Global } from "../global"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
-// ── Helpers ──
+import { diffPermissions } from "../plugin/consent/diff"
+import { computeRisk } from "../plugin/consent/risk"
+import {
+  saveApproval,
+  getApproval,
+  computeManifestHash,
+  computePermissionsHash,
+} from "../plugin/consent/approval-store"
+import type { PluginApprovalRecord } from "../plugin/consent/approval-store"
+import { baseCapabilities } from "../plugin/capability"
+import { checkPathContainment } from "../util/path-contain"
 
-/** Derive plugin source from directory and compute trust using the canonical trust module. */
+import { PluginStatusSchema } from "../plugin/status.js"
 function derivePluginSource(pluginDir: string): PluginSource {
   const cacheRoot = Global.Path.cache
   const relative = path.relative(cacheRoot, pluginDir)
@@ -32,19 +42,6 @@ function getPluginTrust(pluginDir: string): PluginTrustDecision {
     verifiedIntegrity: false, // routes don't have integrity context
     devMode: Installation.isLocal(),
   })
-}
-
-/**
- * Path containment check matching the pattern from asset.ts.
- * Returns the resolved absolute path if contained, null if traversal detected.
- */
-function checkPathContainment(base: string, filePath: string): string | null {
-  const resolved = path.resolve(base, filePath)
-  const relative = path.relative(base, resolved)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return null
-  }
-  return resolved
 }
 
 // ── Asset security ──
@@ -106,62 +103,7 @@ const UIContribution = z
   })
   .meta({ ref: "PluginUIContribution" })
 
-const PluginStatus = z
-  .object({
-    id: z.string(),
-    name: z.string().optional(),
-    version: z.string().optional(),
-    source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-    trust: z.object({
-      tier: z.enum(["declarative", "trusted-import", "sandbox"]),
-      source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-      userTrusted: z.boolean(),
-      verifiedIntegrity: z.boolean(),
-      reason: z.string(),
-    }),
-    loaded: z.boolean(),
-    loadError: z.string().optional(),
-    manifestValid: z.boolean(),
-    integrity: z.enum(["verified", "unverified", "failed"]),
-    permissions: z.object({
-      base: z.array(z.string()),
-      tools: z.record(z.string(), z.array(z.string())),
-      overallRisk: z.enum(["low", "medium", "high"]),
-      warnings: z.array(
-        z.object({
-          type: z.string(),
-          message: z.string(),
-          toolId: z.string().optional(),
-        }),
-      ),
-    }),
-    routes: z.array(z.string()),
-    tools: z.array(
-      z.object({
-        id: z.string(),
-        fullId: z.string(),
-        capabilities: z.array(z.string()),
-        warnings: z.array(z.string()),
-      }),
-    ),
-    ui: z.object({
-      contributions: z.number(),
-      errors: z.array(z.string()),
-    }),
-    stores: z.object({
-      config: z.boolean(),
-      secrets: z.enum(["none", "plaintext", "keychain"]),
-      cacheBytes: z.number().optional(),
-    }),
-    warnings: z.array(
-      z.object({
-        type: z.string(),
-        message: z.string(),
-        toolId: z.string().optional(),
-      }),
-    ),
-  })
-  .meta({ ref: "PluginStatus" })
+const PluginStatus = PluginStatusSchema
 
 // ── Route group ──
 
@@ -628,5 +570,233 @@ export const ApiPluginRoute = new Hono()
       if (!status) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       return c.json(status)
+    },
+  )
+
+  // ── Consent routes ──
+
+  // POST /preview-install — Compute permission diff for a new plugin manifest
+  .post(
+    "/preview-install",
+    describeRoute({
+      summary: "Preview permissions for new plugin install",
+      description: "Compute the permission diff for a new plugin manifest before installation.",
+      operationId: "api.plugins.previewInstall",
+      responses: {
+        200: {
+          description: "Permission diff",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        manifest: z.record(z.string(), z.any()),
+      }),
+    ),
+    async (c) => {
+      const { manifest } = c.req.valid("json")
+      const pluginId = (manifest.name as string) ?? "unknown"
+      const caps = baseCapabilities(manifest as PluginManifestType)
+      const diff = diffPermissions(pluginId, null, manifest as PluginManifestType, [], caps)
+      return c.json(diff)
+    },
+  )
+
+  // POST /:pluginId/approve-install — Record install approval
+  .post(
+    "/:pluginId/approve-install",
+    describeRoute({
+      summary: "Approve new plugin install",
+      description: "Record approval for a new plugin installation after reviewing its permissions.",
+      operationId: "api.plugins.approveInstall",
+      responses: {
+        200: {
+          description: "Approval record",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        manifest: z.record(z.string(), z.any()),
+        capabilities: z.array(z.string()),
+      }),
+    ),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const plugin = await Plugin.get(pluginId)
+      const { manifest, capabilities } = c.req.valid("json")
+      const m = manifest as PluginManifestType
+      const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
+      const risk = computeRisk(capabilities)
+      const record: PluginApprovalRecord = {
+        pluginId,
+        source,
+        version: m.version ?? "0.0.0",
+        manifestHash: computeManifestHash(m),
+        permissionsHash: computePermissionsHash(m, capabilities),
+        approvedAt: Date.now(),
+        approvedBy: "user",
+        trustTier: "trusted-import",
+        approvedCapabilities: capabilities,
+        approvedNetworkDomains: m.permissions?.network?.connectDomains ?? [],
+        approvedUISurfaces: [],
+        risk,
+      }
+      await saveApproval(record)
+      return c.json(record)
+    },
+  )
+
+  // POST /:pluginId/preview-update — Compute diff between current and new manifest
+  .post(
+    "/:pluginId/preview-update",
+    describeRoute({
+      summary: "Preview permissions for plugin update",
+      description: "Compute the permission diff between the currently installed plugin and a new manifest version.",
+      operationId: "api.plugins.previewUpdate",
+      responses: {
+        200: {
+          description: "Permission diff",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        manifest: z.record(z.string(), z.any()),
+      }),
+    ),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const { manifest } = c.req.valid("json")
+      const newManifest = manifest as PluginManifestType
+      const oldManifest = await Plugin.manifest(pluginId)
+      if (!oldManifest) return c.json({ message: `Plugin not found or has no manifest: ${pluginId}` }, 404)
+      const oldCaps = baseCapabilities(oldManifest)
+      const newCaps = baseCapabilities(newManifest)
+      const diff = diffPermissions(pluginId, oldManifest, newManifest, oldCaps, newCaps)
+      return c.json(diff)
+    },
+  )
+
+  // POST /:pluginId/approve-update — Record update approval (overwrites previous)
+  .post(
+    "/:pluginId/approve-update",
+    describeRoute({
+      summary: "Approve plugin update",
+      description: "Record approval for a plugin update after reviewing its permission changes.",
+      operationId: "api.plugins.approveUpdate",
+      responses: {
+        200: {
+          description: "Approval record",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        manifest: z.record(z.string(), z.any()),
+        capabilities: z.array(z.string()),
+      }),
+    ),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const plugin = await Plugin.get(pluginId)
+      const { manifest, capabilities } = c.req.valid("json")
+      const m = manifest as PluginManifestType
+      const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
+      const risk = computeRisk(capabilities)
+      const record: PluginApprovalRecord = {
+        pluginId,
+        source,
+        version: m.version ?? "0.0.0",
+        manifestHash: computeManifestHash(m),
+        permissionsHash: computePermissionsHash(m, capabilities),
+        approvedAt: Date.now(),
+        approvedBy: "user",
+        trustTier: "trusted-import",
+        approvedCapabilities: capabilities,
+        approvedNetworkDomains: m.permissions?.network?.connectDomains ?? [],
+        approvedUISurfaces: [],
+        risk,
+      }
+      await saveApproval(record)
+      return c.json(record)
+    },
+  )
+
+  // GET /:pluginId/approval — Get current approval status
+  .get(
+    "/:pluginId/approval",
+    describeRoute({
+      summary: "Get plugin approval status",
+      description: "Return the current approval record for a plugin, or 404 if not approved.",
+      operationId: "api.plugins.getApproval",
+      responses: {
+        200: {
+          description: "Approval record",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const approval = await getApproval(pluginId)
+      if (!approval) return c.json({ message: `No approval record for plugin: ${pluginId}` }, 404)
+      return c.json(approval)
+    },
+  )
+
+  // GET /:pluginId/permission-diff — Get diff between current and target version
+  .get(
+    "/:pluginId/permission-diff",
+    describeRoute({
+      summary: "Get permission diff for plugin version",
+      description: "Return the permission diff between the approved capabilities and the current plugin manifest.",
+      operationId: "api.plugins.permissionDiff",
+      responses: {
+        200: {
+          description: "Permission diff",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const currentManifest = await Plugin.manifest(pluginId)
+      if (!currentManifest) return c.json({ message: `Plugin not found or has no manifest: ${pluginId}` }, 404)
+      const approval = await getApproval(pluginId)
+      const currentCaps = baseCapabilities(currentManifest)
+      if (!approval) {
+        const diff = diffPermissions(pluginId, null, currentManifest, [], currentCaps)
+        return c.json(diff)
+      }
+      const approvedCaps = approval.approvedCapabilities
+      const diff = diffPermissions(pluginId, currentManifest, currentManifest, approvedCaps, currentCaps)
+      return c.json(diff)
     },
   )

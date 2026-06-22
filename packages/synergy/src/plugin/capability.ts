@@ -1,4 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { computeRisk } from "./consent/risk"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,7 +86,7 @@ function buildCapabilitySet(
 
   return [...caps].sort()
 }
-function baseCapabilities(manifest: PluginManifest): string[] {
+export function baseCapabilities(manifest: PluginManifest): string[] {
   return buildCapabilitySet(manifest.permissions)
 }
 
@@ -93,28 +94,9 @@ function baseCapabilities(manifest: PluginManifest): string[] {
 function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): string[] {
   return buildCapabilitySet(manifest.permissions, tool.capabilities)
 }
-
-/** Derive overall risk from per-tool risk declarations and permission breadth. */
-function overallRisk(manifest: PluginManifest, manifestTools: ManifestTool[]): "low" | "medium" | "high" {
-  // Highest risk from per-tool declarations
-  let maxToolRisk: "low" | "medium" | "high" = "low"
-  for (const t of manifestTools) {
-    if (t.risk === "high") maxToolRisk = "high"
-    else if (t.risk === "medium" && maxToolRisk !== "high") maxToolRisk = "medium"
-  }
-
-  // Risk from plugin-wide permission breadth
-  const pt = manifest.permissions?.tools
-  let permRisk: "low" | "medium" | "high" = "low"
-  if (pt?.shell || pt?.filesystem === "write") {
-    permRisk = "high"
-  } else if (pt?.network || pt?.mcp === "spawn" || pt?.filesystem === "read") {
-    permRisk = "medium"
-  }
-
-  if (maxToolRisk === "high" || permRisk === "high") return "high"
-  if (maxToolRisk === "medium" || permRisk === "medium") return "medium"
-  return "low"
+/** Derive overall risk by delegating to the canonical consent/risk calculator. */
+function overallRisk(manifest: PluginManifest, _manifestTools: ManifestTool[]): "low" | "medium" | "high" {
+  return computeRisk(baseCapabilities(manifest), manifest)
 }
 
 // ---------------------------------------------------------------------------

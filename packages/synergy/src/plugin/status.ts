@@ -10,6 +10,9 @@ import { decideTrust, type PluginTrustDecision, type PluginSource } from "./trus
 import { PluginToolId } from "./ids"
 import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
+import { getRuntime } from "../plugin-runtime/supervisor"
+import { DEFAULT_LIMITS } from "../plugin-runtime/health"
+
 // ---------------------------------------------------------------------------
 // Comprehensive status — returned by GET /plugin/:id/status
 // ---------------------------------------------------------------------------
@@ -45,6 +48,16 @@ export interface PluginStatus {
     config: boolean
     secrets: "none" | "plaintext" | "keychain"
     cacheBytes?: number
+  }
+  runtime?: {
+    mode: string
+    pid?: number
+    state: string
+    restarts: number
+    lastHeartbeatAt?: number
+    memoryMb?: number
+    limits: typeof DEFAULT_LIMITS
+    lastError?: string
   }
   warnings: Array<{ type: string; message: string; toolId?: string }>
 }
@@ -96,6 +109,18 @@ export const PluginStatusSchema = z
       secrets: z.enum(["none", "plaintext", "keychain"]),
       cacheBytes: z.number().optional(),
     }),
+    runtime: z
+      .object({
+        mode: z.string(),
+        pid: z.number().optional(),
+        state: z.string(),
+        restarts: z.number(),
+        lastHeartbeatAt: z.number().optional(),
+        memoryMb: z.number().optional(),
+        limits: z.record(z.string(), z.any()),
+        lastError: z.string().optional(),
+      })
+      .optional(),
     warnings: z.array(
       z.object({
         type: z.string(),
@@ -262,6 +287,21 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
     cacheBytes: await resolveCacheBytes(pluginId),
   }
 
+  // ── Runtime ──
+  const runtimeEntry = getRuntime(pluginId)
+  const runtime = runtimeEntry
+    ? {
+        mode: runtimeEntry.mode,
+        pid: runtimeEntry.pid,
+        state: runtimeEntry.state,
+        restarts: runtimeEntry.restarts,
+        lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
+        memoryMb: runtimeEntry.memoryMb,
+        limits: DEFAULT_LIMITS,
+        lastError: runtimeEntry.lastError,
+      }
+    : undefined
+
   // ── Assemble warnings ──
   for (const w of capabilityResult.warnings) {
     warnings.push({ type: w.type, message: w.message, toolId: w.toolId })
@@ -292,6 +332,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
     tools,
     ui,
     stores,
+    runtime,
     warnings,
   }
 }

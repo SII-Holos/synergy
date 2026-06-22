@@ -6,10 +6,18 @@ import {
   type HookDescriptor,
 } from "@ericsanchezok/synergy-plugin/hooks"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginBuildCommand } from "./plugin-build"
+import { PluginPackCommand } from "./plugin-pack"
+import { PluginValidateCommand } from "./plugin-validate"
+import { PluginSignCommand } from "./plugin-sign"
+import { PluginDevCommand } from "./plugin-dev"
+import { PluginCreateCommand } from "./plugin-create"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { Plugin } from "@/plugin"
 import { PluginSpec } from "../../util/plugin-spec"
+
+import type { Argv } from "yargs"
 import { Config } from "../../config/config"
 import { Instance } from "../../scope/instance"
 import { Scope } from "@/scope"
@@ -18,7 +26,6 @@ import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
 import { read as readManifestFile } from "../../plugin/manifest-reader"
-import type { Argv } from "yargs"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -541,11 +548,17 @@ export const PluginCommand = cmd({
   builder: (yargs: Argv) =>
     yargs
       .command(PluginHooksCommand)
+      .command(PluginCreateCommand)
       .command(PluginAddCommand)
       .command(PluginRemoveCommand)
       .command(PluginUpdateCommand)
+      .command(PluginBuildCommand)
+      .command(PluginSignCommand)
+      .command(PluginPackCommand)
       .command(PluginListCommand)
       .command(PluginSearchCommand)
+      .command(PluginValidateCommand)
+      .command(PluginDevCommand)
       .demandCommand(),
   async handler() {},
 })
