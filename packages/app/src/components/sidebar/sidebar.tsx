@@ -159,11 +159,11 @@ export function Sidebar(props: SidebarProps) {
             if (oldY === undefined) {
               // New project: slide in from right + fade in
               item.style.opacity = "0"
-              item.style.transform = "translateX(16px)"
+              item.style.transform = "translateX(12px)"
               item.style.transition = "none"
               void item.offsetHeight // force reflow
               item.style.transition =
-                "opacity 350ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1)"
+                "opacity 280ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 280ms cubic-bezier(0.05, 0.7, 0.1, 1)"
               item.style.opacity = "1"
               item.style.transform = "translateX(0)"
               item.addEventListener(
@@ -186,7 +186,7 @@ export function Sidebar(props: SidebarProps) {
             item.style.transform = `translateY(${delta}px)`
             item.style.transition = "none"
             void item.offsetHeight
-            item.style.transition = "transform 350ms cubic-bezier(0.16, 1, 0.3, 1)"
+            item.style.transition = "transform 300ms cubic-bezier(0.2, 0, 0, 1)"
             item.style.transform = "translateY(0)"
 
             item.addEventListener(
