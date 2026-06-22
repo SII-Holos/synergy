@@ -1,0 +1,90 @@
+import { createMemo, onCleanup, Show } from "solid-js"
+import { createBrowserStore, setGlobalSend } from "./browser-store"
+import { createBrowserWebSocket } from "./browser-ws"
+import { TabStrip } from "./tab-strip"
+import { AddressBar } from "./address-bar"
+import { DevToolbar } from "./dev-toolbar"
+import { ScreenshotCanvas } from "./screenshot-canvas"
+import { ConsolePanel } from "./console-panel"
+import { NetworkPanel } from "./network-panel"
+import { ElementsPanel } from "./elements-panel"
+
+export function BrowserPanel() {
+  const browser = createBrowserStore()
+
+  return <BrowserPanelInner browser={browser} />
+}
+
+function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStore> }) {
+  const browser = props.browser
+
+  const ws = createBrowserWebSocket(browser)
+
+  onCleanup(() => {
+    setGlobalSend(undefined)
+  })
+
+  // Keep global send wired to WS
+  setGlobalSend(ws.send)
+
+  const activeTab = createMemo(() => {
+    const id = browser.activeTabId()
+    return browser.session.tabs.find((t) => t.id === id) ?? null
+  })
+
+  const showDevPanel = () => browser.devPanel() !== "closed"
+
+  return (
+    <div class="flex flex-col h-full bg-surface-inset-base">
+      <TabStrip
+        tabs={browser.session.tabs}
+        activeTabId={browser.session.activeTabId}
+        onSwitch={browser.switchTab}
+        onClose={browser.closeTab}
+        onAddTab={() => browser.addTab()}
+      />
+      <AddressBar
+        activeUrl={() => activeTab()?.url ?? ""}
+        isLoading={() => activeTab()?.isLoading ?? false}
+        onNavigate={(url) => {
+          const tab = activeTab()
+          if (!tab) return
+          browser.setTabLoading(tab.id, true)
+          ws.send({ type: "navigate", url, tabId: tab.id })
+        }}
+      />
+      <div class="flex-1 relative bg-background-stronger">
+        <Show
+          when={showDevPanel()}
+          fallback={
+            <Show
+              when={activeTab()}
+              fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>}
+            >
+              <ScreenshotCanvas />
+            </Show>
+          }
+        >
+          <DevPanelContent panel={browser.devPanel()!} />
+        </Show>
+      </div>
+      <DevToolbar />
+    </div>
+  )
+}
+
+function DevPanelContent(props: { panel: string }) {
+  return (
+    <div class="h-full overflow-hidden">
+      <Show when={props.panel === "console"}>
+        <ConsolePanel />
+      </Show>
+      <Show when={props.panel === "network"}>
+        <NetworkPanel />
+      </Show>
+      <Show when={props.panel === "elements"}>
+        <ElementsPanel />
+      </Show>
+    </div>
+  )
+}
