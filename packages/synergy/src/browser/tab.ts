@@ -158,7 +158,7 @@ export class BrowserTabImpl implements BrowserTab {
 
   private sessionId: string | null = null
   private browserCdp: CdpClient.Connection
-  private workspace: string
+  private directory: string
   private refMap = new Map<string, RefEntry>()
   private consoleBuffer: ConsoleMessage[] = []
   private networkBuffer: NetworkRequest[] = []
@@ -172,11 +172,11 @@ export class BrowserTabImpl implements BrowserTab {
 
   private browserContextId: string | null
 
-  constructor(browserCdp: CdpClient.Connection, workspace: string, id?: string, browserContextId?: string) {
-    this.id = id ?? generateId()
-    this.browserCdp = browserCdp
-    this.workspace = workspace
-    this.browserContextId = browserContextId ?? null
+  constructor(opts: { browserCdp: CdpClient.Connection; directory: string; id?: string; browserContextId?: string }) {
+    this.id = opts.id ?? generateId()
+    this.browserCdp = opts.browserCdp
+    this.directory = opts.directory
+    this.browserContextId = opts.browserContextId ?? null
   }
   // ── helpers ────────────────────────────────────────────────────────
 
@@ -278,7 +278,7 @@ export class BrowserTabImpl implements BrowserTab {
   // ── navigation ─────────────────────────────────────────────────────
 
   async navigate(url: string): Promise<{ url: string; title: string }> {
-    const result = BrowserPolicy.evaluateURL(url, this.workspace)
+    const result = BrowserPolicy.evaluateURL(url, this.directory)
     if (result.decision !== "allow") {
       throw new Error(`Navigation denied: ${result.reason}`)
     }

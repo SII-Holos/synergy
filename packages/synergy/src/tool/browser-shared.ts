@@ -4,6 +4,7 @@ import { Instance } from "../scope/instance"
 import { BrowserRuntime } from "../browser/runtime"
 import type { BrowserSession } from "../browser/session"
 import type { BrowserTab } from "../browser/tab"
+import { BrowserOwner } from "../browser/owner"
 
 // ── Shared error classes ───────────────────────────────────────────────
 
@@ -42,18 +43,14 @@ export namespace BrowserToolHelper {
   export async function getOrCreateSession(ctx: Context): Promise<BrowserSession> {
     if (ctx.browserSession) return ctx.browserSession
 
-    const key: BrowserRuntime.SessionKey = {
+    const owner: BrowserOwner.Info = {
+      mode: ctx.sessionID ? "session" : "scope",
       scopeID: ctx.scopeID,
+      directory: ctx.directory,
       sessionID: ctx.sessionID,
     }
 
-    const state = BrowserRuntime.state()
-    const existing = state.sessions.get(`${ctx.scopeID}:${ctx.sessionID ?? "default"}`) as BrowserSession | undefined
-    if (existing) return existing
-
-    // Dynamic import to avoid circular deps
-    const { BrowserSessionImpl } = await import("../browser/session.js")
-    return new BrowserSessionImpl(key, ctx.directory) as BrowserSession
+    return (await BrowserRuntime.getOrCreateSession(owner)) as unknown as BrowserSession
   }
 
   /** Resolve the active tab, or throw BrowserTabNotFoundError. */

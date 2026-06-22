@@ -1,6 +1,7 @@
 import path from "path"
+import os from "os"
 import fs from "fs/promises"
-import { Global } from "../global"
+import { BrowserOwner } from "./owner.js"
 
 export namespace BrowserStorage {
   export interface StoredAnnotation {
@@ -16,21 +17,18 @@ export namespace BrowserStorage {
   }
 
   export interface SessionState {
-    scopeID: string
-    sessionID?: string
     tabs: { id: string; url: string; title: string; order: number }[]
     activeTabID: string | null
-    panelWidth: number
+    panelWidth?: number
     timestamp: number
-    annotations: StoredAnnotation[]
+    annotations?: StoredAnnotation[]
   }
 
-  function sessionsDir(scopeID: string): string {
-    return path.join(Global.Path.data, "browser", "sessions", scopeID)
-  }
-
-  function filePath(scopeID: string, sessionID?: string): string {
-    return path.join(sessionsDir(scopeID), `${sessionID ?? "current"}.json`)
+  function stateFilePath(owner: BrowserOwner.Info): string {
+    const base = path.join(os.homedir(), ".synergy", "data", "browser", "sessions", owner.scopeID)
+    if (owner.mode === "scope") return path.join(base, "scope.json")
+    BrowserOwner.assertValid(owner)
+    return path.join(base, "session", `${owner.sessionID}.json`)
   }
 
   function sanitizeUrl(url: string): string {
@@ -47,8 +45,8 @@ export namespace BrowserStorage {
   }
 
   /** Read state. Returns null if no state file or on any read error. */
-  export async function load(key: { scopeID: string; sessionID?: string }): Promise<SessionState | null> {
-    const fp = filePath(key.scopeID, key.sessionID)
+  export async function load(owner: BrowserOwner.Info): Promise<SessionState | null> {
+    const fp = stateFilePath(owner)
     try {
       const file = Bun.file(fp)
       if (!(await file.exists())) return null
@@ -59,7 +57,7 @@ export namespace BrowserStorage {
   }
 
   /** Persist session state. Creates parent dirs if needed. */
-  export async function save(state: SessionState): Promise<void> {
+  export async function save(owner: BrowserOwner.Info, state: SessionState): Promise<void> {
     const sanitized: SessionState = {
       ...state,
       tabs: state.tabs.map((tab) => ({
@@ -67,15 +65,14 @@ export namespace BrowserStorage {
         url: sanitizeUrl(tab.url),
       })),
     }
-    const dir = sessionsDir(state.scopeID)
-    await fs.mkdir(dir, { recursive: true })
-    const fp = path.join(dir, `${state.sessionID ?? "current"}.json`)
+    const fp = stateFilePath(owner)
+    await fs.mkdir(path.dirname(fp), { recursive: true })
     await Bun.write(fp, JSON.stringify(sanitized, null, 2))
   }
 
   /** Remove session state. */
-  export async function remove(key: { scopeID: string; sessionID?: string }): Promise<void> {
-    const fp = filePath(key.scopeID, key.sessionID)
+  export async function remove(owner: BrowserOwner.Info): Promise<void> {
+    const fp = stateFilePath(owner)
     try {
       await fs.unlink(fp)
     } catch {
@@ -83,8 +80,8 @@ export namespace BrowserStorage {
     }
   }
 
-  /** Get storage path for a scope's sessions directory. */
-  export function pathForScope(scopeID: string): string {
-    return sessionsDir(scopeID)
+  /** Get storage path for an owner. */
+  export function pathForOwner(owner: BrowserOwner.Info): string {
+    return stateFilePath(owner)
   }
 }

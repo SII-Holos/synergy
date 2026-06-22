@@ -40,20 +40,12 @@ export interface AccessibilityElement {
 
 export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect"
 
-let nextTabId = 1
-
-function newTabId(): string {
-  return `tab-${nextTabId++}`
-}
-
 let _globalSend: ((msg: Record<string, unknown>) => void) | undefined
 
 export function createBrowserStore() {
-  const startUrl = "about:blank"
-
   const [session, setSession] = createStore({
-    tabs: [{ id: newTabId(), title: "New Tab", url: startUrl, isLoading: false }] as BrowserTab[],
-    activeTabId: "tab-1" as string | null,
+    tabs: [] as BrowserTab[],
+    activeTabId: null as string | null,
     connectionStatus: "disconnected" as string,
   })
 
@@ -72,16 +64,8 @@ export function createBrowserStore() {
     return session.tabs.find((t) => t.id === id) ?? null
   })
 
-  function addTab(url?: string) {
-    const id = newTabId()
-    setSession(
-      "tabs",
-      produce((tabs) => {
-        tabs.push({ id, title: "New Tab", url: url ?? startUrl, isLoading: false })
-      }),
-    )
-    setSession("activeTabId", id)
-    return id
+  function createTab(url?: string) {
+    send({ type: "createTab", url })
   }
 
   function closeTab(tabId: string) {
@@ -131,7 +115,7 @@ export function createBrowserStore() {
     setSession,
     activeTab,
     activeTabId,
-    addTab,
+    createTab,
     closeTab,
     switchTab,
     setTabLoading,

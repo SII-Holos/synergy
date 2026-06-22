@@ -1,22 +1,17 @@
 import path from "path"
 import { CdpClient } from "./cdp.js"
 import { BrowserInstall } from "./install.js"
+import { BrowserOwner } from "./owner.js"
 
 // ── BrowserSession placeholder (full interface in session.ts) ─────────
 
 export interface BrowserSession {
-  readonly key: BrowserRuntime.SessionKey
+  readonly owner: BrowserOwner.Info
   dispose(): Promise<void>
 }
 
 // ── BrowserRuntime namespace ──────────────────────────────────────────
-
 export namespace BrowserRuntime {
-  export interface SessionKey {
-    scopeID: string
-    sessionID?: string
-  }
-
   export interface RuntimeState {
     running: boolean
     chromiumPath: string | null
@@ -32,12 +27,12 @@ export namespace BrowserRuntime {
   let running = false
   let chromiumPath: string | null = null
   let cdpConnection: CdpClient.Connection | null = null
-  /** Map from scopeID to browser context ID for isolation */
-  const scopeContexts = new Map<string, string>()
-
-  function sessionKeyStr(key: SessionKey): string {
-    return `${key.scopeID}:${key.sessionID ?? "default"}`
+  interface BrowserContextInfo {
+    browserContextId: string
+    blankTargetId: string
   }
+  /** Map from owner key to browser context for isolation */
+  const browserContexts = new Map<string, BrowserContextInfo>()
 
   // ── Chromium launch helpers ─────────────────────────────────────
 
@@ -255,7 +250,7 @@ export namespace BrowserRuntime {
       }
       chromiumProcess = null
     }
-    scopeContexts.clear()
+    browserContexts.clear()
 
     running = false
     chromiumPath = null
@@ -279,10 +274,11 @@ export namespace BrowserRuntime {
     }
   }
 
-  /** Get or create a browser context for a scope. Returns targetId of the context. */
-  export async function scopeTarget(scopeID: string): Promise<string> {
-    let targetId = scopeContexts.get(scopeID)
-    if (targetId) return targetId
+  /** Get or create a browser context for an owner. Returns context ID and blank target ID. */
+  export async function contextFor(owner: BrowserOwner.Info): Promise<BrowserContextInfo> {
+    const k = BrowserOwner.key(owner)
+    let ctx = browserContexts.get(k)
+    if (ctx) return ctx
 
     if (!running || !cdpConnection) {
       throw new Error("Browser runtime not running")
@@ -298,17 +294,17 @@ export namespace BrowserRuntime {
         browserContextId: result.browserContextId,
       })) as { targetId: string }
 
-      targetId = targetResult.targetId
-      scopeContexts.set(scopeID, targetId)
-      return targetId
+      ctx = { browserContextId: result.browserContextId, blankTargetId: targetResult.targetId }
+      browserContexts.set(k, ctx)
+      return ctx
     } catch (e) {
-      throw new Error(`Failed to create browser context for scope ${scopeID}: ${e}`)
+      throw new Error(`Failed to create browser context for ${k}: ${e}`)
     }
   }
 
   /** Dispose a specific BrowserSession. */
-  export async function disposeSession(key: SessionKey): Promise<void> {
-    const k = sessionKeyStr(key)
+  export async function disposeSession(owner: BrowserOwner.Info): Promise<void> {
+    const k = BrowserOwner.key(owner)
     const s = sessions.get(k)
     if (!s) return
     sessions.delete(k)
@@ -316,8 +312,20 @@ export namespace BrowserRuntime {
   }
 
   /** Register a session externally (for BrowserSession constructor). */
-  export function registerSession(key: SessionKey, session: BrowserSession): void {
-    sessions.set(sessionKeyStr(key), session)
+  export function registerSession(owner: BrowserOwner.Info, session: BrowserSession): void {
+    sessions.set(BrowserOwner.key(owner), session)
+  }
+
+  /** Create or retrieve a BrowserSession for the given owner. */
+  export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
+    BrowserOwner.assertValid(owner)
+    const k = BrowserOwner.key(owner)
+    const existing = sessions.get(k)
+    if (existing) return existing
+    const { BrowserSessionImpl } = await import("./session.js")
+    const session = new BrowserSessionImpl(owner) as unknown as BrowserSession
+    sessions.set(k, session)
+    return session
   }
 
   /** Get the current runtime state (for debugging). */

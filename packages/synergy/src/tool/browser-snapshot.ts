@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { formatSnapshotText } from "./browser-shared"
 import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
   description:
@@ -20,12 +20,13 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
   }),
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
-
+    const owner = BrowserOwner.fromToolContext(ctx)
     const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
+      scopeID: owner.scopeID,
+      directory: owner.directory,
+      sessionID: owner.sessionID,
     }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
 
     const snapshot = await tab.snapshot()
     const text = formatSnapshotText(snapshot.elements, {

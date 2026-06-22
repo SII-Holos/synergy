@@ -2,7 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
+import { BrowserOwner } from "../browser/owner"
 import { Asset } from "../asset/asset"
 import { Identifier } from "../id/id"
 
@@ -16,12 +16,13 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   }),
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
-
+    const owner = BrowserOwner.fromToolContext(ctx)
     const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
+      scopeID: owner.scopeID,
+      directory: owner.directory,
+      sessionID: owner.sessionID,
     }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
 
     const { buffer, width, height } = await tab.screenshot(params.format, undefined, params.fullPage)
     const mime = params.format === "jpeg" ? "image/jpeg" : "image/png"

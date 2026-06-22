@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 const waitConditionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load") }),

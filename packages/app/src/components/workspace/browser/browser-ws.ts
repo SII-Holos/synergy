@@ -6,7 +6,7 @@ import type { BrowserStoreAPI } from "./browser-store"
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
 
-export function createBrowserWebSocket(store: BrowserStoreAPI) {
+export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string) {
   const sdk = useSDK()
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -24,7 +24,9 @@ export function createBrowserWebSocket(store: BrowserStoreAPI) {
 
   const connect = () => {
     if (disposed) return
-    const wsUrl = sdk.url.replace(/^http/, "ws") + `/${encodeURIComponent(sdk.directory)}/browser/connect`
+    const wsUrl =
+      sdk.url.replace(/^http/, "ws") +
+      `/${encodeURIComponent(sdk.directory)}/browser/connect?mode=session&sessionID=${encodeURIComponent(sessionID)}`
     const socket = new WebSocket(wsUrl)
     ws = socket
 

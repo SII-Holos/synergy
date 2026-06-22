@@ -2,7 +2,8 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
+import { BrowserOwner } from "../browser/owner"
+
 const parameters = z.object({
   action: z
     .enum(["list", "read", "resolve", "create"])
@@ -27,11 +28,13 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
   parameters,
   async execute(params, ctx) {
     await BrowserRuntime.ensure()
+    const owner = BrowserOwner.fromToolContext(ctx)
     const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
+      scopeID: owner.scopeID,
+      directory: owner.directory,
+      sessionID: owner.sessionID,
     }
-    const session = BrowserToolHelper.getOrCreateSession(helperCtx)
+    const session = await BrowserToolHelper.getOrCreateSession(helperCtx)
 
     switch (params.action) {
       case "list": {
@@ -75,7 +78,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
         }
       }
       case "create": {
-        const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+        const tab = await BrowserToolHelper.getTab(helperCtx, params.tabId)
         const comment = params.comment
         if (!comment)
           return { title: "Missing comment", output: "The 'comment' field is required for create.", metadata: {} }

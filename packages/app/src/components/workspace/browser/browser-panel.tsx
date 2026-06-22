@@ -1,4 +1,5 @@
 import { createMemo, onCleanup, Show } from "solid-js"
+import { useParams } from "@solidjs/router"
 import { createBrowserStore, setGlobalSend } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
 import { TabStrip } from "./tab-strip"
@@ -12,15 +13,23 @@ import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 
 export function BrowserPanel() {
-  const browser = createBrowserStore()
+  const params = useParams()
+  const ownerKey = createMemo(() => `${params.dir}:session:${params.id}`)
 
-  return <BrowserPanelInner browser={browser} />
+  return (
+    <Show keyed when={ownerKey()}>
+      {(key) => {
+        const browser = createBrowserStore()
+        return <BrowserPanelInner browser={browser} sessionID={params.id!} />
+      }}
+    </Show>
+  )
 }
 
-function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStore> }) {
+function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStore>; sessionID: string }) {
   const browser = props.browser
 
-  const ws = createBrowserWebSocket(browser)
+  const ws = createBrowserWebSocket(browser, props.sessionID)
 
   onCleanup(() => {
     setGlobalSend(undefined)
@@ -43,7 +52,7 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
         activeTabId={browser.session.activeTabId}
         onSwitch={browser.switchTab}
         onClose={browser.closeTab}
-        onAddTab={() => browser.addTab()}
+        onAddTab={() => browser.createTab()}
       />
       <AddressBar
         activeUrl={() => activeTab()?.url ?? ""}

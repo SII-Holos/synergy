@@ -1,7 +1,7 @@
 import { BrowserRuntime } from "./runtime.js"
+import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
-
 export interface BrowserAnnotation {
   id: string
   tabURL: string
@@ -24,7 +24,7 @@ export interface BrowserAnnotationInput {
   tabURL?: string
 }
 export interface BrowserSession {
-  readonly key: BrowserRuntime.SessionKey
+  readonly owner: BrowserOwner.Info
   readonly tabs: readonly BrowserTab[]
   readonly activeTab: BrowserTab | null
   readonly annotations: BrowserAnnotation[]
@@ -48,11 +48,10 @@ export interface BrowserSession {
 const MAX_TABS = 10
 
 export class BrowserSessionImpl implements BrowserSession {
-  readonly key: BrowserRuntime.SessionKey
+  readonly owner: BrowserOwner.Info
   private _tabs: BrowserTabImpl[] = []
   private _activeTab: BrowserTabImpl | null = null
   private _annotations: BrowserAnnotation[] = []
-  private workspace: string
 
   get tabs(): readonly BrowserTab[] {
     return this._tabs
@@ -66,12 +65,11 @@ export class BrowserSessionImpl implements BrowserSession {
     return this._annotations
   }
 
-  constructor(key: BrowserRuntime.SessionKey, workspace: string) {
-    this.key = key
-    this.workspace = workspace
+  constructor(owner: BrowserOwner.Info) {
+    this.owner = owner
 
     // Register session with runtime
-    BrowserRuntime.registerSession(key, this as unknown as import("./runtime.js").BrowserSession)
+    BrowserRuntime.registerSession(owner, this as unknown as import("./runtime.js").BrowserSession)
 
     // Restore saved state asynchronously (don't block constructor)
     this.restore().catch(() => {
@@ -80,7 +78,8 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   private async ensureScopeContext(): Promise<string> {
-    return BrowserRuntime.scopeTarget(this.key.scopeID)
+    const ctx = await BrowserRuntime.contextFor(this.owner)
+    return ctx.browserContextId
   }
 
   async createTab(url?: string): Promise<BrowserTab> {
@@ -93,7 +92,11 @@ export class BrowserSessionImpl implements BrowserSession {
       throw new Error("Browser is not running")
     }
     const browserContextId = await this.ensureScopeContext()
-    const tab = new BrowserTabImpl(state.cdpConnection, this.workspace, undefined, browserContextId)
+    const tab = new BrowserTabImpl({
+      browserCdp: state.cdpConnection,
+      directory: this.owner.directory,
+      browserContextId,
+    })
     this._tabs.push(tab)
 
     if (!this._activeTab) {
@@ -184,10 +187,12 @@ export class BrowserSessionImpl implements BrowserSession {
     return `<browser-annotations>\n${items}\n</browser-annotations>`
   }
 
+  private toOwner(): BrowserOwner.Info {
+    return this.owner
+  }
+
   async save(): Promise<void> {
     const state: BrowserStorage.SessionState = {
-      scopeID: this.key.scopeID,
-      sessionID: this.key.sessionID,
       tabs: this._tabs.map((tab, i) => ({
         id: tab.id,
         url: tab.url,
@@ -199,11 +204,11 @@ export class BrowserSessionImpl implements BrowserSession {
       timestamp: Date.now(),
       annotations: this._annotations,
     }
-    await BrowserStorage.save(state)
+    await BrowserStorage.save(this.toOwner(), state)
   }
 
   async restore(): Promise<boolean> {
-    const data = await BrowserStorage.load(this.key)
+    const data = await BrowserStorage.load(this.toOwner())
     if (!data) return false
 
     const state = BrowserRuntime.state()
@@ -223,7 +228,7 @@ export class BrowserSessionImpl implements BrowserSession {
     // Restore tabs sorted by order
     const sorted = [...data.tabs].sort((a, b) => a.order - b.order)
     for (const saved of sorted) {
-      const tab = new BrowserTabImpl(state.cdpConnection, this.workspace, saved.id)
+      const tab = new BrowserTabImpl({ browserCdp: state.cdpConnection, directory: this.owner.directory, id: saved.id })
       tab.url = saved.url
       tab.title = saved.title
       this._tabs.push(tab)
