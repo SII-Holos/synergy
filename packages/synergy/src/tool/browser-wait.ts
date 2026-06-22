@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
 
 const waitConditionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load") }),
@@ -25,13 +23,7 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
     tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
-
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
-    }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
 
     const met = await tab.waitFor(params.condition, params.timeout)
 

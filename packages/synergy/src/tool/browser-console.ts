@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
 
 export const BrowserConsoleTool = Tool.define("browser_console", {
   description:
@@ -13,12 +11,7 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
     filter: z.string().describe("Optional regex pattern to filter entries by text content.").optional(),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
-    }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
 
     const entries = await tab.consoleEntries(params.maxEntries ?? 50)
 

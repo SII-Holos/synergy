@@ -649,6 +649,40 @@ export namespace EnforcementGate {
         }
         return { capabilities: caps }
       }
+      // Browser tools
+      if (toolName === "browser_navigate") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_click" || toolName === "browser_type" || toolName === "browser_scroll") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_snapshot" ||
+        toolName === "browser_screenshot" ||
+        toolName === "browser_inspect" ||
+        toolName === "browser_wait"
+      ) {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_console" || toolName === "browser_network") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_tab") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_download") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_annotate") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

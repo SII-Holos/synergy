@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
@@ -13,12 +11,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     filter: z.string().describe("Optional regex pattern to filter requests by URL.").optional(),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
-    }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
 
     const requests = await tab.networkRequests(params.maxEntries ?? 20)
 

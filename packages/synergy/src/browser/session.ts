@@ -13,6 +13,16 @@ export interface BrowserAnnotation {
   resolved: boolean
   createdAt: number
 }
+
+export interface BrowserAnnotationInput {
+  ref?: string
+  element?: string
+  comment: string
+  styleFeedback?: Record<string, string>
+  createdBy: "user" | "agent"
+  tabID?: string
+  tabURL?: string
+}
 export interface BrowserSession {
   readonly key: BrowserRuntime.SessionKey
   readonly tabs: readonly BrowserTab[]
@@ -23,6 +33,11 @@ export interface BrowserSession {
   switchTab(tabID: string): void
   closeTab(tabID: string): Promise<void>
   getTab(tabID: string): BrowserTab | undefined
+
+  addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation
+  removeAnnotation(id: string): boolean
+  clearAnnotations(): void
+  formatAnnotationsForContext(): string
 
   save(): Promise<void>
   restore(): Promise<boolean>
@@ -64,6 +79,10 @@ export class BrowserSessionImpl implements BrowserSession {
     })
   }
 
+  private async ensureScopeContext(): Promise<string> {
+    return BrowserRuntime.scopeTarget(this.key.scopeID)
+  }
+
   async createTab(url?: string): Promise<BrowserTab> {
     if (this._tabs.length >= MAX_TABS) {
       throw new Error(`Maximum of ${MAX_TABS} tabs per session`)
@@ -73,8 +92,8 @@ export class BrowserSessionImpl implements BrowserSession {
     if (!state.cdpConnection) {
       throw new Error("Browser is not running")
     }
-
-    const tab = new BrowserTabImpl(state.cdpConnection, this.workspace)
+    const browserContextId = await this.ensureScopeContext()
+    const tab = new BrowserTabImpl(state.cdpConnection, this.workspace, undefined, browserContextId)
     this._tabs.push(tab)
 
     if (!this._activeTab) {
@@ -118,6 +137,51 @@ export class BrowserSessionImpl implements BrowserSession {
 
   getTab(tabID: string): BrowserTab | undefined {
     return this._tabs.find((t) => t.id === tabID)
+  }
+
+  addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation {
+    const id = crypto.randomUUID()
+    const annotation: BrowserAnnotation = {
+      id,
+      tabURL: input.tabURL ?? "",
+      tabID: input.tabID ?? "",
+      ref: input.ref,
+      element: input.element,
+      comment: input.comment,
+      styleFeedback: input.styleFeedback,
+      resolved: false,
+      createdAt: Date.now(),
+    }
+    this._annotations.push(annotation)
+    this.save()
+    return annotation
+  }
+
+  removeAnnotation(id: string): boolean {
+    const idx = this._annotations.findIndex((a) => a.id === id)
+    if (idx === -1) return false
+    this._annotations.splice(idx, 1)
+    this.save()
+    return true
+  }
+
+  clearAnnotations(): void {
+    this._annotations = []
+    this.save()
+  }
+
+  formatAnnotationsForContext(): string {
+    const pending = this._annotations.filter((a) => !a.resolved)
+    if (pending.length === 0) return ""
+    const items = pending
+      .map(
+        (a) =>
+          `  <browser-annotation id="${a.id}"${a.ref ? ` ref="${a.ref}"` : ""}${a.element ? ` element="${a.element}"` : ""}${a.tabURL ? ` tab="${a.tabURL}"` : ""}>
+    ${a.comment}${a.styleFeedback ? `\n    style-feedback: ${JSON.stringify(a.styleFeedback)}` : ""}
+  </browser-annotation>`,
+      )
+      .join("\n")
+    return `<browser-annotations>\n${items}\n</browser-annotations>`
   }
 
   async save(): Promise<void> {

@@ -8,6 +8,8 @@ import { ScreenshotCanvas } from "./screenshot-canvas"
 import { ConsolePanel } from "./console-panel"
 import { NetworkPanel } from "./network-panel"
 import { ElementsPanel } from "./elements-panel"
+import { AgentAssistant } from "./agent-assistant"
+import { AnnotationInput } from "./annotation-input"
 
 export function BrowserPanel() {
   const browser = createBrowserStore()
@@ -66,6 +68,16 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
           }
         >
           <DevPanelContent panel={browser.devPanel()!} />
+        </Show>
+        <AgentAssistant action={browser.agentActivity()} />
+        <Show when={browser.annotationMode() && browser.activeTabId()}>
+          <AnnotationInput
+            onSubmit={(comment, styleFeedback) => {
+              browser.send({ type: "createAnnotation", comment, styleFeedback, tabId: browser.activeTabId() })
+              browser.setAnnotationMode(false)
+            }}
+            onCancel={() => browser.setAnnotationMode(false)}
+          />
         </Show>
       </div>
       <DevToolbar />

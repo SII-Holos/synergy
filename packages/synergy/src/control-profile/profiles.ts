@@ -30,8 +30,10 @@ const CAPABILITY_PERMISSIONS = [
   "channel_outbound",
   "platform_control",
 
-  "network_read",
   "session_state",
+
+  "browser_interact",
+  "browser_inspect",
 ]
 
 const HIGH_RISK_PERMISSIONS = [

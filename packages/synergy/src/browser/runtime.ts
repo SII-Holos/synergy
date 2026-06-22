@@ -41,6 +41,8 @@ export namespace BrowserRuntime {
   let running = false
   let chromiumPath: string | null = null
   let cdpConnection: CdpClient.Connection | null = null
+  /** Map from scopeID to browser context ID for isolation */
+  const scopeContexts = new Map<string, string>()
 
   function sessionKeyStr(key: SessionKey): string {
     return `${key.scopeID}:${key.sessionID ?? "default"}`
@@ -262,6 +264,7 @@ export namespace BrowserRuntime {
       }
       chromiumProcess = null
     }
+    scopeContexts.clear()
 
     running = false
     chromiumPath = null
@@ -285,6 +288,32 @@ export namespace BrowserRuntime {
     }
   }
 
+  /** Get or create a browser context for a scope. Returns targetId of the context. */
+  export async function scopeTarget(scopeID: string): Promise<string> {
+    let targetId = scopeContexts.get(scopeID)
+    if (targetId) return targetId
+
+    if (!running || !cdpConnection) {
+      throw new Error("Browser runtime not running")
+    }
+
+    try {
+      const result = (await cdpConnection.send("Target.createBrowserContext", {
+        disposeOnDetach: true,
+      })) as { browserContextId: string }
+
+      const targetResult = (await cdpConnection.send("Target.createTarget", {
+        url: "about:blank",
+        browserContextId: result.browserContextId,
+      })) as { targetId: string }
+
+      targetId = targetResult.targetId
+      scopeContexts.set(scopeID, targetId)
+      return targetId
+    } catch (e) {
+      throw new Error(`Failed to create browser context for scope ${scopeID}: ${e}`)
+    }
+  }
   /** Get or create a BrowserSession for scopeID+sessionID. */
   export function session(key: SessionKey): BrowserSession {
     const k = sessionKeyStr(key)

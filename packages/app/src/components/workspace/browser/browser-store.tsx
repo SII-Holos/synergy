@@ -63,6 +63,7 @@ export function createBrowserStore() {
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
   const [devPanel, setDevPanel] = createSignal<DevPanel>("closed")
   const [agentActivity, setAgentActivity] = createSignal<string | null>(null)
+  const [annotationMode, setAnnotationMode] = createSignal(false)
 
   const activeTabId = createMemo(() => session.activeTabId)
 
@@ -151,6 +152,8 @@ export function createBrowserStore() {
     setDevPanel,
     agentActivity,
     setAgentActivity,
+    annotationMode,
+    setAnnotationMode,
   }
 }
 
@@ -203,6 +206,6 @@ export function useBrowser() {
   return ctx
 }
 
-export function setGlobalSend(fn: (msg: Record<string, unknown>) => void) {
+export function setGlobalSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
   _globalSend = fn
 }

@@ -5,10 +5,14 @@ import { BrowserRuntime } from "../browser/runtime"
 import { Instance } from "../scope/instance"
 const parameters = z.object({
   action: z
-    .enum(["list", "read", "resolve"])
-    .describe("Action: list all annotations, read a specific one, or mark as resolved"),
+    .enum(["list", "read", "resolve", "create"])
+    .describe("Action: list all annotations, read a specific one, resolve, or create a new annotation"),
   annotationId: z.string().optional().describe("Annotation ID for read/resolve actions"),
   tabId: z.string().optional(),
+  ref: z.string().optional().describe("Reference ID for create action"),
+  element: z.string().optional().describe("Element selector for create action"),
+  comment: z.string().optional().describe("Annotation comment text for create action"),
+  styleFeedback: z.record(z.string(), z.string()).optional().describe("Style feedback for create action"),
 })
 
 interface BrowserAnnotateMetadata {
@@ -68,6 +72,27 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
           title: `Resolved annotation ${a.id}`,
           output: `Marked annotation "${a.comment}" as resolved.`,
           metadata: { id: a.id },
+        }
+      }
+      case "create": {
+        const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+        const comment = params.comment
+        if (!comment)
+          return { title: "Missing comment", output: "The 'comment' field is required for create.", metadata: {} }
+        const input = {
+          ref: params.ref,
+          element: params.element,
+          comment,
+          styleFeedback: params.styleFeedback,
+          createdBy: "agent" as const,
+          tabID: tab.id,
+          tabURL: tab.url,
+        }
+        const ann = session.addAnnotation(input)
+        return {
+          title: `Created annotation ${ann.id}`,
+          output: `Annotation created: "${ann.comment}"`,
+          metadata: { id: ann.id },
         }
       }
     }

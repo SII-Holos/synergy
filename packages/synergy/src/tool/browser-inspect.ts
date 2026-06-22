@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
 
 export const BrowserInspectTool = Tool.define("browser_inspect", {
   description:
@@ -12,13 +10,7 @@ export const BrowserInspectTool = Tool.define("browser_inspect", {
     tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
-
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
-    }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
 
     if (!params.ref.startsWith("@e")) {
       throw new Error(`Invalid ref: ${params.ref}. Expected format: @eN (e.g. @e12)`)

@@ -3,7 +3,6 @@ import fs from "fs/promises"
 import path from "path"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserPolicy } from "../browser/policy"
 import { Instance } from "../scope/instance"
 import { Global } from "../global"
@@ -67,12 +66,7 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     // Optionally check tab's network buffer for MIME type hint
     let networkMimeType: string | undefined
     try {
-      await BrowserRuntime.ensure()
-      const helperCtx: BrowserToolHelper.Context = {
-        scopeID: Instance.scope.id,
-        sessionID: ctx.sessionID,
-      }
-      const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+      const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
       const requests = await tab.networkRequests(50)
       const matched = requests.find((r) => r.url === params.url && r.mimeType)
       if (matched?.mimeType) {

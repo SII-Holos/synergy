@@ -1,8 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
-import { Instance } from "../scope/instance"
 
 export const BrowserTypeTool = Tool.define("browser_type", {
   description:
@@ -13,12 +11,7 @@ export const BrowserTypeTool = Tool.define("browser_type", {
     tabId: z.string().optional().describe("Tab to operate on. Uses the active tab when omitted."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
-    const helperCtx: BrowserToolHelper.Context = {
-      scopeID: Instance.scope.id,
-      sessionID: ctx.sessionID,
-    }
-    const tab = BrowserToolHelper.getTab(helperCtx, params.tabId)
+    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
 
     // Focus the target element
     if (params.selector.startsWith("@e")) {

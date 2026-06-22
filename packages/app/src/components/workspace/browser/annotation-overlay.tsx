@@ -1,8 +1,8 @@
 import { onCleanup } from "solid-js"
-import type { BrowserStore } from "./browser-store"
+import type { BrowserStoreAPI } from "./browser-store"
 
 interface Props {
-  store: BrowserStore
+  store: BrowserStoreAPI
   active: boolean
   onAnnotation: (selector: string, comment: string, styleFeedback?: Record<string, string>) => void
 }

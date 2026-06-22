@@ -86,7 +86,7 @@ const INTERACTIVE_ROLES = new Set([
   "togglebutton",
 ])
 
-const STRUCTURAL_ROLES = new Set([
+export const STRUCTURAL_ROLES = new Set([
   "generic",
   "heading",
   "main",
@@ -170,18 +170,24 @@ export class BrowserTabImpl implements BrowserTab {
   private onRequestWillBeSent: ((params: Record<string, unknown>) => void) | null = null
   private onResponseReceived: ((params: Record<string, unknown>) => void) | null = null
 
-  constructor(browserCdp: CdpClient.Connection, workspace: string, id?: string) {
+  private browserContextId: string | null
+
+  constructor(browserCdp: CdpClient.Connection, workspace: string, id?: string, browserContextId?: string) {
     this.id = id ?? generateId()
     this.browserCdp = browserCdp
     this.workspace = workspace
+    this.browserContextId = browserContextId ?? null
   }
-
   // ── helpers ────────────────────────────────────────────────────────
 
   private async ensureSession(): Promise<string> {
     if (this.sessionId) return this.sessionId
 
-    const createResult = await this.browserCdp.send("Target.createTarget", { url: "about:blank" })
+    const params: Record<string, unknown> = { url: "about:blank" }
+    if (this.browserContextId) {
+      params.browserContextId = this.browserContextId
+    }
+    const createResult = await this.browserCdp.send("Target.createTarget", params)
     const { targetId } = createResult as { targetId: string }
 
     const attachResult = await this.browserCdp.send("Target.attachToTarget", { targetId, flatten: true })
