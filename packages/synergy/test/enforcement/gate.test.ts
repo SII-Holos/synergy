@@ -422,7 +422,7 @@ describe("isDestructive boundary correctness", () => {
 // 3. Network classification
 // ------------------------------------------------------------------
 describe("EnforcementGate network classification", () => {
-  test("webfetch tool classifies as network_request", async () => {
+  test("webfetch tool classifies as network_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -432,8 +432,9 @@ describe("EnforcementGate network classification", () => {
       url: "https://example.com/api/data",
     })
 
-    const net = result.capabilities.find((c: any) => c.class === "network_request")!
+    const net = result.capabilities.find((c: any) => c.class === "network_read")!
     expect(net).toBeDefined()
+    expect(net.nonBypassable).toBe(false)
   })
 
   test("external communication and platform tools classify as nonBypassable", async () => {
@@ -447,8 +448,8 @@ describe("EnforcementGate network classification", () => {
       nonBypassable: true,
     })
     expect(gate.classify("arxiv_search", {}).capabilities).toContainEqual({
-      class: "network_request",
-      nonBypassable: true,
+      class: "network_read",
+      nonBypassable: false,
     })
 
     const inspire = gate.classify("inspire_submit", {}).capabilities
@@ -1958,70 +1959,70 @@ describe("EnforcementGate new tool classification", () => {
     expect(cap.nonBypassable).toBe(false)
   })
 
-  // ── Stateful orchestration tools → file_write ─────────────────
+  // ── Stateful orchestration tools → session_state ──────────────
 
-  test("dagwrite classifies as file_write (stateful DAG mutation)", async () => {
+  test("dagwrite classifies as session_state (DAG mutation, internal coordination)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("dagwrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("dagpatch classifies as file_write (stateful DAG patching)", async () => {
+  test("dagpatch classifies as session_state (lightweight DAG patching)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("dagpatch", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("todowrite classifies as file_write (stateful todo mutation)", async () => {
+  test("todowrite classifies as session_state (lightweight todo mutation)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("todowrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("task classifies as file_write (creates sub-agent sessions)", async () => {
+  test("task classifies as session_state (dispatches sub-agents)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("task", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("task_cancel classifies as file_write (stateful task cancellation)", async () => {
+  test("task_cancel classifies as session_state (lightweight task cancellation)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("task_cancel", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("batch classifies as file_write (orchestrates multiple tool calls)", async () => {
+  test("batch classifies as session_state (orchestrates multiple tool calls)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("batch", { tool_calls: [{ tool: "read", parameters: { filePath: "src/test.ts" } }] })
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })

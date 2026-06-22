@@ -29,6 +29,9 @@ const CAPABILITY_PERMISSIONS = [
   "communication_email",
   "channel_outbound",
   "platform_control",
+
+  "network_read",
+  "session_state",
 ]
 
 const HIGH_RISK_PERMISSIONS = [
@@ -68,7 +71,13 @@ function guardedRules() {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, "ask", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
-    if (permission === "file_write" || permission === "network_request") return rule(permission, "allow")
+    if (
+      permission === "file_write" ||
+      permission === "network_request" ||
+      permission === "network_read" ||
+      permission === "session_state"
+    )
+      return rule(permission, "allow")
     return rule(permission, "ask")
   })
 }

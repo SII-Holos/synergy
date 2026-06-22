@@ -180,8 +180,8 @@ const SAFE_PSEUDO_PATHS = new Set([
   "/dev/fd/2",
 ])
 
-const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
-
+const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
+const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 // const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
 //
 // const AGORA_STATEFUL_TOOLS = new Set([
@@ -495,9 +495,9 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Network and external lookup operations
-      if (EXTERNAL_NETWORK_TOOLS.has(toolName)) {
-        caps.push({ class: "network_request", nonBypassable: true })
+      // Read-only network search tools — browsing/searching, no stateful side effects
+      if (NETWORK_READ_TOOLS.has(toolName)) {
+        caps.push({ class: "network_read", nonBypassable: false })
         return { capabilities: caps }
       }
 
@@ -576,16 +576,16 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Stateful orchestration tools — create/mutate internal state
-      if (
-        toolName === "dagwrite" ||
-        toolName === "dagpatch" ||
-        toolName === "todowrite" ||
-        toolName === "task" ||
-        toolName === "task_cancel" ||
-        toolName === "batch"
-      ) {
-        caps.push({ class: "file_write", nonBypassable: false })
+      // Lightweight session state tools — mutate internal coordination state,
+      // no filesystem or network side effects
+      if (SESSION_STATE_TOOLS.has(toolName)) {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // batch (legacy)
+      if (toolName === "batch") {
+        caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
 
