@@ -1,19 +1,8 @@
 import { AgendaTypes } from "./types"
 
 export namespace AgendaPrompt {
-  export function build(
-    item: AgendaTypes.Item,
-    signal: AgendaTypes.FiredSignal,
-    contextMode: "full" | "signal",
-  ): string {
+  export function build(item: AgendaTypes.Item, signal: AgendaTypes.FiredSignal): string {
     const prompt = item.prompt
-
-    if (contextMode === "signal") {
-      const context = formatSignalContext(item, signal)
-      const payload = formatSignalPayload(signal)
-      const parts = [context, payload, prompt].filter(Boolean)
-      return parts.join("\n")
-    }
 
     const sections = [
       "<agenda-context>",
@@ -58,7 +47,6 @@ export namespace AgendaPrompt {
           break
         case "watch": {
           const w = trigger.watch
-          // Only file watch kind is active
           if (w.kind === "file") {
             const filter = w.event ? ` on ${w.event}` : ""
             const debounce = w.debounce ? ` (debounce ${w.debounce})` : ""
@@ -133,29 +121,4 @@ export namespace AgendaPrompt {
       "</context-sessions>",
     ].join("\n")
   }
-}
-
-function formatSignalContext(item: AgendaTypes.Item, signal: AgendaTypes.FiredSignal): string {
-  const cronTrigger = item.triggers.find(
-    (t): t is AgendaTypes.Trigger & { type: "cron"; tz?: string } => t.type === "cron",
-  )
-  const tz = cronTrigger?.tz
-  const fired = formatFiredTime(signal.timestamp, tz)
-  const run = item.state.runCount + 1
-  return `<agenda-signal type="${signal.type}" fired="${fired}" run="${run}" />`
-}
-
-function formatFiredTime(ts: number, tz?: string): string {
-  const timeZone = tz ?? "UTC"
-  const fmt = new Intl.DateTimeFormat("sv-SE", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZoneName: "short",
-  } as Intl.DateTimeFormatOptions)
-  return fmt.format(new Date(ts))
 }

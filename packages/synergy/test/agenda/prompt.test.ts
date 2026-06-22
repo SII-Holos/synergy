@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test"
 import { AgendaPrompt } from "../../src/agenda/prompt"
 import { AgendaTypes } from "../../src/agenda/types"
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function makeItem(overrides: Partial<AgendaTypes.Item> & { id: string }): AgendaTypes.Item {
   const now = Date.now()
   return {
@@ -39,188 +35,87 @@ function cronTrigger(expr: string, tz?: string): AgendaTypes.Trigger {
 }
 
 function makeSignal(overrides: Partial<AgendaTypes.FiredSignal> = {}): AgendaTypes.FiredSignal {
-  return {
-    type: "cron",
-    source: "anima-daily",
-    timestamp: Date.now(),
-    ...overrides,
-  }
+  return { type: "cron", source: "anima-daily", timestamp: Date.now(), ...overrides }
 }
 
-// ---------------------------------------------------------------------------
-// Signal mode — cron trigger
-// ---------------------------------------------------------------------------
-
-describe("AgendaPrompt.build in signal mode", () => {
-  test("cron trigger includes type, timestamp, and run number", () => {
+describe("AgendaPrompt.build", () => {
+  test("produces <agenda-context> wrapper with title, trigger, run, and task", () => {
     const item = makeItem({
-      id: "agd_signal_cron",
+      id: "agd_test",
+      title: "晨间问候",
       triggers: [cronTrigger("0 3 * * *", "Asia/Shanghai")],
       prompt: "你醒了。",
       state: { consecutiveErrors: 0, runCount: 5 },
     })
-    const signal = makeSignal({
-      type: "cron",
-      source: "anima-daily",
-      timestamp: Date.now(),
-    })
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    // Must open with the signal context line
-    expect(result).toContain("<agenda-signal ")
-    expect(result).toContain('type="cron"')
-    expect(result).toContain("fired=")
-    expect(result).toContain('run="6"')
-    // Prompt follows the signal line
-    const lines = result.split("\n")
-    expect(lines[lines.length - 1]).toBe("你醒了。")
+    const signal = makeSignal()
+    const result = AgendaPrompt.build(item, signal)
+    expect(result).toContain("<agenda-context>")
+    expect(result).toContain("<title>晨间问候</title>")
+    expect(result).toContain("cron")
+    expect(result).toContain('run number="6"')
+    expect(result).toContain("<task>")
+    expect(result).toContain("你醒了。")
   })
 
-  test("signal context uses the trigger timezone for the fired timestamp format", () => {
-    // Use a fixed timestamp to test deterministic formatting
+  test("trigger fired timestamp is in ISO UTC format", () => {
     const fixedTs = new Date("2026-06-22T03:00:00+08:00").getTime()
     const item = makeItem({
-      id: "agd_tz",
+      id: "agd_ts",
       triggers: [cronTrigger("0 3 * * *", "Asia/Shanghai")],
-      prompt: "你醒了。",
-      state: { consecutiveErrors: 0, runCount: 41 },
+      prompt: "早。",
+      state: { consecutiveErrors: 0, runCount: 0 },
     })
     const signal = makeSignal({ timestamp: fixedTs })
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    // The fired timestamp should include the timezone offset or abbreviation
-    // and reflect local time 03:00 on 2026-06-22
-    expect(result).toContain("03:00")
-    expect(result).toContain("2026-06-22")
-    expect(result).toContain('run="42"')
+    const result = AgendaPrompt.build(item, signal)
+    expect(result).toContain("2026-06-21T19:00:00.000Z")
+    expect(result).toContain('run number="1"')
   })
 
-  test("first run reports run=1 when runCount is 0", () => {
+  test("first run reports run number 1 when runCount is 0", () => {
     const item = makeItem({
-      id: "agd_first_run",
-      triggers: [cronTrigger("0 9 * * *", "UTC")],
+      id: "agd_first",
+      triggers: [cronTrigger("0 9 * * *")],
       prompt: "首次执行。",
       state: { consecutiveErrors: 0, runCount: 0 },
     })
-    const signal = makeSignal()
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    expect(result).toContain('run="1"')
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).toContain('run number="1"')
     expect(result).toContain("首次执行。")
   })
 
-  test("missing tz in cron trigger still produces a valid signal context", () => {
+  test("always includes session refs when present", () => {
     const item = makeItem({
-      id: "agd_no_tz",
-      triggers: [cronTrigger("0 3 * * *")], // no tz
-      prompt: "你醒了。",
-      state: { consecutiveErrors: 0, runCount: 3 },
-    })
-    const signal = makeSignal()
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    // Signal context must still be present with type and run
-    expect(result).toContain("<agenda-signal ")
-    expect(result).toContain('type="cron"')
-    expect(result).toContain('run="4"')
-    expect(result).toContain("fired=")
-    // Prompt is present
-    expect(result).toContain("你醒了。")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Signal mode — payload
-// ---------------------------------------------------------------------------
-
-describe("AgendaPrompt.build in signal mode with payload", () => {
-  test("payload is included alongside signal context", () => {
-    const item = makeItem({
-      id: "agd_payload",
-      triggers: [cronTrigger("0 3 * * *", "Asia/Shanghai")],
-      prompt: "处理文件变更。",
+      id: "agd_refs",
+      triggers: [cronTrigger("0 3 * * *")],
+      prompt: "检查会话。",
       state: { consecutiveErrors: 0, runCount: 2 },
+      sessionRefs: [
+        { sessionID: "ses_abc", hint: "上周日记" },
+        { sessionID: "ses_def", hint: "Agora 讨论" },
+      ],
     })
-    const signal: AgendaTypes.FiredSignal = {
-      type: "watch",
-      source: "file-watcher",
-      timestamp: Date.now(),
-      payload: { file: "src/app.ts", event: "change" },
-    }
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    // Signal context line comes first
-    const lines = result.split("\n")
-    expect(lines[0]).toContain("<agenda-signal ")
-    // Payload is present (from formatSignalPayload)
-    expect(result).toContain("src/app.ts")
-    expect(result).toContain('event="change"')
-    // Prompt is the last line
-    expect(lines[lines.length - 1]).toBe("处理文件变更。")
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).toContain("<context-sessions>")
+    expect(result).toContain('id="ses_abc"')
+    expect(result).toContain('hint="上周日记"')
+    expect(result).toContain('hint="Agora 讨论"')
+    expect(result).toContain("You can read the above sessions using tools")
   })
 
-  test("signal context still appears when payload is absent", () => {
+  test("omits session refs section when empty", () => {
     const item = makeItem({
-      id: "agd_no_payload",
-      triggers: [cronTrigger("0 3 * * *", "Asia/Shanghai")],
-      prompt: "安静执行。",
+      id: "agd_no_refs",
+      triggers: [cronTrigger("0 3 * * *")],
+      prompt: "无引用。",
       state: { consecutiveErrors: 0, runCount: 1 },
     })
-    const signal = makeSignal({ type: "cron", source: "scheduler" })
-    // No payload field
-    delete (signal as Record<string, unknown>).payload
-
-    const result = AgendaPrompt.build(item, signal, "signal")
-
-    // Signal context line present
-    expect(result).toContain("<agenda-signal ")
-    expect(result).toContain('type="cron"')
-    // No payload, so the result is signal line + prompt
-    const lines = result.split("\n")
-    expect(lines.length).toBe(2) // signal context + prompt
-    expect(lines[1]).toBe("安静执行。")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Full mode — unchanged behavior
-// ---------------------------------------------------------------------------
-
-describe("AgendaPrompt.build in full mode", () => {
-  test("full mode wraps prompt in agenda-context tags and does NOT include signal context", () => {
-    const item = makeItem({
-      id: "agd_full",
-      title: "晨间问候",
-      triggers: [cronTrigger("0 9 * * *", "Asia/Shanghai")],
-      prompt: "早上好。",
-      state: { consecutiveErrors: 0, runCount: 3 },
-    })
-    const signal = makeSignal()
-
-    const result = AgendaPrompt.build(item, signal, "full")
-
-    // Full mode uses the existing <agenda-context> wrapper
-    expect(result).toContain("<agenda-context>")
-    expect(result).toContain("</agenda-context>")
-    expect(result).toContain("<title>晨间问候</title>")
-    expect(result).toContain("<task>")
-    expect(result).toContain("早上好。")
-    expect(result).toContain("</task>")
-    // Full mode must NOT include the new signal context line
-    expect(result).not.toContain("<agenda-signal")
-    // Full mode keeps its own run number
-    expect(result).toContain('run number="4"')
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).not.toContain("<context-sessions>")
   })
 
-  test("full mode with payload still works as before", () => {
+  test("includes watch payload when present", () => {
     const item = makeItem({
-      id: "agd_full_payload",
-      title: "文件监控",
+      id: "agd_watch",
       triggers: [cronTrigger("0 * * * *")],
       prompt: "检查变更。",
       state: { consecutiveErrors: 0, runCount: 0 },
@@ -229,14 +124,55 @@ describe("AgendaPrompt.build in full mode", () => {
       type: "watch",
       source: "watcher",
       timestamp: Date.now(),
-      payload: { file: "test.ts", event: "change" },
+      payload: { file: "src/app.ts", event: "change" },
     }
-
-    const result = AgendaPrompt.build(item, signal, "full")
-
-    expect(result).toContain("<agenda-context>")
+    const result = AgendaPrompt.build(item, signal)
     expect(result).toContain("<watch-event ")
-    expect(result).toContain('file="test.ts"')
+    expect(result).toContain('file="src/app.ts"')
     expect(result).toContain("检查变更。")
+  })
+
+  test("omits description and last-run when absent", () => {
+    const item = makeItem({
+      id: "agd_minimal",
+      triggers: [cronTrigger("0 3 * * *")],
+      prompt: "最小提示。",
+      state: { consecutiveErrors: 0, runCount: 0 },
+    })
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).not.toContain("<description>")
+    expect(result).not.toContain("<last-run")
+  })
+
+  test("includes description when set", () => {
+    const item = makeItem({
+      id: "agd_desc",
+      description: "每日触发任务",
+      triggers: [cronTrigger("0 3 * * *")],
+      prompt: "任务内容。",
+      state: { consecutiveErrors: 0, runCount: 0 },
+    })
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).toContain("<description>每日触发任务</description>")
+  })
+
+  test("includes last-run error details", () => {
+    const item = makeItem({
+      id: "agd_error",
+      triggers: [cronTrigger("0 3 * * *")],
+      prompt: "重试。",
+      state: {
+        consecutiveErrors: 3,
+        runCount: 5,
+        lastRunAt: Date.now() - 3600000,
+        lastRunStatus: "error",
+        lastRunError: "timeout",
+        lastRunDuration: 30000,
+      },
+    })
+    const result = AgendaPrompt.build(item, makeSignal())
+    expect(result).toContain('status="error"')
+    expect(result).toContain("<last-run-error>timeout</last-run-error>")
+    expect(result).toContain("<consecutive-errors>3</consecutive-errors>")
   })
 })
