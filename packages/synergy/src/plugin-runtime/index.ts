@@ -11,7 +11,8 @@ export type {
   RuntimeToolDescriptor,
   SerializedError,
 } from "./protocol.js"
-export { PROTOCOL_VERSION, MESSAGE_DELIMITER } from "./protocol.js"
+export type { HostBridgeHandler } from "./protocol.js"
+export { MESSAGE_DELIMITER } from "./protocol.js"
 
 // Supervisor
 export type { RuntimeMode, RuntimeState, RuntimeEntry } from "./supervisor.js"
@@ -27,12 +28,9 @@ export {
   restoreRuntimeState,
 } from "./supervisor.js"
 
-// Process host
-export type { HostBridgeHandler } from "./process-host.js"
 export { spawnPluginProcess } from "./process-host.js"
 
-// Worker host
-export type { HostBridgeHandler as WorkerHostBridgeHandler, SpawnedWorkerRuntime } from "./worker-host.js"
+export type { SpawnedWorkerRuntime } from "./worker-host.js"
 export { spawnPluginWorker } from "./worker-host.js"
 
 // Bridge client (plugin-side)
@@ -40,13 +38,7 @@ export type { ConfigBridge, SecretBridge, CacheBridge, HostBridge } from "./brid
 export { REQUEST_TIMEOUT_MS, createBridgeClient } from "./bridge.js"
 
 // Health
-export {
-  DEFAULT_LIMITS,
-  startHeartbeatMonitor,
-  enforceStartupTimeout,
-  createRequestTimeout,
-  enforceShutdownTimeout,
-} from "./health.js"
+export { DEFAULT_LIMITS, startHeartbeatMonitor } from "./health.js"
 
 // Resource limits
 export { ConcurrencyLimiter, getProcessMemoryMb, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"

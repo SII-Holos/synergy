@@ -3,11 +3,11 @@ import type {
   HostToPlugin,
   IsolatedPluginInputData,
   RuntimeToolDescriptor,
-  HostBridgeMethod,
+  HostBridgeHandler,
 } from "./protocol.js"
 import { MESSAGE_DELIMITER } from "./protocol.js"
-import { getRuntime } from "./supervisor.js"
-import { pushWarning } from "./health.js"
+import { getRuntime } from "./runtime-registry.js"
+import { pushWarning } from "./runtime-registry.js"
 import type { PluginLogBuffer } from "./logs.js"
 import { deserializeError } from "./errors.js"
 
@@ -30,10 +30,6 @@ interface PendingRequest {
 // ── Message handler type ─────────────────────────────────────────
 
 type MessageHandler = (msg: PluginToHost) => void
-
-// ── Host bridge handler type ─────────────────────────────────────
-
-export type HostBridgeHandler = (requestId: string, method: HostBridgeMethod, params: unknown) => Promise<unknown>
 
 // ── spawnPluginProcess ────────────────────────────────────────────
 

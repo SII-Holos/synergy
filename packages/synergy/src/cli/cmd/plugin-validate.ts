@@ -1,4 +1,4 @@
-import { validateRuntimePolicy } from "../../plugin/runtime-policy"
+import { validateRuntimePolicy, type CheckResult } from "../../plugin/runtime-policy"
 import { computeRisk } from "../../plugin/consent/risk"
 import { baseCapabilities } from "../../plugin/capability"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
@@ -97,11 +97,6 @@ function isValidJsonSchema(obj: unknown): boolean {
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-
-interface CheckResult {
-  type: "pass" | "warn" | "error"
-  message: string
-}
 
 export const PluginValidateCommand = cmd({
   command: "validate [path]",

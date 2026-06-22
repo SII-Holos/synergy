@@ -6,7 +6,6 @@ function version(
   overrides: Partial<Omit<RegistryPluginVersion, "version">> & { version: string },
 ): RegistryPluginVersion {
   return {
-    version: overrides.version,
     manifestHash: "abc",
     permissionsHash: "def",
     integrity: "sha256:abc",

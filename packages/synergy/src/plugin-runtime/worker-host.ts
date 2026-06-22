@@ -1,10 +1,12 @@
+import { Log } from "../util/log"
+import { pushWarning } from "./runtime-registry.js"
 import { Worker } from "node:worker_threads"
 import type {
   PluginToHost,
   HostToPlugin,
   IsolatedPluginInputData,
   RuntimeToolDescriptor,
-  HostBridgeMethod,
+  HostBridgeHandler,
 } from "./protocol.js"
 import type { PluginLogBuffer } from "./logs.js"
 
@@ -22,8 +24,6 @@ interface WorkerState {
 }
 
 type MessageHandler = (msg: PluginToHost) => void
-
-export type HostBridgeHandler = (requestId: string, method: HostBridgeMethod, params: unknown) => Promise<unknown>
 
 export interface SpawnedWorkerRuntime {
   worker: Worker
@@ -131,8 +131,9 @@ export async function spawnPluginWorker(options: {
     }
   })
 
-  worker.on("error", (_err: Error) => {
-    // Error tracked; no crash in host
+  worker.on("error", (err: Error) => {
+    Log.Default.error("plugin worker error", { pluginId: options.pluginId, error: err.message })
+    pushWarning(options.pluginId, "worker_error", err.message)
   })
 
   worker.on("exit", (code: number) => {

@@ -1,12 +1,12 @@
 import { Log } from "@/util/log"
 import { recordEvent } from "../plugin/audit.js"
-import type { PluginToHost, IsolatedPluginInputData } from "./protocol.js"
+import type { PluginToHost, IsolatedPluginInputData, HostBridgeHandler } from "./protocol.js"
 import { resolveRuntimeMode } from "./mode-resolver.js"
-import { spawnPluginProcess, type HostBridgeHandler } from "./process-host.js"
+import { spawnPluginProcess } from "./process-host.js"
 import { spawnPluginWorker } from "./worker-host.js"
 import { Worker } from "node:worker_threads"
 import { PluginRuntimeError, classifyRuntimeExit } from "./errors.js"
-import { startHeartbeatMonitor, enforceStartupTimeout, DEFAULT_LIMITS, pushWarning } from "./health.js"
+import { startHeartbeatMonitor, enforceStartupTimeout, DEFAULT_LIMITS } from "./health.js"
 import { ConcurrencyLimiter, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
 import { readRuntimeState } from "./state-persist.js"
 import { writeRuntimeState } from "./state-persist.js"
@@ -16,45 +16,19 @@ import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synerg
 import * as ManifestReader from "../plugin/manifest-reader"
 const log = Log.create({ service: "plugin-runtime.supervisor" })
 import { PluginLogBuffer } from "./logs.js"
+import {
+  runtimeRegistry,
+  getRuntime,
+  pushWarning,
+  type RuntimeEntry,
+  type RuntimeMode,
+  type RuntimeState,
+  type RuntimeWarningType,
+} from "./runtime-registry.js"
+import type { PluginSource } from "../plugin/trust.js"
 
-// === Types ===
-
-export type RuntimeMode = "in-process" | "worker" | "process"
-
-export type RuntimeState = "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
-export type RuntimeWarningType =
-  | "capability_denied"
-  | "memory_limit_exceeded"
-  | "log_rate_limited"
-  | "heartbeat_missed"
-  | "startup_timeout"
-  | "worker_error"
-  | "spawn_failed"
-
-export interface RuntimeWarning {
-  type: RuntimeWarningType
-  message: string
-  at: number
-}
-
-export interface RuntimeEntry {
-  pluginId: string
-  mode: RuntimeMode
-  runtimeDecision?: string
-  pid?: number
-  state: RuntimeState
-  restarts: number
-  lastHeartbeatAt?: number
-  memoryMb?: number
-  startedAt?: number
-  lastError?: string
-  warnings: RuntimeWarning[]
-  process?: Bun.Subprocess
-  worker?: Worker
-  concurrencyLimiter?: ConcurrencyLimiter
-  memoryMonitor?: { stop: () => void }
-  logRateLimiter?: LogRateLimiter
-}
+// Re-export types for backward compatibility (consumers import from supervisor)
+export type { RuntimeMode, RuntimeState, RuntimeEntry } from "./runtime-registry.js"
 
 // === Heartbeat monitors ===
 
@@ -67,12 +41,12 @@ function stopHeartbeatMonitor(pluginId: string): void {
     heartbeatMonitors.delete(pluginId)
   }
 }
-// === Registry ===
+
+// === Registry helpers ===
 
 function saveState(): void {
   void writeRuntimeState(Array.from(runtimeRegistry.values()))
 }
-const runtimeRegistry = new Map<string, RuntimeEntry>()
 
 // Shared log buffer — all host implementations append log entries here
 const logBuffer = new PluginLogBuffer()
@@ -81,13 +55,7 @@ export function getLogBuffer(): PluginLogBuffer {
   return logBuffer
 }
 
-export function getRuntime(pluginId: string): RuntimeEntry | undefined {
-  return runtimeRegistry.get(pluginId)
-}
-
-export function getAllRuntimes(): RuntimeEntry[] {
-  return Array.from(runtimeRegistry.values())
-}
+export { getRuntime, getAllRuntimes } from "./runtime-registry.js"
 
 export function getRuntimeState(pluginId: string): RuntimeState {
   return runtimeRegistry.get(pluginId)?.state ?? "stopped"
@@ -122,6 +90,7 @@ export async function startRuntime(
   pluginId: string,
   options: {
     mode?: RuntimeMode
+    source?: PluginSource
     entryPath: string
     pluginDir: string
     scope?: import("../scope/types.js").Info
@@ -134,7 +103,7 @@ export async function startRuntime(
     return existing
   }
 
-  // Fix 4: increment restarts if restarting from crashed/stopped
+  // Reset or increment restart counter when restarting
   const restarts =
     existing && (existing.state === "crashed" || existing.state === "stopped")
       ? existing.restarts + 1
@@ -157,7 +126,7 @@ export async function startRuntime(
     runtimeDecision = `caller-override:${resolvedMode}`
   } else {
     resolvedMode = resolveRuntimeMode({
-      source: "npm", // actual source is resolved in install; runtime defaults to npm
+      source: options.source ?? "npm",
       manifestMode: manifest?.runtime?.mode,
       devMode: false,
       userTrusted: false,
@@ -303,7 +272,7 @@ export async function startRuntime(
     }
   }
 
-  // process mode — Fix 3: spawn real process via spawnPluginProcess
+  // process mode — spawn isolated OS process
   try {
     const scope =
       options.scope ??
@@ -356,7 +325,7 @@ export async function startRuntime(
     entry.process = spawned.process
     entry.pid = spawned.process.pid
 
-    // Fix 1: wire heartbeat updates from plugin messages
+    // Wire heartbeat and ready-state updates from plugin messages
     spawned.onMessage((msg: PluginToHost) => {
       if (msg.type === "heartbeat") {
         entry.lastHeartbeatAt = Date.now()
@@ -367,7 +336,7 @@ export async function startRuntime(
       }
     })
 
-    // Fix 6: start heartbeat monitor with unhealthy transition
+    // Start heartbeat monitor; mark unhealthy on missed beats, kill at threshold
     stopHeartbeatMonitor(pluginId)
     const monitor = startHeartbeatMonitor(pluginId, (missedPluginId, missCount) => {
       log.warn("heartbeat missed, marking unhealthy", { pluginId: missedPluginId, missCount })

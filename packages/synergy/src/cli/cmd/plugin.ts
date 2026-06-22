@@ -39,8 +39,7 @@ import { baseCapabilities } from "../../plugin/capability"
 import { computeRisk } from "../../plugin/consent/risk"
 import { saveApproval, computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import * as Lockfile from "../../plugin/lockfile"
-import { Global } from "../../global"
-import type { PluginSource } from "../../plugin/trust"
+import { derivePluginSource } from "../../plugin/trust"
 import { recordEvent } from "../../plugin/audit"
 import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
@@ -673,15 +672,6 @@ export const PluginSearchCommand = cmd({
 // ---------------------------------------------------------------------------
 // Consent gate helpers
 // ---------------------------------------------------------------------------
-
-function derivePluginSource(pluginDir: string): PluginSource {
-  const cacheRoot = Global.Path.cache
-  const relative = path.relative(cacheRoot, pluginDir)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "local"
-  }
-  return "npm"
-}
 
 function severityColor(severity: string): string {
   switch (severity) {

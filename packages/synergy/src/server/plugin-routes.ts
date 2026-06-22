@@ -4,7 +4,7 @@ import z from "zod"
 import path from "path"
 import * as fs from "fs"
 import { errors } from "./error"
-import { decideTrust, type PluginTrustDecision, type PluginSource } from "../plugin/trust"
+import { decideTrust, derivePluginSource, type PluginTrustDecision } from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
@@ -24,14 +24,6 @@ import { baseCapabilities } from "../plugin/capability"
 import { checkPathContainment } from "../util/path-contain"
 
 import { PluginStatusSchema } from "../plugin/status.js"
-function derivePluginSource(pluginDir: string): PluginSource {
-  const cacheRoot = Global.Path.cache
-  const relative = path.relative(cacheRoot, pluginDir)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "local"
-  }
-  return "npm"
-}
 
 function getPluginTrust(pluginDir: string): PluginTrustDecision {
   const source = derivePluginSource(pluginDir)
@@ -886,5 +878,142 @@ export const ApiPluginRoute = new Hono()
         skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
         agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
       })
+    },
+  )
+
+  // POST /:pluginId/update-from-registry — Check for plugin updates from registry
+  .post(
+    "/:pluginId/update-from-registry",
+    describeRoute({
+      summary: "Check for plugin update from registry",
+      description:
+        "Check if an update is available for a plugin from the local registry. " +
+        "Optionally target a specific version. Returns version comparison and permission diff.",
+      operationId: "api.plugins.updateFromRegistry",
+      responses: {
+        200: {
+          description: "Update check result",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.any())) },
+          },
+        },
+        ...errors(400, 404, 500),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        targetVersion: z.string().min(1).optional(),
+      }),
+    ),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const { targetVersion } = c.req.valid("json")
+
+      // 1. Look up installed plugin
+      const plugin = await Plugin.get(pluginId)
+      if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+
+      // 2. Get installed manifest for version
+      const installedManifest = await Plugin.manifest(pluginId)
+      const fromVersion = installedManifest?.version ?? "0.0.0"
+
+      // 3. If targetVersion matches installed version, no update needed (short-circuit)
+      if (targetVersion && targetVersion === fromVersion) {
+        return c.json({
+          pluginId,
+          fromVersion,
+          toVersion: fromVersion,
+          updateAvailable: false,
+          requiresConsent: false,
+        })
+      }
+
+      // 4. Load registry
+      const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
+      let plugins: any[]
+      try {
+        const file = Bun.file(registryPath)
+        const exists = await file.exists()
+        if (!exists) {
+          // No registry — return structured response indicating no update check possible
+          return c.json({
+            pluginId,
+            fromVersion,
+            toVersion: fromVersion,
+            updateAvailable: false,
+            requiresConsent: false,
+          })
+        }
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        plugins = Array.isArray(parsed) ? parsed : (parsed.plugins ?? [])
+      } catch {
+        return c.json({ message: "Failed to read registry" }, 500)
+      }
+
+      // 5. Find registry entry for plugin
+      const entry = plugins.find((p: any) => p.id === pluginId)
+      if (!entry) {
+        // Plugin not in registry — no update check possible
+        return c.json({
+          pluginId,
+          fromVersion,
+          toVersion: fromVersion,
+          updateAvailable: false,
+          requiresConsent: false,
+        })
+      }
+
+      // 6. Determine target registry version
+      let toVersion: string
+      let registryVersion: any
+      if (targetVersion) {
+        registryVersion = entry.versions?.find((v: any) => v.version === targetVersion)
+        if (!registryVersion)
+          return c.json({ message: `Version not found in registry: ${pluginId}@${targetVersion}` }, 404)
+        toVersion = registryVersion.version
+      } else {
+        const sorted = [...(entry.versions ?? [])].sort((a: any, b: any) =>
+          a.version.localeCompare(b.version, undefined, { numeric: true }),
+        )
+        if (sorted.length === 0) {
+          return c.json({
+            pluginId,
+            fromVersion,
+            toVersion: fromVersion,
+            updateAvailable: false,
+            requiresConsent: false,
+          })
+        }
+        registryVersion = sorted[sorted.length - 1]
+        toVersion = registryVersion.version
+      }
+
+      // 7. Compare versions
+      if (fromVersion === toVersion) {
+        return c.json({
+          pluginId,
+          fromVersion,
+          toVersion,
+          updateAvailable: false,
+          requiresConsent: false,
+          registryVersion,
+        })
+      }
+
+      // 8. Build response — update is available
+      // Full permission diff requires the new manifest, which isn't stored in the registry.
+      // Return structured response with registry version info and requiresConsent flag.
+      const result: Record<string, any> = {
+        pluginId,
+        fromVersion,
+        toVersion,
+        updateAvailable: true,
+        requiresConsent: true,
+        registryVersion,
+      }
+
+      return c.json(result)
     },
   )

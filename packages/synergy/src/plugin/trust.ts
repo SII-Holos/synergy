@@ -1,3 +1,6 @@
+import path from "path"
+import { Global } from "../global"
+
 /**
  * Plugin trust tier decision module.
  *
@@ -120,4 +123,17 @@ export function trustSummary(decision: PluginTrustDecision): string {
 
   const meta = metadata.length > 0 ? ` [${metadata.join(", ")}]` : ""
   return `${decision.source} → ${decision.tier}${meta}`
+}
+
+/**
+ * Derive the plugin source classification from its directory path.
+ * Plugins under the cache root are "npm" (registry-installed); everything else is "local".
+ */
+export function derivePluginSource(pluginDir: string): PluginSource {
+  const cacheRoot = Global.Path.cache
+  const relative = path.relative(cacheRoot, pluginDir)
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return "local"
+  }
+  return "npm"
 }

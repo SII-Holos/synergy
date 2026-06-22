@@ -34,12 +34,12 @@ const log = Log.create({ service: "plugin.install" })
 // ---------------------------------------------------------------------------
 
 function satisfiesMinVersion(current: string, required: string): boolean {
-  const [cm, cn, cp] = current.split(".").map(Number)
-  const [rm, rn, rp] = required.split(".").map(Number)
-  if (isNaN(cm) || isNaN(rm)) return false
-  if (cm !== rm) return cm >= rm
-  if (cn !== rn) return cn >= rn
-  return cp >= rp
+  const [currentMajor, currentMinor, currentPatch] = current.split(".").map(Number)
+  const [requiredMajor, requiredMinor, requiredPatch] = required.split(".").map(Number)
+  if (isNaN(currentMajor) || isNaN(requiredMajor)) return false
+  if (currentMajor !== requiredMajor) return currentMajor >= requiredMajor
+  if (currentMinor !== requiredMinor) return currentMinor >= requiredMinor
+  return currentPatch >= requiredPatch
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +266,7 @@ export async function add(
     autoStartRuntime({
       pluginId: plugin.id,
       mode: runtimeMode,
+      source,
       entryPath: result.entryPath,
       pluginDir,
     }).catch((err) => {
@@ -343,6 +344,7 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
 export interface AutoStartRuntimeInput {
   pluginId: string
   mode: string
+  source?: import("../plugin/trust").PluginSource
   entryPath: string
   pluginDir: string
 }
@@ -359,6 +361,7 @@ export async function autoStartRuntime(input: AutoStartRuntimeInput): Promise<bo
     const { startRuntime } = await import("../plugin-runtime/supervisor.js")
     await startRuntime(input.pluginId, {
       mode: input.mode as "worker" | "process",
+      source: input.source,
       entryPath: input.entryPath,
       pluginDir: input.pluginDir,
     })

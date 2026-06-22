@@ -2,11 +2,10 @@ import z from "zod"
 import path from "path"
 import fs from "fs/promises"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { Global } from "../global"
 import { getPlugin, getLoadedPlugins } from "./loader"
 import * as ManifestReader from "./manifest-reader"
 import * as Capability from "./capability"
-import { decideTrust, type PluginTrustDecision, type PluginSource } from "./trust"
+import { decideTrust, derivePluginSource, type PluginTrustDecision, type PluginSource } from "./trust"
 import { PluginToolId } from "./ids"
 import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
@@ -136,15 +135,6 @@ export const PluginStatusSchema = z
   })
   .meta({ ref: "PluginStatus" })
 
-export function deriveSource(pluginDir: string): PluginSource {
-  const cacheRoot = Global.Path.cache
-  const relative = path.relative(cacheRoot, pluginDir)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "local"
-  }
-  return "npm"
-}
-
 /** Check whether we're running in dev mode (source checkout). */
 function isDevMode(): boolean {
   return Installation.CHANNEL === "local"
@@ -231,7 +221,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   const plugin = await getPlugin(pluginId)
   if (!plugin) return null
 
-  const source = deriveSource(plugin.pluginDir)
+  const source = derivePluginSource(plugin.pluginDir)
   const warnings: PluginStatus["warnings"] = []
   let manifest: PluginManifest | null = null
   let manifestValid = false

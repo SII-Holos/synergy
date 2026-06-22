@@ -9,18 +9,20 @@
  *  1. forceProcess flag      → "process"
  *  2. risk === "high"        → "process" (safety override)
  *  3. manifest mode "process" → "process"
- *  4. manifest mode "worker" + userTrusted → "worker"
- *  5. manifest mode "in-process" with third-party source → "process" (forced)
- *  6. Default by source:
+ *  4. manifest mode "worker" + userTrusted (policy.allowWorkerMode) → "worker"
+ *  5. manifest mode "in-process" + third-party + policy.allowThirdPartyInProcess → "in-process"
+ *     (otherwise → "process")
+ *  6. Default by source (policy.allowLocalInProcess may force local → "process"):
  *     - builtin, official, local → "in-process"
  *     - npm, git, url            → "process"
  *
- * Third-party sources: npm, git, url — these are never allowed in-process.
+ * Third-party sources: npm, git, url — only in-process when policy explicitly allows.
  * Trusted sources: builtin, official, local.
  */
 
 import type { PluginSource } from "../plugin/trust.js"
 import type { RuntimeMode } from "./supervisor.js"
+import { type PluginRuntimePolicy, PLUGIN_RUNTIME_POLICY_DEFAULTS } from "../config/schema"
 
 export type { PluginSource, RuntimeMode }
 
@@ -40,6 +42,8 @@ export interface ResolveRuntimeModeInput {
   risk?: "low" | "medium" | "high"
   /** Explicit caller override to force process isolation. */
   forceProcess?: boolean
+  /** Plugin runtime policy config (defaults from PLUGIN_RUNTIME_POLICY_DEFAULTS when omitted). */
+  policy?: PluginRuntimePolicy
 }
 
 /**
@@ -47,12 +51,22 @@ export interface ResolveRuntimeModeInput {
  *
  * The default strategy applies:
  *  - High-risk plugins are always process-isolated (safety net).
- *  - Third-party plugins (npm, git, url) may never run in-process.
- *  - Worker mode is only available to user-trusted plugins.
- *  - Builtin, official, and local plugins default to in-process.
+ *  - Third-party plugins (npm, git, url) may never run in-process
+ *    unless policy.allowThirdPartyInProcess is true.
+ *  - Worker mode is only available to user-trusted plugins when
+ *    policy.allowWorkerMode is true.
+ *  - Builtin, official, and local plugins default to in-process,
+ *    but config may force local into process via allowLocalInProcess.
  */
 export function resolveRuntimeMode(input: ResolveRuntimeModeInput): RuntimeMode {
-  const { source, manifestMode, userTrusted = false, risk = "low", forceProcess = false } = input
+  const {
+    source,
+    manifestMode,
+    userTrusted = false,
+    risk = "low",
+    forceProcess = false,
+    policy = PLUGIN_RUNTIME_POLICY_DEFAULTS,
+  } = input
 
   // Rule 1: forceProcess flag always wins.
   if (forceProcess) return "process"
@@ -63,20 +77,26 @@ export function resolveRuntimeMode(input: ResolveRuntimeModeInput): RuntimeMode 
   // Rule 3: manifest "process" is honored.
   if (manifestMode === "process") return "process"
 
-  // Rule 4: manifest "worker" is honored only with user trust.
+  // Rule 4: manifest "worker" is honored only when policy allows and user trusts.
   if (manifestMode === "worker") {
-    if (userTrusted) return "worker"
-    // Without user trust, fall through to default.
+    if (policy.allowWorkerMode && userTrusted) return "worker"
+    // Without user trust or worker mode denied by policy, fall through to default.
   }
 
-  // Rule 5: manifest "in-process" is only allowed for trusted sources.
+  // Rule 5: manifest "in-process" is allowed only when policy permits.
   if (manifestMode === "in-process") {
-    if (TRUSTED_SOURCES.has(source)) return "in-process"
-    // Third-party requesting in-process → forced to process.
+    const isTrusted = TRUSTED_SOURCES.has(source)
+    if (isTrusted) {
+      if (source === "local" && !policy.allowLocalInProcess) return "process"
+      return "in-process"
+    }
+    // Third-party requesting in-process → allowed only if policy permits.
+    if (policy.allowThirdPartyInProcess) return "in-process"
     return "process"
   }
 
-  // Rule 6: default by source.
+  // Rule 6: default by source — policy may override local.
+  if (source === "local" && !policy.allowLocalInProcess) return "process"
   if (TRUSTED_SOURCES.has(source)) return "in-process"
   return "process"
 }

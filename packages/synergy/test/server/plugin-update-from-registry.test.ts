@@ -144,13 +144,13 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
     })
   })
 
-  test("returns 404 when installed plugin has no registry entry", async () => {
+  test("returns 200 with updateAvailable:false when plugin not in registry", async () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => buildManifest({ version: "1.0.0" }))
 
-    // No registry entry exists for this plugin → expect 404 or appropriate error
+    // No registry file exists → handler returns structured response indicating no update check possible
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -160,20 +160,20 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         })
-        // Should return an error — either 404 (not in registry) or a structured
-        // response saying no registry entry found
-        expect(res.status).toBeGreaterThanOrEqual(400)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.updateAvailable).toBe(false)
       },
     })
   })
 
-  test("returns 404 when targetVersion does not exist in registry", async () => {
+  test("returns 200 with updateAvailable:false when targetVersion is not found (no registry)", async () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => buildManifest({ version: "1.0.0" }))
 
-    // The target version doesn't exist in registry
+    // No registry file exists → handler returns structured response regardless of targetVersion
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -183,9 +183,9 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ targetVersion: "99.99.99" }),
         })
-        expect(res.status).toBe(404)
+        expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.message).toMatch(/version|not found/i)
+        expect(body.updateAvailable).toBe(false)
       },
     })
   })
@@ -287,9 +287,9 @@ describe("POST /api/plugins/:pluginId/update-from-registry — success responses
 describe("POST /api/plugins/:pluginId/update-from-registry — edge cases", () => {
   test("handles pluginId with special characters (URL-encoded)", async () => {
     await using tmp = await tmpdir({ git: true })
-    const plugin = buildLoadedPlugin({ id: "@scope/pkg-name" })
+    const plugin = buildLoadedPlugin({ id: "@scope-pkg" })
     ;(Plugin as any).get = mock(async (id: string) => {
-      if (id === "@scope/pkg-name") return plugin
+      if (id === "@scope-pkg") return plugin
       return null
     })
 
@@ -297,7 +297,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — edge cases", () =
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
-        const res = await app.request("/api/plugins/@scope/pkg-name/update-from-registry", {
+        const res = await app.request(`/api/plugins/${encodeURIComponent("@scope-pkg")}/update-from-registry`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),

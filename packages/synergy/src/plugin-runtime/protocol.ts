@@ -70,3 +70,7 @@ export interface SerializedError {
 
 export const PROTOCOL_VERSION = 1
 export const MESSAGE_DELIMITER = "\n"
+
+// === Host bridge handler ===
+
+export type HostBridgeHandler = (requestId: string, method: HostBridgeMethod, params: unknown) => Promise<unknown>
