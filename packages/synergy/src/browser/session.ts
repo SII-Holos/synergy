@@ -1,7 +1,7 @@
 import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
-import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession } from "./types.js"
+import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession, BrowserSessionObserver } from "./types.js"
 import { BrowserAnnotationHelper } from "./annotation.js"
 import type { BrowserDriver } from "./driver.js"
 export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
@@ -14,6 +14,7 @@ export class BrowserSessionImpl implements BrowserSession {
   private _tabs: BrowserTabImpl[] = []
   private _activeTab: BrowserTabImpl | null = null
   private _annotations: BrowserAnnotation[] = []
+  private _observers = new Set<BrowserSessionObserver>()
 
   get tabs(): readonly BrowserTab[] {
     return this._tabs
@@ -62,6 +63,7 @@ export class BrowserSessionImpl implements BrowserSession {
     }
 
     await this.save()
+    for (const o of this._observers) o.onTabCreated?.(tab)
     return tab
   }
 
@@ -93,6 +95,7 @@ export class BrowserSessionImpl implements BrowserSession {
     }
 
     await this.save()
+    for (const o of this._observers) o.onTabClosed?.(tabID)
   }
 
   async closeOthers(tabID: string): Promise<void> {
@@ -148,6 +151,17 @@ export class BrowserSessionImpl implements BrowserSession {
 
   formatAnnotationsForContext(): string {
     return BrowserAnnotationHelper.formatForContext(this._annotations)
+  }
+
+  addObserver(observer: BrowserSessionObserver): () => void {
+    this._observers.add(observer)
+    return () => {
+      this._observers.delete(observer)
+    }
+  }
+
+  async notifyTabNavigated(tab: BrowserTab): Promise<void> {
+    for (const o of this._observers) o.onTabNavigated?.(tab)
   }
 
   async save(): Promise<void> {

@@ -45,6 +45,7 @@ export const BrowserRoute = new Hono().get(
     const scopeID = Instance.scope.id
     const owner = BrowserOwner.fromRoute({ directory: Instance.directory, scopeID, sessionID, mode })
     BrowserOwner.assertValid(owner)
+    let unsubscribe: (() => void) | undefined = undefined
 
     log.info("browser WebSocket connected", { directory, ownerKey: BrowserOwner.key(owner) })
 
@@ -75,6 +76,34 @@ export const BrowserRoute = new Hono().get(
           const session = await BrowserRuntime.getOrCreateSession(owner)
           const tabs = session.tabs.map((t) => ({ id: t.id, url: t.url, title: t.title }))
           s(ws, { type: "session.state", tabs, activeTabId: session.activeTab?.id ?? null })
+
+          // Auto-create initial tab if session is empty
+          if (session.tabs.length === 0) {
+            const tab = await session.createTab()
+            s(ws, {
+              type: "tab.created",
+              tab: { id: tab.id, url: tab.url, title: tab.title },
+              active: session.activeTab === tab,
+            })
+          }
+
+          // Subscribe to session changes for agent tool sync
+          unsubscribe = session.addObserver({
+            onTabCreated: (tab) => {
+              s(ws, {
+                type: "tab.created",
+                tab: { id: tab.id, url: tab.url, title: tab.title },
+                active: session.activeTab === tab,
+              })
+            },
+            onTabClosed: (tabID) => {
+              s(ws, { type: "tab.closed", tabId: tabID })
+            },
+            onTabNavigated: (tab) => {
+              s(ws, { type: "tab.navigated", tabId: tab.id, url: tab.url, title: tab.title })
+              sendBrowserScreenshot(ws, tab, "agent-navigate").catch(() => {})
+            },
+          })
         } catch (e: any) {
           log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
           s(ws, { type: "error", message: e?.message ?? "Failed to open browser session" })
@@ -197,6 +226,7 @@ export const BrowserRoute = new Hono().get(
         }
       },
       onClose(_e: any, _ws: BrowserWS) {
+        unsubscribe?.()
         log.info("browser WebSocket disconnected")
       },
       onError(_e: any, _ws: BrowserWS) {

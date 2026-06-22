@@ -16,6 +16,7 @@ function mockTab(overrides?: Partial<BrowserTab>): BrowserTab {
     lastActiveAt: null,
     cdp: null,
     navigate: mock(async () => ({ url: "", title: "" })),
+    navigateWithOverride: mock(async () => ({ url: "", title: "" })),
     reload: mock(async () => {}),
     goBack: mock(async () => {}),
     goForward: mock(async () => {}),

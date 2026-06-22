@@ -62,9 +62,13 @@ function extractMethod(source: string, signature: string): string {
  * Returns everything from "constructor(" to the next class member.
  */
 function extractConstructor(source: string): string {
-  const startIdx = source.indexOf("constructor(")
+  // Find BrowserTabImpl constructor, not BlockedURLNavigationError.
+  const classIdx = source.indexOf("class BrowserTabImpl")
+  if (classIdx === -1) return ""
+  const afterClass = source.slice(classIdx)
+  const startIdx = afterClass.indexOf("constructor(")
   if (startIdx === -1) return ""
-  const rest = source.slice(startIdx)
+  const rest = afterClass.slice(startIdx)
   const nextMember = rest
     .slice("constructor(".length)
     .search(/\n\s{2}(async\s|private\s|public\s|\/\/|\/\*\*|get\s|readonly)/)

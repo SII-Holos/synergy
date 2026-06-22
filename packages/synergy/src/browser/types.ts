@@ -25,6 +25,13 @@ export interface BrowserAnnotationInput {
   tabURL?: string
 }
 
+export interface BrowserSessionObserver {
+  onTabCreated?: (tab: BrowserTab) => void
+  onTabClosed?: (tabID: string) => void
+  onTabNavigated?: (tab: BrowserTab) => void
+  onScreenshotAvailable?: (tab: BrowserTab, dataUrl: string, width: number, height: number) => void
+}
+
 export interface BrowserSession {
   readonly owner: BrowserOwner.Info
   readonly tabs: readonly BrowserTab[]
@@ -41,6 +48,9 @@ export interface BrowserSession {
   removeAnnotation(id: string): boolean
   clearAnnotations(): void
   formatAnnotationsForContext(): string
+
+  addObserver(observer: BrowserSessionObserver): () => void
+  notifyTabNavigated(tab: BrowserTab): Promise<void>
 
   save(): Promise<void>
   restore(): Promise<boolean>

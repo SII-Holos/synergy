@@ -41,6 +41,7 @@ export interface BrowserTab {
   readonly page?: import("playwright").Page
 
   navigate(url: string): Promise<{ url: string; title: string }>
+  navigateWithOverride(url: string): Promise<{ url: string; title: string }>
   reload(ignoreCache?: boolean): Promise<void>
   goBack(): Promise<void>
   goForward(): Promise<void>
@@ -68,6 +69,15 @@ export interface BrowserTab {
   waitFor(condition: WaitCondition, timeoutMs?: number): Promise<boolean>
 
   close(): Promise<void>
+}
+
+export class BlockedURLNavigationError extends Error {
+  readonly url: string
+  constructor(reason: string, url: string) {
+    super(`Navigation blocked by policy: ${reason}`)
+    this.name = "BlockedURLNavigationError"
+    this.url = url
+  }
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -232,10 +242,28 @@ export class BrowserTabImpl implements BrowserTab {
 
   async navigate(url: string): Promise<{ url: string; title: string }> {
     const result = BrowserPolicy.evaluateURL(url, this.directory)
-    if (result.decision !== "allow") {
+    if (result.decision === "deny") {
       throw new Error(`Navigation denied: ${result.reason}`)
     }
+    if (result.decision === "blocked") {
+      throw new BlockedURLNavigationError(result.reason, url)
+    }
 
+    this.loading = true
+    await this.page.goto(url, { waitUntil: "domcontentloaded" })
+    this.url = this.page.url()
+
+    try {
+      this.title = await this.page.evaluate(() => document.title)
+    } catch {
+      /* ignore */
+    }
+    this.loading = false
+
+    return { url: this.url, title: this.title }
+  }
+
+  async navigateWithOverride(url: string): Promise<{ url: string; title: string }> {
     this.loading = true
     await this.page.goto(url, { waitUntil: "domcontentloaded" })
     this.url = this.page.url()
