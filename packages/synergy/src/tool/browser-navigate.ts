@@ -20,20 +20,33 @@ export const BrowserNavigateTool = Tool.define("browser_navigate", {
     try {
       const tab = await BrowserToolHelper.getTab(owner, params.tabId)
       const result = await tab.navigate(params.url)
-      const snapshot = await tab.snapshot()
-      const text = formatSnapshotText(snapshot.elements)
 
+      // Notify frontend before snapshot — snapshot may fail if Playwright
+      // is unavailable but navigation is already done and must be surfaced.
       const session = await BrowserToolHelper.getOrCreateSession(owner)
+      await session.save()
       await session.notifyTabNavigated(tab)
+
+      let text = ""
+      let elementsCount = 0
+      let truncated = false
+      try {
+        const snapshot = await tab.snapshot()
+        text = formatSnapshotText(snapshot.elements)
+        elementsCount = snapshot.elements.length
+        truncated = snapshot.truncated
+      } catch {
+        /* snapshot is best-effort */
+      }
 
       return {
         title: `Navigated to ${result.url}`,
-        output: `Page title: ${result.title}\n\n${text}`,
+        output: `Page title: ${result.title}${text ? `\n\n${text}` : ""}`,
         metadata: {
           url: result.url,
           tabId: tab.id,
-          elementsCount: snapshot.elements.length,
-          truncated: snapshot.truncated,
+          elementsCount,
+          truncated,
         },
       }
     } catch (err) {
@@ -47,23 +60,34 @@ export const BrowserNavigateTool = Tool.define("browser_navigate", {
             reason: err.message,
           },
         })
-        // Retry with policy override
+        // Retry with policy override; notify frontend before snapshot.
         const tab = await BrowserToolHelper.getTab(owner, params.tabId)
         const result = await tab.navigateWithOverride(err.url)
-        const snapshot = await tab.snapshot()
-        const text = formatSnapshotText(snapshot.elements)
 
         const session = await BrowserToolHelper.getOrCreateSession(owner)
+        await session.save()
         await session.notifyTabNavigated(tab)
+
+        let text = ""
+        let elementsCount = 0
+        let truncated = false
+        try {
+          const snapshot = await tab.snapshot()
+          text = formatSnapshotText(snapshot.elements)
+          elementsCount = snapshot.elements.length
+          truncated = snapshot.truncated
+        } catch {
+          /* snapshot is best-effort */
+        }
 
         return {
           title: `Navigated to ${result.url}`,
-          output: `Page title: ${result.title}\n\n${text}`,
+          output: `Page title: ${result.title}${text ? `\n\n${text}` : ""}`,
           metadata: {
             url: result.url,
             tabId: tab.id,
-            elementsCount: snapshot.elements.length,
-            truncated: snapshot.truncated,
+            elementsCount,
+            truncated,
           },
         }
       }
