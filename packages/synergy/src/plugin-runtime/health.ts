@@ -1,4 +1,5 @@
 import { getRuntime } from "./supervisor.js"
+import type { RuntimeEntry, RuntimeWarning, RuntimeWarningType } from "./supervisor.js"
 
 // === Constants ===
 
@@ -109,4 +110,59 @@ export function enforceShutdownTimeout(
       clearTimeout(timer)
     },
   }
+}
+
+// === Runtime health snapshot ===
+
+export interface RuntimeHealth {
+  pluginId: string
+  state: string
+  mode: string
+  startedAt?: number
+  pid?: number
+  memoryMb?: number
+  restarts: number
+  lastHeartbeatAt?: number
+  lastError?: string
+  runtimeDecision?: string
+  warnings: RuntimeWarning[]
+}
+
+/**
+ * Return a health snapshot for the given plugin runtime.
+ *
+ * Returns `null` when the plugin is not registered in the runtime registry.
+ * The returned `warnings` array is the same mutable reference held by the
+ * `RuntimeEntry`, so callers (and persistent warning CRUD) can append to it
+ * and changes will be visible in subsequent health snapshots.
+ */
+export function getRuntimeHealth(pluginId: string): RuntimeHealth | null {
+  const entry = getRuntime(pluginId)
+  if (!entry) return null
+  return {
+    pluginId: entry.pluginId,
+    state: entry.state,
+    mode: entry.mode,
+    startedAt: entry.startedAt,
+    pid: entry.pid,
+    memoryMb: entry.memoryMb,
+    restarts: entry.restarts,
+    lastHeartbeatAt: entry.lastHeartbeatAt,
+    lastError: entry.lastError,
+    runtimeDecision: entry.runtimeDecision,
+    warnings: entry.warnings,
+  }
+}
+
+/**
+ * Push a warning onto a plugin's RuntimeEntry warnings array and return the entry.
+ * Safe to call when the plugin is not registered (no-op).
+ *
+ * This is the canonical way to inject persistent warnings from supervisors,
+ * resource monitors, and enforcement handlers.
+ */
+export function pushWarning(pluginId: string, type: RuntimeWarningType, message: string, at?: number): void {
+  const entry = getRuntime(pluginId)
+  if (!entry) return
+  entry.warnings.push({ type, message, at: at ?? Date.now() })
 }

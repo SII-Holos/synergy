@@ -999,6 +999,37 @@ export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
   denyHighRiskThirdParty: true,
   requireSignatureForMarketplace: false,
 } as const satisfies Required<PluginApprovalPolicy>
+export const PluginRuntimePolicy = z
+  .object({
+    thirdPartyDefaultMode: z
+      .enum(["process", "worker"])
+      .optional()
+      .default("process")
+      .describe("Default isolation mode for third-party plugins (npm, git, url)"),
+    highRiskRequiresProcess: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Require process isolation for high-risk plugins regardless of source"),
+    allowThirdPartyInProcess: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Allow third-party plugins to request in-process mode (not recommended)"),
+    allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
+    allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+  })
+  .strict()
+  .meta({ ref: "PluginRuntimePolicyConfig" })
+export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
+
+export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
+  thirdPartyDefaultMode: "process" as const,
+  highRiskRequiresProcess: true,
+  allowThirdPartyInProcess: false,
+  allowWorkerMode: true,
+  allowLocalInProcess: true,
+} as const satisfies Required<PluginRuntimePolicy>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1065,6 +1096,7 @@ export const Info = z
       .optional(),
     plugin: z.string().array().optional(),
     pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
+    pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     snapshot: z.boolean().optional(),
     autoupdate: z
       .union([z.boolean(), z.literal("notify")])

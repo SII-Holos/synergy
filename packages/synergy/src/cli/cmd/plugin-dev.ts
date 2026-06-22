@@ -6,6 +6,7 @@ import { computeRisk } from "@/plugin/consent/risk"
 import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
+import { Server } from "@/server/server"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,17 +126,160 @@ function countUiContributions(manifest: PluginManifestType): number {
 }
 
 // ---------------------------------------------------------------------------
-// dev [path]
+// Sandbox preview — exported for testability
 // ---------------------------------------------------------------------------
+
+export interface SandboxSurface {
+  id: string
+  label: string
+  kind: "workspacePanel" | "globalPanel"
+}
+
+/** Build the sandbox preview URL for a plugin panel. */
+export function buildSandboxPreviewUrl(
+  pluginId: string,
+  surfaceId: string,
+  port: number = Server.DEFAULT_PORT,
+): string {
+  return `http://localhost:${port}/plugin/${encodeURIComponent(pluginId)}/sandbox/${encodeURIComponent(surfaceId)}`
+}
+
+/** Extract sandbox-eligible panels from a plugin manifest. */
+export function resolveSandboxSurfaces(manifest: PluginManifestType): SandboxSurface[] {
+  const ui = manifest.contributes?.ui
+  if (!ui) return []
+
+  const surfaces: SandboxSurface[] = []
+
+  for (const panel of ui.workspacePanels ?? []) {
+    if (panel.sandbox) {
+      surfaces.push({ id: panel.id, label: panel.label, kind: "workspacePanel" })
+    }
+  }
+
+  for (const panel of ui.globalPanels ?? []) {
+    if (panel.sandbox) {
+      surfaces.push({ id: panel.id, label: panel.label, kind: "globalPanel" })
+    }
+  }
+
+  return surfaces
+}
+
+function printSandboxPreview(surfaces: SandboxSurface[], manifest: PluginManifestType, port: number) {
+  if (surfaces.length === 0) {
+    UI.println(`  ${UI.Style.TEXT_WARNING}No sandbox panels found in manifest${UI.Style.TEXT_NORMAL}`)
+    return
+  }
+
+  UI.println(`  ${UI.Style.TEXT_HIGHLIGHT}Sandbox preview URLs:${UI.Style.TEXT_NORMAL}`)
+  for (const surface of surfaces) {
+    const url = buildSandboxPreviewUrl(manifest.name, surface.id, port)
+    UI.println(`    ${surface.label} (${surface.kind}): ${UI.Style.TEXT_SUCCESS}${url}${UI.Style.TEXT_NORMAL}`)
+  }
+}
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Health snapshot — exported for testability
+// ---------------------------------------------------------------------------
+
+export interface HealthSnapshot {
+  mode: string
+  pid?: number
+  state: string
+  memoryMb?: number
+  lastHeartbeatAt?: number
+  activeRequests: number
+  droppedLogs: number
+}
+
+import { getRuntime, getLogBuffer } from "@/plugin-runtime"
+
+/** Gather next-tick health snapshot from the supervisor and log buffer. */
+export function collectHealthSnapshot(pluginId: string): HealthSnapshot | null {
+  const entry = getRuntime(pluginId)
+  if (!entry) return null
+  return {
+    mode: entry.mode,
+    pid: entry.pid,
+    state: entry.state,
+    memoryMb: entry.memoryMb,
+    lastHeartbeatAt: entry.lastHeartbeatAt,
+    activeRequests: entry.concurrencyLimiter?.activeCount() ?? 0,
+    droppedLogs: getLogBuffer().droppedCount(pluginId),
+  }
+}
+
+/** Format a health snapshot as a set of display lines. */
+export function formatHealthSnapshot(snapshot: HealthSnapshot): string[] {
+  const lines: string[] = []
+  lines.push(`  Mode:      ${snapshot.mode}`)
+  if (snapshot.pid !== undefined) {
+    lines.push(`  PID:       ${snapshot.pid}`)
+  }
+  lines.push(`  State:     ${snapshot.state}`)
+  if (snapshot.memoryMb !== undefined) {
+    lines.push(`  Memory:    ${snapshot.memoryMb} MB`)
+  }
+  if (snapshot.lastHeartbeatAt !== undefined) {
+    const ago = Math.round((Date.now() - snapshot.lastHeartbeatAt) / 1000)
+    lines.push(`  Heartbeat: ${ago}s ago`)
+  }
+  lines.push(`  Requests:  ${snapshot.activeRequests} active`)
+  lines.push(`  Logs:      ${snapshot.droppedLogs} dropped`)
+  return lines
+}
+
+/** Format log entries as display lines, showing the most recent entries up to maxLines (default 10). */
+export function formatLogTail(
+  entries: { timestamp: number; level: string; message: string }[],
+  maxLines = 10,
+): string[] {
+  if (entries.length === 0) return []
+  const tail = entries.slice(-maxLines)
+  return tail.map((e) => {
+    const time = new Date(e.timestamp).toLocaleTimeString("en-US", { hour12: false })
+    return `  ${time} ${e.level.padEnd(7)} ${e.message}`
+  })
+}
+
+function printHealthDashboard(manifest: PluginManifestType) {
+  const pluginId = manifest.name
+  const snapshot = collectHealthSnapshot(pluginId)
+  if (!snapshot) return
+
+  UI.println()
+  UI.println(`  ${UI.Style.TEXT_NORMAL_BOLD}Health${UI.Style.TEXT_NORMAL}`)
+  for (const line of formatHealthSnapshot(snapshot)) {
+    UI.println(line)
+  }
+
+  const logEntries = getLogBuffer().list(pluginId)
+  const tail = formatLogTail(logEntries)
+  if (tail.length > 0) {
+    UI.println()
+    UI.println(`  ${UI.Style.TEXT_NORMAL_BOLD}Log tail (last ${tail.length})${UI.Style.TEXT_NORMAL}`)
+    for (const line of tail) {
+      UI.println(line)
+    }
+  }
+}
 
 export const PluginDevCommand = cmd({
   command: "dev [path]",
   describe: "start plugin development mode with file watching and auto-reload",
   builder: (yargs: Argv) =>
-    yargs.positional("path", {
-      type: "string",
-      describe: "path to plugin directory (defaults to cwd)",
-    }),
+    yargs
+      .positional("path", {
+        type: "string",
+        describe: "path to plugin directory (defaults to cwd)",
+      })
+      .option("sandbox-preview", {
+        type: "boolean",
+        default: false,
+        describe: "output sandbox iframe preview URLs for UI panels",
+      }),
   async handler(args) {
     const pluginDir = path.resolve((args.path as string) ?? process.cwd())
     const manifestPath = path.join(pluginDir, "plugin.json")
@@ -182,6 +326,7 @@ export const PluginDevCommand = cmd({
     // Runtime header
     UI.println()
     printRuntimeStatus(manifest)
+    printHealthDashboard(manifest)
 
     const uiContribs = countUiContributions(manifest)
     if (uiContribs > 0) {
@@ -192,6 +337,12 @@ export const PluginDevCommand = cmd({
       if (ui.workspacePanels?.length)
         uiParts.push(`${ui.workspacePanels.length} workspace panel${ui.workspacePanels.length !== 1 ? "s" : ""}`)
       UI.println(`UI: ${uiParts.join(", ")}`)
+    }
+    // Sandbox preview
+    const sandboxPreview: boolean = (args as any)["sandbox-preview"] ?? false
+    if (sandboxPreview) {
+      const surfaces = resolveSandboxSurfaces(manifest)
+      printSandboxPreview(surfaces, manifest, Server.DEFAULT_PORT)
     }
 
     // Watch mode
@@ -226,6 +377,11 @@ export const PluginDevCommand = cmd({
               .then(() => {
                 UI.println(`${UI.Style.TEXT_SUCCESS}done${UI.Style.TEXT_NORMAL}`)
                 printRuntimeStatus(manifest)
+                printHealthDashboard(manifest)
+                if (sandboxPreview) {
+                  const surfaces = resolveSandboxSurfaces(manifest)
+                  printSandboxPreview(surfaces, manifest, Server.DEFAULT_PORT)
+                }
                 UI.println()
               })
               .catch((err: unknown) => {

@@ -1,3 +1,6 @@
+import { validateRuntimePolicy } from "../../plugin/runtime-policy"
+import { computeRisk } from "../../plugin/consent/risk"
+import { baseCapabilities } from "../../plugin/capability"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
@@ -7,6 +10,8 @@ import { parseSemver, compareSemverTuples, satisfiesVersion } from "../../util/s
 import { EOL } from "os"
 import path from "path"
 import fs from "fs"
+import { validateRuntimeDiscovery } from "../../plugin/validate-runtime-discovery"
+import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
 import type { Argv } from "yargs"
 
 // ---------------------------------------------------------------------------
@@ -102,12 +107,19 @@ export const PluginValidateCommand = cmd({
   command: "validate [path]",
   describe: "validate a plugin manifest",
   builder: (yargs: Argv) =>
-    yargs.positional("path", {
-      type: "string",
-      describe: "path to plugin directory or plugin.json (defaults to current directory)",
-    }),
-  handler(args) {
+    yargs
+      .positional("path", {
+        type: "string",
+        describe: "path to plugin directory or plugin.json (defaults to current directory)",
+      })
+      .option("runtime-discovery", {
+        type: "boolean",
+        describe: "safely load plugin in dev mode, collect runtime tools, and compare with manifest",
+        default: false,
+      }),
+  async handler(args) {
     const results: CheckResult[] = []
+    const doRuntimeDiscovery = (args["runtime-discovery"] as boolean) || false
 
     // Resolve the plugin.json path
     const dirArg = (args.path as string) || process.cwd()
@@ -313,6 +325,156 @@ export const PluginValidateCommand = cmd({
         results.push({ type: "pass", message: "config schema valid" })
       } else {
         results.push({ type: "warn", message: "config schema does not appear to be valid JSON Schema" })
+      }
+    }
+
+    // ── runtime policy (risk-based mode validation) ──
+    const pluginRisk = computeRisk(baseCapabilities(m), m)
+    // For CLI validation, treat plugin as local (most common)
+    // Trust tier defaults to "declarative" since the user hasn't approved it yet in validate
+    const policyResults = validateRuntimePolicy({
+      manifest: m,
+      source: "local",
+      trustTier: "declarative",
+      risk: pluginRisk,
+    })
+    results.push(...policyResults)
+
+    // ── runtime discovery (--runtime-discovery flag) ──
+    if (doRuntimeDiscovery) {
+      const manifestToolNames = (m.contributes?.tools ?? []).map((t) => t.name)
+      const buildPath = path.join(pluginDir, "dist", "index.js")
+      const mainPath = m.main ? path.resolve(pluginDir, m.main) : buildPath
+
+      // Determine the entry point: prefer dist/index.js, then configured main, then src/index.ts
+      let entryPath: string | null = null
+      if (fs.existsSync(buildPath)) {
+        entryPath = buildPath
+      } else if (fs.existsSync(mainPath)) {
+        entryPath = mainPath
+      } else {
+        // Maybe a TypeScript source file exists for dev mode
+        const tsMain = m.main ? path.resolve(pluginDir, m.main as string) : buildPath
+        const tsAlt = tsMain.replace(/\.js$/, ".ts")
+        if (fs.existsSync(tsAlt)) {
+          entryPath = tsAlt
+        }
+      }
+
+      if (!entryPath) {
+        results.push({
+          type: "warn",
+          message: "runtime-discovery: no build output found — run 'synergy plugin build' first",
+        })
+      } else {
+        try {
+          const mod = await import(entryPath)
+          const descriptors: PluginDescriptor[] = []
+          for (const [, v] of Object.entries(mod)) {
+            if (v && typeof v === "object" && !Array.isArray(v) && "id" in v && "init" in v) {
+              descriptors.push(v as PluginDescriptor)
+            }
+          }
+
+          if (descriptors.length === 0) {
+            results.push({
+              type: "warn",
+              message: `runtime-discovery: no PluginDescriptor found in ${path.relative(process.cwd(), entryPath)}`,
+            })
+          } else {
+            for (const desc of descriptors) {
+              const pluginId = desc.id
+              let hooks: PluginHooks | undefined
+              let loadError: string | undefined
+
+              try {
+                const input: PluginInput = {
+                  client: undefined as any, // not available in validate context
+                  scope: undefined as any,
+                  worktree: "",
+                  directory: pluginDir,
+                  serverUrl: new URL("http://localhost"),
+                  $: undefined as any,
+                  pluginDir,
+                  config: {
+                    get: async () => ({}),
+                    set: async () => {},
+                  },
+                  auth: {
+                    get: async () => undefined,
+                    set: async () => {},
+                    delete: async () => {},
+                    has: async () => false,
+                  },
+                  cache: {
+                    directory: path.join(pluginDir, ".cache"),
+                    get: async () => undefined,
+                    set: async () => {},
+                    delete: async () => {},
+                  },
+                }
+                hooks = await desc.init(input)
+              } catch (e: unknown) {
+                loadError = e instanceof Error ? e.message : String(e)
+              }
+
+              const runtimeToolNames = hooks?.tool ? Object.keys(hooks.tool) : loadError ? null : []
+              const discovery = validateRuntimeDiscovery({
+                manifestToolNames,
+                runtimeToolNames,
+                pluginId,
+              })
+
+              results.push({
+                type: "pass",
+                message: `runtime-discovery: loaded plugin "${pluginId}"${loadError ? ` (init failed: ${loadError})` : ""}`,
+              })
+
+              if (discovery.loadFailed) {
+                results.push({
+                  type: "error",
+                  message: `runtime-discovery: plugin "${pluginId}" failed to initialize — cannot validate tool registration`,
+                })
+                if (loadError) {
+                  results.push({
+                    type: "error",
+                    message: `  init error: ${loadError}`,
+                  })
+                }
+              } else {
+                const total = runtimeToolNames !== null ? runtimeToolNames.length : 0
+                results.push({
+                  type: "pass",
+                  message: `runtime-discovery: ${total} tool(s) registered at runtime, ${manifestToolNames.length} declared in manifest`,
+                })
+
+                if (discovery.matched.length > 0) {
+                  results.push({
+                    type: "pass",
+                    message: `runtime-discovery: ${discovery.matched.length} tool(s) matched — ${discovery.matched.join(", ")}`,
+                  })
+                }
+
+                if (discovery.undeclared.length > 0) {
+                  results.push({
+                    type: "error",
+                    message: `runtime-discovery: ${discovery.undeclared.length} undeclared tool(s) — ${discovery.undeclared.join(", ")} (registered at runtime but missing from manifest contributes.tools)`,
+                  })
+                }
+
+                if (discovery.declaredButMissing.length > 0) {
+                  results.push({
+                    type: "warn",
+                    message: `runtime-discovery: ${discovery.declaredButMissing.length} tool(s) declared in manifest but not registered at runtime — ${discovery.declaredButMissing.join(", ")}`,
+                  })
+                }
+              }
+            }
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e)
+          results.push({ type: "error", message: `runtime-discovery: failed to load plugin — ${msg}` })
+        }
       }
     }
 

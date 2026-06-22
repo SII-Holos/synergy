@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
 import z from "zod"
 import { Plugin } from "../plugin/index"
-import { getRuntime, startRuntime, stopRuntime, reloadRuntime } from "../plugin-runtime/supervisor"
+import { getRuntime, getLogBuffer, startRuntime, stopRuntime, reloadRuntime } from "../plugin-runtime/supervisor"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { errors } from "./error"
 
@@ -176,7 +176,6 @@ export const PluginRuntimeRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
-      // TODO: Read from plugin log store when log capture is implemented
-      return c.json([])
+      return c.json(getLogBuffer().list(pluginId))
     },
   )

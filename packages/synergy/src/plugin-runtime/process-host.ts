@@ -7,6 +7,9 @@ import type {
 } from "./protocol.js"
 import { MESSAGE_DELIMITER } from "./protocol.js"
 import { getRuntime } from "./supervisor.js"
+import { pushWarning } from "./health.js"
+import type { PluginLogBuffer } from "./logs.js"
+import { deserializeError } from "./errors.js"
 
 // ── Plugin process state ─────────────────────────────────────────
 
@@ -32,15 +35,6 @@ type MessageHandler = (msg: PluginToHost) => void
 
 export type HostBridgeHandler = (requestId: string, method: HostBridgeMethod, params: unknown) => Promise<unknown>
 
-// ── Helpers ──────────────────────────────────────────────────────
-
-function reconstructError(serialized: { name: string; message: string; stack?: string }): Error {
-  const err = new Error(serialized.message)
-  err.name = serialized.name
-  if (serialized.stack) err.stack = serialized.stack
-  return err
-}
-
 // ── spawnPluginProcess ────────────────────────────────────────────
 
 export async function spawnPluginProcess(options: {
@@ -49,6 +43,7 @@ export async function spawnPluginProcess(options: {
   entryPath: string
   input: IsolatedPluginInputData
   hostBridgeHandler?: HostBridgeHandler
+  logBuffer?: PluginLogBuffer
 }): Promise<{
   process: Bun.Subprocess
   onMessage: (handler: MessageHandler) => void
@@ -56,7 +51,7 @@ export async function spawnPluginProcess(options: {
   kill: () => void
   state: PluginState
 }> {
-  const { pluginId, pluginDir, entryPath, input, hostBridgeHandler } = options
+  const { pluginId, pluginDir, entryPath, input, hostBridgeHandler, logBuffer } = options
 
   const pluginState: PluginState = {
     ready: false,
@@ -87,9 +82,7 @@ export async function spawnPluginProcess(options: {
           if (msg.ok) {
             pending.resolve(msg.value)
           } else {
-            const cause = msg.error.cause ? reconstructError(msg.error.cause) : undefined
-            const err = reconstructError(msg.error)
-            if (cause) err.cause = cause
+            const err = deserializeError(msg.error)
             pending.reject(err)
           }
         }
@@ -159,7 +152,11 @@ export async function spawnPluginProcess(options: {
       }
       case "log": {
         const entry = getRuntime(pluginId)
-        if (entry?.logRateLimiter && !entry.logRateLimiter.allow(msg.message.length)) return
+        if (entry?.logRateLimiter && !entry.logRateLimiter.allow(msg.message.length)) {
+          pushWarning(pluginId, "log_rate_limited", `Log rate limit exceeded — message dropped`)
+          return
+        }
+        logBuffer?.append(pluginId, { timestamp: Date.now(), level: msg.level, message: msg.message })
         break
       }
       case "heartbeat": {

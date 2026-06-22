@@ -1,28 +1,46 @@
 import { Log } from "@/util/log"
 import { recordEvent } from "../plugin/audit.js"
-import { Worker } from "node:worker_threads"
 import type { PluginToHost, IsolatedPluginInputData } from "./protocol.js"
+import { resolveRuntimeMode } from "./mode-resolver.js"
 import { spawnPluginProcess, type HostBridgeHandler } from "./process-host.js"
-import { startHeartbeatMonitor, enforceStartupTimeout, DEFAULT_LIMITS } from "./health.js"
+import { spawnPluginWorker } from "./worker-host.js"
+import { Worker } from "node:worker_threads"
+import { PluginRuntimeError, classifyRuntimeExit } from "./errors.js"
+import { startHeartbeatMonitor, enforceStartupTimeout, DEFAULT_LIMITS, pushWarning } from "./health.js"
 import { ConcurrencyLimiter, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
 import { readRuntimeState } from "./state-persist.js"
 import { writeRuntimeState } from "./state-persist.js"
 import { createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
-
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import * as ManifestReader from "../plugin/manifest-reader"
 const log = Log.create({ service: "plugin-runtime.supervisor" })
+import { PluginLogBuffer } from "./logs.js"
 
 // === Types ===
 
 export type RuntimeMode = "in-process" | "worker" | "process"
 
 export type RuntimeState = "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
+export type RuntimeWarningType =
+  | "capability_denied"
+  | "memory_limit_exceeded"
+  | "log_rate_limited"
+  | "heartbeat_missed"
+  | "startup_timeout"
+  | "worker_error"
+  | "spawn_failed"
+
+export interface RuntimeWarning {
+  type: RuntimeWarningType
+  message: string
+  at: number
+}
 
 export interface RuntimeEntry {
   pluginId: string
   mode: RuntimeMode
+  runtimeDecision?: string
   pid?: number
   state: RuntimeState
   restarts: number
@@ -30,6 +48,7 @@ export interface RuntimeEntry {
   memoryMb?: number
   startedAt?: number
   lastError?: string
+  warnings: RuntimeWarning[]
   process?: Bun.Subprocess
   worker?: Worker
   concurrencyLimiter?: ConcurrencyLimiter
@@ -55,6 +74,13 @@ function saveState(): void {
 }
 const runtimeRegistry = new Map<string, RuntimeEntry>()
 
+// Shared log buffer — all host implementations append log entries here
+const logBuffer = new PluginLogBuffer()
+
+export function getLogBuffer(): PluginLogBuffer {
+  return logBuffer
+}
+
 export function getRuntime(pluginId: string): RuntimeEntry | undefined {
   return runtimeRegistry.get(pluginId)
 }
@@ -79,6 +105,7 @@ export async function restoreRuntimeState(): Promise<void> {
       lastHeartbeatAt: persisted.lastHeartbeatAt,
       startedAt: persisted.startedAt,
       lastError: persisted.lastError,
+      warnings: [],
     }
     runtimeRegistry.set(persisted.pluginId, entry)
   }
@@ -122,9 +149,22 @@ export async function startRuntime(
   } catch {
     // Manifest may be missing or invalid; fall through with defaults
   }
-
-  // Resolve runtime mode: caller wins, then manifest, then default
-  const resolvedMode: RuntimeMode = options.mode ?? manifest?.runtime?.mode ?? "in-process"
+  // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
+  let runtimeDecision: string
+  let resolvedMode: RuntimeMode
+  if (options.mode) {
+    resolvedMode = options.mode
+    runtimeDecision = `caller-override:${resolvedMode}`
+  } else {
+    resolvedMode = resolveRuntimeMode({
+      source: "npm", // actual source is resolved in install; runtime defaults to npm
+      manifestMode: manifest?.runtime?.mode,
+      devMode: false,
+      userTrusted: false,
+      risk: "low",
+    })
+    runtimeDecision = `policy:${resolvedMode}`
+  }
 
   // Resolve resource limits: manifest resources overlay DEFAULT_LIMITS
   const manifestResources = manifest?.runtime?.resources
@@ -133,9 +173,11 @@ export async function startRuntime(
   const entry: RuntimeEntry = {
     pluginId,
     mode: resolvedMode,
+    runtimeDecision,
     state: "starting",
     restarts,
     startedAt: Date.now(),
+    warnings: [],
   }
   runtimeRegistry.set(pluginId, entry)
 
@@ -150,7 +192,7 @@ export async function startRuntime(
   }
 
   if (resolvedMode === "worker") {
-    // worker mode — spawn a node:worker_threads Worker for plugin isolation
+    // worker mode — delegate to spawnPluginWorker for Worker lifecycle
     try {
       const scope =
         options.scope ??
@@ -172,14 +214,18 @@ export async function startRuntime(
         serverUrl,
       }
 
-      const worker = new Worker(options.entryPath, {
-        workerData: input,
+      const spawned = await spawnPluginWorker({
+        pluginId,
+        pluginDir: options.pluginDir,
+        entryPath: options.entryPath,
+        input,
+        logBuffer,
       })
 
-      entry.worker = worker
-      entry.pid = worker.threadId
+      entry.worker = spawned.worker
+      entry.pid = spawned.worker.threadId
 
-      worker.on("message", (msg: PluginToHost) => {
+      spawned.onMessage((msg: PluginToHost) => {
         if (msg.type === "heartbeat") {
           entry.lastHeartbeatAt = Date.now()
         }
@@ -189,18 +235,27 @@ export async function startRuntime(
         }
       })
 
-      worker.on("error", (err: Error) => {
-        log.error("worker error", { pluginId, error: err.message })
+      spawned.worker.on("error", (err: Error) => {
+        pushWarning(pluginId, "worker_error", err.message)
+        const pluginErr = new PluginRuntimeError(pluginId, "worker_error", err.message, { cause: err })
+        log.error("worker error", { pluginId, error: pluginErr.message })
         entry.state = "crashed"
-        entry.lastError = err.message
+        entry.lastError = pluginErr.toString()
         saveState()
-        // Audit: runtime crashed
-        void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "worker_error", error: err.message } })
+        void recordEvent({
+          pluginId,
+          type: "runtime_crashed",
+          details: { reason: "worker_error", error: pluginErr.message },
+        })
       })
 
-      worker.on("exit", () => {
+      spawned.worker.on("exit", (exitCode: number) => {
         if (entry.state !== "stopped") {
-          entry.state = "stopped"
+          const classification = classifyRuntimeExit(exitCode, null)
+          entry.state = classification === "normal" ? "stopped" : "crashed"
+          if (classification !== "normal") {
+            entry.lastError = `Worker exited with code ${exitCode} (${classification})`
+          }
           entry.worker = undefined
           entry.pid = undefined
           saveState()
@@ -212,11 +267,11 @@ export async function startRuntime(
         log.error("startup timeout", { pluginId: timedOutPluginId })
         const e = runtimeRegistry.get(timedOutPluginId)
         if (e && e.state === "starting") {
+          pushWarning(timedOutPluginId, "startup_timeout", `Startup timed out after ${resolvedStartupTimeoutMs}ms`)
           e.state = "crashed"
           e.lastError = "Startup timeout"
           forceStop(e)
           saveState()
-          // Audit: runtime crashed
           void recordEvent({
             pluginId: timedOutPluginId,
             type: "runtime_crashed",
@@ -225,18 +280,25 @@ export async function startRuntime(
         }
       })
 
-      log.info("plugin worker spawned", { pluginId, threadId: worker.threadId })
+      log.info("plugin worker spawned", { pluginId, threadId: spawned.worker.threadId })
 
       // Audit: runtime started
       void recordEvent({ pluginId, type: "runtime_started", details: { mode: resolvedMode } })
       return entry
     } catch (err: any) {
-      log.error("failed to spawn plugin worker", { pluginId, error: err.message })
+      pushWarning(pluginId, "spawn_failed", `Worker spawn failed: ${err.message}`)
+      const pluginErr = new PluginRuntimeError(pluginId, "spawn_failed", `Worker spawn failed: ${err.message}`, {
+        cause: err,
+      })
+      log.error("failed to spawn plugin worker", { pluginId, error: pluginErr.message })
       entry.state = "crashed"
-      entry.lastError = `Worker spawn failed: ${err.message}`
+      entry.lastError = pluginErr.toString()
       saveState()
-      // Audit: runtime crashed
-      void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "spawn_failed", error: err.message } })
+      void recordEvent({
+        pluginId,
+        type: "runtime_crashed",
+        details: { reason: "spawn_failed", error: pluginErr.message },
+      })
       return entry
     }
   }
@@ -269,7 +331,12 @@ export async function startRuntime(
     const enforcementHandler: HostBridgeHandler = async (_requestId, method, params) => {
       const result = enforcer(method, params)
       if (!result.allowed) {
-        // Audit: capability denied
+        // Push persistent warning and audit
+        pushWarning(
+          pluginId,
+          "capability_denied",
+          `Capability "${method}" denied: ${result.reason ?? "unknown reason"}`,
+        )
         void recordEvent({ pluginId, type: "capability_denied", details: { method, reason: result.reason } })
         throw new Error(result.reason ?? "Bridge request denied by enforcement")
       }
@@ -283,6 +350,7 @@ export async function startRuntime(
       entryPath: options.entryPath,
       input,
       hostBridgeHandler: enforcementHandler,
+      logBuffer,
     })
 
     entry.process = spawned.process
@@ -305,6 +373,7 @@ export async function startRuntime(
       log.warn("heartbeat missed, marking unhealthy", { pluginId: missedPluginId, missCount })
       const e = runtimeRegistry.get(missedPluginId)
       if (e) {
+        pushWarning(missedPluginId, "heartbeat_missed", `Missed ${missCount} heartbeat(s)`)
         e.state = "unhealthy"
         e.lastError = `Missed ${missCount} heartbeats`
         saveState()
@@ -320,16 +389,15 @@ export async function startRuntime(
     })
     heartbeatMonitors.set(pluginId, monitor)
 
-    // Startup timeout enforcement
     enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
       log.error("startup timeout", { pluginId: timedOutPluginId })
       const e = runtimeRegistry.get(timedOutPluginId)
       if (e && e.state === "starting") {
+        pushWarning(timedOutPluginId, "startup_timeout", `Startup timed out after ${resolvedStartupTimeoutMs}ms`)
         e.state = "crashed"
         e.lastError = "Startup timeout"
         forceStop(e)
         saveState()
-        // Audit: runtime crashed
         void recordEvent({
           pluginId: timedOutPluginId,
           type: "runtime_crashed",
@@ -350,6 +418,7 @@ export async function startRuntime(
       DEFAULT_LIMITS.MEMORY_MB,
       10_000,
       (exceededPluginId, currentMb, maxMb) => {
+        pushWarning(exceededPluginId, "memory_limit_exceeded", `Memory ${currentMb}MB exceeded limit ${maxMb}MB`)
         log.warn(`Plugin ${exceededPluginId} memory exceeded: ${currentMb}MB / ${maxMb}MB — killing`, {
           pluginId: exceededPluginId,
           currentMb,
@@ -367,12 +436,19 @@ export async function startRuntime(
     void recordEvent({ pluginId, type: "runtime_started", details: { mode: resolvedMode, pid: entry.pid } })
     return entry
   } catch (err: any) {
-    log.error("failed to spawn plugin process", { pluginId, error: err.message })
+    pushWarning(pluginId, "spawn_failed", `Spawn failed: ${err.message}`)
+    const pluginErr = new PluginRuntimeError(pluginId, "spawn_failed", `Spawn failed: ${err.message}`, {
+      cause: err,
+    })
+    log.error("failed to spawn plugin process", { pluginId, error: pluginErr.message })
     entry.state = "crashed"
-    entry.lastError = `Spawn failed: ${err.message}`
+    entry.lastError = pluginErr.toString()
     saveState()
-    // Audit: runtime crashed
-    void recordEvent({ pluginId, type: "runtime_crashed", details: { reason: "spawn_failed", error: err.message } })
+    void recordEvent({
+      pluginId,
+      type: "runtime_crashed",
+      details: { reason: "spawn_failed", error: pluginErr.message },
+    })
     return entry
   }
 }

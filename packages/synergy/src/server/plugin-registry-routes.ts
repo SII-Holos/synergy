@@ -18,6 +18,16 @@ const PermissionItem = z
   })
   .meta({ ref: "RegistryPermissionItem" })
 
+const RegistryPermissionSummary = z
+  .object({
+    key: z.string(),
+    category: z.string(),
+    severity: z.string(),
+    title: z.string(),
+    description: z.string(),
+  })
+  .meta({ ref: "RegistryPermissionSummary" })
+
 const PluginSignature = z
   .object({
     algorithm: z.string(),
@@ -59,6 +69,17 @@ const RegistryPluginEntry = z
     versions: z.array(RegistryPluginVersion),
     createdAt: z.number(),
     updatedAt: z.number(),
+    // v2 fields
+    risk: z.enum(["low", "medium", "high"]),
+    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
+    runtimeMode: z.enum(["in-process", "worker", "process"]),
+    permissionsSummary: z.array(RegistryPermissionSummary),
+    uiSurfaces: z.array(z.string()),
+    tools: z.array(z.string()),
+    downloads: z.number(),
+    rating: z.number().optional(),
+    ratingCount: z.number().optional(),
+    changelog: z.string().optional(),
   })
   .meta({ ref: "RegistryPluginEntry" })
 
@@ -80,6 +101,14 @@ const RegistryPluginSummary = z
     keywords: z.array(z.string()),
     latestVersion: z.string().optional(),
     updatedAt: z.number(),
+    // v2 fields
+    risk: z.enum(["low", "medium", "high"]),
+    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
+    runtimeMode: z.enum(["in-process", "worker", "process"]),
+    uiSurfaces: z.array(z.string()),
+    tools: z.array(z.string()),
+    downloads: z.number(),
+    rating: z.number().optional(),
   })
   .meta({ ref: "RegistryPluginSummary" })
 
@@ -192,6 +221,13 @@ export const RegistryRoute = new Hono()
         keywords: p.keywords,
         latestVersion: p.versions.length > 0 ? p.versions[p.versions.length - 1].version : undefined,
         updatedAt: p.updatedAt,
+        risk: p.risk,
+        trustTier: p.trustTier,
+        runtimeMode: p.runtimeMode,
+        uiSurfaces: p.uiSurfaces,
+        tools: p.tools,
+        downloads: p.downloads,
+        rating: p.rating,
       }))
 
       return c.json({ plugins: summaries, total, offset, limit })
@@ -335,6 +371,10 @@ export const RegistryRoute = new Hono()
         if (!exists) {
           return c.json({ message: "Download file not found" }, 404)
         }
+
+        // Increment download counter
+        entry.downloads += 1
+        await saveRegistry(plugins)
 
         c.header("Content-Disposition", `attachment; filename="${id}-${version}.tar.gz"`)
         c.header("Content-Type", "application/gzip")

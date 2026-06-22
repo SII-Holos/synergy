@@ -800,3 +800,91 @@ export const ApiPluginRoute = new Hono()
       return c.json(diff)
     },
   )
+
+  // ── Install from registry ──
+
+  // POST /install-from-registry — Install a plugin from the local registry
+  .post(
+    "/install-from-registry",
+    describeRoute({
+      summary: "Install plugin from registry",
+      description:
+        "Install a plugin from the local registry store. Looks up the plugin and version in the registry, " +
+        "then installs it via Bun's package manager and loads it into the runtime.",
+      operationId: "api.plugins.installFromRegistry",
+      responses: {
+        200: {
+          description: "Install result with plugin status",
+          content: {
+            "application/json": { schema: resolver(ApiPluginDetail) },
+          },
+        },
+        ...errors(400, 404, 500),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        id: z.string().min(1, "Plugin ID is required"),
+        version: z.string().min(1, "Version is required"),
+      }),
+    ),
+    async (c) => {
+      const { id, version } = c.req.valid("json")
+
+      // Load registry to find the plugin entry
+      const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
+      let plugins: any[]
+      try {
+        const file = Bun.file(registryPath)
+        const exists = await file.exists()
+        if (!exists) return c.json({ message: "Registry is empty" }, 404)
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        plugins = Array.isArray(parsed) ? parsed : (parsed.plugins ?? [])
+      } catch {
+        return c.json({ message: "Failed to read registry" }, 500)
+      }
+
+      const entry = plugins.find((p: any) => p.id === id)
+      if (!entry) return c.json({ message: `Plugin not found in registry: ${id}` }, 404)
+
+      const targetVersion = entry.versions?.find((v: any) => v.version === version)
+      if (!targetVersion) return c.json({ message: `Version not found in registry: ${id}@${version}` }, 404)
+
+      // Install using the plugin name as the npm package spec
+      const spec = entry.name ?? id
+      let loadedPlugin: Plugin.LoadedPlugin
+      try {
+        loadedPlugin = await Plugin.add(spec, { skipConsent: true, autoReload: true })
+      } catch (err: any) {
+        return c.json(
+          {
+            message: `Install failed: ${err?.message ?? String(err)}`,
+          },
+          500,
+        )
+      }
+
+      // Get manifest for version info
+      let manifest: PluginManifestType | null = null
+      try {
+        manifest = await Plugin.manifest(loadedPlugin.id)
+      } catch {
+        // no-op
+      }
+
+      return c.json({
+        pluginId: loadedPlugin.id,
+        name: loadedPlugin.name ?? manifest?.name,
+        version: manifest?.version ?? "0.0.0",
+        trustTier: getPluginTrust(loadedPlugin.pluginDir).tier,
+        hasManifest: manifest !== null,
+        pluginDir: loadedPlugin.pluginDir,
+        manifest: manifest ?? null,
+        cliCommands: loadedPlugin.cli ? Object.keys(loadedPlugin.cli) : [],
+        skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
+        agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
+      })
+    },
+  )

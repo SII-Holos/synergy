@@ -19,6 +19,7 @@ export {
   getRuntime,
   getAllRuntimes,
   getRuntimeState,
+  getLogBuffer,
   startRuntime,
   stopRuntime,
   reloadRuntime,
@@ -29,6 +30,10 @@ export {
 // Process host
 export type { HostBridgeHandler } from "./process-host.js"
 export { spawnPluginProcess } from "./process-host.js"
+
+// Worker host
+export type { HostBridgeHandler as WorkerHostBridgeHandler, SpawnedWorkerRuntime } from "./worker-host.js"
+export { spawnPluginWorker } from "./worker-host.js"
 
 // Bridge client (plugin-side)
 export type { ConfigBridge, SecretBridge, CacheBridge, HostBridge } from "./bridge.js"
@@ -49,3 +54,7 @@ export { ConcurrencyLimiter, getProcessMemoryMb, startMemoryMonitor, LogRateLimi
 // Bridge enforcement (host-side)
 export { BRIDGE_METHOD_CAPABILITY, createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 export type { BridgeEnforcementResult } from "./bridge-enforcement.js"
+
+// Log buffer
+export { PluginLogBuffer } from "./logs.js"
+export type { PluginLogEntry } from "./logs.js"

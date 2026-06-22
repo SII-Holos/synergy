@@ -13,6 +13,7 @@ export type AuditEventType =
   | "update_requested"
   | "update_approved"
   | "update_blocked"
+  | "update_failed_rolled_back"
   | "capability_denied"
   | "runtime_started"
   | "runtime_killed"

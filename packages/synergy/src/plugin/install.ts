@@ -13,6 +13,7 @@ import { findPackageRoot, resolveSpecPluginDir, state, specToPluginId } from "./
 import { reload } from "./lifecycle"
 import { baseCapabilities } from "./capability"
 import { computeRisk } from "./consent/risk"
+import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver.js"
 import {
   type PluginApprovalRecord,
   computePermissionsHash,
@@ -96,14 +97,19 @@ export async function add(
       }
     }
 
-    // -----------------------------------------------------------------------
-    // Consent gate: check risk and approval before installing dependencies
-    // -----------------------------------------------------------------------
     let permissionsHash: string | undefined
     let manifestHash: string | undefined
+    let risk: "low" | "medium" | "high" = "low"
+
+    // Derive plugin source from spec (does not depend on manifest)
+    const nonRegistry = PluginSpec.isNonRegistry(spec)
+    const isLocal = spec.startsWith("file://")
+    const source: PluginSource = isLocal ? "local" : nonRegistry ? "git" : "npm"
+    const devMode = Installation.CHANNEL === "local"
+
     if (manifestData) {
       const capabilities = baseCapabilities(manifestData)
-      const risk = computeRisk(capabilities, manifestData)
+      risk = computeRisk(capabilities, manifestData)
       permissionsHash = computePermissionsHash(manifestData, capabilities)
       manifestHash = computeManifestHash(manifestData)
 
@@ -121,21 +127,25 @@ export async function add(
         }
       }
 
-      // Derive plugin source from spec
-      const nonRegistry = PluginSpec.isNonRegistry(spec)
-      const isLocal = spec.startsWith("file://")
-      const source: PluginSource = isLocal ? "local" : nonRegistry ? "git" : "npm"
-      const devMode = Installation.CHANNEL === "local"
       const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
       const config = await Config.get()
       const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
+
+      // Compute runtime mode for policy evaluation
+      const runtimeModeForConsent = resolveRuntimeMode({
+        source,
+        manifestMode: manifestData?.runtime?.mode,
+        devMode,
+        userTrusted: false,
+        risk,
+      })
 
       // Evaluate policy — may deny or auto-approve before consent
       const decision = evaluatePolicy({
         source,
         verified: sigMeta != null,
         risk,
-        runtimeMode: "in-process",
+        runtimeMode: runtimeModeForConsent,
         trustTier: trust.tier,
         signed: sigMeta != null,
         policy,
@@ -201,7 +211,13 @@ export async function add(
     // Update lockfile with installed plugin entry (including integrity + consent hashes)
     const lockfile = await Lockfile.read()
     const integrity = await Lockfile.computeIntegrity(result.entryPath)
-    const runtimeMode: "in-process" | "worker" | "process" = "in-process"
+    const runtimeMode = resolveRuntimeMode({
+      source,
+      manifestMode: manifestData?.runtime?.mode,
+      devMode,
+      userTrusted: false,
+      risk,
+    })
     const updatedLockfile = Lockfile.addEntry(lockfile, pkg, {
       spec,
       version,
@@ -245,6 +261,19 @@ export async function add(
     // Audit: install approved
     void recordEvent({ pluginId: plugin.id, type: "install_approved", details: { spec, version } })
 
+    // Auto-start runtime if the plugin needs process/worker isolation
+    // This is a fire-and-forget — failures are logged but never block install.
+    autoStartRuntime({
+      pluginId: plugin.id,
+      mode: runtimeMode,
+      entryPath: result.entryPath,
+      pluginDir,
+    }).catch((err) => {
+      log.warn("autoStartRuntime promise rejection (should not happen)", {
+        pluginId: plugin.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
     return plugin
   } catch (err) {
     // Audit: install blocked
@@ -304,5 +333,43 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
 
   if (opts.autoReload !== false) {
     await reload()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-start runtime after install
+// ---------------------------------------------------------------------------
+
+export interface AutoStartRuntimeInput {
+  pluginId: string
+  mode: string
+  entryPath: string
+  pluginDir: string
+}
+
+/**
+ * Start a plugin runtime after install, unless the plugin runs in-process.
+ * Returns true if the runtime was started, false if skipped or if start failed.
+ * Failures are logged as warnings — they never block the install.
+ */
+export async function autoStartRuntime(input: AutoStartRuntimeInput): Promise<boolean> {
+  if (input.mode === "in-process") return false
+
+  try {
+    const { startRuntime } = await import("../plugin-runtime/supervisor.js")
+    await startRuntime(input.pluginId, {
+      mode: input.mode as "worker" | "process",
+      entryPath: input.entryPath,
+      pluginDir: input.pluginDir,
+    })
+    log.info("plugin runtime auto-started", { pluginId: input.pluginId, mode: input.mode })
+    return true
+  } catch (err) {
+    log.warn("plugin runtime start failed (non-blocking)", {
+      pluginId: input.pluginId,
+      mode: input.mode,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
   }
 }

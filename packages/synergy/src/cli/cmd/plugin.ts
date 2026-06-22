@@ -41,6 +41,7 @@ import { saveApproval, computeManifestHash, computePermissionsHash } from "../..
 import * as Lockfile from "../../plugin/lockfile"
 import { Global } from "../../global"
 import type { PluginSource } from "../../plugin/trust"
+import { recordEvent } from "../../plugin/audit"
 import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
 // ---------------------------------------------------------------------------
@@ -407,15 +408,17 @@ export const PluginUpdateCommand = cmd({
             // No existing lockfile entry
           }
 
+          let oldVersion: string | undefined
+          let newVersion: string | undefined
           try {
             const plugin = await Plugin.get(id)
-            const oldVersion = plugin ? readPkgVersion(plugin.pluginDir) : undefined
+            oldVersion = plugin ? readPkgVersion(plugin.pluginDir) : undefined
 
             await Plugin.remove(id, { autoReload: false })
             await Plugin.add(spec, { autoReload: false })
 
             const updatedPlugin = await Plugin.get(id)
-            const newVersion = updatedPlugin ? readPkgVersion(updatedPlugin.pluginDir) : undefined
+            newVersion = updatedPlugin ? readPkgVersion(updatedPlugin.pluginDir) : undefined
 
             // Write new approval record
             const updatedManifest = updatedPlugin ? await Plugin.manifest(id) : null
@@ -467,6 +470,19 @@ export const PluginUpdateCommand = cmd({
                 )
               }
             }
+
+            // Record audit event for rollback
+            void recordEvent({
+              pluginId: id,
+              type: "update_failed_rolled_back",
+              details: {
+                spec,
+                oldVersion: oldVersion ?? "unknown",
+                newVersion: newVersion ?? "unknown",
+                error: message,
+                rolledBack: backupEntry != null,
+              },
+            })
             failed++
           }
         }

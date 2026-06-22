@@ -14,6 +14,7 @@ import { getRuntime } from "../plugin-runtime/supervisor"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
 import { baseCapabilities } from "./capability"
+import { getEvents } from "./audit.js"
 
 // ---------------------------------------------------------------------------
 // Comprehensive status — returned by GET /plugin/:id/status
@@ -60,6 +61,7 @@ export interface PluginStatus {
     memoryMb?: number
     limits: typeof DEFAULT_LIMITS
     lastError?: string
+    runtimeDecision?: string
   }
   warnings: Array<{ type: string; message: string; toolId?: string }>
 }
@@ -121,6 +123,7 @@ export const PluginStatusSchema = z
         memoryMb: z.number().optional(),
         limits: z.record(z.string(), z.any()),
         lastError: z.string().optional(),
+        runtimeDecision: z.string().optional(),
       })
       .optional(),
     warnings: z.array(
@@ -133,8 +136,7 @@ export const PluginStatusSchema = z
   })
   .meta({ ref: "PluginStatus" })
 
-/** Derive plugin source from its directory location. */
-function deriveSource(pluginDir: string): PluginSource {
+export function deriveSource(pluginDir: string): PluginSource {
   const cacheRoot = Global.Path.cache
   const relative = path.relative(cacheRoot, pluginDir)
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -304,6 +306,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
         memoryMb: runtimeEntry.memoryMb,
         limits: DEFAULT_LIMITS,
         lastError: runtimeEntry.lastError,
+        runtimeDecision: runtimeEntry.runtimeDecision,
       }
     : undefined
 
@@ -336,6 +339,31 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
       type: "integrity",
       message: "Plugin integrity has not been verified against a lockfile hash.",
     })
+  }
+
+  // ── Rollback audit warnings ──
+  try {
+    const auditEvents = await getEvents(pluginId)
+    for (const event of auditEvents) {
+      if (event.type === "update_failed_rolled_back") {
+        const details = event.details as {
+          oldVersion?: string
+          newVersion?: string
+          error?: string
+          rolledBack?: boolean
+        }
+        const msg =
+          `Update from ${details.oldVersion ?? "?"} to ${details.newVersion ?? "?"} failed` +
+          (details.rolledBack ? " and was rolled back" : "") +
+          (details.error ? `: ${details.error}` : "")
+        warnings.push({
+          type: "update_failed_rolled_back",
+          message: msg,
+        })
+      }
+    }
+  } catch {
+    // Audit read failure is non-blocking for status
   }
 
   return {

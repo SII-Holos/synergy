@@ -707,6 +707,54 @@ export type ServerConfig = {
   cors?: Array<string>
 }
 
+/**
+ * Plugin approval policy configuration
+ */
+export type PluginApprovalPolicyConfig = {
+  /**
+   * Allow unsigned local plugins with user consent
+   */
+  allowUnsignedLocal?: boolean
+  /**
+   * Auto-approve builtin plugins without user consent
+   */
+  autoApproveBuiltin?: boolean
+  /**
+   * Block third-party plugins with high-risk capabilities
+   */
+  denyHighRiskThirdParty?: boolean
+  /**
+   * Require cryptographic signature for non-local plugins
+   */
+  requireSignatureForMarketplace?: boolean
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  /**
+   * Default isolation mode for third-party plugins (npm, git, url)
+   */
+  thirdPartyDefaultMode?: "process" | "worker"
+  /**
+   * Require process isolation for high-risk plugins regardless of source
+   */
+  highRiskRequiresProcess?: boolean
+  /**
+   * Allow third-party plugins to request in-process mode (not recommended)
+   */
+  allowThirdPartyInProcess?: boolean
+  /**
+   * Allow plugins to request worker thread isolation
+   */
+  allowWorkerMode?: boolean
+  /**
+   * Allow local plugins to run in-process
+   */
+  allowLocalInProcess?: boolean
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -1680,6 +1728,8 @@ export type Config = {
     ignore?: Array<string>
   }
   plugin?: Array<string>
+  pluginApprovalPolicy?: PluginApprovalPolicyConfig
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
   snapshot?: boolean
   /**
    * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
@@ -3715,6 +3765,19 @@ export type PluginStatus = {
     secrets: "none" | "plaintext" | "keychain"
     cacheBytes?: number
   }
+  runtime?: {
+    mode: string
+    pid?: number
+    state: string
+    restarts: number
+    lastHeartbeatAt?: number
+    memoryMb?: number
+    limits: {
+      [key: string]: unknown
+    }
+    lastError?: string
+    runtimeDecision?: string
+  }
   warnings: Array<{
     type: string
     message: string
@@ -3749,6 +3812,32 @@ export type ApiPluginDetail = {
   agents: Array<string>
 }
 
+export type PluginRuntimeInfo = {
+  mode: "in-process" | "worker" | "process"
+  pid?: number
+  state: "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
+  restarts: number
+  lastHeartbeatAt?: number
+  memoryMb?: number
+  limits: {
+    STARTUP_TIMEOUT_MS: number
+    REQUEST_TIMEOUT_MS: number
+    SHUTDOWN_GRACE_MS: number
+    CONCURRENT_REQUESTS: number
+    MAX_LOG_BYTES_PER_MINUTE: number
+    MEMORY_MB: number
+    HEARTBEAT_INTERVAL_MS: number
+    HEARTBEAT_MISSES_BEFORE_KILL: number
+  }
+  lastError?: string
+}
+
+export type PluginRuntimeLogEntry = {
+  timestamp: number
+  level: string
+  message: string
+}
+
 export type RegistryPluginSummary = {
   id: string
   name: string
@@ -3763,6 +3852,13 @@ export type RegistryPluginSummary = {
   keywords: Array<string>
   latestVersion?: string
   updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
 }
 
 export type RegistryPluginSignature = {
@@ -3792,6 +3888,14 @@ export type RegistryPluginVersion = {
   changelog?: string
 }
 
+export type RegistryPermissionSummary = {
+  key: string
+  category: string
+  severity: string
+  title: string
+  description: string
+}
+
 export type RegistryPluginEntry = {
   id: string
   name: string
@@ -3810,6 +3914,16 @@ export type RegistryPluginEntry = {
   versions: Array<RegistryPluginVersion>
   createdAt: number
   updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
 }
 
 export type RegistryPublishInput = {
@@ -3828,6 +3942,16 @@ export type RegistryPublishInput = {
     synergy: string
   }
   versions: Array<RegistryPluginVersion>
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
 }
 
 export type ExternalAgentInfo = {
@@ -9840,6 +9964,371 @@ export type ApiPluginsStatusResponses = {
 }
 
 export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
+
+export type ApiPluginsPreviewInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/preview-install"
+}
+
+export type ApiPluginsPreviewInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsPreviewInstallError = ApiPluginsPreviewInstallErrors[keyof ApiPluginsPreviewInstallErrors]
+
+export type ApiPluginsPreviewInstallResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewInstallResponse =
+  ApiPluginsPreviewInstallResponses[keyof ApiPluginsPreviewInstallResponses]
+
+export type ApiPluginsApproveInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-install"
+}
+
+export type ApiPluginsApproveInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsApproveInstallError = ApiPluginsApproveInstallErrors[keyof ApiPluginsApproveInstallErrors]
+
+export type ApiPluginsApproveInstallResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveInstallResponse =
+  ApiPluginsApproveInstallResponses[keyof ApiPluginsApproveInstallResponses]
+
+export type ApiPluginsPreviewUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/preview-update"
+}
+
+export type ApiPluginsPreviewUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPreviewUpdateError = ApiPluginsPreviewUpdateErrors[keyof ApiPluginsPreviewUpdateErrors]
+
+export type ApiPluginsPreviewUpdateResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewUpdateResponse = ApiPluginsPreviewUpdateResponses[keyof ApiPluginsPreviewUpdateResponses]
+
+export type ApiPluginsApproveUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-update"
+}
+
+export type ApiPluginsApproveUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsApproveUpdateError = ApiPluginsApproveUpdateErrors[keyof ApiPluginsApproveUpdateErrors]
+
+export type ApiPluginsApproveUpdateResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveUpdateResponse = ApiPluginsApproveUpdateResponses[keyof ApiPluginsApproveUpdateResponses]
+
+export type ApiPluginsGetApprovalData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approval"
+}
+
+export type ApiPluginsGetApprovalErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetApprovalError = ApiPluginsGetApprovalErrors[keyof ApiPluginsGetApprovalErrors]
+
+export type ApiPluginsGetApprovalResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsGetApprovalResponse = ApiPluginsGetApprovalResponses[keyof ApiPluginsGetApprovalResponses]
+
+export type ApiPluginsPermissionDiffData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/permission-diff"
+}
+
+export type ApiPluginsPermissionDiffErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPermissionDiffError = ApiPluginsPermissionDiffErrors[keyof ApiPluginsPermissionDiffErrors]
+
+export type ApiPluginsPermissionDiffResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPermissionDiffResponse =
+  ApiPluginsPermissionDiffResponses[keyof ApiPluginsPermissionDiffResponses]
+
+export type ApiPluginsInstallFromRegistryData = {
+  body?: {
+    id: string
+    version: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/install-from-registry"
+}
+
+export type ApiPluginsInstallFromRegistryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsInstallFromRegistryError =
+  ApiPluginsInstallFromRegistryErrors[keyof ApiPluginsInstallFromRegistryErrors]
+
+export type ApiPluginsInstallFromRegistryResponses = {
+  /**
+   * Install result with plugin status
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsInstallFromRegistryResponse =
+  ApiPluginsInstallFromRegistryResponses[keyof ApiPluginsInstallFromRegistryResponses]
+
+export type PluginRuntimeReloadData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/reload"
+}
+
+export type PluginRuntimeReloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeReloadError = PluginRuntimeReloadErrors[keyof PluginRuntimeReloadErrors]
+
+export type PluginRuntimeReloadResponses = {
+  /**
+   * Runtime state after reload
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeReloadResponse = PluginRuntimeReloadResponses[keyof PluginRuntimeReloadResponses]
+
+export type PluginRuntimeStopData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/stop"
+}
+
+export type PluginRuntimeStopErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
+
+export type PluginRuntimeStopResponses = {
+  /**
+   * Runtime state after stop
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStopResponse = PluginRuntimeStopResponses[keyof PluginRuntimeStopResponses]
+
+export type PluginRuntimeStartData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/start"
+}
+
+export type PluginRuntimeStartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStartError = PluginRuntimeStartErrors[keyof PluginRuntimeStartErrors]
+
+export type PluginRuntimeStartResponses = {
+  /**
+   * Runtime state after start
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStartResponse = PluginRuntimeStartResponses[keyof PluginRuntimeStartResponses]
+
+export type PluginRuntimeLogsData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/logs"
+}
+
+export type PluginRuntimeLogsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeLogsError = PluginRuntimeLogsErrors[keyof PluginRuntimeLogsErrors]
+
+export type PluginRuntimeLogsResponses = {
+  /**
+   * Recent runtime log entries
+   */
+  200: Array<PluginRuntimeLogEntry>
+}
+
+export type PluginRuntimeLogsResponse = PluginRuntimeLogsResponses[keyof PluginRuntimeLogsResponses]
 
 export type RegistryPluginsSearchData = {
   body?: never
