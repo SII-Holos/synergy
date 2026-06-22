@@ -8,13 +8,18 @@ import { Instance } from "../scope/instance"
 
 const log = Log.create({ service: "browser.route" })
 
+interface BrowserWS {
+  send(data: string): void
+  close(code?: number, reason?: string): void
+}
+
 export const BrowserRoute = new Hono().get(
   "/:directory/browser/connect",
   upgradeWebSocket((c) => {
     const directory = c.req.param("directory")
     if (!directory) {
       return {
-        onOpen(_event, ws) {
+        onOpen(_e: any, ws: BrowserWS) {
           ws.close(1008, "Missing directory")
         },
         onMessage() {},
@@ -22,13 +27,12 @@ export const BrowserRoute = new Hono().get(
       }
     }
 
-    // Validate same-origin
     const origin = c.req.header("origin")
     const host = c.req.header("host")
     if (origin && host && !isSameOrigin(origin, host)) {
       log.warn("browser WS rejected: cross-origin", { origin, host })
       return {
-        onOpen(_event, ws) {
+        onOpen(_e: any, ws: BrowserWS) {
           ws.close(1008, "Cross-origin not allowed")
         },
         onMessage() {},
@@ -38,27 +42,17 @@ export const BrowserRoute = new Hono().get(
 
     const mode = (c.req.query("mode") ?? "session") as BrowserOwner.Mode
     const sessionID = c.req.query("sessionID")
-
-    // Resolve scopeID from the request-scoped Instance (set by provideRequestScope middleware).
-    // The upgrade callback runs inside the middleware chain, so Instance.scope is available.
     const scopeID = Instance.scope.id
-
-    const owner = BrowserOwner.fromRoute({
-      directory: Instance.directory,
-      scopeID,
-      sessionID,
-      mode,
-    })
+    const owner = BrowserOwner.fromRoute({ directory: Instance.directory, scopeID, sessionID, mode })
     BrowserOwner.assertValid(owner)
 
     log.info("browser WebSocket connected", { directory, ownerKey: BrowserOwner.key(owner) })
 
-    /** Shorthand: send a JSON payload over the WebSocket. */
-    function s(ws: WebSocket, payload: Record<string, unknown>) {
+    function s(ws: BrowserWS, payload: Record<string, unknown>) {
       ws.send(JSON.stringify(payload))
     }
 
-    async function sendBrowserScreenshot(ws: WebSocket, tab: BrowserTab, reason: string) {
+    async function sendBrowserScreenshot(ws: BrowserWS, tab: BrowserTab, reason: string) {
       try {
         const shot = await tab.screenshot()
         s(ws, {
@@ -75,23 +69,19 @@ export const BrowserRoute = new Hono().get(
     }
 
     return {
-      onOpen: async (_event, ws) => {
+      onOpen: async (_e: any, ws: BrowserWS) => {
         try {
           await BrowserRuntime.ensure()
           const session = await BrowserRuntime.getOrCreateSession(owner)
           const tabs = session.tabs.map((t) => ({ id: t.id, url: t.url, title: t.title }))
-          s(ws, {
-            type: "session.state",
-            tabs,
-            activeTabId: session.activeTab?.id ?? null,
-          })
+          s(ws, { type: "session.state", tabs, activeTabId: session.activeTab?.id ?? null })
         } catch (e: any) {
           log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
           s(ws, { type: "error", message: e?.message ?? "Failed to open browser session" })
           ws.close(1011, "Failed to open browser session")
         }
       },
-      onMessage: async (event, ws) => {
+      onMessage: async (event: any, ws: BrowserWS) => {
         let msg: any
         try {
           msg = JSON.parse(event.data as string)
@@ -99,10 +89,8 @@ export const BrowserRoute = new Hono().get(
           log.warn("browser WS invalid message", { error: String(e) })
           return
         }
-
         try {
           const session = await BrowserRuntime.getOrCreateSession(owner)
-
           switch (msg.type) {
             case "navigate": {
               const tab = session.activeTab
@@ -111,12 +99,7 @@ export const BrowserRoute = new Hono().get(
                 return
               }
               await tab.navigate(msg.url)
-              s(ws, {
-                type: "tab.navigated",
-                tabId: tab.id,
-                url: tab.url,
-                title: tab.title,
-              })
+              s(ws, { type: "tab.navigated", tabId: tab.id, url: tab.url, title: tab.title })
               await sendBrowserScreenshot(ws, tab, "navigate")
               break
             }
@@ -178,33 +161,21 @@ export const BrowserRoute = new Hono().get(
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const snap = await tab.snapshot()
-              s(ws, {
-                type: "snapshot",
-                tabId: tab.id,
-                elements: snap.elements,
-              })
+              s(ws, { type: "snapshot", tabId: tab.id, elements: snap.elements })
               break
             }
             case "requestConsole": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const entries = await tab.consoleEntries(msg.maxEntries ?? 50)
-              s(ws, {
-                type: "console",
-                tabId: tab.id,
-                entries,
-              })
+              s(ws, { type: "console", tabId: tab.id, entries })
               break
             }
             case "requestNetwork": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
               const requests = await tab.networkRequests(msg.maxEntries ?? 20)
-              s(ws, {
-                type: "network",
-                tabId: tab.id,
-                requests,
-              })
+              s(ws, { type: "network", tabId: tab.id, requests })
               break
             }
             case "createAnnotation": {
@@ -214,10 +185,7 @@ export const BrowserRoute = new Hono().get(
                 createdBy: "user",
                 tabID: msg.tabId,
               })
-              s(ws, {
-                type: "annotation.created",
-                annotation: ann,
-              })
+              s(ws, { type: "annotation.created", annotation: ann })
               break
             }
             default:
@@ -228,11 +196,11 @@ export const BrowserRoute = new Hono().get(
           s(ws, { type: "error", message: e?.message ?? "Browser operation failed" })
         }
       },
-      onClose(_event, _ws) {
-        log.info("browser WebSocket disconnected", { directory })
+      onClose(_e: any, _ws: BrowserWS) {
+        log.info("browser WebSocket disconnected")
       },
-      onError(event, _ws) {
-        log.warn("browser WebSocket error", { directory, error: String(event) })
+      onError(_e: any, _ws: BrowserWS) {
+        log.warn("browser WebSocket error", { error: String(_e) })
       },
     }
   }),
