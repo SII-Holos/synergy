@@ -117,7 +117,14 @@ function loadImage(file: File) {
     }
     image.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error("Failed to decode image"))
+      const size =
+        file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      reject(
+        new Error(
+          `Browser could not decode ${file.name} (${file.type || "unknown type"}, ${size}). ` +
+            `The file may be corrupted or uses an unsupported variant.`,
+        ),
+      )
     }
     image.src = url
   })
@@ -157,10 +164,10 @@ export async function preparePromptAttachment(file: File): Promise<PreparedPromp
   let image: HTMLImageElement
   try {
     image = await loadImage(file)
-  } catch {
+  } catch (error) {
     throw new PromptAttachmentError(
       "Couldn’t attach image",
-      "This image couldn’t be processed. Try a PNG, JPEG, or WebP image.",
+      error instanceof Error ? error.message : "This image couldn’t be processed.",
     )
   }
 
