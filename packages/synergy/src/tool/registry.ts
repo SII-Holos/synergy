@@ -88,7 +88,15 @@ import { BrowserTabTool } from "./browser-tab"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
 import { BrowserDownloadTool } from "./browser-download"
+import { BrowserDownloadsTool } from "./browser-downloads"
 import { BrowserViewportTool } from "./browser-viewport"
+import { BrowserReadTool } from "./browser-read"
+import { BrowserClipboardTool } from "./browser-clipboard"
+import { BrowserListTool } from "./browser-list"
+import { BrowserNavigationTool } from "./browser-navigation"
+import { BrowserActionTool } from "./browser-action"
+import { BrowserEvalTool } from "./browser-eval"
+import { BrowserAssetsTool } from "./browser-assets"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -275,7 +283,15 @@ export namespace ToolRegistry {
       BrowserConsoleTool,
       BrowserNetworkTool,
       BrowserDownloadTool,
+      BrowserDownloadsTool,
       BrowserViewportTool,
+      BrowserReadTool,
+      BrowserClipboardTool,
+      BrowserListTool,
+      BrowserNavigationTool,
+      BrowserAssetsTool,
+      BrowserActionTool,
+      BrowserEvalTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...custom,
     ]

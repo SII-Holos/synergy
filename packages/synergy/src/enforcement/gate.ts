@@ -654,7 +654,14 @@ export namespace EnforcementGate {
         caps.push({ class: "network_request", nonBypassable: false })
         return { capabilities: caps }
       }
-      if (toolName === "browser_click" || toolName === "browser_type" || toolName === "browser_scroll") {
+      if (
+        toolName === "browser_click" ||
+        toolName === "browser_clipboard" ||
+        toolName === "browser_type" ||
+        toolName === "browser_scroll" ||
+        toolName === "browser_action" ||
+        toolName === "browser_viewport"
+      ) {
         caps.push({ class: "browser_interact", nonBypassable: false })
         return { capabilities: caps }
       }
@@ -662,7 +669,8 @@ export namespace EnforcementGate {
         toolName === "browser_snapshot" ||
         toolName === "browser_screenshot" ||
         toolName === "browser_inspect" ||
-        toolName === "browser_wait"
+        toolName === "browser_wait" ||
+        toolName === "browser_eval"
       ) {
         caps.push({ class: "browser_inspect", nonBypassable: false })
         return { capabilities: caps }
@@ -677,6 +685,10 @@ export namespace EnforcementGate {
       }
       if (toolName === "browser_download") {
         caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_downloads") {
+        caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
       if (toolName === "browser_annotate") {

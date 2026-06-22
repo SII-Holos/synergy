@@ -199,11 +199,19 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   browser_click: entry("browser.interact", { stateful: true }),
   browser_type: entry("browser.interact", { stateful: true }),
   browser_scroll: entry("browser.interact", { stateful: true }),
+  browser_action: entry("browser.interact", { stateful: true }),
   browser_tab: entry("browser.tab", { stateful: true }),
   browser_console: entry("browser.inspect"),
   browser_network: entry("browser.inspect"),
   browser_download: entry("browser.download", { externalIO: true }),
+  browser_downloads: entry("browser.download", { externalIO: true }),
+  browser_viewport: entry("browser.inspect", { stateful: true }),
   browser_annotate: entry("browser.annotate", { stateful: true }),
+  browser_read: entry("browser.inspect"),
+  browser_eval: entry("browser.inspect"),
+  browser_clipboard: entry("browser.interact", { stateful: true }),
+  browser_list: entry("browser.inspect"),
+  browser_navigation: entry("browser.navigate", { stateful: true }),
 }
 
 // ── Pattern fallbacks ────────────────────────────────────────────────

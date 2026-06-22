@@ -55,7 +55,7 @@ export namespace BrowserEval {
    * Check whether eval is permitted for a given mode and scope.
    * By default, readonly eval is always allowed and trusted eval is denied.
    */
-  export function isEvalAllowed(mode: EvalMode, _scope: string): boolean {
+  export function isEvalAllowed(mode: EvalMode, _scope?: string): boolean {
     if (mode === "readonly") return true
     return false
   }
