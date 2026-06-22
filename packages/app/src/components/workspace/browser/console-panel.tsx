@@ -1,5 +1,5 @@
 import { For, Show, createEffect, on } from "solid-js"
-import { BrowserStore, type ConsoleEntry } from "./browser-store"
+import { useBrowser, type ConsoleEntry } from "./browser-store"
 
 const LEVEL_COLORS: Record<string, string> = {
   log: "text-text-subtle bg-surface-base",
@@ -17,14 +17,15 @@ function formatTime(ts: number): string {
 
 export function ConsolePanel() {
   let scrollEl: HTMLDivElement | undefined
+  const { activeTabId, consoleEntries } = useBrowser()
 
   // Auto-scroll to bottom when entries change
   createEffect(
     on(
       () => {
-        const tabId = BrowserStore.activeTabId()
+        const tabId = activeTabId()
         if (!tabId) return 0
-        return BrowserStore.tabConsole()[tabId]?.length ?? 0
+        return consoleEntries[tabId]?.length ?? 0
       },
       () => {
         if (!scrollEl) return
@@ -36,9 +37,9 @@ export function ConsolePanel() {
   )
 
   const entries = (): ConsoleEntry[] => {
-    const tabId = BrowserStore.activeTabId()
+    const tabId = activeTabId()
     if (!tabId) return []
-    return BrowserStore.tabConsole()[tabId] ?? []
+    return consoleEntries[tabId] ?? []
   }
 
   return (

@@ -1,6 +1,7 @@
-import { createMemo, onCleanup, Show } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { createMemo, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { createBrowserStore, setGlobalSend } from "./browser-store"
+import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
 import { TabStrip } from "./tab-strip"
 import { AddressBar } from "./address-bar"
@@ -31,13 +32,6 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
 
   const ws = createBrowserWebSocket(browser, props.sessionID)
 
-  onCleanup(() => {
-    setGlobalSend(undefined)
-  })
-
-  // Keep global send wired to WS
-  setGlobalSend(ws.send)
-
   const activeTab = createMemo(() => {
     const id = browser.activeTabId()
     return browser.session.tabs.find((t) => t.id === id) ?? null
@@ -46,51 +40,67 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
   const showDevPanel = () => browser.devPanel() !== "closed"
 
   return (
-    <div class="flex flex-col h-full bg-surface-inset-base">
-      <TabStrip
-        tabs={browser.session.tabs}
-        activeTabId={browser.session.activeTabId}
-        onSwitch={browser.switchTab}
-        onClose={browser.closeTab}
-        onAddTab={() => browser.createTab()}
-      />
-      <AddressBar
-        activeUrl={() => activeTab()?.url ?? ""}
-        isLoading={() => activeTab()?.isLoading ?? false}
-        onNavigate={(url) => {
-          const tab = activeTab()
-          if (!tab) return
-          browser.setTabLoading(tab.id, true)
-          ws.send({ type: "navigate", url, tabId: tab.id })
-        }}
-      />
-      <div class="flex-1 relative bg-background-stronger">
-        <Show
-          when={showDevPanel()}
-          fallback={
-            <Show
-              when={activeTab()}
-              fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>}
-            >
-              <ScreenshotCanvas />
-            </Show>
-          }
-        >
-          <DevPanelContent panel={browser.devPanel()!} />
-        </Show>
-        <AgentAssistant action={browser.agentActivity()} />
-        <Show when={browser.annotationMode() && browser.activeTabId()}>
-          <AnnotationInput
-            onSubmit={(comment, styleFeedback) => {
-              browser.send({ type: "createAnnotation", comment, styleFeedback, tabId: browser.activeTabId() })
-              browser.setAnnotationMode(false)
-            }}
-            onCancel={() => browser.setAnnotationMode(false)}
+    <Show
+      when={browser.session.connectionStatus !== "failed"}
+      fallback={
+        <div class="flex flex-col items-center justify-center h-full gap-3 p-4 text-text-weak">
+          <span class="text-14">Browser disconnected</span>
+          <Button size="small" variant="primary" onClick={() => ws.connect()}>
+            Retry
+          </Button>
+        </div>
+      }
+    >
+      <BrowserStoreProvider store={browser}>
+        <div class="flex flex-col h-full bg-surface-inset-base">
+          <TabStrip
+            tabs={browser.session.tabs}
+            activeTabId={browser.session.activeTabId}
+            onSwitch={browser.switchTab}
+            onClose={browser.closeTab}
+            onAddTab={() => browser.createTab()}
           />
-        </Show>
-      </div>
-      <DevToolbar />
-    </div>
+          <AddressBar
+            activeUrl={() => activeTab()?.url ?? ""}
+            isLoading={() => activeTab()?.isLoading ?? false}
+            onNavigate={(url) => {
+              const tab = activeTab()
+              if (!tab) return
+              browser.setTabLoading(tab.id, true)
+              ws.send({ type: "navigate", url, tabId: tab.id })
+            }}
+          />
+          <div class="flex-1 relative bg-background-stronger">
+            <Show
+              when={showDevPanel()}
+              fallback={
+                <Show
+                  when={activeTab()}
+                  fallback={
+                    <div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>
+                  }
+                >
+                  <ScreenshotCanvas />
+                </Show>
+              }
+            >
+              <DevPanelContent panel={browser.devPanel()!} />
+            </Show>
+            <AgentAssistant action={browser.agentActivity()} />
+            <Show when={browser.annotationMode() && browser.activeTabId()}>
+              <AnnotationInput
+                onSubmit={(comment, styleFeedback) => {
+                  browser.send({ type: "createAnnotation", comment, styleFeedback, tabId: browser.activeTabId() })
+                  browser.setAnnotationMode(false)
+                }}
+                onCancel={() => browser.setAnnotationMode(false)}
+              />
+            </Show>
+          </div>
+          <DevToolbar />
+        </div>
+      </BrowserStoreProvider>
+    </Show>
   )
 }
 

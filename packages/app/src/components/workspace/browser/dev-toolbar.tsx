@@ -1,6 +1,6 @@
 import { For } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { BrowserStore, type DevPanel } from "./browser-store"
+import { useBrowser, type DevPanel } from "./browser-store"
 
 interface ToolbarAction {
   id: DevPanel
@@ -17,15 +17,17 @@ const ACTIONS = [
 ]
 
 export function DevToolbar() {
+  const { send, devPanel, toggleDevPanel } = useBrowser()
+
   const handleClick = (action: ToolbarAction) => {
     if (action.label === "Screenshot") {
-      BrowserStore.requestScreenshot()
+      send({ type: "requestScreenshot" })
     } else {
-      BrowserStore.toggleDevPanel(action.id)
+      toggleDevPanel(action.id)
     }
   }
 
-  const isActive = (panel: DevPanel) => BrowserStore.devPanel() === panel
+  const isActive = (panel: DevPanel) => devPanel() === panel
 
   return (
     <div class="flex items-center gap-1 px-2 py-1 bg-background-weak border-t border-border-weak-base/60">

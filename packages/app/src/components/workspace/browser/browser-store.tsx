@@ -40,8 +40,6 @@ export interface AccessibilityElement {
 
 export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect"
 
-let _globalSend: ((msg: Record<string, unknown>) => void) | undefined
-
 export function createBrowserStore() {
   const [session, setSession] = createStore({
     tabs: [] as BrowserTab[],
@@ -63,6 +61,16 @@ export function createBrowserStore() {
     const id = activeTabId()
     return session.tabs.find((t) => t.id === id) ?? null
   })
+
+  let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
+
+  function send(msg: Record<string, unknown>) {
+    _sendFn?.(msg)
+  }
+
+  function _setSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
+    _sendFn = fn
+  }
 
   function createTab(url?: string) {
     send({ type: "createTab", url })
@@ -87,23 +95,19 @@ export function createBrowserStore() {
   }
 
   function setTabLoading(tabId: string, isLoading: boolean) {
-    setSession("tabs", (t) => t.id === tabId, "isLoading", isLoading)
+    setSession("tabs", (t: BrowserTab) => t.id === tabId, "isLoading", isLoading)
   }
 
   function setTabUrl(tabId: string, url: string) {
-    setSession("tabs", (t) => t.id === tabId, "url", url)
+    setSession("tabs", (t: BrowserTab) => t.id === tabId, "url", url)
   }
 
   function setTabTitle(tabId: string, title: string) {
-    setSession("tabs", (t) => t.id === tabId, "title", title)
-  }
-
-  function send(msg: Record<string, unknown>) {
-    _globalSend?.(msg)
+    setSession("tabs", (t: BrowserTab) => t.id === tabId, "title", title)
   }
 
   function requestScreenshot() {
-    send({ type: "request_screenshot" })
+    send({ type: "requestScreenshot" })
   }
 
   function toggleDevPanel(panel: DevPanel) {
@@ -122,6 +126,7 @@ export function createBrowserStore() {
     setTabUrl,
     setTabTitle,
     send,
+    _setSend,
     requestScreenshot,
     toggleDevPanel,
     tabScreenshots,
@@ -143,53 +148,14 @@ export function createBrowserStore() {
 
 export type BrowserStoreAPI = ReturnType<typeof createBrowserStore>
 
-// Global singleton for direct imports (used by dev-toolbar.tsx, screenshot-canvas.tsx, console-panel.tsx, network-panel.tsx)
-let globalStore: BrowserStoreAPI | undefined
-
-export const BrowserStore = {
-  get activeTabId() {
-    return globalStore?.activeTabId
-  },
-  get tabScreenshots() {
-    return globalStore?.tabScreenshots
-  },
-  get tabConsole() {
-    return globalStore?.consoleEntries
-  },
-  get tabNetwork() {
-    return globalStore?.networkRequests
-  },
-  get devPanel() {
-    return globalStore?.devPanel
-  },
-  get session() {
-    return globalStore?.session
-  },
-  requestScreenshot() {
-    globalStore?.requestScreenshot()
-  },
-  toggleDevPanel(panel: DevPanel) {
-    globalStore?.toggleDevPanel(panel)
-  },
-  send(msg: Record<string, unknown>) {
-    globalStore?.send(msg)
-  },
-}
-
 const BrowserContext = createContext<BrowserStoreAPI>()
 
-export function BrowserStoreProvider(props: ParentProps) {
-  const store = createBrowserStore()
-  globalStore = store
-  return <BrowserContext.Provider value={store}>{props.children}</BrowserContext.Provider>
+export function BrowserStoreProvider(props: ParentProps & { store: BrowserStoreAPI }) {
+  return <BrowserContext.Provider value={props.store}>{props.children}</BrowserContext.Provider>
 }
 
 export function useBrowser() {
   const ctx = useContext(BrowserContext)
   if (!ctx) throw new Error("useBrowser must be used within BrowserStoreProvider")
   return ctx
-}
-
-export function setGlobalSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
-  _globalSend = fn
 }

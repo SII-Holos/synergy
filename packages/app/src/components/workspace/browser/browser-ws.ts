@@ -1,6 +1,5 @@
 import { onCleanup, onMount } from "solid-js"
 import { useSDK } from "@/context/sdk"
-import { setGlobalSend } from "./browser-store"
 import type { BrowserStoreAPI } from "./browser-store"
 
 const MAX_RECONNECT_ATTEMPTS = 10
@@ -19,8 +18,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
     }
   }
 
-  // Register the global send bridge so BrowserStore.send() routes through this WS.
-  setGlobalSend(send)
+  store._setSend(send)
 
   const connect = () => {
     if (disposed) return
@@ -111,7 +109,10 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
       ws = undefined
       if (disposed) return
       reconnectAttempts++
-      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) return
+      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        store.setSession("connectionStatus", "failed")
+        return
+      }
       reconnectTimer = setTimeout(connect, RECONNECT_DELAY)
     })
   }
@@ -127,5 +128,5 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
     ws = undefined
   })
 
-  return { send }
+  return { send, connect }
 }

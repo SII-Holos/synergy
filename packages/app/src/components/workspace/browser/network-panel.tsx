@@ -1,5 +1,5 @@
 import { For, Show, createMemo } from "solid-js"
-import { BrowserStore, type NetworkEntry } from "./browser-store"
+import { useBrowser, type NetworkEntry } from "./browser-store"
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-green-400",
@@ -29,10 +29,12 @@ function truncateUrl(url: string, max = 80): string {
 }
 
 export function NetworkPanel() {
+  const { activeTabId, networkRequests } = useBrowser()
+
   const requests = createMemo((): NetworkEntry[] => {
-    const tabId = BrowserStore.activeTabId()
+    const tabId = activeTabId()
     if (!tabId) return []
-    return BrowserStore.tabNetwork()[tabId] ?? []
+    return networkRequests[tabId] ?? []
   })
 
   return (

@@ -157,6 +157,7 @@ export class BrowserTabImpl implements BrowserTab {
   }
 
   private sessionId: string | null = null
+  private targetId?: string
   private browserCdp: CdpClient.Connection
   private directory: string
   private refMap = new Map<string, RefEntry>()
@@ -189,6 +190,7 @@ export class BrowserTabImpl implements BrowserTab {
     }
     const createResult = await this.browserCdp.send("Target.createTarget", params)
     const { targetId } = createResult as { targetId: string }
+    this.targetId = targetId
 
     const attachResult = await this.browserCdp.send("Target.attachToTarget", { targetId, flatten: true })
     this.sessionId = (attachResult as { sessionId: string }).sessionId
@@ -543,6 +545,15 @@ export class BrowserTabImpl implements BrowserTab {
       if (this.onConsoleMessage) this.browserCdp.off("Runtime.consoleAPICalled", this.onConsoleMessage, sid)
       if (this.onRequestWillBeSent) this.browserCdp.off("Network.requestWillBeSent", this.onRequestWillBeSent, sid)
       if (this.onResponseReceived) this.browserCdp.off("Network.responseReceived", this.onResponseReceived, sid)
+    }
+
+    if (this._cdp) {
+      if (this.sessionId) {
+        await this._cdp.send("Target.detachFromTarget", { sessionId: this.sessionId }).catch(() => {})
+      }
+      if (this.targetId) {
+        await this._cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => {})
+      }
     }
 
     this.sessionId = null

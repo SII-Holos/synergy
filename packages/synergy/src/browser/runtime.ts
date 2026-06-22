@@ -1,4 +1,5 @@
 import path from "path"
+import { Log } from "../util/log"
 import { CdpClient } from "./cdp.js"
 import { BrowserInstall } from "./install.js"
 import { BrowserOwner } from "./owner.js"
@@ -21,6 +22,7 @@ export namespace BrowserRuntime {
   }
 
   // ── module-level singleton state ────────────────────────────────
+  const log = Log.create({ service: "browser.runtime" })
 
   const sessions = new Map<string, BrowserSession>()
   let chromiumProcess: ReturnType<typeof Bun.spawn> | null = null
@@ -206,19 +208,39 @@ export namespace BrowserRuntime {
     return Promise.race([readLoop, exited, timeout])
   }
 
-  function monitorChromiumExit(proc: ReturnType<typeof Bun.spawn>, conn: CdpClient.Connection): void {
-    proc.exited.then(() => {
-      if (running) {
-        running = false
-        cdpConnection = null
-        chromiumProcess = null
-        try {
-          conn.close()
-        } catch {
-          /* ignore */
-        }
+  async function readProcStderr(proc: ReturnType<typeof Bun.spawn>): Promise<string> {
+    try {
+      const stderr = proc.stderr
+      if (!stderr || typeof stderr === "number") return ""
+      const reader = stderr.getReader()
+      const chunks: Uint8Array[] = []
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) chunks.push(value)
       }
-    })
+      const decoder = new TextDecoder()
+      return decoder.decode(Buffer.concat(chunks))
+    } catch {
+      return ""
+    }
+  }
+
+  async function monitorChromiumExit(proc: ReturnType<typeof Bun.spawn>, conn: CdpClient.Connection): Promise<void> {
+    await proc.exited
+    if (!running) return
+    const exitCode = proc.exitCode
+    const signalCode = proc.signalCode
+    const stderrOutput = await readProcStderr(proc)
+    log.error("chromium exited unexpectedly", { exitCode, signalCode, stderr: stderrOutput?.slice(0, 500) })
+    running = false
+    cdpConnection = null
+    chromiumProcess = null
+    try {
+      conn.close()
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Graceful shutdown: close all sessions, kill Chromium. */
@@ -309,6 +331,16 @@ export namespace BrowserRuntime {
     if (!s) return
     sessions.delete(k)
     await s.dispose()
+
+    const ctx = browserContexts.get(k)
+    if (ctx && cdpConnection) {
+      await cdpConnection
+        .send("Target.disposeBrowserContext", {
+          browserContextId: ctx.browserContextId,
+        })
+        .catch(() => {})
+    }
+    browserContexts.delete(k)
   }
 
   /** Register a session externally (for BrowserSession constructor). */

@@ -1,4 +1,5 @@
 import type { BrowserSession } from "../browser/session.js"
+import type { BrowserTab } from "../browser/tab.js"
 import { Hono } from "hono"
 import { upgradeWebSocket } from "hono/bun"
 import { Log } from "../util/log"
@@ -53,6 +54,24 @@ export const BrowserRoute = new Hono().get(
 
     log.info("browser WebSocket connected", { directory, ownerKey: BrowserOwner.key(owner) })
 
+    async function sendBrowserScreenshot(ws: WebSocket, tab: BrowserTab, reason: string) {
+      try {
+        const shot = await tab.screenshot()
+        ws.send(
+          JSON.stringify({
+            type: "screenshot",
+            tabId: tab.id,
+            dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
+            width: shot.width,
+            height: shot.height,
+          }),
+        )
+      } catch (e: any) {
+        log.warn("browser screenshot failed", { reason, error: e?.message ?? String(e) })
+        ws.send(JSON.stringify({ type: "error", message: "Screenshot failed" }))
+      }
+    }
+
     return {
       onOpen: async (_event, ws) => {
         try {
@@ -69,6 +88,7 @@ export const BrowserRoute = new Hono().get(
         } catch (e: any) {
           log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
           ws.send(JSON.stringify({ type: "error", message: e?.message ?? "Failed to open browser session" }))
+          ws.close(1011, "Failed to open browser session")
         }
       },
       onMessage: async (event, ws) => {
@@ -98,40 +118,14 @@ export const BrowserRoute = new Hono().get(
                   title: tab.title,
                 }),
               )
-              try {
-                const shot = await tab.screenshot()
-                ws.send(
-                  JSON.stringify({
-                    type: "screenshot",
-                    tabId: tab.id,
-                    dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
-                    width: shot.width,
-                    height: shot.height,
-                  }),
-                )
-              } catch {
-                /* screenshot may fail */
-              }
+              await sendBrowserScreenshot(ws, tab, "navigate")
               break
             }
             case "click": {
               const tab = session.activeTab
               if (!tab) break
               await tab.click(msg.x, msg.y)
-              try {
-                const shot = await tab.screenshot()
-                ws.send(
-                  JSON.stringify({
-                    type: "screenshot",
-                    tabId: tab.id,
-                    dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
-                    width: shot.width,
-                    height: shot.height,
-                  }),
-                )
-              } catch {
-                /* screenshot may fail */
-              }
+              await sendBrowserScreenshot(ws, tab, "click")
               break
             }
             case "type": {
@@ -174,20 +168,7 @@ export const BrowserRoute = new Hono().get(
             case "requestScreenshot": {
               const tab = msg.tabId ? session.getTab(msg.tabId) : session.activeTab
               if (!tab) break
-              try {
-                const shot = await tab.screenshot("png", undefined, msg.fullPage)
-                ws.send(
-                  JSON.stringify({
-                    type: "screenshot",
-                    tabId: tab.id,
-                    dataUrl: `data:image/png;base64,${shot.buffer.toString("base64")}`,
-                    width: shot.width,
-                    height: shot.height,
-                  }),
-                )
-              } catch {
-                /* screenshot may fail */
-              }
+              await sendBrowserScreenshot(ws, tab, "requestScreenshot")
               break
             }
             case "requestSnapshot": {

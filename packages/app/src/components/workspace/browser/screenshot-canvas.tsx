@@ -1,13 +1,14 @@
 import { Show } from "solid-js"
-import { BrowserStore, type ScreenshotEntry } from "./browser-store"
+import { useBrowser, type ScreenshotEntry } from "./browser-store"
 
 export function ScreenshotCanvas() {
   let imgRef: HTMLImageElement | undefined
+  const { activeTabId, tabScreenshots, send } = useBrowser()
 
   const activeScreenshot = (): ScreenshotEntry | undefined => {
-    const id = BrowserStore.activeTabId()
+    const id = activeTabId()
     if (!id) return undefined
-    return BrowserStore.tabScreenshots()[id]
+    return tabScreenshots[id]
   }
 
   const handleClick = (e: MouseEvent) => {
@@ -25,7 +26,7 @@ export function ScreenshotCanvas() {
     const pageX = Math.round(clickX * (entry.width / displayedWidth))
     const pageY = Math.round(clickY * (entry.height / displayedHeight))
 
-    BrowserStore.send({ type: "click", x: pageX, y: pageY })
+    send({ type: "click", x: pageX, y: pageY })
   }
 
   return (
