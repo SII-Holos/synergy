@@ -14,8 +14,8 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import { getSettingsSections, type SettingsSection, loadPluginExport, getPluginContribution } from "@/plugin"
-import { SandboxShell } from "@/plugin/sandbox"
+import { getSettingsSections, type SettingsSection } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
 import type {
@@ -736,17 +736,15 @@ function PluginSettingsContent(props: { section: SettingsSection }) {
       setLoading(false)
       return
     }
-    if (s.pluginId && s.exportName) {
-      const contrib = getPluginContribution(s.pluginId)
-      if (contrib) {
-        loadPluginExport(contrib, s.exportName)
-          .then((c) => {
-            setComp(() => c as Component)
-            setLoading(false)
-          })
-          .catch(() => setLoading(false))
-        return
-      }
+    if (s.loader) {
+      s.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
     }
     setLoading(false)
   })
@@ -768,7 +766,7 @@ function PluginSettingsContent(props: { section: SettingsSection }) {
             </div>
           )}
         >
-          <SandboxShell src={section().sandboxUrl!} pluginId={section().pluginId!} panelId={section().id} />
+          <SandboxIframe src={section().sandboxUrl!} pluginId={section().pluginId!} panelId={section().id} />
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>

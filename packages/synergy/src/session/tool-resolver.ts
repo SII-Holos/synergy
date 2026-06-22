@@ -78,7 +78,7 @@ export namespace ToolResolver {
   async function cachedPluginToolIds(): Promise<Set<string>> {
     if (_cachedPluginToolIds === null) {
       const ids = new Set<string>()
-      for (const plugin of await Plugin.hooks()) {
+      for (const plugin of await Plugin.perPluginHooks()) {
         for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
           ids.add(PluginToolId.format(plugin.id, toolId))
         }

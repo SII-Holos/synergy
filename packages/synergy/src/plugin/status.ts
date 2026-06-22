@@ -1,3 +1,4 @@
+import z from "zod"
 import path from "path"
 import fs from "fs/promises"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
@@ -6,6 +7,7 @@ import { getPlugin, getLoadedPlugins } from "./loader"
 import * as ManifestReader from "./manifest-reader"
 import * as Capability from "./capability"
 import { decideTrust, type PluginTrustDecision, type PluginSource } from "./trust"
+import { PluginToolId } from "./ids"
 import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
 // ---------------------------------------------------------------------------
@@ -46,6 +48,63 @@ export interface PluginStatus {
   }
   warnings: Array<{ type: string; message: string; toolId?: string }>
 }
+
+export const PluginStatusSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    version: z.string().optional(),
+    source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
+    trust: z.object({
+      tier: z.enum(["declarative", "trusted-import", "sandbox"]),
+      source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
+      userTrusted: z.boolean(),
+      verifiedIntegrity: z.boolean(),
+      reason: z.string(),
+    }),
+    loaded: z.boolean(),
+    loadError: z.string().optional(),
+    manifestValid: z.boolean(),
+    integrity: z.enum(["verified", "unverified", "failed"]),
+    permissions: z.object({
+      base: z.array(z.string()),
+      tools: z.record(z.string(), z.array(z.string())),
+      overallRisk: z.enum(["low", "medium", "high"]),
+      warnings: z.array(
+        z.object({
+          type: z.string(),
+          message: z.string(),
+          toolId: z.string().optional(),
+        }),
+      ),
+    }),
+    routes: z.array(z.string()),
+    tools: z.array(
+      z.object({
+        id: z.string(),
+        fullId: z.string(),
+        capabilities: z.array(z.string()),
+        warnings: z.array(z.string()),
+      }),
+    ),
+    ui: z.object({
+      contributions: z.number(),
+      errors: z.array(z.string()),
+    }),
+    stores: z.object({
+      config: z.boolean(),
+      secrets: z.enum(["none", "plaintext", "keychain"]),
+      cacheBytes: z.number().optional(),
+    }),
+    warnings: z.array(
+      z.object({
+        type: z.string(),
+        message: z.string(),
+        toolId: z.string().optional(),
+      }),
+    ),
+  })
+  .meta({ ref: "PluginStatus" })
 
 /** Derive plugin source from its directory location. */
 function deriveSource(pluginDir: string): PluginSource {
@@ -158,7 +217,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   // ── Capabilities ──
   const manifestTools = manifest?.contributes?.tools?.map((t) => t.name) ?? []
   const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
-  const runtimeFullIds = runtimeToolNames.map((t) => `plugin__${pluginId}__${t}`)
+  const runtimeFullIds = runtimeToolNames.map((t) => PluginToolId.format(pluginId, t))
   const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
 
   const capabilityResult = Capability.resolve({
@@ -185,7 +244,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   // ── Tools ──
   const tools = runtimeToolNames.map((id) => ({
     id,
-    fullId: `plugin__${pluginId}__${id}`,
+    fullId: PluginToolId.format(pluginId, id),
     capabilities: capabilityResult.tools[id] ?? capabilityResult.base,
     warnings: capabilityResult.warnings.filter((w) => w.toolId === id || !w.toolId).map((w) => w.message),
   }))

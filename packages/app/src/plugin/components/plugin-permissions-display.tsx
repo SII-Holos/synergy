@@ -1,10 +1,10 @@
 import { For, Show, createMemo } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import type { PluginPermissions } from "../contributions-fetcher"
+import type { PluginPermissions } from "../api"
 
 interface PluginPermissionsDisplayProps {
   permissions: PluginPermissions
-  trustTier: "trusted" | "sandbox"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   isUpdate?: boolean
   previousPermissions?: PluginPermissions
 }
@@ -271,7 +271,7 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
       {/* Trust tier indicator */}
       <div class="flex items-center gap-3 rounded-lg border border-border-base bg-surface-base p-3">
         <Show
-          when={props.trustTier === "trusted"}
+          when={props.trustTier === "trusted-import" || props.trustTier === "declarative"}
           fallback={
             <>
               <Icon name="boxes" size="small" class="text-text-weak" />

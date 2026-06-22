@@ -28,47 +28,18 @@ export interface ResolvedPluginCapability {
 
 type ManifestTool = NonNullable<NonNullable<PluginManifest["contributes"]>["tools"]>[number]
 
-/** Compute plugin-wide base capability strings from permissions. */
-function baseCapabilities(manifest: PluginManifest): string[] {
+/**
+ * Build a capability string set from permissions and optional tool-level overrides.
+ * When toolOverrides is omitted or a field is absent, falls back to plugin-wide defaults.
+ */
+function buildCapabilitySet(
+  permissions: PluginManifest["permissions"],
+  toolOverrides?: ManifestTool["capabilities"],
+): string[] {
   const caps = new Set<string>(["plugin_invoke"])
-  const pt = manifest.permissions?.tools
-
-  if (pt) {
-    if (pt.filesystem === "read") caps.add("filesystem:read")
-    if (pt.filesystem === "write") {
-      caps.add("filesystem:read")
-      caps.add("filesystem:write")
-    }
-    if (pt.shell) caps.add("shell")
-    if (pt.network) caps.add("network")
-    if (pt.mcp === "invoke") caps.add("mcp:invoke")
-    if (pt.mcp === "spawn") {
-      caps.add("mcp:invoke")
-      caps.add("mcp:spawn")
-    }
-  }
-
-  const pd = manifest.permissions?.data
-  if (pd) {
-    if (pd.session === "read") caps.add("session_data")
-    if (pd.workspace === "read") caps.add("workspace_data")
-    if (pd.config === "global") {
-      caps.add("config:read")
-      caps.add("config:write")
-    }
-    if (pd.config === "plugin") caps.add("config:read")
-    if (pd.secrets === "own") caps.add("secrets")
-  }
-
-  return [...caps].sort()
-}
-
-/** Compute merged capabilities for a single tool: base defaults → tool-level overrides. */
-function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): string[] {
-  const caps = new Set<string>(["plugin_invoke"])
-  const pt = manifest.permissions?.tools
-  const pd = manifest.permissions?.data
-  const tc = tool.capabilities
+  const pt = permissions?.tools
+  const pd = permissions?.data
+  const tc = toolOverrides
 
   // Filesystem — tool-level wins over plugin-wide default
   const fs = tc?.filesystem ?? pt?.filesystem ?? "none"
@@ -78,13 +49,13 @@ function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): s
     caps.add("filesystem:write")
   }
 
-  // Network — tool-level wins
-  const net = tc?.network ?? pt?.network ?? false
-  if (net) caps.add("network")
-
   // Shell — tool-level wins
   const shell = tc?.shell ?? pt?.shell ?? false
   if (shell) caps.add("shell")
+
+  // Network — tool-level wins
+  const net = tc?.network ?? pt?.network ?? false
+  if (net) caps.add("network")
 
   // MCP — plugin-wide only (no per-tool override in manifest)
   if (pt?.mcp === "invoke") caps.add("mcp:invoke")
@@ -113,6 +84,14 @@ function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): s
   if (pd?.secrets === "own") caps.add("secrets")
 
   return [...caps].sort()
+}
+function baseCapabilities(manifest: PluginManifest): string[] {
+  return buildCapabilitySet(manifest.permissions)
+}
+
+/** Compute merged capabilities for a single tool: base defaults → tool-level overrides. */
+function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): string[] {
+  return buildCapabilitySet(manifest.permissions, tool.capabilities)
 }
 
 /** Derive overall risk from per-tool risk declarations and permission breadth. */

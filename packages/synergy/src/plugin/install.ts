@@ -99,7 +99,7 @@ export async function add(spec: string, opts: { autoReload?: boolean } = {}): Pr
   const plugin = loaded.find((p) => {
     // Match by checking if any plugin in the same pluginDir has a matching spec
     // For non-registry specs, match by the actual entry path
-    return p.pluginDir === findPackageRoot(result.entryPath)
+    return p.pluginDir === pluginDir
   })
 
   if (!plugin) {

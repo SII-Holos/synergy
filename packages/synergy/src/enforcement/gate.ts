@@ -380,6 +380,12 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // Local tools: local__fileName__exportName
+      if (toolName.startsWith("local__")) {
+        caps.push({ class: "local_tool_invoke", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
       // Plugin tools: plugin__pluginId__toolId
       if (PluginToolId.is(toolName)) {
         const entry = pluginToolCapabilities[toolName]

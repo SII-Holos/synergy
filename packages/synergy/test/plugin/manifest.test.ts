@@ -92,7 +92,6 @@ describe("PluginManifest schema", () => {
           schema: { foo: { type: "string" } },
           defaults: { foo: "bar" },
         },
-        extensionPack: ["ext-a", "ext-b"],
       },
       main: "./src/index.ts",
       lifecycle: {

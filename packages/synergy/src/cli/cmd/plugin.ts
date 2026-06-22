@@ -376,7 +376,7 @@ export const PluginListCommand = cmd({
       async fn() {
         const config = await Config.get()
         const configSpecs = config.plugin ?? []
-        const loaded = await Plugin.loaded()
+        const loaded = await Plugin.getLoaded()
         if (args.json) {
           const result = []
           for (const p of loaded) {

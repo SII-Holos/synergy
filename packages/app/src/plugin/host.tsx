@@ -1,11 +1,24 @@
-import { createContext, createSignal, useContext, onMount, createEffect, batch, type ParentProps } from "solid-js"
+import {
+  createContext,
+  createSignal,
+  useContext,
+  onMount,
+  createEffect,
+  batch,
+  type ParentProps,
+  type Component,
+} from "solid-js"
 import { fetchUIContributions } from "./api"
-import { discoverAndActivate, deactivatePlugin, type PluginInstance, type PluginLifecycleState } from "./lifecycle"
-import type { PluginContribution } from "./contributions-fetcher"
+import type { PluginContribution } from "./api"
+import type { PluginLifecycleState } from "./lifecycle"
 import { useServer } from "@/context/server"
-import { toolRendererRegistry } from "./registries/tool-registry"
+import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
+import { registerPartRenderer } from "./registries/part-registry"
+import { registerWorkspacePanel } from "./registries/workspace-registry"
+import { registerGlobalPanel } from "./registries/panel-registry"
+import { registerSettingsSection } from "./registries/settings-registry"
+import { registerChatComponent } from "./registries/chat-registry"
 import { loadPluginExport } from "./loaders"
-import type { ToolRenderer } from "./registries/tool-registry"
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type PluginUIStatus = PluginLifecycleState
@@ -33,9 +46,189 @@ const PluginHostContext = createContext<PluginHostValue>()
 export function PluginHostProvider(props: ParentProps) {
   const server = useServer()
 
+  const pluginDisposers = new Map<string, Array<() => void>>()
+
   const [plugins, setPlugins] = createSignal<PluginContribution[]>([])
   const [statusMap, setStatusMap] = createSignal<Map<string, PluginUIStatus>>(new Map())
   const [errors, setErrors] = createSignal<PluginUIError[]>([])
+
+  /**
+   * Register UI contributions (tool renderers, panels, settings, chat components)
+   * from active plugin contributions. Trusted (Tier 2) plugins get lazy-loaders;
+   * sandbox plugins get sandbox metadata only.
+   */
+  function activateContributions(contributions: PluginContribution[]) {
+    for (const contrib of contributions) {
+      const ui = contrib.ui
+      if (!ui) continue
+      const isTrusted = contrib.trustTier === "trusted-import" || contrib.trustTier === "declarative"
+      const disposers: Array<() => void> = []
+
+      // ── Tool renderers ──
+      if (ui.toolRenderers) {
+        for (const tr of ui.toolRenderers) {
+          const toolId = tr.tool
+          if (toolRendererRegistry.has(toolId)) continue
+          disposers.push(
+            toolRendererRegistry.register(toolId, {
+              loader:
+                isTrusted && ui.entry
+                  ? () => {
+                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                      return loadPluginExport<ToolRenderer>(
+                        contrib.pluginId,
+                        assetsBaseUrl,
+                        tr.exportName ?? "default",
+                        ui.minUIApiVersion ?? "",
+                      )
+                    }
+                  : undefined,
+              fallback: tr.fallback,
+            }),
+          )
+        }
+      }
+
+      // ── Part renderers ──
+      if (ui.partRenderers) {
+        for (const pr of ui.partRenderers) {
+          disposers.push(
+            registerPartRenderer(
+              pr.type,
+              undefined,
+              isTrusted && ui.entry
+                ? () => {
+                    const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                    return loadPluginExport<Component>(
+                      contrib.pluginId,
+                      assetsBaseUrl,
+                      pr.exportName ?? "default",
+                      ui.minUIApiVersion ?? "",
+                    )
+                  }
+                : undefined,
+            ),
+          )
+        }
+      }
+
+      // ── Workspace panels ──
+      if (ui.workspacePanels) {
+        for (const wp of ui.workspacePanels) {
+          disposers.push(
+            registerWorkspacePanel({
+              id: `${contrib.pluginId}:${wp.id}`,
+              label: wp.label,
+              icon: wp.icon,
+              loader:
+                isTrusted && ui.entry
+                  ? () => {
+                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                      return loadPluginExport<Component>(
+                        contrib.pluginId,
+                        assetsBaseUrl,
+                        wp.exportName ?? "default",
+                        ui.minUIApiVersion ?? "",
+                      )
+                    }
+                  : undefined,
+              sandbox: wp.sandbox,
+              sandboxUrl: wp.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${wp.id}` : undefined,
+              pluginId: contrib.pluginId,
+              exportName: wp.exportName,
+            }),
+          )
+        }
+      }
+
+      // ── Global panels ──
+      if (ui.globalPanels) {
+        for (const gp of ui.globalPanels) {
+          disposers.push(
+            registerGlobalPanel({
+              id: `${contrib.pluginId}:${gp.id}`,
+              label: gp.label,
+              icon: gp.icon,
+              loader:
+                isTrusted && ui.entry
+                  ? () => {
+                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                      return loadPluginExport<Component>(
+                        contrib.pluginId,
+                        assetsBaseUrl,
+                        gp.exportName ?? "default",
+                        ui.minUIApiVersion ?? "",
+                      )
+                    }
+                  : undefined,
+              sandbox: gp.sandbox,
+              sandboxUrl: gp.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${gp.id}` : undefined,
+              pluginId: contrib.pluginId,
+              exportName: gp.exportName,
+            }),
+          )
+        }
+      }
+
+      // ── Settings ──
+      if (ui.settings) {
+        for (const s of ui.settings) {
+          disposers.push(
+            registerSettingsSection({
+              id: `${contrib.pluginId}:${s.id}`,
+              label: s.label,
+              icon: s.icon,
+              group: s.group,
+              loader:
+                isTrusted && ui.entry
+                  ? () => {
+                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                      return loadPluginExport<Component>(
+                        contrib.pluginId,
+                        assetsBaseUrl,
+                        s.exportName ?? "default",
+                        ui.minUIApiVersion ?? "",
+                      )
+                    }
+                  : undefined,
+              sandbox: s.sandbox,
+              sandboxUrl: s.sandbox ? `/plugin/${contrib.pluginId}/sandbox/${s.id}` : undefined,
+              pluginId: contrib.pluginId,
+              exportName: s.exportName,
+            }),
+          )
+        }
+      }
+
+      // ── Chat components ──
+      if (ui.chatComponents) {
+        for (const cc of ui.chatComponents) {
+          disposers.push(
+            registerChatComponent({
+              id: `${contrib.pluginId}:${cc.id}`,
+              slot: cc.slot ?? "after-tools",
+              component: undefined as any,
+              loader:
+                isTrusted && ui.entry
+                  ? () => {
+                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
+                      return loadPluginExport<Component>(
+                        contrib.pluginId,
+                        assetsBaseUrl,
+                        cc.exportName ?? "default",
+                        ui.minUIApiVersion ?? "",
+                      )
+                    }
+                  : undefined,
+              pluginId: contrib.pluginId,
+            }),
+          )
+        }
+      }
+
+      pluginDisposers.set(contrib.pluginId, disposers)
+    }
+  }
 
   async function reload() {
     const url = server.url
@@ -43,6 +236,15 @@ export function PluginHostProvider(props: ParentProps) {
 
     try {
       const contributions = await fetchUIContributions(url)
+
+      // Dispose old registrations before re-activating
+      for (const disposers of pluginDisposers.values()) {
+        for (const dispose of disposers) {
+          dispose()
+        }
+      }
+      pluginDisposers.clear()
+
       batch(() => {
         setPlugins(contributions)
         const map = new Map<string, PluginUIStatus>()
@@ -53,35 +255,7 @@ export function PluginHostProvider(props: ParentProps) {
         setErrors([])
       })
 
-      // Register tool renderers from plugin contributions into the ToolRendererRegistry.
-      // Trusted (Tier 2) plugins get lazy-loaders; sandbox plugins get fallback metadata only.
-      for (const contrib of contributions) {
-        const ui = contrib.ui
-        if (!ui?.toolRenderers) continue
-
-        for (const tr of ui.toolRenderers) {
-          const isTrusted = contrib.trustTier === "trusted"
-          const toolId = tr.tool
-
-          // Skip if already registered
-          if (toolRendererRegistry.has(toolId)) continue
-
-          if (isTrusted) {
-            toolRendererRegistry.register(toolId, {
-              loader: () =>
-                loadPluginExport(contrib, tr.exportName ?? "default").then((c) => ({
-                  default: c as ToolRenderer,
-                })),
-              fallback: tr.fallback,
-            })
-          } else {
-            // Sandbox plugin — register fallback metadata only
-            toolRendererRegistry.register(toolId, {
-              fallback: tr.fallback,
-            })
-          }
-        }
-      }
+      activateContributions(contributions)
     } catch (err) {
       setErrors((prev) => [
         ...prev,

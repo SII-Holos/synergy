@@ -94,12 +94,12 @@ export namespace ToolRegistry {
         const namespace = path.basename(match, path.extname(match))
         const mod = await import(match)
         for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
-          custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+          custom.push(fromPlugin(`local__${namespace}__${id}`, def))
         }
       }
     }
 
-    const plugins = await Plugin.hooks()
+    const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
         custom.push(fromPlugin(id, def, plugin.id))

@@ -62,22 +62,8 @@ export {
   clearAllToolRenderers,
 } from "./registries/tool-registry"
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
-export {
-  fetchContributions,
-  type PluginContribution,
-  type PluginUIContributions,
-  type PluginPermissions,
-} from "./contributions-fetcher"
-export { loadPluginBundle, loadPluginExport, type PluginBundleExports } from "./loaders"
-export {
-  discoverAndActivate,
-  deactivatePlugin,
-  getActivePlugins,
-  getPluginContribution,
-  type PluginInstance,
-  type PluginLifecycleState,
-  HOST_UI_API_VERSION,
-} from "./lifecycle"
+export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
+export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
 export { PluginToolBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"

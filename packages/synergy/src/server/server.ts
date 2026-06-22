@@ -116,8 +116,9 @@ export namespace Server {
       if (!c.res.headers.get("Content-Security-Policy")) {
         c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
       }
-      c.res.headers.set("X-Content-Type-Options", "nosniff")
-      c.res.headers.set("X-Frame-Options", "DENY")
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
     }
   }
 

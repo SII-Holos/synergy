@@ -26,7 +26,6 @@ import type { ToolDefinition, ToolResult } from "./tool"
 export * from "./tool"
 export type { ToolResult }
 export * from "./manifest"
-export * from "./ui"
 
 // ---------------------------------------------------------------------------
 // Plugin Config / Auth / Cache accessors
@@ -283,10 +282,10 @@ export type PluginInput = {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin — the top-level descriptor exported by a plugin package
+// PluginDescriptor — the top-level descriptor exported by a plugin package
 // ---------------------------------------------------------------------------
 
-export interface Plugin {
+export interface PluginDescriptor {
   /** Unique identifier for this plugin (used as config/auth/cache namespace) */
   id: string
   /** Human-readable display name */

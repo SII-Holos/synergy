@@ -17,11 +17,10 @@ export namespace Plugin {
   export type LoadedPlugin = loader.LoadedPlugin
 
   // Loader accessors
-  export const loaded = loader.getLoadedPlugins
+  export const getLoaded = loader.getLoadedPlugins
   export const get = loader.getPlugin
-  export const hooks = loader.getHooks
-  export const list = loader.getHooksList
-  export const descriptors = loader.getDescriptors
+  export const perPluginHooks = loader.getHooks
+  export const allHooks = loader.getHooksList
   export const cliEntries = loader.getCliEntries
   export const skillEntries = loader.getSkillEntries
   export const agentEntries = loader.getAgentEntries

@@ -4,6 +4,8 @@ import z from "zod"
 import path from "path"
 import * as fs from "fs"
 import { errors } from "./error"
+import { decideTrust, type PluginTrustDecision, type PluginSource } from "../plugin/trust"
+import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
 import { Global } from "../global"
@@ -11,14 +13,25 @@ import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synerg
 
 // ── Helpers ──
 
-/** Determine trust tier from pluginDir: local paths = trusted, cached npm = sandbox. */
-function determineTrustTier(pluginDir: string): "trusted" | "sandbox" {
+/** Derive plugin source from directory and compute trust using the canonical trust module. */
+function derivePluginSource(pluginDir: string): PluginSource {
   const cacheRoot = Global.Path.cache
   const relative = path.relative(cacheRoot, pluginDir)
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "trusted"
+    return "local"
   }
-  return "sandbox"
+  return "npm"
+}
+
+function getPluginTrust(pluginDir: string): PluginTrustDecision {
+  const source = derivePluginSource(pluginDir)
+  const userTrusted = source === "local" || source === "builtin"
+  return decideTrust({
+    source,
+    userTrusted,
+    verifiedIntegrity: false, // routes don't have integrity context
+    devMode: Installation.isLocal(),
+  })
 }
 
 /**
@@ -87,7 +100,7 @@ const UIContribution = z
     pluginId: z.string(),
     name: z.string().optional(),
     version: z.string(),
-    trustTier: z.enum(["trusted", "sandbox"]),
+    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
     ui: z.record(z.string(), z.any()).optional().nullable(),
     permissions: z.record(z.string(), z.any()).optional().nullable(),
   })
@@ -172,7 +185,7 @@ export const PluginRoute = new Hono()
       },
     }),
     async (c) => {
-      const loaded = await Plugin.loaded()
+      const loaded = await Plugin.getLoaded()
       const contributions = await Promise.all(
         loaded.map(async (p) => {
           let manifest: PluginManifestType | null = null
@@ -185,7 +198,7 @@ export const PluginRoute = new Hono()
             pluginId: p.id,
             name: p.name ?? manifest?.name,
             version: manifest?.version ?? "0.0.0",
-            trustTier: determineTrustTier(p.pluginDir),
+            trustTier: getPluginTrust(p.pluginDir).tier,
             ui: manifest?.contributes?.ui ?? null,
             permissions: manifest?.permissions ?? null,
           }
@@ -371,6 +384,35 @@ export const PluginRoute = new Hono()
     },
   )
 
+  // 5a. GET /:pluginId/config — Read plugin config
+  .get(
+    "/:pluginId/config",
+    describeRoute({
+      summary: "Get plugin config",
+      description: "Return the current config values for a plugin.",
+      operationId: "plugin.getConfig",
+      responses: {
+        200: {
+          description: "Plugin config",
+          content: {
+            "application/json": {
+              schema: resolver(z.record(z.string(), z.any()).meta({ ref: "PluginConfig" })),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const plugin = await Plugin.get(pluginId)
+      if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+
+      const config = await Config.get()
+      const values = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
+      return c.json(values)
+    },
+  )
   // 6. PATCH /:pluginId/config — Update plugin config
   .patch(
     "/:pluginId/config",
@@ -444,7 +486,7 @@ const ApiPluginInfo = z
     pluginId: z.string(),
     name: z.string().optional(),
     version: z.string().optional(),
-    trustTier: z.enum(["trusted", "sandbox"]),
+    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
     hasManifest: z.boolean(),
     pluginDir: z.string(),
     cliCommands: z.array(z.string()),
@@ -458,7 +500,7 @@ const ApiPluginDetail = z
     pluginId: z.string(),
     name: z.string().optional(),
     version: z.string().optional(),
-    trustTier: z.enum(["trusted", "sandbox"]),
+    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
     hasManifest: z.boolean(),
     pluginDir: z.string(),
     manifest: z.record(z.string(), z.any()).optional().nullable(),
@@ -487,12 +529,12 @@ export const ApiPluginRoute = new Hono()
       },
     }),
     async (c) => {
-      const loaded = await Plugin.loaded()
+      const loaded = await Plugin.getLoaded()
       const infos = loaded.map((p) => ({
         pluginId: p.id,
         name: p.name,
         version: undefined as string | undefined,
-        trustTier: determineTrustTier(p.pluginDir),
+        trustTier: getPluginTrust(p.pluginDir).tier,
         hasManifest: false,
         pluginDir: p.pluginDir,
         cliCommands: p.cli ? Object.keys(p.cli) : [],
@@ -552,7 +594,7 @@ export const ApiPluginRoute = new Hono()
         pluginId: plugin.id,
         name: plugin.name ?? manifest?.name,
         version: manifest?.version ?? "0.0.0",
-        trustTier: determineTrustTier(plugin.pluginDir),
+        trustTier: getPluginTrust(plugin.pluginDir).tier,
         hasManifest: manifest !== null,
         pluginDir: plugin.pluginDir,
         manifest: manifest ?? null,

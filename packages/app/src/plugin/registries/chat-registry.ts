@@ -6,6 +6,7 @@ export interface ChatComponentEntry {
   id: string
   slot: ChatSlot
   component: Component
+  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   pluginId: string
 }
 

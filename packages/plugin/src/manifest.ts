@@ -219,9 +219,6 @@ export const PluginManifest = z
     // Dependencies on other plugins
     dependencies: z.record(z.string(), z.string()).optional(),
 
-    // Schema version
-    schemaVersion: z.literal(3).optional(),
-
     // Trust tier request
     trust: z
       .object({
@@ -428,7 +425,6 @@ export const PluginManifest = z
           })
           .optional(),
 
-        extensionPack: z.array(z.string()).optional(),
         permissions: PluginPermissionsSchema,
         ui: UIContribution,
       })

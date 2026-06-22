@@ -1,7 +1,7 @@
 import type {
+  PluginDescriptor,
   PluginHooks,
   PluginInput,
-  Plugin as PluginDescriptor,
   PluginCLIEntry,
   PluginSkill,
   PluginAgent,
@@ -14,13 +14,11 @@ import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
 import { Instance } from "../scope/instance"
-import { Flag } from "../flag/flag"
 import { UI } from "../cli/ui"
 import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 
 const log = Log.create({ service: "plugin.loader" })
-const BUILTIN: string[] = []
 // ---------------------------------------------------------------------------
 // Reload version for local plugin cache-busting
 // ---------------------------------------------------------------------------
@@ -98,9 +96,6 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
   }
 
   const pluginPaths = [...(config.plugin ?? [])]
-  if (!Flag.SYNERGY_DISABLE_DEFAULT_PLUGINS) {
-    pluginPaths.push(...BUILTIN)
-  }
 
   let installedCount = 0
   let failedCount = 0

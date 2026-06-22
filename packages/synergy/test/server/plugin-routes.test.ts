@@ -40,7 +40,7 @@ function buildManifest(overrides: Record<string, any> = {}): Record<string, any>
 const _origPlugin = {
   get: Plugin.get,
   manifest: Plugin.manifest,
-  loaded: Plugin.loaded,
+  loaded: Plugin.getLoaded,
 }
 
 const _origConfig = {
