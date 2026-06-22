@@ -180,7 +180,7 @@ export namespace Session {
         scopeID: scope.id,
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
-    const controlProfile = parent?.controlProfile ?? input?.controlProfile
+    const controlProfile = input?.parentID ? undefined : input?.controlProfile
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
@@ -278,53 +278,42 @@ export namespace Session {
     })
   }
 
-  async function descendants(sessionID: string): Promise<Info[]> {
-    const result: Info[] = []
-    const queue = await children(sessionID)
-    while (queue.length > 0) {
-      const child = queue.shift()!
-      result.push(child)
-      queue.push(...(await children(child.id)))
-    }
-    return result
-  }
-
   export async function updateControlProfile(
     sessionID: string,
     controlProfile: NonNullable<Info["controlProfile"]>,
     editor?: (session: Info) => void,
   ): Promise<Info> {
-    const childSessions = await descendants(sessionID)
-    for (const id of [sessionID, ...childSessions.map((child) => child.id)]) {
-      SessionManager.assertIdle(id)
-    }
+    SessionManager.assertIdle(sessionID)
 
-    const updatedParent = await update(sessionID, (draft) => {
+    const updated = await update(sessionID, (draft) => {
       draft.controlProfile = controlProfile
       editor?.(draft)
     })
 
-    const childResults = await Promise.allSettled(
-      childSessions.map((child) =>
-        update(child.id, (draft) => {
-          draft.controlProfile = controlProfile
-        }),
-      ),
-    )
-    for (const result of childResults) {
-      if (result.status === "rejected") {
-        log.warn("failed to update child session control profile", { error: result.reason })
-      }
-    }
+    return updated
+  }
 
-    return updatedParent
+  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+    let currentID = sessionID
+    while (true) {
+      const session = await SessionManager.requireSession(currentID)
+      const scope = session.scope as Scope
+      const info = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))
+      if (info?.controlProfile) return info.controlProfile
+      if (!info?.parentID) return "guarded"
+      currentID = info.parentID
+    }
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
     const read = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
-    return withRuntimeInfo(read as Info)
+    const info = read as Info
+    if (info.parentID && !info.controlProfile) {
+      info.controlProfile = await resolveControlProfile(id)
+    }
+    return withRuntimeInfo(info)
   })
 
   export async function update(id: string, editor: (session: Info) => void) {

@@ -308,9 +308,8 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.get()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const profileId = ControlProfileCompiler.normalize(
-            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
-          )
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -483,9 +482,8 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.get()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const profileId = ControlProfileCompiler.normalize(
-            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
-          )
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",

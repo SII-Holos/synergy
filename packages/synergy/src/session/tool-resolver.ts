@@ -50,13 +50,13 @@ export namespace ToolResolver {
 
   /**
    * Resolve the effective control profile id using precedence:
-   *   1. session controlProfile
+   *   1. session controlProfile (resolved from parent chain)
    *   2. agent config controlProfile
    *   3. top-level config controlProfile
    *   4. default 'guarded'
    */
-  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, session?: Info): ProfileId {
-    return ControlProfileCompiler.normalize(session?.controlProfile ?? agent.controlProfile ?? topLevelProfile)
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, sessionProfile?: string): ProfileId {
+    return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
   /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
@@ -387,7 +387,8 @@ export namespace ToolResolver {
         if (!profilePromise) {
           profilePromise = (async () => {
             const topLevelProfile = await cachedTopLevelProfile()
-            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, input.session)
+            const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
+            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
             const workspaceInfo = Instance.workspace
             const interaction = input.session?.interaction
             const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
@@ -513,7 +514,10 @@ export namespace ToolResolver {
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
-                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                const sessionProfile = runtimeInput.session?.id
+                  ? await Session.resolveControlProfile(runtimeInput.session.id)
+                  : undefined
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
                 const pluginToolIds = await cachedPluginToolIds()
                 const gate = await EnforcementGate.create({
@@ -681,7 +685,10 @@ export namespace ToolResolver {
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
-                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                  const sessionProfile = runtimeInput.session?.id
+                    ? await Session.resolveControlProfile(runtimeInput.session.id)
+                    : undefined
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                   const pluginToolIds = await cachedPluginToolIds()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
