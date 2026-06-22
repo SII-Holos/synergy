@@ -1,4 +1,4 @@
-import { BrowserRuntime, setSessionFactory } from "./runtime.js"
+import { BrowserRuntime } from "./runtime.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
 
@@ -256,15 +256,3 @@ export class BrowserSessionImpl implements BrowserSession {
     await this.save()
   }
 }
-
-// Register the factory on module load so BrowserRuntime.session() can construct sessions
-setSessionFactory((_runtime, _key) => {
-  // Resolve workspace from scope directory — we need the scope's directory
-  // For now, the session factory can't know the workspace. The factory is
-  // called from BrowserRuntime.session() which only passes (state, key).
-  // Sessions created this way must be constructed with workspace externally.
-  // We throw if called without setup; the proper way is to construct directly.
-  throw new Error(
-    "BrowserSession must be constructed directly with workspace path. Use new BrowserSessionImpl(key, workspace).",
-  )
-})

@@ -9,15 +9,6 @@ export interface BrowserSession {
   dispose(): Promise<void>
 }
 
-// ── SessionFactory pattern (avoids circular dep with session.ts) ─────
-
-let sessionFactory: ((runtime: BrowserRuntime.RuntimeState, key: BrowserRuntime.SessionKey) => BrowserSession) | null =
-  null
-
-export function setSessionFactory(factory: typeof sessionFactory): void {
-  sessionFactory = factory
-}
-
 // ── BrowserRuntime namespace ──────────────────────────────────────────
 
 export namespace BrowserRuntime {
@@ -313,20 +304,6 @@ export namespace BrowserRuntime {
     } catch (e) {
       throw new Error(`Failed to create browser context for scope ${scopeID}: ${e}`)
     }
-  }
-  /** Get or create a BrowserSession for scopeID+sessionID. */
-  export function session(key: SessionKey): BrowserSession {
-    const k = sessionKeyStr(key)
-    const existing = sessions.get(k)
-    if (existing) return existing
-
-    if (!sessionFactory) {
-      throw new Error("BrowserSession factory not registered — session.ts must call setSessionFactory()")
-    }
-
-    const s = sessionFactory(state(), key)
-    sessions.set(k, s)
-    return s
   }
 
   /** Dispose a specific BrowserSession. */
