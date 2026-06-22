@@ -12,6 +12,9 @@ import { NetworkPanel } from "./network-panel"
 import { ElementsPanel } from "./elements-panel"
 import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
+import { DownloadsPanel } from "./downloads-panel"
+import { AssetsPanel } from "./assets-panel"
+import { ViewportSelector } from "./viewport-selector"
 
 export function BrowserPanel() {
   const params = useParams()
@@ -38,6 +41,28 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
   })
 
   const showDevPanel = () => browser.devPanel() !== "closed"
+
+  const dismissAnnotation = () => {
+    browser.clearAnnotationTarget()
+    browser.setAnnotationMode(false)
+  }
+
+  const handleAnnotationSubmit = (comment: string, styleFeedback?: Record<string, string>) => {
+    const target = browser.annotationTarget()
+    browser.send({
+      type: "createAnnotation",
+      comment,
+      styleFeedback,
+      tabId: browser.activeTabId(),
+      x: target?.pageX,
+      y: target?.pageY,
+    })
+    dismissAnnotation()
+  }
+
+  const showAnnotation = () => {
+    return browser.annotationMode() && browser.activeTabId() && browser.annotationTarget() !== null
+  }
 
   return (
     <Show
@@ -70,6 +95,7 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
               ws.send({ type: "navigate", url, tabId: tab.id })
             }}
           />
+          <ViewportSelector />
           <div class="flex-1 relative bg-background-stronger">
             <Show
               when={showDevPanel()}
@@ -87,14 +113,18 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
               <DevPanelContent panel={browser.devPanel()!} />
             </Show>
             <AgentAssistant action={browser.agentActivity()} />
-            <Show when={browser.annotationMode() && browser.activeTabId()}>
-              <AnnotationInput
-                onSubmit={(comment, styleFeedback) => {
-                  browser.send({ type: "createAnnotation", comment, styleFeedback, tabId: browser.activeTabId() })
-                  browser.setAnnotationMode(false)
-                }}
-                onCancel={() => browser.setAnnotationMode(false)}
-              />
+            <Show when={showAnnotation()}>
+              {(() => {
+                const target = browser.annotationTarget()!
+                return (
+                  <AnnotationInput
+                    x={target.displayX}
+                    y={target.displayY}
+                    onSubmit={handleAnnotationSubmit}
+                    onCancel={dismissAnnotation}
+                  />
+                )
+              })()}
             </Show>
           </div>
           <DevToolbar />
@@ -115,6 +145,12 @@ function DevPanelContent(props: { panel: string }) {
       </Show>
       <Show when={props.panel === "elements"}>
         <ElementsPanel />
+      </Show>
+      <Show when={props.panel === "downloads"}>
+        <DownloadsPanel />
+      </Show>
+      <Show when={props.panel === "assets"}>
+        <AssetsPanel />
       </Show>
     </div>
   )

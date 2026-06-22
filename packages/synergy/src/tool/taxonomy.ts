@@ -204,13 +204,15 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   browser_console: entry("browser.inspect"),
   browser_network: entry("browser.inspect"),
   browser_download: entry("browser.download", { externalIO: true }),
-  browser_downloads: entry("browser.download", { externalIO: true }),
+  browser_downloads: entry("browser.download", { stateful: true }),
   browser_viewport: entry("browser.inspect", { stateful: true }),
   browser_annotate: entry("browser.annotate", { stateful: true }),
   browser_read: entry("browser.inspect"),
-  browser_eval: entry("browser.inspect"),
-  browser_clipboard: entry("browser.interact", { stateful: true }),
+  browser_eval: entry("browser.inspect", { stateful: true }),
+  browser_clipboard: entry("browser.interact", { externalIO: true }),
   browser_list: entry("browser.inspect"),
+  browser_assets: entry("browser.inspect"),
+  browser_view: entry("browser.inspect"),
   browser_navigation: entry("browser.navigate", { stateful: true }),
 }
 

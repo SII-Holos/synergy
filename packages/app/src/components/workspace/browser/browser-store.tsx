@@ -37,8 +37,29 @@ export interface AccessibilityElement {
   value?: string
   children: AccessibilityElement[]
 }
+export interface DownloadEntry {
+  id: string
+  url: string
+  fileName: string
+  mimeType: string
+  state: "in_progress" | "completed" | "cancelled" | "interrupted"
+  totalBytes: number
+  receivedBytes: number
+  timestamp: number
+}
 
-export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect"
+export interface AnnotationTarget {
+  displayX: number
+  displayY: number
+  pageX: number
+  pageY: number
+}
+export interface AssetEntry {
+  url: string
+  type: "image" | "script" | "stylesheet" | "font" | "media" | "other"
+}
+
+export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect" | "downloads" | "assets"
 
 export function createBrowserStore() {
   const [session, setSession] = createStore({
@@ -51,9 +72,15 @@ export function createBrowserStore() {
   const [consoleEntries, setConsoleEntries] = createStore<Record<string, ConsoleEntry[]>>({})
   const [networkRequests, setNetworkRequests] = createStore<Record<string, NetworkEntry[]>>({})
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
+  const [pageAssets, setPageAssets] = createStore<Record<string, AssetEntry[]>>({})
+  const [downloads, setDownloads] = createStore<Record<string, DownloadEntry[]>>({})
   const [devPanel, setDevPanel] = createSignal<DevPanel>("closed")
   const [agentActivity, setAgentActivity] = createSignal<string | null>(null)
   const [annotationMode, setAnnotationMode] = createSignal(false)
+  const [viewportWidth, setViewportWidth] = createSignal(1280)
+
+  const [viewportHeight, setViewportHeight] = createSignal(720)
+  const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
 
   const activeTabId = createMemo(() => session.activeTabId)
 
@@ -114,6 +141,15 @@ export function createBrowserStore() {
     setDevPanel((prev) => (prev === panel ? "closed" : panel))
   }
 
+  function setViewport(width: number, height: number) {
+    setViewportWidth(width)
+    setViewportHeight(height)
+    send({ type: "setViewport", width, height })
+  }
+
+  function clearAnnotationTarget() {
+    setAnnotationTarget(null)
+  }
   return {
     session,
     setSession,
@@ -137,12 +173,22 @@ export function createBrowserStore() {
     setNetworkRequests,
     elements,
     setElements,
+    pageAssets,
+    setPageAssets,
     devPanel,
     setDevPanel,
     agentActivity,
     setAgentActivity,
     annotationMode,
     setAnnotationMode,
+    annotationTarget,
+    setAnnotationTarget,
+    clearAnnotationTarget,
+    viewportWidth,
+    viewportHeight,
+    setViewport,
+    downloads,
+    setDownloads,
   }
 }
 

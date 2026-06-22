@@ -14,6 +14,8 @@ const ACTIONS = [
   { id: "console" as DevPanel, label: "Console", icon: "terminal" },
   { id: "network" as DevPanel, label: "Network", icon: "signal" },
   { id: "elements" as DevPanel, label: "Elements", icon: "pen" },
+  { id: "assets" as DevPanel, label: "Assets", icon: "package" },
+  { id: "downloads" as DevPanel, label: "Downloads", icon: "download" },
 ]
 
 export function DevToolbar() {

@@ -96,6 +96,7 @@ import { BrowserListTool } from "./browser-list"
 import { BrowserNavigationTool } from "./browser-navigation"
 import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
+import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
 
 export namespace ToolRegistry {
@@ -292,6 +293,7 @@ export namespace ToolRegistry {
       BrowserAssetsTool,
       BrowserActionTool,
       BrowserEvalTool,
+      BrowserViewTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...custom,
     ]
