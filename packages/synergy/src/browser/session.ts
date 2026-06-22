@@ -1,0 +1,185 @@
+import { BrowserRuntime, setSessionFactory } from "./runtime.js"
+import { BrowserStorage } from "./storage.js"
+import { BrowserTabImpl, type BrowserTab } from "./tab.js"
+
+export interface BrowserSession {
+  readonly key: BrowserRuntime.SessionKey
+  readonly tabs: readonly BrowserTab[]
+  readonly activeTab: BrowserTab | null
+
+  createTab(url?: string): Promise<BrowserTab>
+  switchTab(tabID: string): void
+  closeTab(tabID: string): Promise<void>
+  getTab(tabID: string): BrowserTab | undefined
+
+  save(): Promise<void>
+  restore(): Promise<boolean>
+
+  dispose(): Promise<void>
+}
+
+const MAX_TABS = 10
+
+export class BrowserSessionImpl implements BrowserSession {
+  readonly key: BrowserRuntime.SessionKey
+  private _tabs: BrowserTabImpl[] = []
+  private _activeTab: BrowserTabImpl | null = null
+  private workspace: string
+
+  get tabs(): readonly BrowserTab[] {
+    return this._tabs
+  }
+
+  get activeTab(): BrowserTab | null {
+    return this._activeTab
+  }
+
+  constructor(key: BrowserRuntime.SessionKey, workspace: string) {
+    this.key = key
+    this.workspace = workspace
+
+    // Register session with runtime
+    BrowserRuntime.registerSession(key, this as unknown as import("./runtime.js").BrowserSession)
+
+    // Restore saved state asynchronously (don't block constructor)
+    this.restore().catch(() => {
+      /* ignore restore errors on construction */
+    })
+  }
+
+  async createTab(url?: string): Promise<BrowserTab> {
+    if (this._tabs.length >= MAX_TABS) {
+      throw new Error(`Maximum of ${MAX_TABS} tabs per session`)
+    }
+
+    const state = BrowserRuntime.state()
+    if (!state.cdpConnection) {
+      throw new Error("Browser is not running")
+    }
+
+    const tab = new BrowserTabImpl(state.cdpConnection, this.workspace)
+    this._tabs.push(tab)
+
+    if (!this._activeTab) {
+      this._activeTab = tab
+    }
+
+    if (url) {
+      await tab.navigate(url)
+    }
+
+    await this.save()
+    return tab
+  }
+
+  switchTab(tabID: string): void {
+    const tab = this._tabs.find((t) => t.id === tabID)
+    if (tab) {
+      this._activeTab = tab
+    }
+  }
+
+  async closeTab(tabID: string): Promise<void> {
+    const index = this._tabs.findIndex((t) => t.id === tabID)
+    if (index === -1) return
+
+    const tab = this._tabs[index]
+    await tab.close()
+    this._tabs.splice(index, 1)
+
+    // Switch to another tab if the active one was closed
+    if (this._activeTab === tab) {
+      if (this._tabs.length > 0) {
+        this._activeTab = this._tabs[Math.max(0, index - 1)] ?? this._tabs[0]
+      } else {
+        this._activeTab = null
+      }
+    }
+
+    await this.save()
+  }
+
+  getTab(tabID: string): BrowserTab | undefined {
+    return this._tabs.find((t) => t.id === tabID)
+  }
+
+  async save(): Promise<void> {
+    const state: BrowserStorage.SessionState = {
+      scopeID: this.key.scopeID,
+      sessionID: this.key.sessionID,
+      tabs: this._tabs.map((tab, i) => ({
+        id: tab.id,
+        url: tab.url,
+        title: tab.title,
+        order: i,
+      })),
+      activeTabID: this._activeTab?.id ?? null,
+      panelWidth: 400,
+      timestamp: Date.now(),
+    }
+    await BrowserStorage.save(state)
+  }
+
+  async restore(): Promise<boolean> {
+    const data = await BrowserStorage.load(this.key)
+    if (!data) return false
+
+    const state = BrowserRuntime.state()
+    if (!state.cdpConnection) return false
+
+    // Clear existing tabs
+    for (const tab of this._tabs) {
+      try {
+        await tab.close()
+      } catch {
+        /* ignore */
+      }
+    }
+    this._tabs = []
+    this._activeTab = null
+
+    // Restore tabs sorted by order
+    const sorted = [...data.tabs].sort((a, b) => a.order - b.order)
+    for (const saved of sorted) {
+      const tab = new BrowserTabImpl(state.cdpConnection, this.workspace, saved.id)
+      tab.url = saved.url
+      tab.title = saved.title
+      this._tabs.push(tab)
+    }
+
+    if (data.activeTabID) {
+      this._activeTab = this._tabs.find((t) => t.id === data.activeTabID) ?? null
+    }
+    if (!this._activeTab && this._tabs.length > 0) {
+      this._activeTab = this._tabs[0]
+    }
+
+    return true
+  }
+
+  async dispose(): Promise<void> {
+    for (const tab of this._tabs) {
+      try {
+        await tab.close()
+      } catch {
+        /* ignore */
+      }
+    }
+    this._tabs = []
+    this._activeTab = null
+
+    await this.save()
+  }
+}
+
+// Register the factory on module load so BrowserRuntime.session() can construct sessions
+setSessionFactory((_runtime, _key) => {
+  // Resolve workspace from scope directory — we need the scope's directory
+  // For now, the session factory can't know the workspace. The factory is
+  // called from BrowserRuntime.session() which only passes (state, key).
+  // Sessions created this way must be constructed with workspace externally.
+  // We throw if called without setup; the proper way is to construct directly.
+  throw new Error(
+    "BrowserSession must be constructed directly with workspace path. Use new BrowserSessionImpl(key, workspace).",
+  )
+})
