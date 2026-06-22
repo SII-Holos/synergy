@@ -25,7 +25,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     locator: z
       .object({ kind: z.string(), value: z.string() })
       .optional()
-      .describe("Locator for element-targeted screenshot. Resolves element bounds and captures that region."),
+      .describe("Element locator for Playwright-powered element screenshot."),
     clip: ClipSchema.optional().describe("Screenshot region clip {x, y, width, height}. Overrides locator."),
   }),
   async execute(params, ctx) {
@@ -35,12 +35,39 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
 
     let clip: { x: number; y: number; width: number; height: number } | undefined
     let captureKind: "viewport" | "fullPage" | "locator" | "clip" = "viewport"
+    const format = params.format as "png" | "jpeg"
 
+    // ── Playwright path (preferred) ──────────────────────────────
+    if (tab.page) {
+      if (params.clip) {
+        captureKind = "clip"
+        clip = params.clip
+        const buf = (await tab.page.screenshot({ type: format, clip })) as Buffer
+        const { width, height } = clip
+        return finishResult(tab, params, ctx, buf, width, height, captureKind)
+      }
+
+      if (params.locator) {
+        captureKind = "locator"
+        const result = await BrowserScreenshot.captureLocator(tab.page, params.locator as BrowserLocator.LocatorInput, {
+          format,
+          fullPage: params.fullPage,
+        })
+        return finishResult(tab, params, ctx, result.buffer, result.width, result.height, captureKind)
+      }
+
+      // viewport or fullPage via Playwright
+      captureKind = params.fullPage ? "fullPage" : "viewport"
+      const buf = (await tab.page.screenshot({ type: format, fullPage: params.fullPage })) as Buffer
+      const vp = tab.page.viewportSize()
+      return finishResult(tab, params, ctx, buf, vp?.width ?? 0, vp?.height ?? 0, captureKind)
+    }
+
+    // ── Legacy fallback (tab.screenshot) ──────────────────────────
     if (params.clip) {
       clip = params.clip
       captureKind = "clip"
     } else if (params.locator) {
-      // Resolve the locator on the page to get element bounds
       const resolved = await BrowserLocator.resolve(tab, params.locator as BrowserLocator.LocatorInput)
       if (!resolved) {
         throw new Error(`Locator ${JSON.stringify(params.locator)} did not match any element.`)
@@ -54,41 +81,55 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
       captureKind = "fullPage"
     }
 
-    const { buffer, width, height } = await tab.screenshot(params.format, undefined, params.fullPage, clip)
-    const mime = params.format === "jpeg" ? "image/jpeg" : "image/png"
-    const assetId = await Asset.write(buffer, mime)
-
-    const filename = `screenshot-${tab.id.slice(0, 8)}-${Date.now()}.${params.format}`
-
-    const outputParts: string[] = [`Screenshot captured: ${width}x${height} ${params.format.toUpperCase()}`]
-    if (captureKind === "fullPage") outputParts.push("(full page)")
-    if (captureKind === "locator") outputParts.push("(locator)")
-    if (captureKind === "clip") outputParts.push("(clip)")
-
-    return {
-      title: `Screenshot of ${tab.url || tab.title || "page"}`,
-      output: outputParts.join(" "),
-      metadata: {
-        url: tab.url,
-        tabId: tab.id,
-        width,
-        height,
-        format: params.format,
-        fullPage: params.fullPage,
-        captureKind,
-        assetId,
-      },
-      attachments: [
-        {
-          id: Identifier.ascending("part"),
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          type: "file",
-          mime,
-          filename,
-          url: `asset://${assetId}`,
-        },
-      ],
-    }
+    const take = tab.screenshot.bind(tab)
+    const { buffer, width, height } = await take(format, undefined, params.fullPage, clip)
+    return finishResult(tab, params, ctx, buffer, width, height, captureKind)
   },
 })
+
+// ── Shared result builder ────────────────────────────────────────────
+async function finishResult(
+  tab: { id: string; url: string; title: string },
+  params: { format: "png" | "jpeg"; fullPage: boolean },
+  ctx: { sessionID: string; messageID: string },
+  buffer: Buffer,
+  width: number,
+  height: number,
+  captureKind: string,
+) {
+  const mime = params.format === "jpeg" ? "image/jpeg" : "image/png"
+  const assetId = await Asset.write(buffer, mime)
+
+  const filename = `screenshot-${tab.id.slice(0, 8)}-${Date.now()}.${params.format}`
+
+  const outputParts: string[] = [`Screenshot captured: ${width}x${height} ${params.format.toUpperCase()}`]
+  if (captureKind === "fullPage") outputParts.push("(full page)")
+  if (captureKind === "locator") outputParts.push("(locator)")
+  if (captureKind === "clip") outputParts.push("(clip)")
+
+  return {
+    title: `Screenshot of ${tab.url || tab.title || "page"}`,
+    output: outputParts.join(" "),
+    metadata: {
+      url: tab.url,
+      tabId: tab.id,
+      width,
+      height,
+      format: params.format,
+      fullPage: params.fullPage,
+      captureKind,
+      assetId,
+    },
+    attachments: [
+      {
+        id: Identifier.ascending("part"),
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        type: "file" as const,
+        mime,
+        filename,
+        url: `asset://${assetId}`,
+      },
+    ],
+  }
+}

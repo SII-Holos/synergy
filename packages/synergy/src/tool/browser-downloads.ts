@@ -1,5 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
+import { BrowserToolHelper } from "./browser-shared"
 import { BrowserDownloads } from "../browser/downloads"
 
 interface BrowserDownloadsMetadata {
@@ -15,6 +16,7 @@ const parameters = z
       .describe("Action: list downloads, remove one by id, or wait for one to complete"),
     id: z.string().optional().describe("Download record ID (required for remove and wait actions)"),
     timeoutMs: z.number().int().positive().optional().describe("Maximum wait time in milliseconds (default 30s)"),
+    tabId: z.string().optional().describe("Tab ID. Used to access page for waitForPageDownload."),
   })
   .refine(
     (v) => {

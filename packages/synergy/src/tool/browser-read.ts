@@ -4,6 +4,7 @@ import { BrowserToolHelper, formatSnapshotText } from "./browser-shared"
 import { BrowserLocator } from "../browser/locator"
 import { truncateHTML, domSnapshot, pageText, elementAttributes, computedStyle, visibleDOM } from "../browser/page-read"
 import type { BrowserTab } from "../browser/tab"
+import type { Page, Locator } from "playwright"
 
 const parameters = z.object({
   type: z
@@ -185,18 +186,19 @@ async function readDOM(tab: BrowserTab, locator?: LocatorInput): Promise<string>
     return html
   }
 
-  // Try snapshot-based resolution first (ref, role, text, label, placeholder)
-  const node = await BrowserLocator.resolveLocatorRef(tab, locator)
-  if (node) {
-    const cdp = tab.cdp
-    if (!cdp) throw new Error("CDP connection not available")
-    const result = (await cdp.send("DOM.getOuterHTML", {
-      backendNodeId: node.backendNodeId,
-    })) as { outerHTML: string }
-    return result.outerHTML
+  // Playwright path (all locator kinds supported via toPlaywrightLocator)
+  if (tab.page) {
+    const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
+    try {
+      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      const html = (await pwLocator.evaluate((el) => (el as HTMLElement).outerHTML)) as string
+      return html
+    } catch {
+      // fall through to evaluate-based resolution
+    }
   }
 
-  // Try evaluate-based resolution (css, xpath, testId)
+  // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
     const html = (await tab.evaluate(`(() => { const el = ${query}; return el ? el.outerHTML : null; })()`)) as
@@ -216,23 +218,25 @@ async function resolveAttributes(tab: BrowserTab, locator: LocatorInput): Promis
 }
 
 async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Promise<Record<string, string>> {
-  // Try snapshot-based resolution first (ref, role, text, label, placeholder)
-  const node = await BrowserLocator.resolveLocatorRef(tab, locator)
-  if (node) {
-    const cdp = tab.cdp
-    if (!cdp) throw new Error("CDP connection not available")
-    const result = (await cdp.send("DOM.describeNode", {
-      backendNodeId: node.backendNodeId,
-    })) as { node: { attributes?: string[] } }
-    const attrArray = result.node.attributes ?? []
-    const attrs: Record<string, string> = {}
-    for (let i = 0; i < attrArray.length; i += 2) {
-      attrs[attrArray[i]] = attrArray[i + 1] ?? ""
+  // Playwright path (all locator kinds)
+  if (tab.page) {
+    const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
+    try {
+      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      const attrs = (await pwLocator.evaluate((el) => {
+        const result: Record<string, string> = {}
+        for (const attr of (el as HTMLElement).attributes) {
+          result[attr.name] = attr.value
+        }
+        return result
+      })) as Record<string, string>
+      return attrs
+    } catch {
+      // fall through to evaluate-based resolution
     }
-    return attrs
   }
 
-  // Try evaluate-based resolution (css, xpath, testId)
+  // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
     const attrs = (await tab.evaluate(
@@ -252,24 +256,28 @@ async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Pro
 }
 
 async function resolveComputedStyles(tab: BrowserTab, locator: LocatorInput): Promise<Record<string, string>> {
-  // Try snapshot-based resolution first (ref, role, text, label, placeholder)
-  const node = await BrowserLocator.resolveLocatorRef(tab, locator)
-  if (node) {
-    const cdp = tab.cdp
-    if (!cdp) throw new Error("CDP connection not available")
-    const result = (await cdp.send("CSS.getComputedStyleForNode", {
-      nodeId: node.backendNodeId,
-    })) as { computedStyle?: Array<{ name: string; value: string }> }
-    const propList = result.computedStyle ?? []
-    const styles: Record<string, string> = {}
-    for (const prop of propList) {
-      styles[prop.name] = prop.value
+  // Playwright path (all locator kinds)
+  if (tab.page) {
+    const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
+    try {
+      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      const styles = (await pwLocator.evaluate((el) => {
+        const computed = getComputedStyle(el as HTMLElement)
+        const result: Record<string, string> = {}
+        for (let i = 0; i < computed.length; i++) {
+          const name = computed[i]
+          result[name] = computed.getPropertyValue(name)
+        }
+        return result
+      })) as Record<string, string>
+      if (Object.keys(styles).length === 0) return {}
+      return computedStyle({ computedStyles: styles }, Object.keys(styles))
+    } catch {
+      // fall through to evaluate-based resolution
     }
-    if (Object.keys(styles).length === 0) return {}
-    return computedStyle({ computedStyles: styles }, Object.keys(styles))
   }
 
-  // Try evaluate-based resolution (css, xpath, testId)
+  // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
     const styles = (await tab.evaluate(

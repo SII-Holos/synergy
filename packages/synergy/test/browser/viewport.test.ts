@@ -6,7 +6,6 @@ import {
   validateDeviceScaleFactor,
   validateViewport,
   calculateClipBounds,
-  calculateScreenshotResolution,
   MIN_WIDTH,
   MAX_WIDTH,
   MIN_HEIGHT,
@@ -101,20 +100,6 @@ describe("BrowserViewport", () => {
     expect(clip.y).toBe(0)
     expect(clip.width).toBe(1920)
     expect(clip.height).toBe(1080)
-  })
-
-  // ── Screenshot resolution ──────────────────────────────────────
-
-  test("screenshot resolution at 1x matches viewport", () => {
-    const res = calculateScreenshotResolution({ width: 1280, height: 720 }, 1)
-    expect(res.width).toBe(1280)
-    expect(res.height).toBe(720)
-  })
-
-  test("screenshot resolution accounts for deviceScaleFactor", () => {
-    const res = calculateScreenshotResolution({ width: 1280, height: 720 }, 2)
-    expect(res.width).toBe(2560)
-    expect(res.height).toBe(1440)
   })
 
   // ── Combined validation ────────────────────────────────────────

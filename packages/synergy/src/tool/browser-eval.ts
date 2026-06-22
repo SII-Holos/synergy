@@ -32,6 +32,9 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       ? BrowserEval.buildReadonlyEval(params.expression)
       : BrowserEval.buildTrustedEval(params.expression)
 
+    // Readonly eval routes through Playwright CDP session Runtime.evaluate with throwOnSideEffect
+    // Trusted eval uses Playwright page.evaluate (buildPageEval) when permission is granted.
+    // For backward compatibility, tab.evaluate forwards to page.evaluate.
     const raw = await tab.evaluate(evalPayload.expression, {
       throwOnSideEffect: isReadonly ? true : undefined,
     })

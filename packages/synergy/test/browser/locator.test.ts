@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test"
+import z from "zod"
 import { BrowserLocator } from "../../src/browser/locator"
 
 const { LocatorInputSchema, validateLocator, checkActionable } = BrowserLocator
@@ -36,8 +37,8 @@ describe("BrowserLocator", () => {
     expect(r.success).toBe(true)
   })
 
-  test("validates role with RegExp name", () => {
-    const r = LocatorInputSchema.safeParse({ kind: "role", value: "button", name: /submit/i })
+  test("validates role with regex name", () => {
+    const r = LocatorInputSchema.safeParse({ kind: "role", value: "button", name: { regex: "submit", flags: "i" } })
     expect(r.success).toBe(true)
   })
 
@@ -76,16 +77,33 @@ describe("BrowserLocator", () => {
     expect(r.success).toBe(false)
   })
 
-  // ── RegExp support ─────────────────────────────────────────────
+  // ── Regex support ──────────────────────────────────────────────
 
-  test("accepts RegExp pattern for text locator", () => {
-    const r = LocatorInputSchema.safeParse({ kind: "text", value: /hello/i })
+  test("accepts JSON regex pattern for text locator", () => {
+    const r = LocatorInputSchema.safeParse({ kind: "text", value: { regex: "hello", flags: "i" } })
     expect(r.success).toBe(true)
   })
 
-  test("accepts RegExp pattern for role name", () => {
-    const r = LocatorInputSchema.safeParse({ kind: "role", value: "textbox", name: /search/i })
+  test("accepts JSON regex pattern for role name", () => {
+    const r = LocatorInputSchema.safeParse({ kind: "role", value: "textbox", name: { regex: "search", flags: "i" } })
     expect(r.success).toBe(true)
+  })
+
+  test("rejects invalid JSON regex flags", () => {
+    const duplicate = LocatorInputSchema.safeParse({ kind: "text", value: { regex: "hello", flags: "ii" } })
+    const incompatible = LocatorInputSchema.safeParse({ kind: "text", value: { regex: "hello", flags: "uv" } })
+
+    expect(duplicate.success).toBe(false)
+    expect(incompatible.success).toBe(false)
+  })
+
+  test("rejects live RegExp values because tool input must be JSON-safe", () => {
+    const r = LocatorInputSchema.safeParse({ kind: "text", value: /hello/i })
+    expect(r.success).toBe(false)
+  })
+
+  test("converts locator schema to JSON Schema", () => {
+    expect(() => z.toJSONSchema(LocatorInputSchema)).not.toThrow()
   })
 
   // ── validateLocator ────────────────────────────────────────────

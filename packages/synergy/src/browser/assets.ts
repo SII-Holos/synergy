@@ -1,3 +1,5 @@
+import type { Page } from "playwright"
+
 import fs from "fs/promises"
 import type { NetworkRequest } from "./tab.js"
 
@@ -75,6 +77,49 @@ export namespace BrowserAssets {
     await Bun.write(Bun.file(manifestPath), JSON.stringify(assets, null, 2))
     const totalSize = assets.reduce((sum, a) => sum + (a.size ?? 0), 0)
     return { path: manifestPath, count: assets.length, totalSize }
+  }
+
+  // ── attachToPage ─────────────────────────────────────────────────────
+
+  /**
+   * Wire Playwright page network events to populate asset records.
+   * Called once per BrowserTab page to track loaded resources.
+   */
+  export function attachToPage(page: Page): { getAssets: () => PageAsset[]; clear: () => void } {
+    const assetRecords: Map<string, PageAsset> = new Map()
+    const tabID = ((page as unknown as Record<string, unknown>)._synergyTabID as string) ?? "unknown"
+    let seq = 0
+
+    page.on("request", (req) => {
+      const url = req.url()
+      const method = req.method()
+      const id = `${method}:${url}:${++seq}`
+      assetRecords.set(id, {
+        id,
+        tabID,
+        url,
+        type: "other",
+        status: undefined,
+      })
+    })
+
+    page.on("response", (resp) => {
+      const respUrl = resp.url()
+      const status = resp.status()
+      const mimeType = resp.headers()["content-type"] ?? ""
+      for (const [id, asset] of assetRecords) {
+        if (asset.url === respUrl && asset.status === undefined) {
+          asset.status = status
+          asset.mimeType = mimeType
+          asset.type = classifyByMime(mimeType)
+        }
+      }
+    })
+
+    return {
+      getAssets: () => Array.from(assetRecords.values()),
+      clear: () => assetRecords.clear(),
+    }
   }
 }
 

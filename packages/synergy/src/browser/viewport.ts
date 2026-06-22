@@ -127,38 +127,6 @@ export namespace BrowserViewport {
       height: Math.max(0, clipBottom - y),
     }
   }
-
-  export function calculateScreenshotResolution(
-    viewport: { width: number; height: number },
-    deviceScaleFactor: number = 1,
-  ): { width: number; height: number } {
-    return {
-      width: Math.round(viewport.width * deviceScaleFactor),
-      height: Math.round(viewport.height * deviceScaleFactor),
-    }
-  }
-
-  // ── CDP command builders ───────────────────────────────────────────
-
-  export function buildSetMetricsOverride(config: ViewportConfig): Record<string, unknown> {
-    const screenWidth = config.mobile ? config.width : Math.max(config.width, 1280)
-    const screenHeight = config.mobile ? config.height : Math.max(config.height, 720)
-    return {
-      width: config.width,
-      height: config.height,
-      deviceScaleFactor: config.deviceScaleFactor,
-      mobile: config.mobile,
-      screenWidth,
-      screenHeight,
-      positionX: 0,
-      positionY: 0,
-      fitWindow: false,
-    }
-  }
-
-  export function buildClearMetricsOverride(): Record<string, unknown> {
-    return {}
-  }
 }
 
 export const {
@@ -167,7 +135,6 @@ export const {
   validateDeviceScaleFactor,
   validateViewport,
   calculateClipBounds,
-  calculateScreenshotResolution,
 } = BrowserViewport
 
 export const { MIN_WIDTH, MAX_WIDTH, MIN_HEIGHT, MAX_HEIGHT, MIN_DSF, MAX_DSF, DEFAULT } = BrowserViewport

@@ -1,3 +1,5 @@
+import type { Page } from "playwright"
+
 export namespace BrowserEval {
   export type EvalMode = "readonly" | "trusted"
 
@@ -18,7 +20,7 @@ export namespace BrowserEval {
   const MAX_DEPTH = 10
 
   /**
-   * Build an expression payload for readonly evaluation.
+   * Build an expression payload for readonly evaluation (used via BrowserTab.evaluate).
    * Sets throwOnSideEffect so the CDP runtime rejects side-effecting expressions.
    */
   export function buildReadonlyEval(expression: string): { expression: string; throwOnSideEffect: boolean } {
@@ -26,10 +28,42 @@ export namespace BrowserEval {
   }
 
   /**
-   * Build an expression payload for trusted evaluation.
+   * Build an expression payload for trusted evaluation (used via BrowserTab.evaluate).
    * Does not set throwOnSideEffect — the expression may have side effects.
    */
   export function buildTrustedEval(expression: string): { expression: string } {
+    return { expression }
+  }
+
+  /**
+   * Build an expression payload for CDP session Runtime.evaluate.
+   * Sets throwOnSideEffect so the CDP runtime rejects side-effecting expressions.
+   * Used for readonly eval via a Playwright-created CDP session.
+   */
+  export function buildCDPSessionEval(expression: string): { expression: string; throwOnSideEffect: boolean } {
+    return { expression, throwOnSideEffect: true }
+  }
+
+  export async function evaluateReadonly(page: Page, expression: string): Promise<unknown> {
+    const session = await page.context().newCDPSession(page)
+    try {
+      const result = (await session.send("Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        throwOnSideEffect: true,
+      })) as { result?: { value?: unknown } }
+      return result.result?.value
+    } finally {
+      await session.detach().catch(() => {})
+    }
+  }
+
+  /**
+   * Build an expression payload for Playwright page.evaluate (trusted mode).
+   * Does not set throwOnSideEffect — the expression may have side effects.
+   * Access is gated behind isEvalAllowed("trusted").
+   */
+  export function buildPageEval(expression: string): { expression: string } {
     return { expression }
   }
 

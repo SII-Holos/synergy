@@ -23,27 +23,47 @@ export const BrowserClipboardTool = Tool.define<typeof parameters, BrowserClipbo
   parameters,
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    // Route clipboard operations through Playwright context.grantPermissions + page.evaluate
+    const page = tab.page
 
     if (params.action === "read") {
-      const raw = (await tab.evaluate(BrowserClipboard.buildReadClipboardExpr())) as string | null
-      const text = raw !== null && raw !== undefined ? BrowserClipboard.sanitizeClipboardText(raw) : null
+      // Uses Playwright grantPermissions + page.evaluate for clipboard read
+      if (page) {
+        const result = await BrowserClipboard.readViaPage(page)
+        return {
+          title: `Clipboard read (tab: ${tab.id})`,
+          output: result.text ?? "(clipboard empty or permission denied)",
+          metadata: { action: "read", tabId: tab.id, hasText: result.ok },
+        }
+      }
       return {
         title: `Clipboard read (tab: ${tab.id})`,
-        output: text ?? "(clipboard empty or permission denied)",
-        metadata: { action: "read", tabId: tab.id, hasText: text !== null },
+        output: "(no page available)",
+        metadata: { action: "read", tabId: tab.id, hasText: false },
       }
     }
 
     // write
     if (!params.text) throw new Error("text is required for clipboard write")
-    const result = (await tab.evaluate(BrowserClipboard.buildWriteClipboardExpr(params.text))) as boolean
-    const ok = result === true
+    if (page) {
+      const result = await BrowserClipboard.writeViaPage(page, params.text)
+      return {
+        title: `Clipboard write${result.ok ? "" : " failed"} (tab: ${tab.id})`,
+        output: result.ok
+          ? `Copied ${Buffer.byteLength(params.text, "utf-8")} bytes to clipboard.`
+          : "Clipboard write failed — permission may be denied.",
+        metadata: {
+          action: "write",
+          tabId: tab.id,
+          ok: result.ok,
+          byteLength: Buffer.byteLength(params.text, "utf-8"),
+        },
+      }
+    }
     return {
-      title: `Clipboard write${ok ? "" : " failed"} (tab: ${tab.id})`,
-      output: ok
-        ? `Copied ${Buffer.byteLength(params.text, "utf-8")} bytes to clipboard.`
-        : "Clipboard write failed — permission may be denied.",
-      metadata: { action: "write", tabId: tab.id, ok, byteLength: Buffer.byteLength(params.text, "utf-8") },
+      title: `Clipboard write failed (tab: ${tab.id})`,
+      output: "(no page available)",
+      metadata: { action: "write", tabId: tab.id, ok: false, byteLength: 0 },
     }
   },
 })

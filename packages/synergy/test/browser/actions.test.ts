@@ -1,11 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import {
-  BrowserActions,
-  validateAction,
-  buildCdpCommands,
-  requiredParams,
-  ActionNames,
-} from "../../src/browser/actions"
+import { BrowserActions, validateAction, requiredParams, ActionNames } from "../../src/browser/actions"
 
 const { ActionInputSchema } = BrowserActions
 
@@ -227,194 +221,6 @@ describe("BrowserActions", () => {
     })
   })
 
-  // ════════════════════════════════════════════════════════════════
-  //  CDP command shape generation
-  // ════════════════════════════════════════════════════════════════
-
-  describe("buildCdpCommands", () => {
-    // ── click → mousePressed + mouseReleased ──────────────────────
-    test("click produces mousePressed and mouseReleased", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "click", locator: loc }))
-      expect(cmds).toHaveLength(2)
-      expect(cmds[0]).toMatchObject({ method: "Input.dispatchMouseEvent" })
-      expect(cmds[1]).toMatchObject({ method: "Input.dispatchMouseEvent" })
-      expect((cmds[0].params as Record<string, unknown>).type).toBe("mousePressed")
-      expect((cmds[1].params as Record<string, unknown>).type).toBe("mouseReleased")
-    })
-
-    test("click commands carry x, y, button", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "click", locator: loc }))
-      for (const cmd of cmds) {
-        const p = cmd.params as Record<string, unknown>
-        expect(typeof p.x).toBe("number")
-        expect(typeof p.y).toBe("number")
-        expect(p.button).toBe("left")
-      }
-    })
-
-    test("click commands use button if provided", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "click", locator: loc, button: "right" }))
-      for (const cmd of cmds) {
-        expect((cmd.params as Record<string, unknown>).button).toBe("right")
-      }
-    })
-
-    // ── dblclick → 2 × (mousePressed + mouseReleased) ─────────────
-    test("dblclick produces 4 commands", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "dblclick", locator: loc }))
-      expect(cmds).toHaveLength(4)
-      expect(cmds[0].params).toHaveProperty("type", "mousePressed")
-      expect(cmds[1].params).toHaveProperty("type", "mouseReleased")
-      expect(cmds[2].params).toHaveProperty("type", "mousePressed")
-      expect(cmds[3].params).toHaveProperty("type", "mouseReleased")
-    })
-
-    test("dblclick clickCount is 2 on press events", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "dblclick", locator: loc }))
-      expect((cmds[0].params as Record<string, unknown>).clickCount).toBe(2)
-      expect((cmds[2].params as Record<string, unknown>).clickCount).toBe(2)
-    })
-
-    // ── press → dispatchKeyEvent ─────────────────────────────────
-    test("press produces a keyDown event", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "press", key: "Enter" }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0]).toMatchObject({ method: "Input.dispatchKeyEvent" })
-      expect((cmds[0].params as Record<string, unknown>).type).toBe("keyDown")
-    })
-
-    test("press key is mapped via virtual key code", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "press", key: "a" }))
-      const p = cmds[0].params as Record<string, unknown>
-      expect(p.key).toBe("a")
-      expect(typeof p.windowsVirtualKeyCode).toBe("number")
-    })
-
-    test("press with modifiers sends modifier flags", () => {
-      const cmds = buildCdpCommands(
-        ok(ActionInputSchema, {
-          action: "press",
-          key: "c",
-          modifiers: ["Control"],
-        }),
-      )
-      const p = cmds[0].params as Record<string, unknown>
-      expect(p.modifiers).toBeGreaterThan(0)
-    })
-
-    // ── fill → focus + selectAll + insertText ────────────────────
-    test("fill produces focus + selectAll + insertText sequence", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "fill", locator: loc, value: "hello" }))
-      expect(cmds.length).toBeGreaterThanOrEqual(3)
-      const methods = cmds.map((c) => c.method)
-      expect(methods).toContain("Runtime.evaluate")
-      expect(methods).toContain("Input.insertText")
-    })
-
-    test("fill insertText carries the value as text", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "fill", locator: loc, value: "hello" }))
-      const insert = cmds.find((c) => c.method === "Input.insertText")
-      expect(insert).toBeDefined()
-      expect((insert!.params as Record<string, unknown>).text).toBe("hello")
-    })
-
-    test("fill empty value produces insertText with empty text", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "fill", locator: loc, value: "" }))
-      const insert = cmds.find((c) => c.method === "Input.insertText")
-      expect(insert).toBeDefined()
-      expect((insert!.params as Record<string, unknown>).text).toBe("")
-    })
-
-    // ── selectOption → dispatch select commands ──────────────────
-    test("selectOption produces DOM manipulation commands", () => {
-      const cmds = buildCdpCommands(
-        ok(ActionInputSchema, {
-          action: "selectOption",
-          locator: loc,
-          values: ["red"],
-        }),
-      )
-      expect(cmds.length).toBeGreaterThan(0)
-      // At minimum a Runtime.evaluate to manipulate the select
-      expect(cmds.some((c) => c.method === "Runtime.evaluate")).toBe(true)
-    })
-
-    test("selectOption with multiple values", () => {
-      const cmds = buildCdpCommands(
-        ok(ActionInputSchema, {
-          action: "selectOption",
-          locator: loc,
-          values: ["red", "blue"],
-        }),
-      )
-      expect(cmds.length).toBeGreaterThan(0)
-    })
-
-    // ── check / uncheck ─────────────────────────────────────────
-    test("check produces Runtime.evaluate to set checked", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "check", locator: loc }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0].method).toBe("Runtime.evaluate")
-    })
-
-    test("uncheck produces Runtime.evaluate to unset checked", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "uncheck", locator: loc }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0].method).toBe("Runtime.evaluate")
-    })
-
-    // ── hover → mouseMoved ───────────────────────────────────────
-    test("hover produces a mouseMoved event", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "hover", locator: loc }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0]).toMatchObject({ method: "Input.dispatchMouseEvent" })
-      expect((cmds[0].params as Record<string, unknown>).type).toBe("mouseMoved")
-    })
-
-    // ── type → keyDown + keyUp per character ─────────────────────
-    test("type produces keyDown+keyUp pair per character", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "type", locator: loc, text: "ab" }))
-      // 2 chars × 2 events each = 4 + optional focus prefix
-      expect(cmds.length).toBeGreaterThanOrEqual(4)
-      const keyEvents = cmds.filter((c) => c.method === "Input.dispatchKeyEvent")
-      expect(keyEvents.length).toBeGreaterThanOrEqual(4)
-      const types = keyEvents.map((c) => (c.params as Record<string, unknown>).type)
-      expect(types.filter((t) => t === "keyDown")).toHaveLength(2)
-      expect(types.filter((t) => t === "keyUp")).toHaveLength(2)
-    })
-
-    test("type carries individual character keys", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "type", locator: loc, text: "ab" }))
-      const keyEvents = cmds.filter((c) => c.method === "Input.dispatchKeyEvent")
-      const keys = keyEvents.map((c) => (c.params as Record<string, unknown>).key)
-      expect(keys).toContain("a")
-      expect(keys).toContain("b")
-    })
-
-    // ── scroll → mouseWheel ──────────────────────────────────────
-    test("scroll produces mouseWheel event", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "scroll", x: 0, y: 100 }))
-      expect(cmds).toHaveLength(1)
-      expect(cmds[0]).toMatchObject({ method: "Input.dispatchMouseEvent" })
-      expect((cmds[0].params as Record<string, unknown>).type).toBe("mouseWheel")
-    })
-
-    test("scroll defaults delta to zero", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "scroll" }))
-      const p = cmds[0].params as Record<string, unknown>
-      expect(p.deltaX).toBe(0)
-      expect(p.deltaY).toBe(0)
-    })
-
-    test("scroll passes delta values", () => {
-      const cmds = buildCdpCommands(ok(ActionInputSchema, { action: "scroll", x: 50, y: -200 }))
-      const p = cmds[0].params as Record<string, unknown>
-      expect(p.deltaX).toBe(50)
-      expect(p.deltaY).toBe(-200)
-    })
-  })
-
-  // ════════════════════════════════════════════════════════════════
   //  requiredParams — action → required param names
   // ════════════════════════════════════════════════════════════════
 
@@ -477,24 +283,12 @@ describe("BrowserActions", () => {
       ok(ActionInputSchema, { action: "click", locator: loc, futureField: 42 })
     })
 
-    test("buildCdpCommands returns copy, not reference", () => {
-      const action = ok(ActionInputSchema, { action: "click", locator: loc })
-      const a = buildCdpCommands(action)
-      const b = buildCdpCommands(action)
-      expect(a).not.toBe(b)
-      expect(a).toEqual(b)
+    test("BrowserActions.resolveAndRun is exported", () => {
+      expect(typeof (BrowserActions as Record<string, unknown>).resolveAndRun).toBe("function")
     })
 
-    test("buildCdpCommands accepts validated action", () => {
-      const action = ok(ActionInputSchema, { action: "click", locator: loc })
-      const cmds = buildCdpCommands(action)
-      expect(Array.isArray(cmds)).toBe(true)
-      // Every command must have method and params
-      for (const cmd of cmds) {
-        expect(typeof cmd.method).toBe("string")
-        expect(typeof cmd.params).toBe("object")
-        expect(cmd.params).not.toBeNull()
-      }
+    test("BrowserActions.run is exported", () => {
+      expect(typeof (BrowserActions as Record<string, unknown>).run).toBe("function")
     })
   })
 })

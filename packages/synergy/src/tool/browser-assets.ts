@@ -1,7 +1,10 @@
 import z from "zod"
+import path from "path"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserAssets } from "../browser/assets"
+import { Instance } from "../scope/instance"
+import { Filesystem } from "../util/filesystem"
 
 export const BrowserAssetsTool = Tool.define("browser_assets", {
   description:
@@ -27,7 +30,11 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
 
     if (params.action === "export") {
       if (!params.outputDir) throw new Error("outputDir is required for export action")
-      const result = await BrowserAssets.exportBundle(assets, params.outputDir)
+      const outputDir = path.resolve(Instance.directory, params.outputDir)
+      if (!Filesystem.contains(Instance.directory, outputDir)) {
+        throw new Error("outputDir must be inside the active workspace")
+      }
+      const result = await BrowserAssets.exportBundle(assets, outputDir)
       return {
         title: `Exported ${result.count} assets (${result.totalSize}B)`,
         output: `Wrote ${result.path} with ${result.count} assets, ${result.totalSize} total bytes`,

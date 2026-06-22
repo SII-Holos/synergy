@@ -16,65 +16,46 @@ export const BrowserInspectTool = Tool.define("browser_inspect", {
       throw new Error(`Invalid ref: ${params.ref}. Expected format: @eN (e.g. @e12)`)
     }
 
-    const cdp = tab.cdp
-    if (!cdp) throw new Error("Browser CDP connection not available")
-
-    // Resolve ref to backendNodeId + bounds
     const resolved = await tab.resolveRef(params.ref)
     if (!resolved) throw new Error(`Element not found for ref: ${params.ref}`)
 
-    const { backendNodeId, x, y, width, height } = resolved
+    const { x, y, width, height } = resolved
+    const elementInfo = tab.page
+      ? ((await tab.page.evaluate((ref) => {
+          const index = Number(ref.replace(/^@e/, "")) - 1
+          const elements = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "a,button,input,textarea,select,[role],summary,[tabindex]:not([tabindex='-1'])",
+            ),
+          ).filter((el) => {
+            const style = window.getComputedStyle(el)
+            const rect = el.getBoundingClientRect()
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+          })
+          const el = elements[index]
+          if (!el) return null
+          const attrs: Record<string, string> = {}
+          for (const attr of Array.from(el.attributes)) attrs[attr.name] = attr.value
+          return {
+            tag: el.localName,
+            attributes: attrs,
+            text: el.textContent?.trim()?.slice(0, 2000) ?? "",
+          }
+        }, params.ref)) as { tag: string; attributes: Record<string, string>; text: string } | null)
+      : null
 
-    // Get element details via CDP DOM.describeNode
-    const describeResult = (await cdp.send("DOM.describeNode", { backendNodeId })) as {
-      node: {
-        nodeName: string
-        localName: string
-        nodeValue: string
-        attributes?: string[]
-      }
-    }
-    const node = describeResult.node
-    const tag = node.localName ?? node.nodeName?.toLowerCase() ?? "unknown"
-
-    // Build attributes map from flat [key, value, key, value, ...] array
-    const attributes: Record<string, string> = {}
-    const attrArray = node.attributes ?? []
-    for (let i = 0; i < attrArray.length; i += 2) {
-      attributes[attrArray[i]] = attrArray[i + 1] ?? ""
-    }
-
-    // Get text content via Runtime.evaluate on the resolved node
-    let text = ""
-    try {
-      const resolveResult = (await cdp.send("DOM.resolveNode", { backendNodeId })) as {
-        object?: { objectId: string }
-      }
-      const objectId = resolveResult.object?.objectId
-      if (objectId) {
-        const textResult = (await cdp.send("Runtime.callFunctionOn", {
-          functionDeclaration: `function() { return this.textContent?.trim()?.slice(0, 2000) ?? "" }`,
-          objectId,
-          returnByValue: true,
-        })) as { result?: { value?: string } }
-        text = textResult.result?.value ?? ""
-      }
-    } catch {
-      /* ignore text extraction failures */
-    }
+    const tag = elementInfo?.tag ?? "unknown"
+    const attributes = elementInfo?.attributes ?? {}
+    const text = elementInfo?.text ?? ""
 
     const properties: string[] = [`tag: <${tag}>`]
-    if (Object.keys(attributes).length > 0) {
-      properties.push(`attributes: ${JSON.stringify(attributes)}`)
-    }
+    if (Object.keys(attributes).length > 0) properties.push(`attributes: ${JSON.stringify(attributes)}`)
     if (width > 0 || height > 0) {
       properties.push(
         `bounds: { x: ${Math.round(x)}, y: ${Math.round(y)}, width: ${Math.round(width)}, height: ${Math.round(height)} }`,
       )
     }
-    if (text) {
-      properties.push(`text: "${text}"`)
-    }
+    if (text) properties.push(`text: "${text}"`)
 
     return {
       title: `Inspected ${params.ref}`,

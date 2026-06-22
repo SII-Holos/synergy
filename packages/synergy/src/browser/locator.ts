@@ -2,11 +2,16 @@ import z from "zod"
 
 import type { BrowserTab, AccessibilityElement } from "./tab.js"
 export namespace BrowserLocator {
-  // Matches actual JS RegExp objects — the test suite passes live regex literals.
-  const RegExpSchema = z.instanceof(RegExp)
+  const RegexValueSchema = z.object({
+    regex: z.string().min(1).describe("JavaScript regular expression source."),
+    flags: z
+      .string()
+      .regex(/^(?!.*([dgimsuvy]).*\1)(?!.*u.*v)(?!.*v.*u)[dgimsuvy]*$/)
+      .optional()
+      .describe("JavaScript regular expression flags."),
+  })
 
-  // A locator's primary value: either a plain string or a RegExp.
-  const ValueSchema = z.union([z.string(), RegExpSchema])
+  const ValueSchema = z.union([z.string(), RegexValueSchema])
 
   /** Zod schema for LocatorInput — discriminated on `kind`. */
   export const LocatorInputSchema = z.discriminatedUnion("kind", [
@@ -94,8 +99,14 @@ export namespace BrowserLocator {
 
   // ── helpers ──────────────────────────────────────────────────────
 
-  function matchesValue(pattern: string | RegExp, text: string, exact?: boolean): boolean {
-    if (pattern instanceof RegExp) return pattern.test(text)
+  function matchesValue(pattern: z.infer<typeof ValueSchema>, text: string, exact?: boolean): boolean {
+    if (typeof pattern === "object") {
+      try {
+        return new RegExp(pattern.regex, pattern.flags).test(text)
+      } catch {
+        return false
+      }
+    }
     if (exact) return text === pattern
     return text.includes(pattern)
   }
@@ -342,6 +353,59 @@ export namespace BrowserLocator {
         return `document.querySelector('[data-testid=${JSON.stringify(locator.value)}]')`
       default:
         return null
+    }
+  }
+
+  // ── Playwright locator bridge ──────────────────────────────────────
+
+  /**
+   * Convert a Synergy LocatorInput into a Playwright Locator.
+   * The caller must provide a Playwright Page (or Frame) to root the locator.
+   */
+  export function toPlaywrightLocator(
+    page: import("playwright").Page | import("playwright").Frame,
+    locator: LocatorInput,
+  ): import("playwright").Locator {
+    switch (locator.kind) {
+      case "ref": {
+        const escaped = CSS.escape(locator.value)
+        return page.locator(`[ref="${escaped}"]`)
+      }
+      case "css":
+        return page.locator(locator.value)
+      case "role": {
+        const opts: { name?: string | RegExp } = {}
+        if (locator.name !== undefined) {
+          opts.name =
+            typeof locator.name === "object" ? new RegExp(locator.name.regex, locator.name.flags) : locator.name
+        }
+        return page.getByRole(locator.value as "button" | "checkbox" | "textbox" | "link" | "heading", opts)
+      }
+      case "text": {
+        if (typeof locator.value === "object") {
+          const pattern = new RegExp(locator.value.regex, locator.value.flags)
+          return page.getByText(pattern, { exact: false })
+        }
+        return page.getByText(locator.value, { exact: locator.exact ?? false })
+      }
+      case "label": {
+        if (typeof locator.value === "object") {
+          const pattern = new RegExp(locator.value.regex, locator.value.flags)
+          return page.getByLabel(pattern, { exact: false })
+        }
+        return page.getByLabel(locator.value, { exact: locator.exact ?? false })
+      }
+      case "placeholder": {
+        if (typeof locator.value === "object") {
+          const pattern = new RegExp(locator.value.regex, locator.value.flags)
+          return page.getByPlaceholder(pattern, { exact: false })
+        }
+        return page.getByPlaceholder(locator.value, { exact: locator.exact ?? false })
+      }
+      case "testId":
+        return page.getByTestId(locator.value)
+      case "xpath":
+        return page.locator(`xpath=${locator.value}`)
     }
   }
 }

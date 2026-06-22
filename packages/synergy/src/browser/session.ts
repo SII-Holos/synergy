@@ -1,15 +1,16 @@
-import { BrowserRuntime } from "./runtime.js"
 import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserTabImpl, type BrowserTab } from "./tab.js"
 import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession } from "./types.js"
 import { BrowserAnnotationHelper } from "./annotation.js"
+import type { BrowserDriver } from "./driver.js"
 export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
 
 const MAX_TABS = 10
 
 export class BrowserSessionImpl implements BrowserSession {
   readonly owner: BrowserOwner.Info
+  private driver: BrowserDriver.Driver
   private _tabs: BrowserTabImpl[] = []
   private _activeTab: BrowserTabImpl | null = null
   private _annotations: BrowserAnnotation[] = []
@@ -26,11 +27,9 @@ export class BrowserSessionImpl implements BrowserSession {
     return this._annotations
   }
 
-  constructor(owner: BrowserOwner.Info) {
+  constructor(owner: BrowserOwner.Info, driver: BrowserDriver.Driver) {
     this.owner = owner
-
-    // Register session with runtime
-    BrowserRuntime.registerSession(owner, this)
+    this.driver = driver
 
     // Restore saved state asynchronously (don't block constructor)
     this.restore().catch(() => {
@@ -38,25 +37,15 @@ export class BrowserSessionImpl implements BrowserSession {
     })
   }
 
-  private async ensureScopeContext(): Promise<string> {
-    const ctx = await BrowserRuntime.contextFor(this.owner)
-    return ctx.browserContextId
-  }
-
   async createTab(url?: string): Promise<BrowserTab> {
     if (this._tabs.length >= MAX_TABS) {
       throw new Error(`Maximum of ${MAX_TABS} tabs per session`)
     }
 
-    const state = BrowserRuntime.state()
-    if (!state.cdpConnection) {
-      throw new Error("Browser is not running")
-    }
-    const browserContextId = await this.ensureScopeContext()
+    const page = await this.driver.newPage(this.owner, url)
     const tab = new BrowserTabImpl({
-      browserCdp: state.cdpConnection,
+      page,
       directory: this.owner.directory,
-      browserContextId,
     })
     this._tabs.push(tab)
 
@@ -65,7 +54,11 @@ export class BrowserSessionImpl implements BrowserSession {
     }
 
     if (url) {
-      await tab.navigate(url)
+      try {
+        await tab.navigate(url)
+      } catch {
+        /* navigation may fail; tab still exists */
+      }
     }
 
     await this.save()
@@ -180,9 +173,6 @@ export class BrowserSessionImpl implements BrowserSession {
     const data = await BrowserStorage.load(this.owner)
     if (!data) return false
 
-    const state = BrowserRuntime.state()
-    if (!state.cdpConnection) return false
-
     // Clear existing tabs
     for (const tab of this._tabs) {
       try {
@@ -194,10 +184,11 @@ export class BrowserSessionImpl implements BrowserSession {
     this._tabs = []
     this._activeTab = null
 
-    // Restore tabs sorted by order
+    // Restore tabs sorted by order — create pages via driver
     const sorted = [...data.tabs].sort((a, b) => a.order - b.order)
     for (const saved of sorted) {
-      const tab = new BrowserTabImpl({ browserCdp: state.cdpConnection, directory: this.owner.directory, id: saved.id })
+      const page = await this.driver.newPage(this.owner)
+      const tab = new BrowserTabImpl({ page, directory: this.owner.directory, id: saved.id })
       tab.url = saved.url
       tab.title = saved.title
       tab.pinned = saved.pinned ?? false

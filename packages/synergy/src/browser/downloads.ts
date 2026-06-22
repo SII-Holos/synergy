@@ -1,3 +1,9 @@
+import type { Page } from "playwright"
+
+function nextId(): string {
+  return `dl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export namespace BrowserDownloads {
   export interface DownloadRecord {
     id: string
@@ -56,5 +62,36 @@ export namespace BrowserDownloads {
       if (TERMINAL_STATES.has(current.state)) return current
     }
     throw new Error(`waitForDownload timed out after ${timeoutMs}ms for ${id}`)
+  }
+
+  export function attachToPage(page: Page): void {
+    // Register download handler that populates in-memory records
+    page.on("download", async (download) => {
+      const id = nextId()
+      const tabID = ((download.page() as unknown as Record<string, unknown>)._synergyTabID as string) ?? "unknown"
+      const rec: DownloadRecord = {
+        id,
+        tabID,
+        url: download.url(),
+        suggestedFilename: download.suggestedFilename(),
+        state: "pending",
+        createdAt: Date.now(),
+      }
+      add(rec)
+      try {
+        const dpath = await download.path()
+        if (dpath) {
+          update(id, { state: "completed", path: dpath })
+        } else {
+          update(id, { state: "completed" })
+        }
+      } catch (err) {
+        update(id, { state: "failed" })
+      }
+    })
+  }
+
+  export async function waitForPageDownload(page: Page, id: string, timeoutMs = 30_000): Promise<DownloadRecord> {
+    return waitForDownload(id, timeoutMs)
   }
 }

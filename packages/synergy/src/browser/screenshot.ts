@@ -1,3 +1,6 @@
+import type { Page } from "playwright"
+import { BrowserLocator } from "./locator"
+
 export namespace BrowserScreenshot {
   export interface ResolvedBounds {
     x: number
@@ -46,5 +49,40 @@ export namespace BrowserScreenshot {
     if (input.clip) return { ...input.clip }
     if (input.locator && resolvedBounds) return computeClipForLocator(resolvedBounds, input.locator)
     return { x: 0, y: 0, width: 0, height: 0 }
+  }
+
+  /**
+   * Capture a screenshot of an element identified by locator using Playwright's locator.screenshot().
+   * Falls back to full-page or viewport capture if the locator doesn't match in time.
+   */
+  export async function captureLocator(
+    page: Page,
+    locator: BrowserLocator.LocatorInput,
+    opts?: { format?: "png" | "jpeg"; fullPage?: boolean },
+  ): Promise<{ buffer: Buffer; width: number; height: number }> {
+    const pwLocator = BrowserLocator.toPlaywrightLocator(page, locator)
+    const format = opts?.format ?? "png"
+
+    try {
+      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      const buf = (await pwLocator.screenshot({ type: format })) as Buffer
+      const box = await pwLocator.boundingBox()
+      return {
+        buffer: buf,
+        width: Math.round(box?.width ?? 0),
+        height: Math.round(box?.height ?? 0),
+      }
+    } catch {
+      // Locator not found or timed out; fall back to page-level screenshot.
+      const screenshotOpts: Parameters<Page["screenshot"]>[0] = { type: format }
+      if (opts?.fullPage) screenshotOpts.fullPage = true
+      const buf = (await page.screenshot(screenshotOpts)) as Buffer
+      const vp = page.viewportSize()
+      return {
+        buffer: buf,
+        width: vp?.width ?? 0,
+        height: vp?.height ?? 0,
+      }
+    }
   }
 }

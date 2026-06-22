@@ -1,3 +1,5 @@
+import type { Page } from "playwright"
+
 export namespace BrowserClipboard {
   export interface ClipboardResult {
     text: string | null
@@ -41,5 +43,49 @@ export namespace BrowserClipboard {
       result = result.slice(0, -1)
     }
     return result
+  }
+
+  // ── Playwright page-based clipboard operations ───────────────────
+
+  /**
+   * Grant clipboard read/write permissions on the Playwright browser context.
+   * Call before readViaPage or writeViaPage to ensure navigator.clipboard is available.
+   */
+  export async function grantPermissions(page: Page): Promise<void> {
+    try {
+      const ctx = page.context()
+      await ctx.grantPermissions(["clipboard-read", "clipboard-write"])
+    } catch {
+      // grantPermissions may not be available (mock mode, headless, etc.)
+    }
+  }
+
+  /**
+   * Read clipboard text via page.evaluate after granting permissions.
+   * Uses Playwright's page.evaluate with the readClipboard expression.
+   */
+  export async function readViaPage(page: Page): Promise<ClipboardResult> {
+    await grantPermissions(page)
+    try {
+      const raw = (await page.evaluate(buildReadClipboardExpr())) as string | null
+      const text = raw !== null && raw !== undefined ? sanitizeClipboardText(raw) : null
+      return { text, ok: text !== null }
+    } catch {
+      return { text: null, ok: false }
+    }
+  }
+
+  /**
+   * Write text to clipboard via page.evaluate after granting permissions.
+   * Uses Playwright's page.evaluate with the writeClipboard expression.
+   */
+  export async function writeViaPage(page: Page, text: string): Promise<ClipboardResult> {
+    await grantPermissions(page)
+    try {
+      const ok = (await page.evaluate(buildWriteClipboardExpr(text))) as boolean
+      return { text: ok ? text : null, ok: ok === true }
+    } catch {
+      return { text: null, ok: false }
+    }
   }
 }
