@@ -113,6 +113,23 @@ export const migrations: Migration[] = [
       log.info("blueprint fields migration complete", { totalNotes, scopes: scopeIDs.length })
     },
   },
+  {
+    id: "20260623-note-rebuild-blueprint-meta",
+    description: "Rebuild note metadata indices with blueprint status fields",
+    domain: "note",
+    dependsOn: ["20260623-note-add-blueprint-fields"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        done++
+        progress(done, scopeIDs.length)
+      }
+      log.info("blueprint metadata index rebuild scheduled", { scopes: scopeIDs.length })
+    },
+  },
 ]
 
 MigrationRegistry.register("note", migrations)

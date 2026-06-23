@@ -22,16 +22,6 @@ type LoopStatus = BlueprintLoopInfo["status"]
 
 type NoteCardInfo = NoteMetaInfo & {
   kind?: "note" | "blueprint"
-  sourceDirectory?: string
-  sourceScopeID?: string
-  blueprint?: NoteMetaInfo["blueprint"] & {
-    description?: string
-    status?: BlueprintStatus
-    defaultAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
 }
 
 type BlueprintVisualState = {
@@ -178,10 +168,7 @@ function NoteCard(props: {
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex max-w-[60%] items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-text-weak">
-          <Icon name="folder" class="size-2.5 shrink-0 text-text-weak" />
-          <span class="truncate text-10-medium leading-tight">{props.originName}</span>
-        </div>
+        <span class="sr-only">From {props.originName}</span>
       </Show>
 
       <div class="px-3.5 pt-3.5">
@@ -224,6 +211,12 @@ function NoteCard(props: {
           when={isBlueprint()}
           fallback={
             <div class="flex items-center gap-2">
+              <Show when={props.originName}>
+                <span class="note-card-origin">
+                  <Icon name="folder" class="size-3 shrink-0" />
+                  <span class="truncate">From {props.originName}</span>
+                </span>
+              </Show>
               <Show when={props.note.pinned}>
                 <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
                   <Icon name="pin" size="small" class="size-3" />
@@ -245,6 +238,12 @@ function NoteCard(props: {
             </Show>
           </div>
           <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
+            <Show when={props.originName}>
+              <span class="note-card-origin">
+                <Icon name="folder" class="size-3 shrink-0" />
+                <span class="truncate">From {props.originName}</span>
+              </span>
+            </Show>
             <span class="truncate">
               {getRunCount(props.note, props.loops ?? []) > 0
                 ? `${getRunCount(props.note, props.loops ?? [])} runs`
@@ -429,12 +428,7 @@ function ScopeSection(props: {
             </span>
           </Show>
         </button>
-        <button
-          type="button"
-          class="note-scope-new-button"
-          onClick={props.onCreateNote}
-          title="New note"
-        >
+        <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
           <Icon name="plus" size="small" />
         </button>
       </div>
@@ -460,11 +454,7 @@ function ScopeSection(props: {
               </For>
             </div>
             <Show when={hasMore()}>
-              <button
-                type="button"
-                class="note-scope-view-all"
-                onClick={props.onToggle}
-              >
+              <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
                 View all {props.group.notes.length} notes
                 <Icon name="chevron-right" size="small" class="size-3" />
               </button>

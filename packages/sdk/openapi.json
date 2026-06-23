@@ -19969,6 +19969,17 @@
           "blueprint": {
             "type": "object",
             "properties": {
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "default": "draft",
+                "type": "string",
+                "enum": ["draft", "ready", "archived"]
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },

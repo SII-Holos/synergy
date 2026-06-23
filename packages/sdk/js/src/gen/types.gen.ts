@@ -3338,6 +3338,9 @@ export type NoteMetaInfo = {
   searchText: string
   previewHtml?: string
   blueprint?: {
+    description?: string
+    status?: "draft" | "ready" | "archived"
+    defaultAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number

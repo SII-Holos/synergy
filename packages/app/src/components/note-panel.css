@@ -151,6 +151,18 @@
   background: color-mix(in srgb, var(--surface-inset-base) 30%, transparent);
 }
 
+.note-card-origin {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 8.5rem;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-weaker);
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
 .note-card-status {
   display: inline-flex;
   align-items: center;
