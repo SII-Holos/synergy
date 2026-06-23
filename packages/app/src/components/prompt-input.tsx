@@ -18,7 +18,7 @@ import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
 import { useInput, type ControlProfileId } from "@/context/input"
-import { useFile, type FileSelection } from "@/context/file"
+import { useFile } from "@/context/file"
 import {
   ContentPart,
   DEFAULT_PROMPT,
@@ -29,58 +29,46 @@ import {
   UploadedAttachmentPart,
   NoteAttachmentPart,
   SessionAttachmentPart,
-  FileAttachmentPart,
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
-import { useGlobalSync } from "@/context/global-sync"
-import { usePlatform } from "@/context/platform"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
-import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { ContextBar } from "@/components/context-bar"
 import { QuickActions } from "@/components/quick-actions"
 import { isGlobalScope } from "@/utils/scope"
-import {
-  isTextAttachmentFile,
-  preparePromptAttachment,
-  PromptAttachmentError,
-  uploadPromptAttachment,
-} from "@/utils/prompt-attachment"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
-import { FILE_INPUT_ACCEPT, ACCEPTED_FILE_TYPES } from "@/components/prompt-input/files"
+import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
 import { PLACEHOLDERS, PLACEHOLDERS_GLOBAL } from "@/components/prompt-input/placeholders"
-import type { AtOption, DroppedSessionData, PromptInputProps, SlashCommand } from "@/components/prompt-input/types"
+import type {
+  AtOption,
+  BlueprintSlot,
+  PromptInputProps,
+  PromptInputStore,
+  SlashCommand,
+} from "@/components/prompt-input/types"
 import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
-import {
-  createPromptPartID,
-  formatNoteContent,
-  formatSessionPreview,
-  formatSessionReference,
-  inlineLength,
-  inlineText,
-  isInlinePart,
-  SESSION_PREVIEW_MAX_MESSAGES,
-} from "@/components/prompt-input/content"
+import { usePromptSubmit } from "@/components/prompt-input/submit"
+import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
+import { inlineLength, inlineText, isInlinePart } from "@/components/prompt-input/content"
 import {
   createFilePill,
   createTextFragment,
@@ -90,35 +78,19 @@ import {
 } from "@/components/prompt-input/editor-dom"
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
-  const navigate = useNavigate()
   const sdk = useSDK()
   const sync = useSync()
-  const globalSync = useGlobalSync()
-  const platform = usePlatform()
   const input = useInput()
   const local = useLocal()
   const files = useFile()
   const prompt = usePrompt()
   const layout = useLayout()
   const params = useParams()
-  const dialog = useDialog()
   const command = useCommand()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
-
-  type DroppedBlueprintData = {
-    noteID: string
-    title: string
-  }
-
-  type BlueprintSlot = {
-    loopID: string
-    noteID: string
-    title: string
-    runMode: "current" | "new" | "worktree"
-  }
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
@@ -353,16 +325,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sessionAttachments().length > 0,
   )
 
-  const [store, setStore] = createStore<{
-    popover: "at" | "slash" | null
-    historyIndex: number
-    savedPrompt: Prompt | null
-    placeholder: number
-    dragging: boolean
-    mode: "normal" | "shell"
-    applyingHistory: boolean
-    switchingProfile: boolean
-  }>({
+  const [store, setStore] = createStore<PromptInputStore>({
     popover: null,
     historyIndex: -1,
     savedPrompt: null,
@@ -449,237 +412,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
-
-  const addAttachment = async (file: File) => {
-    if (!ACCEPTED_FILE_TYPES.includes(file.type) && !isTextAttachmentFile(file)) return
-
-    try {
-      const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
-      if (isTextAttachmentFile(file)) {
-        const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
-        const attachment: UploadedAttachmentPart = {
-          type: "attachment",
-          id: createPromptPartID(),
-          filename: file.name,
-          mime: uploaded.mime,
-          url: uploaded.url,
-        }
-        prompt.set([...prompt.current(), attachment], cursorPosition)
-        return
-      }
-
-      const prepared = await preparePromptAttachment(file)
-      if (prepared.mime.startsWith("image/")) {
-        const attachment: ImageAttachmentPart = {
-          type: "image",
-          id: createPromptPartID(),
-          filename: file.name,
-          mime: prepared.mime,
-          dataUrl: prepared.dataUrl,
-        }
-        prompt.set([...prompt.current(), attachment], cursorPosition)
-        return
-      }
-
-      const attachment: UploadedAttachmentPart = {
-        type: "attachment",
-        id: createPromptPartID(),
-        filename: file.name,
-        mime: prepared.mime,
-        url: prepared.dataUrl,
-      }
-      prompt.set([...prompt.current(), attachment], cursorPosition)
-    } catch (error) {
-      const description =
-        error instanceof PromptAttachmentError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : "This attachment couldn’t be prepared. Try another file."
-
-      showToast({
-        type: "error",
-        title: error instanceof PromptAttachmentError ? error.title : "Couldn’t attach file",
-        description,
-      })
-    }
-  }
-
-  const removeAttachment = (id: string) => {
-    const current = prompt.current()
-    const next = current.filter((part) => !("id" in part) || part.id !== id)
-    prompt.set(next, prompt.cursor())
-  }
-
-  const handlePaste = async (event: ClipboardEvent) => {
-    if (!isFocused()) return
-    const clipboardData = event.clipboardData
-    if (!clipboardData) return
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    const items = Array.from(clipboardData.items)
-    const imageItems = items.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
-
-    if (imageItems.length > 0) {
-      for (const item of imageItems) {
-        const file = item.getAsFile()
-        if (file) await addAttachment(file)
-      }
-      return
-    }
-
-    const plainText = clipboardData.getData("text/plain") ?? ""
-    addPart({ type: "text", content: plainText, start: 0, end: 0 })
-  }
-
-  const DROPPABLE_TYPES = [
-    "Files",
-    "application/x-synergy-note",
-    "application/x-synergy-session",
-    "application/x-synergy-blueprint",
-  ]
-
-  const handleDragOver = (event: DragEvent) => {
-    if (dialog.active) return
-
-    event.preventDefault()
-    const hasDroppable = event.dataTransfer?.types.some((t) => DROPPABLE_TYPES.includes(t))
-    if (hasDroppable) {
-      setStore("dragging", true)
-    }
-  }
-
-  const handleDragLeave = (event: DragEvent) => {
-    if (dialog.active) return
-
-    const currentTarget = event.currentTarget
-    const relatedTarget = event.relatedTarget
-    if (
-      currentTarget instanceof HTMLElement &&
-      relatedTarget instanceof Node &&
-      currentTarget.contains(relatedTarget)
-    ) {
-      return
-    }
-
-    setStore("dragging", false)
-  }
-
-  const handleDrop = async (event: DragEvent) => {
-    if (dialog.active) return
-
-    event.preventDefault()
-    setStore("dragging", false)
-
-    const sessionData = event.dataTransfer?.getData("application/x-synergy-session")
-    if (sessionData) {
-      try {
-        const dropped = JSON.parse(sessionData) as DroppedSessionData
-        if (!dropped.id || !dropped.directory) return
-        if (dropped.id === params.id && dropped.directory === sdk.directory) return
-        const existing = sessionAttachments().find(
-          (attachment) => attachment.sessionId === dropped.id && attachment.directory === dropped.directory,
-        )
-        if (existing) return
-        const attachment: SessionAttachmentPart = {
-          type: "session",
-          id: createPromptPartID(),
-          sessionId: dropped.id,
-          directory: dropped.directory,
-          title: dropped.title || "Untitled",
-          updatedAt: dropped.updatedAt,
-        }
-        const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
-        prompt.set([...prompt.current(), attachment], cursorPosition)
-      } catch {}
-      return
-    }
-
-    const noteData = event.dataTransfer?.getData("application/x-synergy-note")
-    if (noteData) {
-      try {
-        const { id: noteId, title, content } = JSON.parse(noteData)
-        const existing = noteAttachments().find((n) => n.noteId === noteId)
-        if (existing) return
-        const attachment: NoteAttachmentPart = {
-          type: "note",
-          id: createPromptPartID(),
-          noteId,
-          title: title || "Untitled",
-          content: content || "",
-        }
-        const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
-        prompt.set([...prompt.current(), attachment], cursorPosition)
-      } catch {}
-      return
-    }
-
-    const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
-    if (blueprintData) {
-      try {
-        const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
-        if (!dropped.noteID) return
-        if (localArmedLoop()) {
-          showToast({
-            type: "warning",
-            title: "Slot occupied",
-            description: "Remove the armed Blueprint before equipping another.",
-          })
-          return
-        }
-        setBlueprintLoading(true)
-        try {
-          // On a new-session page (no params.id), we cannot create a loop
-          // immediately — the session doesn't exist yet. Defer to submit flow.
-          const sessionID = params.id
-          if (!sessionID) {
-            showToast({
-              type: "warning",
-              title: "No session available",
-              description: "Start a session before equipping a Blueprint.",
-            })
-            return
-          }
-          const result = await sdk.client.blueprint.loop.create({
-            blueprintLoopCreateInput: {
-              noteID: dropped.noteID,
-              title: dropped.title || "Blueprint",
-              sessionID,
-              runMode: "current",
-            },
-          })
-          const loop = result.data as BlueprintLoopInfo | undefined
-          if (!loop) throw new Error("Loop creation returned no data")
-          setLocalArmedLoop({
-            loopID: loop.id,
-            noteID: loop.noteID,
-            title: loop.title,
-            runMode: loop.runMode ?? "current",
-          })
-        } catch (err) {
-          showToast({
-            type: "error",
-            title: "Failed to arm Blueprint",
-            description: err instanceof Error ? err.message : "Unknown error",
-          })
-        } finally {
-          setBlueprintLoading(false)
-        }
-      } catch {}
-      return
-    }
-
-    const dropped = event.dataTransfer?.files
-    if (!dropped) return
-
-    for (const file of Array.from(dropped)) {
-      if (ACCEPTED_FILE_TYPES.includes(file.type) || isTextAttachmentFile(file)) {
-        await addAttachment(file)
-      }
-    }
-  }
 
   createEffect(() => {
     if (!isFocused()) setStore("popover", null)
@@ -1054,6 +786,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setStore("popover", null)
   }
 
+  const { addAttachment, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
+    usePromptAttachments({
+      editor: () => editorRef,
+      isFocused,
+      addPart,
+      noteAttachments,
+      sessionAttachments,
+      localArmedLoop,
+      setLocalArmedLoop,
+      setBlueprintLoading,
+      setStore,
+    })
+
   const abort = () => {
     const sessionID = params.id!
     sdk.client.session.abort({ sessionID }).catch(() => {})
@@ -1294,517 +1039,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const handleSubmit = async (event: Event) => {
-    event.preventDefault()
-
-    const currentPrompt = prompt.current()
-    const text = currentPrompt.map((part) => ("content" in part && part.type === "text" ? part.content : "")).join("")
-    const images = imageAttachments().slice()
-    const attachments = uploadedAttachments().slice()
-    const notes = noteAttachments().slice()
-    const sessions = sessionAttachments().slice()
-    const mode = store.mode
-
-    if (
-      text.trim().length === 0 &&
-      images.length === 0 &&
-      attachments.length === 0 &&
-      notes.length === 0 &&
-      sessions.length === 0
-    ) {
-      if (working()) abort()
-      return
-    }
-
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!currentModel || !currentAgent) {
-      showToast({
-        type: "warning",
-        title: "Select an agent and model",
-        description: "Choose an agent and model before sending a prompt.",
-      })
-      return
-    }
-
-    const errorMessage = (err: unknown) => {
-      if (err && typeof err === "object" && "data" in err) {
-        const data = (err as { data?: { message?: string } }).data
-        if (data?.message) return data.message
-      }
-      if (err instanceof Error) return err.message
-      return "Request failed"
-    }
-    const armedSlot = localArmedLoop()
-    if (armedSlot && mode === "normal") {
-      setBlueprintLoading(true)
-      try {
-        const userText = inlineText(currentPrompt).trim()
-        await sdk.client.blueprint.loop.start({
-          id: armedSlot.loopID,
-          userPrompt: userText || undefined,
-        })
-        setLocalArmedLoop(null)
-        prompt.reset()
-        setStore("mode", "normal")
-        setStore("popover", null)
-      } catch (err) {
-        showToast({
-          type: "error",
-          title: "Failed to start Blueprint",
-          description: err instanceof Error ? err.message : "Unknown error",
-        })
-      } finally {
-        setBlueprintLoading(false)
-      }
-      return
-    }
-    addToHistory(currentPrompt, mode)
-    setStore("historyIndex", -1)
-    setStore("savedPrompt", null)
-
-    const projectDirectory = sdk.directory
-    const isNewSession = !params.id
-    const worktreeSelection = props.newSessionWorktree ?? "main"
-
-    let sessionDirectory = projectDirectory
-    let client = sdk.client
-
-    if (isNewSession) {
-      if (worktreeSelection === "create") {
-        const createdWorktree = await client.worktree
-          .create({ directory: projectDirectory })
-          .then((x) => x.data)
-          .catch((err) => {
-            showToast({
-              type: "error",
-              title: "Failed to create worktree",
-              description: errorMessage(err),
-            })
-            return undefined
-          })
-
-        if (!createdWorktree?.path) {
-          showToast({
-            type: "error",
-            title: "Failed to create worktree",
-            description: "Request failed",
-          })
-          return
-        }
-        sessionDirectory = createdWorktree.path
-      }
-
-      if (worktreeSelection !== "main" && worktreeSelection !== "create") {
-        sessionDirectory = worktreeSelection
-      }
-
-      if (sessionDirectory !== projectDirectory) {
-        client = createSynergyClient({
-          baseUrl: sdk.url,
-          fetch: platform.fetch,
-          directory: sessionDirectory,
-          throwOnError: true,
-        })
-        globalSync.child(sessionDirectory)
-      }
-
-      props.onNewSessionWorktreeReset?.()
-    }
-    let createdSessionForSubmit = false
-
-    let session = info()
-    if (!session && isNewSession) {
-      session = await client.session
-        .create({ controlProfile: selectedControlProfile() })
-        .then((x) => x.data ?? undefined)
-      if (session) {
-        createdSessionForSubmit = true
-        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
-      }
-    }
-    if (!session && params.id) {
-      await sync.session.sync(params.id)
-      session = info()
-    }
-    if (!session) return
-    if (isNewSession && session.controlProfile !== selectedControlProfile()) {
-      session = await client.session
-        .update({ sessionID: session.id, controlProfile: selectedControlProfile() })
-        .then((x) => x.data ?? session)
-        .catch(() => session)
-    }
-    const activeSession = session!
-
-    const model = {
-      modelID: currentModel.id,
-      providerID: currentModel.provider.id,
-    }
-    const agent = currentAgent.name
-    const variant = local.model.variant.current()
-
-    const clearInput = () => {
-      prompt.reset()
-      setStore("mode", "normal")
-      setStore("popover", null)
-      setLocalArmedLoop(null)
-    }
-
-    const restoreInput = () => {
-      prompt.set(currentPrompt, promptLength(currentPrompt))
-      setStore("mode", mode)
-      setStore("popover", null)
-      requestAnimationFrame(() => {
-        editorRef.focus()
-        setCursorPosition(editorRef, promptLength(currentPrompt))
-        queueScroll()
-      })
-    }
-
-    const rollbackCreatedSession = async () => {
-      if (!createdSessionForSubmit) return
-      await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
-      navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
-    }
-
-    if (mode === "shell") {
-      clearInput()
-      client.session
-        .shell({
-          sessionID: activeSession.id,
-          agent,
-          model,
-          command: text,
-        })
-        .catch((err) => {
-          showToast({
-            type: "error",
-            title: "Failed to send shell command",
-            description: errorMessage(err),
-          })
-          rollbackCreatedSession()
-          restoreInput()
-        })
-      return
-    }
-
-    if (text.startsWith("/")) {
-      const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
-      const customCommand = sync.data.command.find((c) => c.name === commandName)
-      if (customCommand) {
-        clearInput()
-        client.session
-          .command({
-            sessionID: activeSession.id,
-            command: commandName,
-            arguments: args.join(" "),
-            agent,
-            model: `${model.providerID}/${model.modelID}`,
-            variant,
-            parts: [
-              ...images.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "file" as const,
-                mime: attachment.mime,
-                url: attachment.dataUrl,
-                filename: attachment.filename,
-              })),
-              ...attachments.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "file" as const,
-                mime: attachment.mime,
-                url: attachment.url,
-                filename: attachment.filename,
-              })),
-              ...notes.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "file" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-                filename: `${attachment.title || "Untitled"}.md`,
-                metadata: {
-                  kind: "note",
-                  noteId: attachment.noteId,
-                  title: attachment.title || "Untitled",
-                },
-              })),
-              ...sessions.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "file" as const,
-                mime: "text/plain",
-                url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
-                filename: `${attachment.title || "session"}.session.txt`,
-                metadata: {
-                  kind: "session",
-                  sessionId: attachment.sessionId,
-                  directory: attachment.directory,
-                  title: attachment.title || "Untitled",
-                  updatedAt: attachment.updatedAt,
-                },
-              })),
-            ],
-          })
-          .catch((err) => {
-            showToast({
-              type: "error",
-              title: "Failed to send command",
-              description: errorMessage(err),
-            })
-            rollbackCreatedSession()
-            restoreInput()
-          })
-        return
-      }
-    }
-
-    const toAbsolutePath = (path: string) =>
-      path.startsWith("/") ? path : (sessionDirectory + "/" + path).replace("//", "/")
-
-    const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
-      const [childStore] = globalSync.child(attachment.directory)
-      const cachedMessages = childStore.message[attachment.sessionId]
-      if (cachedMessages !== undefined) {
-        return {
-          messages: cachedMessages,
-          getParts: (messageID: string) => childStore.part[messageID] ?? [],
-        }
-      }
-
-      const response = await client.session.messages({
-        directory: attachment.directory,
-        sessionID: attachment.sessionId,
-        limit: SESSION_PREVIEW_MAX_MESSAGES,
-      })
-      const items = (response.data ?? []).filter((item) => !!item?.info?.id)
-      const messages = items
-        .map((item) => item.info)
-        .filter((message) => !!message?.id)
-        .slice()
-        .sort((a, b) => a.id.localeCompare(b.id))
-      const partsByMessage = new Map(items.map((item) => [item.info.id, item.parts]))
-      return {
-        messages,
-        getParts: (messageID: string) => partsByMessage.get(messageID) ?? [],
-      }
-    }
-
-    const createSessionAttachmentPart = async (attachment: SessionAttachmentPart) => {
-      let content = formatSessionReference(attachment)
-      try {
-        const preview = await getSessionPreviewData(attachment)
-        content = formatSessionPreview({
-          attachment,
-          sessionMessages: preview.messages,
-          getParts: preview.getParts,
-        })
-      } catch {}
-
-      return {
-        id: Identifier.ascending("part"),
-        type: "file" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64Encode(content)}`,
-        filename: `${attachment.title || "session"}.session.txt`,
-        metadata: {
-          kind: "session",
-          sessionId: attachment.sessionId,
-          directory: attachment.directory,
-          title: attachment.title || "Untitled",
-          updatedAt: attachment.updatedAt,
-        },
-      }
-    }
-
-    const sessionAttachmentParts = await Promise.all(sessions.map(createSessionAttachmentPart))
-
-    const fileAttachments = currentPrompt.filter((part) => part.type === "file") as FileAttachmentPart[]
-
-    const fileAttachmentParts = fileAttachments.map((attachment) => {
-      const absolute = toAbsolutePath(attachment.path)
-      const query = attachment.selection
-        ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
-        : ""
-      return {
-        id: Identifier.ascending("part"),
-        type: "file" as const,
-        mime: "text/plain",
-        url: `file://${absolute}${query}`,
-        filename: getFilename(attachment.path),
-        source: {
-          type: "file" as const,
-          text: {
-            value: attachment.content,
-            start: attachment.start,
-            end: attachment.end,
-          },
-          path: absolute,
-        },
-      }
-    })
-
-    const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
-
-    const contextFileParts: Array<{
-      id: string
-      type: "file"
-      mime: string
-      url: string
-      filename?: string
-    }> = []
-
-    const addContextFile = (path: string, selection?: FileSelection) => {
-      const absolute = toAbsolutePath(path)
-      const query = selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
-      const url = `file://${absolute}${query}`
-      if (usedUrls.has(url)) return
-      usedUrls.add(url)
-      contextFileParts.push({
-        id: Identifier.ascending("part"),
-        type: "file",
-        mime: "text/plain",
-        url,
-        filename: getFilename(path),
-      })
-    }
-
-    const activePath = activeFile()
-    if (activePath && prompt.context.activeTab()) {
-      addContextFile(activePath)
-    }
-
-    for (const item of prompt.context.items()) {
-      if (item.type !== "file") continue
-      addContextFile(item.path, item.selection)
-    }
-
-    const imageAttachmentParts = images.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "file" as const,
-      mime: attachment.mime,
-      url: attachment.dataUrl,
-      filename: attachment.filename,
-    }))
-
-    const uploadedAttachmentParts = attachments.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "file" as const,
-      mime: attachment.mime,
-      url: attachment.url,
-      filename: attachment.filename,
-    }))
-
-    const noteAttachmentParts = notes.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "file" as const,
-      mime: "text/plain",
-      url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-      filename: `${attachment.title || "Untitled"}.md`,
-      metadata: {
-        kind: "note",
-        noteId: attachment.noteId,
-        title: attachment.title || "Untitled",
-      },
-    }))
-
-    const messageID = Identifier.ascending("message")
-    const textPart = {
-      id: Identifier.ascending("part"),
-      type: "text" as const,
-      text,
-    }
-    const requestParts = [
-      textPart,
-      ...fileAttachmentParts,
-      ...contextFileParts,
-      ...imageAttachmentParts,
-      ...uploadedAttachmentParts,
-      ...noteAttachmentParts,
-      ...sessionAttachmentParts,
-    ]
-
-    const optimisticParts = requestParts.map((part) => ({
-      ...part,
-      sessionID: activeSession.id,
-      messageID,
-    })) as unknown as Part[]
-
-    const optimisticMessage: Message = {
-      id: messageID,
-      sessionID: activeSession.id,
-      role: "user",
-      time: { created: Date.now() },
-      agent,
-      model,
-    }
-
-    const setSyncStore = sessionDirectory === projectDirectory ? sync.set : globalSync.child(sessionDirectory)[1]
-
-    const addOptimisticMessage = () => {
-      setSyncStore(
-        produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (!messages) {
-            draft.message[activeSession.id] = [optimisticMessage]
-          } else {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            messages.splice(result.index, 0, optimisticMessage)
-          }
-          draft.part[messageID] = optimisticParts
-            .filter((p) => !!p?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
-        }),
-      )
-    }
-
-    const removeOptimisticMessage = () => {
-      setSyncStore(
-        produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (messages) {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            if (result.found) messages.splice(result.index, 1)
-          }
-          delete draft.part[messageID]
-        }),
-      )
-    }
-
-    clearInput()
-    addOptimisticMessage()
-
-    const wsConnected = sdk.connected()
-
-    client.session
-      .promptAsync({
-        sessionID: activeSession.id,
-        agent,
-        model,
-        messageID,
-        parts: requestParts,
-        variant,
-      })
-      .then(() => {
-        if (!wsConnected) {
-          showToast({
-            type: "warning",
-            title: "Message sent",
-            description: "Response will appear after reconnection",
-          })
-        }
-      })
-      .catch((err) => {
-        showToast({
-          type: "error",
-          title: "Failed to send prompt",
-          description: errorMessage(err),
-        })
-        removeOptimisticMessage()
-        rollbackCreatedSession()
-        restoreInput()
-      })
-  }
+  const handleSubmit = usePromptSubmit({
+    props,
+    imageAttachments,
+    uploadedAttachments,
+    noteAttachments,
+    sessionAttachments,
+    activeFile,
+    selectedControlProfile,
+    localArmedLoop,
+    setLocalArmedLoop,
+    setBlueprintLoading,
+    store,
+    setStore,
+    addToHistory,
+    working,
+    abort,
+    editor: () => editorRef,
+    queueScroll,
+  })
 
   return (
     <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible">

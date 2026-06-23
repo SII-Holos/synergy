@@ -7,6 +7,31 @@ export type DroppedSessionData = {
   updatedAt?: number
 }
 
+export type BlueprintSlot = {
+  loopID: string
+  noteID: string
+  title: string
+  runMode: "current" | "new" | "worktree"
+}
+
+export type DroppedBlueprintData = {
+  noteID: string
+  title: string
+}
+
+export type PromptInputMode = "normal" | "shell"
+
+export type PromptInputStore = {
+  popover: PromptPopoverMode
+  historyIndex: number
+  savedPrompt: import("@/context/prompt").Prompt | null
+  placeholder: number
+  dragging: boolean
+  mode: PromptInputMode
+  applyingHistory: boolean
+  switchingProfile: boolean
+}
+
 export interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
