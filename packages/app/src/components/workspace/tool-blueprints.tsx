@@ -1,4 +1,5 @@
 import { BlueprintPanel } from "@/components/blueprint-panel"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useWorkspace } from "@/context/workspace"
 import { onMount, onCleanup } from "solid-js"
 
@@ -9,7 +10,7 @@ export function WorkspaceBlueprintsTool() {
     workspace.register({
       id: "blueprints",
       label: "Blueprints",
-      icon: "workflow",
+      icon: getSemanticIcon("orchestration.blueprint"),
       component: () => <BlueprintPanel />,
     })
   })

@@ -2,6 +2,7 @@ import { createMemo, createResource, createSignal, For, Show, createEffect, onCl
 import { useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
@@ -616,12 +617,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const [dirty, setDirty] = createSignal(false)
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
+  const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
   let saveInFlight: Promise<void> | undefined
 
   const noteLoaded = createMemo(() => !!baseNote())
+  const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
 
   function remoteConflict() {
     const current = conflict()
@@ -913,20 +916,40 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function convertToBlueprint() {
     const dir = directory()
     const base = baseNote()
-    if (!dir || !base) return
+    if (!dir || !base || isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this note to a Blueprint.",
+      })
+      return
+    }
 
+    setConvertingBlueprint(true)
     try {
-      await sdk.client.note.update({
+      const result = await sdk.client.note.update({
         id: base.id,
         directory: dir,
         notePatchInput: {
           kind: "blueprint",
           blueprint: { status: "draft" as const },
+          expectedVersion: base.version,
         },
       })
-      await refetch()
-    } catch (e) {
-      console.error("Failed to convert note to blueprint", e)
+      applySnapshot(result.data as NoteInfo)
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This note changed before it could be converted to a Blueprint.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert note to blueprint", error)
+    } finally {
+      setConvertingBlueprint(false)
     }
   }
 
@@ -1006,11 +1029,21 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-interactive-base"
+              class="flex size-8 items-center justify-center rounded-full border shadow-sm transition-all"
+              classList={{
+                "border-border-interactive-base bg-surface-interactive-base/14 text-text-interactive-base":
+                  isBlueprint(),
+                "border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak hover:bg-surface-raised-base-hover hover:text-text-interactive-base":
+                  !isBlueprint(),
+                "opacity-60 cursor-not-allowed": convertingBlueprint(),
+              }}
               onClick={convertToBlueprint}
-              title="Convert to Blueprint"
+              title={isBlueprint() ? "Already a Blueprint" : "Convert to Blueprint"}
+              disabled={isBlueprint() || convertingBlueprint()}
             >
-              <Icon name="workflow" size="small" />
+              <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                <Icon name={getSemanticIcon("orchestration.blueprint")} size="small" />
+              </Show>
             </button>
 
             <button

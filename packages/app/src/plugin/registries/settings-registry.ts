@@ -1,4 +1,5 @@
 import type { Component } from "solid-js"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface SettingsSection {
   id: string
@@ -35,7 +36,7 @@ export function getSettingsSection(id: string): SettingsSection | undefined {
 const BUILTIN_SECTIONS: SettingsSection[] = [
   { id: "general", label: "General", icon: "sliders-horizontal", group: "Core" },
   { id: "models", label: "Models", icon: "cpu", group: "Core" },
-  { id: "mcp", label: "MCP", icon: "cable", group: "Integrations" },
+  { id: "mcp", label: "MCP", icon: getSemanticIcon("connection.mcp"), group: "Integrations" },
   { id: "plugins", label: "Plugins", icon: "package", group: "Integrations" },
   { id: "email", label: "Email", icon: "mail", group: "Integrations" },
   { id: "channels", label: "Channels", icon: "globe", group: "Integrations" },
