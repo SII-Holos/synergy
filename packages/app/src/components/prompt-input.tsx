@@ -25,7 +25,6 @@ import {
   isPromptEqual,
   Prompt,
   usePrompt,
-  TextPart,
   ImageAttachmentPart,
   UploadedAttachmentPart,
   NoteAttachmentPart,
@@ -53,7 +52,6 @@ import { getAgentVisual } from "@/components/agent-visual"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { ContextBar } from "@/components/context-bar"
 import { QuickActions } from "@/components/quick-actions"
@@ -66,266 +64,30 @@ import {
 } from "@/utils/prompt-attachment"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
-
-type InlinePart = TextPart | FileAttachmentPart
-
-function isInlinePart(part: ContentPart): part is InlinePart {
-  return part.type === "text" || part.type === "file"
-}
-
-function inlineText(parts: Prompt): string {
-  return parts
-    .filter(isInlinePart)
-    .map((p) => p.content)
-    .join("")
-}
-
-function inlineLength(parts: Prompt): number {
-  return parts.filter(isInlinePart).reduce((len, p) => len + p.content.length, 0)
-}
-
-function createPromptPartID(): string {
-  return Identifier.ascending("part")
-}
-
-const NOTE_PREVIEW_MAX_LINES = 2000
-const SESSION_PREVIEW_MAX_MESSAGES = 24
-const SESSION_PREVIEW_MAX_TEXT_LENGTH = 12000
-
-type DroppedSessionData = {
-  id: string
-  directory: string
-  title?: string
-  updatedAt?: number
-}
-
-function formatSessionReference(attachment: SessionAttachmentPart): string {
-  return `<session-ref id="${attachment.sessionId}" directory="${attachment.directory}" title="${attachment.title || "Untitled"}" />`
-}
-
-function formatNoteContent(attachment: NoteAttachmentPart): string {
-  const lines = attachment.content.split("\n")
-  const truncated = lines.length > NOTE_PREVIEW_MAX_LINES
-  const visible = truncated ? lines.slice(0, NOTE_PREVIEW_MAX_LINES).join("\n") : attachment.content
-  const title = attachment.title || "Untitled"
-
-  let result = `<note id="${attachment.noteId}" title="${title}">\n\n${visible}`
-
-  if (truncated) {
-    result += `\n\n[Truncated at line ${NOTE_PREVIEW_MAX_LINES} of ${lines.length} total — use note_read(id="${attachment.noteId}", offset=${NOTE_PREVIEW_MAX_LINES}) to view remaining content]`
-  }
-
-  result += "\n\n</note>"
-  return result
-}
-
-function formatSessionPreview(input: {
-  attachment: SessionAttachmentPart
-  sessionMessages: Message[]
-  getParts: (messageID: string) => Part[]
-}): string {
-  const { attachment, sessionMessages, getParts } = input
-  const title = attachment.title || "Untitled"
-  const messages = sessionMessages.slice(-SESSION_PREVIEW_MAX_MESSAGES)
-  const previewBlocks: string[] = []
-  let totalLength = 0
-  let truncated = sessionMessages.length > messages.length
-
-  for (const message of messages) {
-    const parts = getParts(message.id)
-    const text = parts
-      .filter((part): part is Part & { type: "text"; text: string } => part.type === "text")
-      .map((part) => part.text.trim())
-      .filter(Boolean)
-      .join("\n\n")
-    if (!text) continue
-
-    const role = message.role === "assistant" ? "assistant" : "user"
-    const block = `<message role="${role}" id="${message.id}">\n${text}\n</message>`
-    if (totalLength + block.length > SESSION_PREVIEW_MAX_TEXT_LENGTH) {
-      truncated = true
-      break
-    }
-    previewBlocks.push(block)
-    totalLength += block.length
-  }
-
-  let result = `<session-ref id="${attachment.sessionId}" directory="${attachment.directory}" title="${title}">\n`
-  if (previewBlocks.length > 0) {
-    result += `\n${previewBlocks.join("\n\n")}\n`
-  } else {
-    result += "\n[No text messages available in cached preview]\n"
-  }
-  if (truncated) {
-    result += `\n[Truncated preview — open session ${attachment.sessionId} for fuller context]\n`
-  }
-  result += "\n</session-ref>"
-  return result
-}
-
-const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-const ACCEPTED_DOCUMENT_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-]
-const ACCEPTED_TEXT_EXTENSIONS = [
-  ".c",
-  ".cc",
-  ".cpp",
-  ".cs",
-  ".css",
-  ".csv",
-  ".go",
-  ".graphql",
-  ".h",
-  ".hpp",
-  ".html",
-  ".ini",
-  ".java",
-  ".js",
-  ".json",
-  ".jsx",
-  ".kt",
-  ".less",
-  ".log",
-  ".lua",
-  ".m",
-  ".md",
-  ".mjs",
-  ".patch",
-  ".php",
-  ".pl",
-  ".py",
-  ".rb",
-  ".rs",
-  ".scss",
-  ".sh",
-  ".sql",
-  ".svg",
-  ".svelte",
-  ".swift",
-  ".tex",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".vue",
-  ".xml",
-  ".yaml",
-  ".yml",
-]
-const ACCEPTED_TEXT_MIME_PATTERNS = [
-  "text/*",
-  "application/json",
-  "application/xml",
-  "application/yaml",
-  "application/x-yaml",
-]
-const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_DOCUMENT_TYPES]
-const FILE_INPUT_ACCEPT = [...ACCEPTED_FILE_TYPES, ...ACCEPTED_TEXT_MIME_PATTERNS, ...ACCEPTED_TEXT_EXTENSIONS].join(
-  ",",
-)
-
-type PermissionModeVisual = {
-  id: ControlProfileId
-  label: string
-  shortLabel: string
-  description: string
-  icon: "shield-check" | "orbit" | "shield-alert"
-  iconClass: string
-}
-
-const PERMISSION_MODES: PermissionModeVisual[] = [
-  {
-    id: "guarded",
-    label: "Guarded",
-    shortLabel: "Guarded",
-    description:
-      "Auto-approve safe edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
-    icon: "shield-check",
-    iconClass: "text-icon-success-base",
-  },
-  {
-    id: "autonomous",
-    label: "Autonomous",
-    shortLabel: "Auto",
-    description: "Keep working unattended. High-risk actions are denied instead of prompting.",
-    icon: "orbit",
-    iconClass: "text-icon-interactive-base",
-  },
-  {
-    id: "full_access",
-    label: "Full Access",
-    shortLabel: "Full",
-    description: "Allow all tool requests without approval prompts or workspace sandboxing.",
-    icon: "shield-alert",
-    iconClass: "text-icon-warning-base",
-  },
-]
-function permissionModeVisual(id: string | undefined): PermissionModeVisual {
-  return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[0]
-}
-
-interface PromptInputProps {
-  class?: string
-  ref?: (el: HTMLDivElement) => void
-  newSessionWorktree?: string
-  onNewSessionWorktreeReset?: () => void
-  hideAgentSelector?: boolean
-}
-
-const PLACEHOLDERS = [
-  "Fix a TODO in the codebase",
-  "What is the tech stack of this project?",
-  "Fix broken tests",
-  "Explain how authentication works",
-  "Find and fix security vulnerabilities",
-  "Add unit tests for the user service",
-  "Refactor this function to be more readable",
-  "What does this error mean?",
-  "Help me debug this issue",
-  "Generate API documentation",
-  "Optimize database queries",
-  "Add input validation",
-  "Create a new component for...",
-  "How do I deploy this project?",
-  "Review my code for best practices",
-  "Add error handling to this function",
-  "Explain this regex pattern",
-  "Convert this to TypeScript",
-  "Add logging throughout the codebase",
-  "What dependencies are outdated?",
-  "Help me write a migration script",
-  "Implement caching for this endpoint",
-  "Add pagination to this list",
-  "Create a CLI command for...",
-  "How do environment variables work here?",
-]
-
-const PLACEHOLDERS_GLOBAL = [
-  "What's on your mind?",
-  "Help me write an email",
-  "Summarize this article for me",
-  "Brainstorm ideas for...",
-  "Explain quantum computing simply",
-  "Plan a trip to Tokyo",
-  "Help me prepare for an interview",
-  "Draft a blog post about...",
-  "Compare pros and cons of...",
-  "Translate this to French",
-]
-
-interface SlashCommand {
-  id: string
-  trigger: string
-  title: string
-  description?: string
-  keybind?: string
-  type: "builtin" | "custom"
-  kind?: "prompt" | "action"
-}
+import { FILE_INPUT_ACCEPT, ACCEPTED_FILE_TYPES } from "@/components/prompt-input/files"
+import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
+import { PLACEHOLDERS, PLACEHOLDERS_GLOBAL } from "@/components/prompt-input/placeholders"
+import type { AtOption, DroppedSessionData, PromptInputProps, SlashCommand } from "@/components/prompt-input/types"
+import { PromptAttachments } from "@/components/prompt-input/attachments"
+import { PromptPopover } from "@/components/prompt-input/popover"
+import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
+import {
+  createPromptPartID,
+  formatNoteContent,
+  formatSessionPreview,
+  formatSessionReference,
+  inlineLength,
+  inlineText,
+  isInlinePart,
+  SESSION_PREVIEW_MAX_MESSAGES,
+} from "@/components/prompt-input/content"
+import {
+  createFilePill,
+  createTextFragment,
+  getCursorPosition,
+  getNodeLength,
+  setCursorPosition,
+} from "@/components/prompt-input/editor-dom"
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const navigate = useNavigate()
@@ -360,6 +122,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const idle = { type: "idle" as const }
+  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
+  const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const sendShortcut = createMemo(() => input.sendShortcut())
+  const activeFile = createMemo(() => {
+    const tab = tabs().active()
+    if (!tab) return
+    return files.pathFromTab(tab)
+  })
+  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
+  const working = createMemo(() => status()?.type !== "idle")
+  const planMode = createMemo(() => info()?.blueprint?.planMode ?? false)
 
   const [sessionLoop] = createResource(
     () => (params.id ? info()?.blueprint?.loopID : null),
@@ -479,20 +254,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const queueScroll = () => {
     requestAnimationFrame(scrollCursorIntoView)
   }
-
-  const idle = { type: "idle" as const }
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
-  const sendShortcut = createMemo(() => input.sendShortcut())
-  const activeFile = createMemo(() => {
-    const tab = tabs().active()
-    if (!tab) return
-    return files.pathFromTab(tab)
-  })
-  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
-  const working = createMemo(() => status()?.type !== "idle")
-  const planMode = createMemo(() => info()?.blueprint?.planMode ?? false)
 
   const togglePlanMode = async () => {
     if (!params.id) return
@@ -924,8 +685,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!isFocused()) setStore("popover", null)
   })
 
-  type AtOption = { type: "file"; path: string; display: string }
-
   const handleAtSelect = (option: AtOption | undefined) => {
     if (!option) return
     addPart({ type: "file", path: option.path, content: "@" + option.path, start: 0, end: 0 })
@@ -1014,17 +773,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onSelect: handleSlashSelect,
   })
 
-  const createPill = (part: FileAttachmentPart) => {
-    const pill = document.createElement("span")
-    pill.textContent = part.content
-    pill.setAttribute("data-type", "file")
-    pill.setAttribute("data-path", part.path)
-    pill.setAttribute("contenteditable", "false")
-    pill.style.userSelect = "text"
-    pill.style.cursor = "default"
-    return pill
-  }
-
   const isNormalizedEditor = () =>
     Array.from(editorRef.childNodes).every((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -1054,7 +802,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         continue
       }
       if (part.type === "file") {
-        editorRef.appendChild(createPill(part))
+        editorRef.appendChild(createFilePill(part))
       }
     }
   }
@@ -1260,7 +1008,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const atMatch = textBeforeCursor.match(/@(\S*)$/)
 
     if (part.type === "file") {
-      const pill = createPill(part)
+      const pill = createFilePill(part)
       const gap = document.createTextNode(" ")
       const range = selection.getRangeAt(0)
 
@@ -2072,79 +1820,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </div>
       </Show>
       <Show when={store.popover}>
-        <div
-          ref={(el) => {
-            if (store.popover === "slash") slashPopoverRef = el
-          }}
-          class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10
-                 overflow-auto no-scrollbar flex flex-col p-2 rounded-md
-                 border border-border-base bg-surface-raised-stronger-non-alpha shadow-md"
-        >
-          <Switch>
-            <Match when={store.popover === "at"}>
-              <Show
-                when={atFlat().length > 0}
-                fallback={<div class="text-text-weak px-2 py-1">No matching results</div>}
-              >
-                <For each={atFlat().slice(0, 10)}>
-                  {(item) => (
-                    <button
-                      classList={{
-                        "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5": true,
-                        "bg-surface-raised-base-hover": atActive() === atKey(item),
-                      }}
-                      onClick={() => handleAtSelect(item)}
-                    >
-                      <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-4" />
-                      <div class="flex items-center text-14-regular min-w-0">
-                        <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(item.path)}</span>
-                        <Show when={!item.path.endsWith("/")}>
-                          <span class="text-text-strong whitespace-nowrap">{getFilename(item.path)}</span>
-                        </Show>
-                      </div>
-                    </button>
-                  )}
-                </For>
-              </Show>
-            </Match>
-            <Match when={store.popover === "slash"}>
-              <Show
-                when={slashFlat().length > 0}
-                fallback={<div class="text-text-weak px-2 py-1">No matching commands</div>}
-              >
-                <For each={slashFlat()}>
-                  {(cmd) => (
-                    <button
-                      data-slash-id={cmd.id}
-                      classList={{
-                        "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
-                        "bg-surface-raised-base-hover": slashActive() === cmd.id,
-                      }}
-                      onClick={() => handleSlashSelect(cmd)}
-                    >
-                      <div class="flex items-center gap-2 min-w-0">
-                        <span class="text-14-regular text-text-strong whitespace-nowrap">/{cmd.trigger}</span>
-                        <Show when={cmd.description}>
-                          <span class="text-14-regular text-text-weak truncate">{cmd.description}</span>
-                        </Show>
-                      </div>
-                      <div class="flex items-center gap-2 shrink-0">
-                        <Show when={cmd.type === "custom"}>
-                          <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                            {cmd.kind === "action" ? "action" : "prompt"}
-                          </span>
-                        </Show>
-                        <Show when={command.keybind(cmd.id)}>
-                          <span class="text-12-regular text-text-subtle">{command.keybind(cmd.id)}</span>
-                        </Show>
-                      </div>
-                    </button>
-                  )}
-                </For>
-              </Show>
-            </Match>
-          </Switch>
-        </div>
+        <PromptPopover
+          mode={() => store.popover}
+          setSlashRef={(el) => (slashPopoverRef = el)}
+          atItems={atFlat}
+          atActive={atActive}
+          atKey={atKey}
+          onAtSelect={handleAtSelect}
+          slashItems={slashFlat}
+          slashActive={slashActive}
+          onSlashSelect={handleSlashSelect}
+          keybindFor={(id) => command.keybind(id)}
+        />
       </Show>
       <form
         onSubmit={handleSubmit}
@@ -2231,84 +1918,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </Show>
         <Show when={hasAttachments()}>
-          <div class="flex flex-wrap gap-2 px-3 pt-3">
-            <For each={imageAttachments()}>
-              {(attachment) => (
-                <div class="relative group">
-                  <img
-                    src={attachment.dataUrl}
-                    alt={attachment.filename}
-                    class="size-16 rounded-md object-cover border border-border-base"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(attachment.id)}
-                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                  >
-                    <Icon name="x" class="size-3 text-text-weak" />
-                  </button>
-                  <div class="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/50 rounded-b-md">
-                    <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
-                  </div>
-                </div>
-              )}
-            </For>
-            <For each={uploadedAttachments()}>
-              {(attachment) => (
-                <div class="relative group">
-                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                    <FileIcon node={{ path: attachment.filename, type: "file" }} class="shrink-0 size-5" />
-                    <span class="text-12-medium text-text-base max-w-[160px] truncate">{attachment.filename}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(attachment.id)}
-                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                  >
-                    <Icon name="x" class="size-3 text-text-weak" />
-                  </button>
-                </div>
-              )}
-            </For>
-            <For each={noteAttachments()}>
-              {(attachment) => (
-                <div class="relative group">
-                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                    <Icon name="notebook-pen" size="small" class="shrink-0 text-text-interactive-base" />
-                    <span class="text-12-medium text-text-base max-w-[160px] truncate">
-                      {attachment.title || "Untitled"}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(attachment.id)}
-                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                  >
-                    <Icon name="x" class="size-3 text-text-weak" />
-                  </button>
-                </div>
-              )}
-            </For>
-            <For each={sessionAttachments()}>
-              {(attachment) => (
-                <div class="relative group">
-                  <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                    <Icon name="message-square" size="small" class="shrink-0 text-text-interactive-base" />
-                    <span class="text-12-medium text-text-base max-w-[180px] truncate">
-                      {attachment.title || "Untitled"}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(attachment.id)}
-                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                  >
-                    <Icon name="x" class="size-3 text-text-weak" />
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
+          <PromptAttachments
+            images={imageAttachments}
+            uploads={uploadedAttachments}
+            notes={noteAttachments}
+            sessions={sessionAttachments}
+            removeAttachment={removeAttachment}
+          />
         </Show>
         <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
           <div
@@ -2423,82 +2039,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Show when={params.id}>
                   <ContextBar />
                 </Show>
-                <ToolbarSelectorPopover
-                  trigger={
-                    <button
-                      type="button"
-                      aria-disabled={working() || store.switchingProfile}
-                      onClick={(event) => {
-                        if (!working() && !store.switchingProfile) return
-                        event.preventDefault()
-                        event.stopPropagation()
-                        if (store.switchingProfile) return
-                        showToast({
-                          type: "warning",
-                          title: "Session is running",
-                          description: "Stop the session before changing its permission mode.",
-                        })
-                      }}
-                      class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base transition-colors"
-                      classList={{
-                        "opacity-60 cursor-not-allowed": working() || store.switchingProfile,
-                        "hover:bg-surface-raised-base-hover": !store.switchingProfile,
-                      }}
-                    >
-                      <Show
-                        when={store.switchingProfile}
-                        fallback={
-                          <>
-                            <Icon
-                              name={activePermissionMode().icon}
-                              size="small"
-                              class={`shrink-0 ${activePermissionMode().iconClass}`}
-                            />
-                            <span class={`text-12-medium whitespace-nowrap ${activePermissionMode().iconClass}`}>
-                              {activePermissionMode().shortLabel}
-                            </span>
-                            <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
-                          </>
-                        }
-                      >
-                        <Spinner class="text-icon-base" />
-                      </Show>
-                    </button>
-                  }
-                  title="Permission mode"
-                  contentClass="w-80"
-                  placement="top-start"
-                >
-                  {(close) => (
-                    <>
-                      <List
-                        class="p-1"
-                        items={PERMISSION_MODES}
-                        key={(mode) => mode.id}
-                        current={PERMISSION_MODES.find((m) => m.id === selectedControlProfile())}
-                        onSelect={(mode) => {
-                          if (!mode) return
-                          updateControlProfile(mode.id, close)
-                        }}
-                      >
-                        {(mode) => (
-                          <div class="flex items-start gap-3 min-w-0 text-left">
-                            <Icon name={mode.icon} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
-                            <div class="min-w-0 flex-1">
-                              <div class="text-13-medium text-text-base">{mode.label}</div>
-                              <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
-                            </div>
-                          </div>
-                        )}
-                      </List>
-                      <Show when={working()}>
-                        <div class="px-3 pb-2 text-11-regular text-text-warning">
-                          Stop the session before changing permission mode.
-                        </div>
-                      </Show>
-                    </>
-                  )}
-                </ToolbarSelectorPopover>
+                <PermissionModeSelector
+                  working={working}
+                  switching={() => store.switchingProfile}
+                  activeMode={activePermissionMode}
+                  selectedProfile={selectedControlProfile}
+                  updateProfile={updateControlProfile}
+                />
               </Match>
             </Switch>
           </div>
@@ -2569,108 +2116,4 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       </form>
     </div>
   )
-}
-
-function createTextFragment(content: string): DocumentFragment {
-  const fragment = document.createDocumentFragment()
-  const segments = content.split("\n")
-  segments.forEach((segment, index) => {
-    if (segment) {
-      fragment.appendChild(document.createTextNode(segment))
-    } else if (segments.length > 1) {
-      fragment.appendChild(document.createTextNode("\u200B"))
-    }
-    if (index < segments.length - 1) {
-      fragment.appendChild(document.createElement("br"))
-    }
-  })
-  return fragment
-}
-
-function getNodeLength(node: Node): number {
-  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return 1
-  return (node.textContent ?? "").replace(/\u200B/g, "").length
-}
-
-function getTextLength(node: Node): number {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u200B/g, "").length
-  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR") return 1
-  let length = 0
-  for (const child of Array.from(node.childNodes)) {
-    length += getTextLength(child)
-  }
-  return length
-}
-
-function getCursorPosition(parent: HTMLElement): number {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) return 0
-  const range = selection.getRangeAt(0)
-  if (!parent.contains(range.startContainer)) return 0
-  const preCaretRange = range.cloneRange()
-  preCaretRange.selectNodeContents(parent)
-  preCaretRange.setEnd(range.startContainer, range.startOffset)
-  return getTextLength(preCaretRange.cloneContents())
-}
-
-function setCursorPosition(parent: HTMLElement, position: number) {
-  let remaining = position
-  let node = parent.firstChild
-  while (node) {
-    const length = getNodeLength(node)
-    const isText = node.nodeType === Node.TEXT_NODE
-    const isPill = node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).dataset.type === "file"
-    const isBreak = node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === "BR"
-
-    if (isText && remaining <= length) {
-      const range = document.createRange()
-      const selection = window.getSelection()
-      range.setStart(node, remaining)
-      range.collapse(true)
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      return
-    }
-
-    if ((isPill || isBreak) && remaining <= length) {
-      const range = document.createRange()
-      const selection = window.getSelection()
-      if (remaining === 0) {
-        range.setStartBefore(node)
-      }
-      if (remaining > 0 && isPill) {
-        range.setStartAfter(node)
-      }
-      if (remaining > 0 && isBreak) {
-        const next = node.nextSibling
-        if (next && next.nodeType === Node.TEXT_NODE) {
-          range.setStart(next, 0)
-        }
-        if (!next || next.nodeType !== Node.TEXT_NODE) {
-          range.setStartAfter(node)
-        }
-      }
-      range.collapse(true)
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      return
-    }
-
-    remaining -= length
-    node = node.nextSibling
-  }
-
-  const fallbackRange = document.createRange()
-  const fallbackSelection = window.getSelection()
-  const last = parent.lastChild
-  if (last && last.nodeType === Node.TEXT_NODE) {
-    const len = last.textContent ? last.textContent.length : 0
-    fallbackRange.setStart(last, len)
-  }
-  if (!last || last.nodeType !== Node.TEXT_NODE) {
-    fallbackRange.selectNodeContents(parent)
-  }
-  fallbackRange.collapse(false)
-  fallbackSelection?.removeAllRanges()
-  fallbackSelection?.addRange(fallbackRange)
 }
