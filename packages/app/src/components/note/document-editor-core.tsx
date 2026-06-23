@@ -365,11 +365,11 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
   }
 
   return (
-    <div class="relative flex-1 min-h-0 bg-background-base px-4 pb-4 pt-3">
-      <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-raised-base">
+    <div class="document-editor-core relative flex-1 min-h-0 bg-surface-raised-base">
+      <div class="relative h-full overflow-hidden">
         <div
           ref={editorRef}
-          class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          class="h-full overflow-y-auto px-7 py-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onClick={handleEditorAreaClick}
         />
         <div
@@ -380,7 +380,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       <div ref={bubbleRef} class="note-bubble-menu">
         <Show when={editorInstance()}>{(getEditor) => <BubbleMenuContent editor={getEditor()} />}</Show>
       </div>
-      <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
+      <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
         <Show when={props.saving} fallback="Saved">
           Saving...
         </Show>

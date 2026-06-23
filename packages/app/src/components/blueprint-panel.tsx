@@ -155,18 +155,18 @@ function BlueprintDetail(props: {
         }
       >
         {/* Shell bar */}
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/92 px-4 py-3">
-          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-3">
+          <div class="flex items-center gap-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={props.onBack}
               title="Back to list"
             >
               <Icon name="arrow-left" size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2">
+            <div class="min-w-0 flex-1 px-2 py-1.5">
               <span class="text-14-medium tracking-tight text-text-strong truncate block">
                 {bp()!.title || "Untitled Blueprint"}
               </span>
@@ -174,7 +174,7 @@ function BlueprintDetail(props: {
 
             <button
               type="button"
-              class="bp-card bp-card-active px-2.5 py-1.5 text-11-medium text-text-interactive-base transition-colors flex items-center gap-1"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-interactive-base/14 px-3 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={props.onRun}
               title="Run Blueprint"
             >
@@ -184,7 +184,7 @@ function BlueprintDetail(props: {
 
             <button
               type="button"
-              class="bp-card px-2.5 py-1.5 text-11-medium text-text-weak transition-colors hover:text-text-base flex items-center gap-1"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-raised-stronger-non-alpha px-3 text-11-medium text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-interactive-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={props.onConvertToNote}
               title="Convert to Note"
             >
@@ -194,7 +194,7 @@ function BlueprintDetail(props: {
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={props.onDelete}
               title="Delete"
             >
@@ -203,15 +203,15 @@ function BlueprintDetail(props: {
           </div>
         </div>
         {/* Tags */}
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/88 px-4 py-3">
-          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+          <div class="flex flex-wrap items-center gap-2">
             <Show
               when={(bp()!.tags ?? []).length > 0}
               fallback={<span class="text-11-regular text-text-weaker">No tags</span>}
             >
               <For each={bp()!.tags ?? []}>
                 {(tag) => (
-                  <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak">
+                  <span class="inline-flex items-center rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
                     {tag}
                   </span>
                 )}
@@ -264,6 +264,149 @@ function attachBlueprintDragData(e: DragEvent, note: BlueprintMetaInfo) {
   document.body.appendChild(dragImage)
   e.dataTransfer!.setDragImage(dragImage, 0, 16)
   setTimeout(() => document.body.removeChild(dragImage), 0)
+}
+
+type BlueprintStatus = NonNullable<NonNullable<BlueprintMetaInfo["blueprint"]>["status"]>
+
+const BLUEPRINT_STATUS_ICONS: Record<BlueprintStatus, string> = {
+  draft: "file-pen",
+  ready: "circle-check",
+  archived: "archive",
+}
+
+function getBlueprintStatus(bp: BlueprintMetaInfo): BlueprintStatus {
+  return bp.blueprint?.status ?? "draft"
+}
+
+function getBlueprintSummary(bp: BlueprintMetaInfo) {
+  const source = bp.blueprint?.description || bp.searchText || ""
+  let text = source.replace(/\s+/g, " ").trim()
+  const title = (bp.title || "").replace(/\s+/g, " ").trim()
+  if (title && text.startsWith(title)) text = text.slice(title.length).trim()
+  if (text.length <= 180) return text
+  return `${text.slice(0, 180).trim()}...`
+}
+
+function BlueprintPlanRow(props: {
+  bp: BlueprintMetaInfo
+  loops: BlueprintLoopInfo[]
+  onOpen: () => void
+  onRun?: () => void
+}) {
+  const status = createMemo(() => getBlueprintStatus(props.bp))
+  const summary = createMemo(() => getBlueprintSummary(props.bp))
+  const hasActive = createMemo(() => props.loops.some((loop) => isActiveLoop(loop.status)))
+  const lastActivity = createMemo(() => props.bp.blueprint?.lastRunAt ?? props.bp.time.updated)
+  const runCount = createMemo(() => props.bp.blueprint?.runCount ?? props.loops.length)
+
+  return (
+    <div
+      class="bp-plan-row group flex items-stretch gap-2"
+      classList={{
+        "bp-plan-row-active": hasActive(),
+        "opacity-70": status() === "archived",
+      }}
+      draggable={true}
+      onDragStart={(e) => attachBlueprintDragData(e, props.bp)}
+    >
+      <button
+        type="button"
+        class="flex min-w-0 flex-1 items-start gap-3 rounded-[0.85rem] px-3 py-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+        onClick={props.onOpen}
+      >
+        <span
+          class={`bp-plan-status-mark bp-plan-status-${status()}`}
+          classList={{ "bp-plan-status-running": hasActive() }}
+        >
+          <Icon name={hasActive() ? "zap" : BLUEPRINT_STATUS_ICONS[status()]} size="small" class="size-3.5" />
+        </span>
+
+        <span class="min-w-0 flex-1">
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-13-medium text-text-strong">{props.bp.title || "Untitled Blueprint"}</span>
+            <span
+              class="bp-status shrink-0"
+              classList={{
+                "bp-status-active": hasActive(),
+                "bp-status-draft": !hasActive() && status() === "draft",
+                "bp-status-ready": !hasActive() && status() === "ready",
+                "bp-status-archived": !hasActive() && status() === "archived",
+              }}
+            >
+              {hasActive() ? "active" : status()}
+            </span>
+          </span>
+          <Show when={summary()}>
+            <span class="bp-plan-summary">{summary()}</span>
+          </Show>
+          <span class="mt-2 flex flex-wrap items-center gap-1.5">
+            <For each={(props.bp.tags ?? []).slice(0, 3)}>{(tag) => <span class="bp-plan-tag">{tag}</span>}</For>
+            <Show when={props.bp.blueprint?.defaultAgent}>
+              <span class="bp-plan-meta">
+                <Icon name="workflow" size="small" class="size-3" />
+                {props.bp.blueprint!.defaultAgent}
+              </span>
+            </Show>
+          </span>
+        </span>
+      </button>
+
+      <div class="flex w-28 shrink-0 flex-col items-end justify-between gap-2 py-3 pr-3">
+        <div class="text-right">
+          <Show when={runCount() > 0}>
+            <div class="text-11-medium text-text-base">{runCount()} runs</div>
+          </Show>
+          <div class="text-10-regular text-text-weaker">{relativeTime(lastActivity())}</div>
+        </div>
+        <Show when={status() === "ready" && props.onRun}>
+          <button
+            type="button"
+            class="inline-flex h-7 items-center gap-1.5 rounded-full bg-surface-interactive-base/14 px-2.5 text-10-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+            onClick={props.onRun}
+            title="Run Blueprint"
+          >
+            <Icon name="zap" size="small" class="size-3" />
+            Run
+          </button>
+        </Show>
+      </div>
+    </div>
+  )
+}
+
+function BlueprintListSection(props: {
+  title: string
+  subtitle: string
+  items: BlueprintMetaInfo[]
+  loopsByNote: Map<string, BlueprintLoopInfo[]>
+  onOpen: (bp: BlueprintMetaInfo) => void
+  onRun?: (bp: BlueprintMetaInfo) => void
+}) {
+  return (
+    <Show when={props.items.length > 0}>
+      <section class="bp-plan-section">
+        <div class="mb-2 flex items-center gap-2 px-0.5">
+          <span class="text-11-semibold text-text-base">{props.title}</span>
+          <span class="rounded-full bg-surface-inset-base/70 px-1.5 py-0.5 text-10-medium text-text-weak">
+            {props.items.length}
+          </span>
+          <span class="min-w-0 truncate text-10-regular text-text-weaker">{props.subtitle}</span>
+        </div>
+        <div class="space-y-2">
+          <For each={props.items}>
+            {(bp) => (
+              <BlueprintPlanRow
+                bp={bp}
+                loops={props.loopsByNote.get(bp.id) ?? []}
+                onOpen={() => props.onOpen(bp)}
+                onRun={props.onRun ? () => props.onRun!(bp) : undefined}
+              />
+            )}
+          </For>
+        </div>
+      </section>
+    </Show>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -577,163 +720,34 @@ export function BlueprintPanel() {
                 </div>
               </Show>
 
-              {/* Ready */}
-              <Show when={readyBps().length > 0}>
-                <div class="mb-4">
-                  <div class="flex items-center gap-2 mb-2.5 px-0.5">
-                    <span class="text-11-semibold text-text-base">Ready</span>
-                    <span class="text-10-regular text-text-weak">{readyBps().length}</span>
-                  </div>
-                  <div
-                    class="grid gap-2.5"
-                    style="grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr))"
-                  >
-                    <For each={readyBps()}>
-                      {(bp) => {
-                        const bpLoops = loopsByNote().get(bp.id) ?? []
-                        const hasActive = bpLoops.some((l) => isActiveLoop(l.status))
-                        return (
-                          <button
-                            type="button"
-                            class="bp-card group overflow-hidden flex flex-col text-left cursor-pointer"
-                            classList={{ "bp-card-active": hasActive }}
-                            draggable={true}
-                            onDragStart={(e) => attachBlueprintDragData(e, bp)}
-                            onClick={() => openDetail(bp.id, directory()!)}
-                          >
-                            <div class="px-3.5 pt-3 pb-2 flex items-start gap-2">
-                              <div class="min-w-0 flex-1">
-                                <span class="block text-12-medium text-text-strong truncate">
-                                  {bp.title || "Untitled"}
-                                </span>
-                                <Show when={bp.blueprint?.description}>
-                                  <p class="text-10-regular text-text-weak line-clamp-2 mt-0.5">
-                                    {bp.blueprint!.description}
-                                  </p>
-                                </Show>
-                              </div>
-                              <span class="bp-status bp-status-ready shrink-0">
-                                <Icon name="circle-check" size="small" class="size-2.5" />
-                                ready
-                              </span>
-                            </div>
-                            <div class="px-3.5 pb-2.5 mt-auto">
-                              <div class="flex items-center gap-2 text-10-regular text-text-weaker">
-                                <Show when={bp.blueprint?.defaultAgent}>
-                                  <span class="truncate">{bp.blueprint!.defaultAgent}</span>
-                                </Show>
-                                <span class="flex-1" />
-                                <Show when={(bp.blueprint?.runCount ?? 0) > 0}>
-                                  <span>{bp.blueprint!.runCount} runs</span>
-                                </Show>
-                                <span>{relativeTime(bp.blueprint?.lastRunAt ?? bp.time.updated)}</span>
-                              </div>
-                            </div>
-                          </button>
-                        )
-                      }}
-                    </For>
-                  </div>
-                </div>
-              </Show>
+              <BlueprintListSection
+                title="Ready plans"
+                subtitle="Runnable blueprints with a defined next step"
+                items={readyBps()}
+                loopsByNote={loopsByNote()}
+                onOpen={(bp) => openDetail(bp.id, directory()!)}
+                onRun={(bp) => {
+                  setSelectedBpId(bp.id)
+                  setSelectedBpDir(directory() ?? null)
+                  setShowRunMenu(true)
+                }}
+              />
 
-              {/* Draft */}
-              <Show when={draftBps().length > 0}>
-                <div class="mb-4">
-                  <div class="flex items-center gap-2 mb-2.5 px-0.5">
-                    <span class="text-11-semibold text-text-base">Draft</span>
-                    <span class="text-10-regular text-text-weak">{draftBps().length}</span>
-                  </div>
-                  <div
-                    class="grid gap-2.5"
-                    style="grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr))"
-                  >
-                    <For each={draftBps()}>
-                      {(bp) => (
-                        <button
-                          type="button"
-                          class="bp-card group overflow-hidden flex flex-col text-left cursor-pointer"
-                          draggable={true}
-                          onDragStart={(e) => attachBlueprintDragData(e, bp)}
-                          onClick={() => openDetail(bp.id, directory()!)}
-                        >
-                          <div class="px-3.5 pt-3 pb-2 flex items-start gap-2">
-                            <div class="min-w-0 flex-1">
-                              <span class="block text-12-medium text-text-strong truncate">
-                                {bp.title || "Untitled"}
-                              </span>
-                              <Show when={bp.blueprint?.description}>
-                                <p class="text-10-regular text-text-weak line-clamp-2 mt-0.5">
-                                  {bp.blueprint!.description}
-                                </p>
-                              </Show>
-                            </div>
-                            <span class="bp-status bp-status-draft shrink-0">
-                              <Icon name="file-pen" size="small" class="size-2.5" />
-                              draft
-                            </span>
-                          </div>
-                          <div class="px-3.5 pb-2.5 mt-auto">
-                            <div class="flex items-center gap-2 text-10-regular text-text-weaker">
-                              <span class="flex-1" />
-                              <span>{relativeTime(bp.time.updated)}</span>
-                            </div>
-                          </div>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </Show>
+              <BlueprintListSection
+                title="Draft plans"
+                subtitle="Designs still being shaped"
+                items={draftBps()}
+                loopsByNote={loopsByNote()}
+                onOpen={(bp) => openDetail(bp.id, directory()!)}
+              />
 
-              {/* Archived */}
-              <Show when={archivedBps().length > 0}>
-                <div class="mb-4">
-                  <div class="flex items-center gap-2 mb-2.5 px-0.5">
-                    <span class="text-11-semibold text-text-base">Archived</span>
-                    <span class="text-10-regular text-text-weak">{archivedBps().length}</span>
-                  </div>
-                  <div
-                    class="grid gap-2.5"
-                    style="grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr))"
-                  >
-                    <For each={archivedBps()}>
-                      {(bp) => (
-                        <button
-                          type="button"
-                          class="bp-card group overflow-hidden flex flex-col text-left cursor-pointer opacity-70"
-                          draggable={true}
-                          onDragStart={(e) => attachBlueprintDragData(e, bp)}
-                          onClick={() => openDetail(bp.id, directory()!)}
-                        >
-                          <div class="px-3.5 pt-3 pb-2 flex items-start gap-2">
-                            <div class="min-w-0 flex-1">
-                              <span class="block text-12-medium text-text-strong truncate">
-                                {bp.title || "Untitled"}
-                              </span>
-                              <Show when={bp.blueprint?.description}>
-                                <p class="text-10-regular text-text-weak line-clamp-2 mt-0.5">
-                                  {bp.blueprint!.description}
-                                </p>
-                              </Show>
-                            </div>
-                            <span class="bp-status bp-status-archived shrink-0">
-                              <Icon name="archive" size="small" class="size-2.5" />
-                              archived
-                            </span>
-                          </div>
-                          <div class="px-3.5 pb-2.5 mt-auto">
-                            <div class="flex items-center gap-2 text-10-regular text-text-weaker">
-                              <span class="flex-1" />
-                              <span>{relativeTime(bp.time.updated)}</span>
-                            </div>
-                          </div>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </Show>
+              <BlueprintListSection
+                title="Archived plans"
+                subtitle="Kept for reference"
+                items={archivedBps()}
+                loopsByNote={loopsByNote()}
+                onOpen={(bp) => openDetail(bp.id, directory()!)}
+              />
 
               {/* Empty state */}
               <Show when={allBlueprints().length === 0 && !blueprintMeta.loading}>

@@ -970,18 +970,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/92 px-4 py-3">
-          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-3">
+          <div class="flex items-center gap-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={handleBack}
               title="Back to list"
             >
               <Icon name="arrow-left" size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2">
+            <div class="min-w-0 flex-1 px-2 py-1.5">
               <input
                 type="text"
                 class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
@@ -993,9 +993,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base shadow-sm": baseNote()!.pinned,
+                "bg-surface-interactive-base/14 text-text-interactive-base": baseNote()!.pinned,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.pinned,
               }}
@@ -1007,9 +1007,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               classList={{
-                "bg-surface-diff-add-base/12 text-text-diff-add-base shadow-sm": baseNote()!.global,
+                "bg-surface-diff-add-base/12 text-text-diff-add-base": baseNote()!.global,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.global,
               }}
@@ -1021,7 +1021,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={downloadNote}
               title="Download as Markdown"
             >
@@ -1029,11 +1029,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border shadow-sm transition-all"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               classList={{
-                "border-border-interactive-base bg-surface-interactive-base/14 text-text-interactive-base":
-                  isBlueprint(),
-                "border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak hover:bg-surface-raised-base-hover hover:text-text-interactive-base":
+                "bg-surface-interactive-base/14 text-text-interactive-base": isBlueprint(),
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-interactive-base":
                   !isBlueprint(),
                 "opacity-60 cursor-not-allowed": convertingBlueprint(),
               }}
@@ -1044,11 +1043,12 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
                 <Icon name={getSemanticIcon("orchestration.blueprint")} size="small" />
               </Show>
+              <span>To Blueprint</span>
             </button>
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
               onClick={deleteNote}
               title="Delete"
             >
@@ -1084,11 +1084,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </Show>
 
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/88 px-4 py-3">
-          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+          <div class="flex flex-wrap items-center gap-2">
             <For each={tags()}>
               {(tag) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
                   <button
                     type="button"
                     class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
@@ -1100,7 +1100,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 </span>
               )}
             </For>
-            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5">
+            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
               <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"

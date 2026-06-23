@@ -14,7 +14,7 @@
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.14),
     0 0 0 1px rgba(0, 0, 0, 0.04);
-  z-index: 40;
+  z-index: 60;
   transition: right 300ms var(--motion-ease-emphasized);
 }
 
