@@ -1,6 +1,5 @@
 import type { Accessor, Setter } from "solid-js"
 import type { SetStoreFunction } from "solid-js/store"
-import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useParams } from "@solidjs/router"
@@ -27,7 +26,6 @@ type PromptAttachmentsInput = {
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   activeLoopID: Accessor<string | undefined>
-  setBlueprintLoading: Setter<boolean>
   setStore: SetStoreFunction<PromptInputStore>
 }
 
@@ -188,43 +186,12 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           })
           return
         }
-        if (params.id) {
-          input.setBlueprintLoading(true)
-          try {
-            const result = await sdk.client.blueprint.loop.create({
-              blueprintLoopCreateInput: {
-                noteID: dropped.noteID,
-                title: dropped.title || "Blueprint",
-                sessionID: params.id,
-                runMode: "current",
-              },
-            })
-            const loop = result.data as BlueprintLoopInfo | undefined
-            if (!loop) throw new Error("Loop creation returned no data")
-            input.setLocalArmedLoop({
-              type: "loop",
-              loopID: loop.id,
-              noteID: loop.noteID,
-              title: loop.title,
-              runMode: loop.runMode ?? "current",
-            })
-          } catch (err) {
-            showToast({
-              type: "error",
-              title: "Failed to arm Blueprint",
-              description: err instanceof Error ? err.message : "Unknown error",
-            })
-          } finally {
-            input.setBlueprintLoading(false)
-          }
-        } else {
-          input.setLocalArmedLoop({
-            type: "pending",
-            noteID: dropped.noteID,
-            title: dropped.title || "Blueprint",
-            runMode: "current",
-          })
-        }
+        input.setLocalArmedLoop({
+          type: "pending",
+          noteID: dropped.noteID,
+          title: dropped.title || "Blueprint",
+          runMode: "current",
+        })
       } catch {}
       return
     }

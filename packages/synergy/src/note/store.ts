@@ -152,6 +152,10 @@ export namespace NoteStore {
     const scopeID = Identifier.asScopeID(targetScopeID)
     const isGlobal = targetScopeID === "global"
     const now = Date.now()
+    const blueprint = create.note.blueprint as
+      | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
+      | undefined
+    if (blueprint) delete blueprint.status
     const note: NoteTypes.Info = {
       id,
       title: create.note.title,
@@ -160,12 +164,12 @@ export namespace NoteStore {
       global: isGlobal,
       tags: create.note.tags ?? [],
       kind: create.note.kind ?? "note",
-      blueprint: create.note.blueprint
+      blueprint: blueprint
         ? {
-            ...create.note.blueprint,
-            runCount: create.note.blueprint.runCount ?? 0,
+            ...blueprint,
+            runCount: blueprint.runCount ?? 0,
           }
-        : create.note.blueprint,
+        : blueprint,
       version: 1,
       time: { created: now, updated: now },
     }

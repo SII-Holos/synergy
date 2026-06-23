@@ -613,7 +613,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       localArmedLoop,
       activeLoopID: () => info()?.blueprint?.loopID,
       setLocalArmedLoop,
-      setBlueprintLoading,
       setStore,
     })
 

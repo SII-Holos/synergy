@@ -258,17 +258,24 @@ export const BlueprintRoute = new Hono()
         .optional(),
     ),
     async (c) => {
+      const id = c.req.valid("param").id
+      let started = false
       try {
-        const id = c.req.valid("param").id
         const body = c.req.valid("json")
         const before = await BlueprintLoopStore.get(Instance.scope.id, id)
+        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
+        started = true
         await bindSessionToLoop(before.sessionID, id)
         await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
-        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
         return c.json(loop)
       } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `BlueprintLoop not found: ${c.req.valid("param").id}` }, 404)
+        if (started) {
+          await BlueprintLoopStore.updateStatus(Instance.scope.id, id, {
+            status: "failed",
+            error: err?.message ?? String(err),
+          }).catch(() => undefined)
+        }
+        if (err instanceof Storage.NotFoundError) return c.json({ message: `BlueprintLoop not found: ${id}` }, 404)
         if (err instanceof LoopError.InvalidTransition) return c.json({ message: err.message, data: err.data }, 400)
         return c.json({ message: err?.message ?? String(err) }, 400)
       }

@@ -218,6 +218,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     if (blueprintSlot && mode === "normal") {
       input.setBlueprintLoading(true)
+      let createdLoopID: string | undefined
       try {
         const userText = text.trim()
         let loopID: string
@@ -233,6 +234,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const loop = result.data
           if (!loop?.id) throw new Error("Loop creation returned no data")
           loopID = loop.id
+          createdLoopID = loop.id
         } else {
           loopID = blueprintSlot.loopID
         }
@@ -240,6 +242,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         clearInput()
         await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
       } catch (err) {
+        if (createdLoopID) {
+          await sdk.client.blueprint.loop.cancel({ id: createdLoopID }).catch(() => undefined)
+        }
         showToast({
           type: "error",
           title: "Failed to start Blueprint",

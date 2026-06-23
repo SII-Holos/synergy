@@ -35,7 +35,7 @@ function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
 }
 
 function isActiveLoopStatus(status: LoopStatus) {
-  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+  return status === "running" || status === "waiting" || status === "auditing"
 }
 
 function getLoopLabel(status: LoopStatus) {
@@ -58,9 +58,9 @@ function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
 }
 
 function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
-  if (mode === "current") return "In current session"
-  if (mode === "new") return "In new session"
-  if (mode === "worktree") return "In worktree"
+  if (mode === "current") return "Session run"
+  if (mode === "new") return "New session"
+  if (mode === "worktree") return "Worktree run"
   return "Active run"
 }
 
@@ -1275,6 +1275,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     if (!base || !isBlueprint()) return
 
     setRunningBlueprint(true)
+    let createdLoopID: string | undefined
     try {
       const target = await createExecutionSession(mode, dir)
       if (!target) return
@@ -1292,12 +1293,16 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         })
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
+      createdLoopID = loop.id
       await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
       setShowRunMenu(false)
       await refetchLoops()
       await refetch()
       navigate(`/${base64Encode(target.directory)}/session/${target.sessionID}`)
     } catch (error) {
+      if (createdLoopID) {
+        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
+      }
       console.error("Failed to run blueprint", error)
       alert(error instanceof Error ? error.message : "Failed to run blueprint")
     } finally {
