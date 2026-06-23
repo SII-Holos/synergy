@@ -40,7 +40,6 @@ import { WorkspaceRail } from "@/components/session/workspace-rail"
 import { WorkspaceDrawer } from "@/components/session/workspace-drawer"
 import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
-import { WorkspaceBlueprintsTool } from "@/components/workspace/tool-blueprints"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
@@ -804,7 +803,6 @@ function SessionPageContent() {
         <WorkspaceBrowserTool />
       </Show>
       <WorkspaceNotesTool />
-      <WorkspaceBlueprintsTool />
       <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
           {/* Mobile tab bar */}

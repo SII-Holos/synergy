@@ -7,6 +7,117 @@
     background-color var(--motion-duration-base) var(--motion-ease-standard);
 }
 
+.note-card--blueprint {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 18%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-interactive-base) 5%, var(--surface-raised-base));
+}
+
+.note-card--blueprint:hover {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 30%, var(--border-weak-hover));
+  background: color-mix(in srgb, var(--surface-interactive-base) 8%, var(--surface-raised-base-hover));
+}
+
+.note-card--blueprint-ready {
+  border-color: color-mix(in srgb, var(--border-info-base) 22%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-info-base) 5%, var(--surface-raised-base));
+}
+
+.note-card--blueprint-running,
+.note-card--blueprint-auditing {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 36%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-interactive-base) 9%, var(--surface-raised-base));
+}
+
+.note-card--blueprint-waiting {
+  border-color: color-mix(in srgb, var(--border-warning-base) 34%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-warning-base) 8%, var(--surface-raised-base));
+}
+
+.note-card--blueprint-failed {
+  border-color: color-mix(in srgb, var(--border-diff-delete-base) 30%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 7%, var(--surface-raised-base));
+}
+
+.note-card--blueprint-completed {
+  border-color: color-mix(in srgb, var(--border-diff-add-base) 26%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-diff-add-base) 6%, var(--surface-raised-base));
+}
+
+.note-card-footer {
+  background: color-mix(in srgb, var(--surface-raised-base) 68%, transparent);
+}
+
+.note-card--blueprint .note-card-footer {
+  background: color-mix(in srgb, var(--surface-interactive-base) 7%, transparent);
+}
+
+.note-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-weaker-base);
+  background: var(--surface-inset-base);
+  padding: 0.1875rem 0.5rem;
+  color: var(--text-weak);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.note-card-status--ready {
+  border-color: color-mix(in srgb, var(--border-info-base) 32%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-info-base) 12%, transparent);
+  color: var(--text-info-base);
+}
+
+.note-card-status--running,
+.note-card-status--auditing {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 36%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-interactive-base) 14%, transparent);
+  color: var(--text-interactive-base);
+}
+
+.note-card-status--waiting {
+  border-color: color-mix(in srgb, var(--border-warning-base) 36%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-warning-base) 13%, transparent);
+  color: var(--text-warning-base);
+}
+
+.note-card-status--failed {
+  border-color: color-mix(in srgb, var(--border-diff-delete-base) 34%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 12%, transparent);
+  color: var(--text-diff-delete-base);
+}
+
+.note-card-status--completed {
+  border-color: color-mix(in srgb, var(--border-diff-add-base) 30%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-add-base) 10%, transparent);
+  color: var(--text-diff-add-base);
+}
+
+.note-card-status--archived {
+  color: var(--text-weaker);
+}
+
+.note-blueprint-meta {
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--surface-interactive-base) 5%, var(--surface-inset-base));
+  padding: 0.5rem 0.65rem;
+}
+
+.note-run-menu {
+  border: 1px solid var(--border-weak-base);
+  border-radius: 1rem;
+  background: var(--surface-raised-base);
+}
+
+.note-run-menu-backdrop {
+  background: color-mix(in srgb, var(--background-base) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+
 /* Horizontal scrollbar for the tag filter bar when tags overflow */
 .notes-tag-bar {
   scrollbar-width: thin;
@@ -33,5 +144,9 @@
 @media (prefers-reduced-motion: reduce) {
   .note-card {
     transition: none;
+  }
+
+  .note-run-menu-backdrop {
+    backdrop-filter: none;
   }
 }

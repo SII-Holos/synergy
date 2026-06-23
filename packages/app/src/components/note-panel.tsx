@@ -1,21 +1,111 @@
 import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useNavigate, useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
-import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
 import "./note-panel.css"
 
-function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
+type BlueprintStatus = "draft" | "ready" | "archived"
+type LoopStatus = BlueprintLoopInfo["status"]
+
+type NoteCardInfo = NoteMetaInfo & {
+  kind?: "note" | "blueprint"
+  sourceDirectory?: string
+  sourceScopeID?: string
+  blueprint?: NoteMetaInfo["blueprint"] & {
+    description?: string
+    status?: BlueprintStatus
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+}
+
+type BlueprintVisualState = {
+  label: string
+  detail: string
+  tone: "draft" | "ready" | "archived" | "running" | "waiting" | "auditing" | "failed" | "completed"
+  icon: string
+}
+
+function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
+  return note.kind === "blueprint" || !!note.blueprint
+}
+
+function isActiveLoopStatus(status: LoopStatus) {
+  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
+function getLoopLabel(status: LoopStatus) {
+  if (status === "armed") return "Queued"
+  if (status === "running") return "Running"
+  if (status === "waiting") return "Waiting"
+  if (status === "auditing") return "Auditing"
+  if (status === "completed") return "Completed"
+  if (status === "failed") return "Failed"
+  return "Cancelled"
+}
+
+function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
+  if (status === "armed" || status === "running") return "running"
+  if (status === "waiting") return "waiting"
+  if (status === "auditing") return "auditing"
+  if (status === "completed") return "completed"
+  if (status === "failed") return "failed"
+  return "archived"
+}
+
+function getStatusLabel(status: BlueprintStatus) {
+  if (status === "ready") return "Ready"
+  if (status === "archived") return "Archived"
+  return "Draft"
+}
+
+function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
+  const active = loops.find((loop) => isActiveLoopStatus(loop.status))
+  if (active) {
+    return {
+      label: getLoopLabel(active.status),
+      detail: active.runMode ? `${active.runMode} session` : "active loop",
+      tone: getLoopTone(active.status),
+      icon: active.status === "auditing" ? "clipboard-check" : active.status === "waiting" ? "hourglass" : "zap",
+    }
+  }
+  const latest = loops[0]
+  if (latest?.status === "failed") {
+    return { label: "Failed", detail: "last run", tone: "failed", icon: "circle-x" }
+  }
+  const status = (note.blueprint?.status ?? "draft") as BlueprintStatus
+  return {
+    label: getStatusLabel(status),
+    detail: status === "ready" ? "runnable" : status === "archived" ? "reference" : "planning",
+    tone: status,
+    icon: status === "ready" ? "circle-check" : status === "archived" ? "archive" : "file-pen",
+  }
+}
+
+function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.runCount ?? loops.length
+}
+
+function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
+}
+
+function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
   const title = note.title || "Untitled"
   const payload = JSON.stringify({
     id: note.id,
@@ -25,6 +115,15 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
 
   e.dataTransfer!.effectAllowed = "copy"
   e.dataTransfer!.setData("application/x-synergy-note", payload)
+  if (isBlueprintNote(note)) {
+    e.dataTransfer!.setData(
+      "application/x-synergy-blueprint",
+      JSON.stringify({
+        noteID: note.id,
+        title: note.title,
+      }),
+    )
+  }
   e.dataTransfer!.setData("text/plain", title)
 
   const dragImage = document.createElement("div")
@@ -40,21 +139,33 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
 
 type NoteCardVariant = "compact" | "balanced" | "featured"
 
-function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: NoteCardVariant; onClick: () => void }) {
+function NoteCard(props: {
+  note: NoteCardInfo
+  originName?: string
+  variant?: NoteCardVariant
+  loops?: BlueprintLoopInfo[]
+  onClick: () => void
+}) {
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
   const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
   const variant = createMemo(() => props.variant ?? "balanced")
+  const isBlueprint = createMemo(() => isBlueprintNote(props.note))
+  const blueprintState = createMemo(() => getBlueprintVisualState(props.note, props.loops ?? []))
   const cardHeight = createMemo(() => {
-    if (variant() === "compact") return "h-[220px]"
-    if (variant() === "featured") return "h-[320px]"
-    return "h-[260px]"
+    if (variant() === "compact") return "h-[260px]"
+    if (variant() === "featured") return "h-[370px]"
+    return "h-[320px]"
   })
 
   return (
     <button
       type="button"
       class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
+      classList={{
+        "note-card--blueprint": isBlueprint(),
+        [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
+      }}
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
@@ -101,16 +212,41 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: No
         </div>
       </Show>
 
-      <div class="mt-auto shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
-        <div class="flex items-center gap-2">
-          <Show when={props.note.pinned}>
-            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
-              <Icon name="pin" size="small" class="size-3" />
+      <div class="note-card-footer mt-auto shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+        <Show
+          when={isBlueprint()}
+          fallback={
+            <div class="flex items-center gap-2">
+              <Show when={props.note.pinned}>
+                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
+                  <Icon name="pin" size="small" class="size-3" />
+                </span>
+              </Show>
+              <span class="flex-1" />
+              <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
+            </div>
+          }
+        >
+          <div class="flex items-center gap-2">
+            <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
+              <Icon name={blueprintState().icon} size="small" class="size-3" />
+              {blueprintState().label}
             </span>
-          </Show>
-          <span class="flex-1" />
-          <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
-        </div>
+            <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
+            <Show when={props.note.pinned}>
+              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-interactive-base" />
+            </Show>
+          </div>
+          <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
+            <span class="truncate">
+              {getRunCount(props.note, props.loops ?? []) > 0
+                ? `${getRunCount(props.note, props.loops ?? [])} runs`
+                : "No runs yet"}
+            </span>
+            <span class="flex-1" />
+            <span class="shrink-0">{relativeTime(getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
+          </div>
+        </Show>
       </div>
     </button>
   )
@@ -119,7 +255,7 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: No
 /** Skeleton placeholder matching NoteCard shape, shown during list loading */
 function NoteCardSkeleton() {
   return (
-    <div class="flex w-full h-[260px] flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
+    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
       <div class="px-3.5 pt-3.5 space-y-1.5">
         <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
         <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
@@ -136,6 +272,64 @@ function NoteCardSkeleton() {
   )
 }
 
+function RunMenu(props: {
+  title: string
+  hasCurrentSession: boolean
+  onRun: (mode: "current" | "new" | "worktree") => void
+  onClose: () => void
+}) {
+  const options = [
+    {
+      mode: "current" as const,
+      title: "Current session",
+      description: props.hasCurrentSession ? "Run in the session you are viewing." : "Open a session first.",
+      disabled: !props.hasCurrentSession,
+    },
+    {
+      mode: "new" as const,
+      title: "New session",
+      description: "Create a fresh session in this scope and start immediately.",
+      disabled: false,
+    },
+    {
+      mode: "worktree" as const,
+      title: "New worktree session",
+      description: "Create an isolated worktree session and start immediately.",
+      disabled: false,
+    },
+  ]
+
+  return (
+    <div
+      class="note-run-menu-backdrop fixed inset-0 z-50 flex items-start justify-center pt-24"
+      onClick={props.onClose}
+    >
+      <div class="note-run-menu mx-4 w-full max-w-sm p-3" onClick={(e) => e.stopPropagation()}>
+        <div class="px-2 pb-2">
+          <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+          <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+        </div>
+        <div class="space-y-1.5">
+          <For each={options}>
+            {(option) => (
+              <button
+                type="button"
+                class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+                classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+                disabled={option.disabled}
+                onClick={() => props.onRun(option.mode)}
+              >
+                <span class="block text-12-medium text-text-strong">{option.title}</span>
+                <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type DisplayGroup = NoteMetaScopeGroup & {
   name: string
   directory: string
@@ -145,6 +339,7 @@ type DisplayGroup = NoteMetaScopeGroup & {
 function ScopeSection(props: {
   group: DisplayGroup
   expanded: boolean
+  loopsByNote: Map<string, BlueprintLoopInfo[]>
   onToggle: () => void
   onOpenNote: (id: string) => void
   onCreateNote: () => void
@@ -170,7 +365,7 @@ function ScopeSection(props: {
       const w = entry.contentRect.width
       // section p-2 (16px) + grid px-1 (8px)
       const inner = w - 24
-      const cols = inner < 310 ? 2 : inner < 470 ? 3 : 4
+      const cols = inner < 380 ? 1 : inner < 660 ? 2 : 3
       setColumns(cols)
     })
     ro.observe(sectionRef)
@@ -251,6 +446,7 @@ function ScopeSection(props: {
                   <NoteCard
                     note={note}
                     originName={getOriginName(note)}
+                    loops={props.loopsByNote.get(note.id) ?? []}
                     variant="compact"
                     onClick={() => props.onOpenNote(note.id)}
                   />
@@ -283,6 +479,7 @@ function ScopeSection(props: {
                 <NoteCard
                   note={note}
                   originName={getOriginName(note)}
+                  loops={props.loopsByNote.get(note.id) ?? []}
                   variant={note.pinned ? "featured" : "balanced"}
                   onClick={() => props.onOpenNote(note.id)}
                 />
@@ -335,6 +532,30 @@ export function NotePanel() {
       return (result.data ?? []) as NoteMetaScopeGroup[]
     },
   )
+
+  const [loops, { refetch: refetchLoops }] = createResource(
+    () => directory(),
+    async (dir) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+
+  const loopsByNote = createMemo(() => {
+    const map = new Map<string, BlueprintLoopInfo[]>()
+    for (const loop of loops() ?? []) {
+      const items = map.get(loop.noteID) ?? []
+      items.push(loop)
+      map.set(loop.noteID, items)
+    }
+    return map
+  })
 
   const allTags = createMemo(() => {
     const freq = new Map<string, number>()
@@ -521,9 +742,6 @@ export function NotePanel() {
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
               </div>
             </Show>
             <Show when={!rawGroups.loading}>
@@ -542,6 +760,7 @@ export function NotePanel() {
                       <ScopeSection
                         group={group}
                         expanded={isExpanded(group.scopeID, group.isCurrent)}
+                        loopsByNote={loopsByNote()}
                         onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
                         onOpenNote={(id) => openNote(id, group.directory)}
                         onCreateNote={() => createNoteInScope(group.directory)}
@@ -563,10 +782,12 @@ export function NotePanel() {
           onBack={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
           onDelete={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
         />
       </Show>
@@ -588,6 +809,9 @@ type NoteConflictState =
 function NoteEditor(props: { id: string; directory: string; onBack: () => void; onDelete: () => void }) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const platform = usePlatform()
+  const params = useParams()
+  const navigate = useNavigate()
   const directory = () => props.directory
 
   const [note, { refetch }] = createResource(
@@ -622,6 +846,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
   const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
+  const [runningBlueprint, setRunningBlueprint] = createSignal(false)
+  const [showRunMenu, setShowRunMenu] = createSignal(false)
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
@@ -629,6 +855,26 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   const noteLoaded = createMemo(() => !!baseNote())
   const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
+  const [noteLoops, { refetch: refetchLoops }] = createResource(
+    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+    async ({ id, dir }) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return ((result.data ?? []) as BlueprintLoopInfo[])
+          .filter((loop) => loop.noteID === id)
+          .sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+  const blueprintState = createMemo(() => {
+    const base = baseNote()
+    if (!base) return null
+    return getBlueprintVisualState(base, noteLoops() ?? [])
+  })
 
   function remoteConflict() {
     const current = conflict()
@@ -957,6 +1203,120 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }
   }
 
+  async function convertToNote() {
+    const dir = directory()
+    const base = baseNote()
+    if (!dir || !base || !isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this Blueprint to a Note.",
+      })
+      return
+    }
+    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveLoopStatus(loop.status))) {
+      alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
+      return
+    }
+
+    setConvertingBlueprint(true)
+    try {
+      const result = await sdk.client.note.update({
+        id: base.id,
+        directory: dir,
+        notePatchInput: {
+          kind: "note",
+          blueprint: null,
+          expectedVersion: base.version,
+        },
+      })
+      applySnapshot(result.data as NoteInfo)
+      await refetchLoops()
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This Blueprint changed before it could be converted to a Note.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert blueprint to note", error)
+    } finally {
+      setConvertingBlueprint(false)
+    }
+  }
+
+  async function createExecutionSession(mode: "current" | "new" | "worktree", blueprintDir: string) {
+    if (mode === "current") {
+      if (!params.id) {
+        alert("Open a session before running this Blueprint in the current session.")
+        return undefined
+      }
+      return { sessionID: params.id, directory: blueprintDir }
+    }
+
+    let targetDirectory = blueprintDir
+    let client = sdk.client
+
+    if (mode === "worktree") {
+      const worktree = await sdk.client.worktree.create({ directory: blueprintDir }).then((result) => result.data)
+      if (!worktree?.path) throw new Error("Failed to create worktree")
+      targetDirectory = worktree.path
+      client = createSynergyClient({
+        baseUrl: sdk.url,
+        fetch: platform.fetch,
+        directory: targetDirectory,
+        throwOnError: true,
+      })
+      globalSync.child(targetDirectory)
+    }
+
+    const session = await client.session.create({}).then((result) => result.data)
+    if (!session?.id) throw new Error("Failed to create session")
+    return { sessionID: session.id, directory: targetDirectory }
+  }
+
+  async function runBlueprint(mode: "current" | "new" | "worktree") {
+    const dir = directory()
+    if (!dir || runningBlueprint()) return
+    await flushSave()
+    if (remoteConflict()) return
+    const base = baseNote()
+    if (!base || !isBlueprint()) return
+
+    setRunningBlueprint(true)
+    try {
+      const target = await createExecutionSession(mode, dir)
+      if (!target) return
+      const loop = await sdk.client.blueprint.loop
+        .create({
+          directory: dir,
+          blueprintLoopCreateInput: {
+            noteID: base.id,
+            noteVersion: base.version,
+            title: base.title || "Blueprint run",
+            description: base.blueprint?.description,
+            sessionID: target.sessionID,
+            runMode: mode,
+          },
+        })
+        .then((result) => result.data)
+      if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
+      await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
+      setShowRunMenu(false)
+      await refetchLoops()
+      await refetch()
+      navigate(`/${base64Encode(target.directory)}/session/${target.sessionID}`)
+    } catch (error) {
+      console.error("Failed to run blueprint", error)
+      alert(error instanceof Error ? error.message : "Failed to run blueprint")
+    } finally {
+      setRunningBlueprint(false)
+    }
+  }
+
   async function deleteNote() {
     const dir = directory()
     if (!dir) return
@@ -994,6 +1354,21 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 onInput={onTitleInput}
               />
             </div>
+
+            <Show when={isBlueprint()}>
+              <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-interactive-base/14 px-3 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setShowRunMenu(true)}
+                disabled={runningBlueprint()}
+                title="Run Blueprint"
+              >
+                <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                  <Icon name="zap" size="small" class="size-3" />
+                </Show>
+                <span>Run</span>
+              </button>
+            </Show>
 
             <button
               type="button"
@@ -1040,14 +1415,17 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                   !isBlueprint(),
                 "opacity-60 cursor-not-allowed": convertingBlueprint(),
               }}
-              onClick={convertToBlueprint}
-              title={isBlueprint() ? "Already a Blueprint" : "Convert to Blueprint"}
-              disabled={isBlueprint() || convertingBlueprint()}
+              onClick={() => {
+                if (isBlueprint()) void convertToNote()
+                else void convertToBlueprint()
+              }}
+              title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
+              disabled={convertingBlueprint()}
             >
               <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                <Icon name={getSemanticIcon("orchestration.blueprint")} size="small" />
+                <Icon name={isBlueprint() ? "notebook-pen" : getSemanticIcon("orchestration.blueprint")} size="small" />
               </Show>
-              <span>To Blueprint</span>
+              <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
             </button>
 
             <button
@@ -1060,6 +1438,32 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
           </div>
         </div>
+
+        <Show when={isBlueprint() && blueprintState()}>
+          <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+            <div class="note-blueprint-meta flex flex-wrap items-center gap-2">
+              <span class={`note-card-status note-card-status--${blueprintState()!.tone}`}>
+                <Icon name={blueprintState()!.icon} size="small" class="size-3" />
+                {blueprintState()!.label}
+              </span>
+              <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                {getRunCount(baseNote()!, noteLoops() ?? []) > 0
+                  ? `${getRunCount(baseNote()!, noteLoops() ?? [])} runs`
+                  : "No runs yet"}
+              </span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops() ?? []))}
+              </span>
+              <Show when={baseNote()!.blueprint?.defaultAgent}>
+                <span class="h-3 w-px bg-border-weaker-base" />
+                <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
+              </Show>
+            </div>
+          </div>
+        </Show>
 
         <Show when={conflict()}>
           <div class="shrink-0 border-b border-border-warning-base bg-surface-raised-base px-4 py-3 text-12-regular text-text-base">
@@ -1133,6 +1537,15 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           sdkUrl={sdk.url}
           saving={saving()}
         />
+
+        <Show when={showRunMenu() && isBlueprint() && baseNote()}>
+          <RunMenu
+            title={baseNote()!.title || "Untitled"}
+            hasCurrentSession={!!params.id}
+            onRun={runBlueprint}
+            onClose={() => setShowRunMenu(false)}
+          />
+        </Show>
       </Show>
     </div>
   )
