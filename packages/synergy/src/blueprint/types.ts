@@ -1,7 +1,7 @@
 import z from "zod"
 import { Identifier } from "../id/id"
 
-export const LoopStatus = z.enum(["running", "auditing", "completed", "failed", "cancelled"])
+export const LoopStatus = z.enum(["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"])
 
 export const Info = z
   .object({
@@ -14,6 +14,11 @@ export const Info = z
     supervisorSessionID: z.string().optional(),
     scopeID: z.string(),
     status: LoopStatus,
+    runMode: z.enum(["current", "new", "worktree"]).optional(),
+    parentSessionID: z.string().optional(),
+    firstPrompt: z.string().optional(),
+    error: z.string().optional(),
+    loopIndex: z.number().optional(),
     audit: z
       .object({
         lastReason: z.string().optional(),

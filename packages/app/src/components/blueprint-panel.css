@@ -1,0 +1,181 @@
+/* BlueprintPanel — calm boss-view workspace styling */
+
+.bp-panel {
+  background: var(--background-base);
+}
+
+/* Card base */
+.bp-card {
+  background: var(--surface-raised-base);
+  border: 1px solid var(--border-weak-base);
+  border-radius: 1rem;
+  transition:
+    border-color var(--motion-duration-base) var(--motion-ease-standard),
+    background-color var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.bp-card:hover {
+  border-color: var(--border-weak-hover);
+  background: var(--surface-raised-base-hover);
+}
+
+/* Active loop — stronger presence */
+.bp-card-active {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 38%, var(--border-weak-base));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-interactive-base) 6%, var(--surface-raised-base)),
+    var(--surface-raised-base)
+  );
+}
+
+.bp-card-active:hover {
+  border-color: color-mix(in srgb, var(--border-interactive-base) 55%, var(--border-weak-base));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-interactive-base) 10%, var(--surface-raised-base-hover)),
+    var(--surface-raised-base-hover)
+  );
+}
+
+/* Status badges */
+.bp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.bp-status-draft {
+  background: var(--surface-inset-base);
+  color: var(--text-weak);
+  border: 1px solid var(--border-weaker-base);
+}
+
+.bp-status-ready {
+  background: color-mix(in srgb, var(--surface-info-base) 12%, transparent);
+  color: var(--text-info-base);
+  border: 1px solid color-mix(in srgb, var(--border-info-base) 32%, transparent);
+}
+
+.bp-status-archived {
+  background: var(--surface-inset-base);
+  color: var(--text-weaker);
+  border: 1px solid var(--border-weaker-base);
+}
+
+/* Loop status badges — more specific */
+.bp-loop-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.125rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bp-loop-armed {
+  background: var(--surface-inset-base);
+  color: var(--text-weak);
+  border: 1px solid var(--border-weaker-base);
+}
+
+.bp-loop-running {
+  background: color-mix(in srgb, var(--surface-diff-add-base) 14%, transparent);
+  color: var(--text-diff-add-base);
+  border: 1px solid color-mix(in srgb, var(--border-diff-add-base) 32%, transparent);
+}
+
+.bp-loop-waiting {
+  background: color-mix(in srgb, var(--surface-warning-base) 12%, transparent);
+  color: var(--text-warning-base);
+  border: 1px solid color-mix(in srgb, var(--border-warning-base) 32%, transparent);
+}
+
+.bp-loop-auditing {
+  background: color-mix(in srgb, var(--surface-interactive-base) 12%, transparent);
+  color: var(--text-interactive-base);
+  border: 1px solid color-mix(in srgb, var(--border-interactive-base) 32%, transparent);
+}
+
+.bp-loop-completed {
+  background: color-mix(in srgb, var(--surface-diff-add-base) 8%, transparent);
+  color: var(--text-diff-add-base);
+  border: 1px solid color-mix(in srgb, var(--border-diff-add-base) 18%, transparent);
+}
+
+.bp-loop-failed {
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 10%, transparent);
+  color: var(--text-diff-delete-base);
+  border: 1px solid color-mix(in srgb, var(--border-diff-delete-base) 28%, transparent);
+}
+
+.bp-loop-cancelled {
+  background: var(--surface-inset-base);
+  color: var(--text-weaker);
+  border: 1px solid var(--border-weaker-base);
+}
+
+/* Run modal backdrop */
+.bp-modal-backdrop {
+  background: color-mix(in srgb, var(--background-base) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/* Search bar */
+.bp-search {
+  background: var(--surface-inset-base);
+  border-radius: 0.8rem;
+}
+
+.bp-search input {
+  background: transparent;
+  outline: none;
+  border: none;
+  color: var(--text-base);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.bp-search input::placeholder {
+  color: var(--text-weak);
+}
+
+/* Detail panel transition */
+.bp-detail-enter {
+  animation: bp-fade-in 120ms var(--motion-ease-standard) both;
+}
+
+@keyframes bp-fade-in {
+  from {
+    opacity: 0.6;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scrollable areas */
+.bp-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--icon-weak-base) transparent;
+}
+
+.bp-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.bp-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--icon-weak-base);
+  border-radius: var(--radius-full);
+}

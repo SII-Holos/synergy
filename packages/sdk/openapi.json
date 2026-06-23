@@ -8536,6 +8536,703 @@
         ]
       }
     },
+    "/blueprint/loop": {
+      "get": {
+        "operationId": "blueprint.loop.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List BlueprintLoops",
+        "description": "List all BlueprintLoops for the current scope.",
+        "responses": {
+          "200": {
+            "description": "List of BlueprintLoops",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlueprintLoopInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "blueprint.loop.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create BlueprintLoop",
+        "description": "Create a new BlueprintLoop in the current scope. Returns armed status.",
+        "responses": {
+          "200": {
+            "description": "Created BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlueprintLoopCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/complete": {
+      "post": {
+        "operationId": "blueprint.loop.complete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Complete BlueprintLoop",
+        "description": "Mark a BlueprintLoop as completed.",
+        "responses": {
+          "200": {
+            "description": "Completed BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.complete({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/cancel": {
+      "post": {
+        "operationId": "blueprint.loop.cancel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Cancel BlueprintLoop",
+        "description": "Cancel a BlueprintLoop.",
+        "responses": {
+          "200": {
+            "description": "Cancelled BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}": {
+      "get": {
+        "operationId": "blueprint.loop.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Get BlueprintLoop",
+        "description": "Get a specific BlueprintLoop by ID.",
+        "responses": {
+          "200": {
+            "description": "BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/bind": {
+      "put": {
+        "operationId": "blueprint.loop.bind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Bind session to BlueprintLoop",
+        "description": "Bind the current session to a BlueprintLoop so the session drives loop execution.",
+        "responses": {
+          "200": {
+            "description": "Updated BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "description": "Session ID to bind",
+                    "type": "string"
+                  }
+                },
+                "required": ["sessionID"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.bind({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/start": {
+      "post": {
+        "operationId": "blueprint.loop.start",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Start BlueprintLoop (armed → running)",
+        "description": "Transition a BlueprintLoop from armed to running.",
+        "responses": {
+          "200": {
+            "description": "Started BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/wait": {
+      "post": {
+        "operationId": "blueprint.loop.wait",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Wait BlueprintLoop (running → waiting)",
+        "description": "Transition a BlueprintLoop from running to waiting.",
+        "responses": {
+          "200": {
+            "description": "Waiting BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.wait({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/resume": {
+      "post": {
+        "operationId": "blueprint.loop.resume",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Resume BlueprintLoop (waiting → running)",
+        "description": "Transition a BlueprintLoop from waiting back to running.",
+        "responses": {
+          "200": {
+            "description": "Resumed BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.resume({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/activity": {
+      "get": {
+        "operationId": "blueprint.loop.activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Get BlueprintLoop activity",
+        "description": "Get derived activity metrics for a BlueprintLoop (derived from session state).",
+        "responses": {
+          "200": {
+            "description": "Activity summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopActivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/session/{id}/plan-mode": {
+      "put": {
+        "operationId": "blueprint.session.planMode",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle Plan Mode",
+        "description": "Enable or disable Plan Mode on a session.",
+        "responses": {
+          "200": {
+            "description": "Updated session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "planMode": {
+                    "description": "Enable or disable Plan Mode",
+                    "type": "boolean"
+                  }
+                },
+                "required": ["planMode"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.session.planMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -10247,6 +10944,420 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.thread.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/ui/contributions": {
+      "get": {
+        "operationId": "plugin.listUIContributions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List plugin UI contributions",
+        "description": "Return aggregated UI manifests for all loaded plugins.",
+        "responses": {
+          "200": {
+            "description": "List of plugin UI contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginUIContribution"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.listUIContributions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/assets/{pluginId}/{versionHash}/*": {
+      "get": {
+        "operationId": "plugin.serveAsset",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "versionHash",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin static asset",
+        "description": "Serve a static file from a plugin's directory with immutable cache headers.",
+        "responses": {
+          "200": {
+            "description": "Plugin static asset"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.serveAsset({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/sandbox/{panelId}": {
+      "get": {
+        "operationId": "plugin.sandbox",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin sandbox iframe shell",
+        "description": "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
+        "responses": {
+          "200": {
+            "description": "Sandbox HTML page"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.sandbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/interact": {
+      "post": {
+        "operationId": "plugin.interact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Relay plugin interaction",
+        "description": "Relay a postMessage interaction for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Interaction relayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginInteractResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "payload": {},
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.interact({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config-schema": {
+      "get": {
+        "operationId": "plugin.configSchema",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin config schema",
+        "description": "Return the plugin's contributed config schema from its manifest.",
+        "responses": {
+          "200": {
+            "description": "Plugin config schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.configSchema({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config": {
+      "patch": {
+        "operationId": "plugin.updateConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Update plugin config",
+        "description": "Merge values into the plugin's configuration namespace.",
+        "responses": {
+          "200": {
+            "description": "Updated plugin config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.updateConfig({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/status": {
+      "get": {
+        "operationId": "plugin.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin status",
+        "description": "Report the current status of a loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.status({\n  ...\n})"
           }
         ]
       }
@@ -15976,6 +17087,17 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/SessionWorkspace"
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "planMode": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
@@ -18804,6 +19926,10 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
           "version": {
             "type": "number"
           },
@@ -18824,6 +19950,20 @@
           },
           "previewHtml": {
             "type": "string"
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
+            }
           }
         },
         "required": ["id", "title", "pinned", "global", "tags", "version", "time", "searchText"]
@@ -18870,6 +20010,35 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "default": "draft",
+                "type": "string",
+                "enum": ["draft", "ready", "archived"]
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
             }
           },
           "version": {
@@ -18921,6 +20090,35 @@
             "items": {
               "type": "string"
             }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "default": "draft",
+                "type": "string",
+                "enum": ["draft", "ready", "archived"]
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
+            }
           }
         },
         "required": ["title"]
@@ -18969,10 +20167,187 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["draft", "ready", "archived"]
+                  },
+                  "defaultAgent": {
+                    "type": "string"
+                  },
+                  "activeLoopID": {
+                    "type": "string"
+                  },
+                  "runCount": {
+                    "type": "number"
+                  },
+                  "lastRunAt": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expectedVersion": {
             "type": "number"
           }
         }
+      },
+      "BlueprintLoopInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^bll.*"
+          },
+          "noteID": {
+            "type": "string"
+          },
+          "noteVersion": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "supervisorSessionID": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"]
+          },
+          "runMode": {
+            "type": "string",
+            "enum": ["current", "new", "worktree"]
+          },
+          "parentSessionID": {
+            "type": "string"
+          },
+          "firstPrompt": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "loopIndex": {
+            "type": "number"
+          },
+          "audit": {
+            "type": "object",
+            "properties": {
+              "lastReason": {
+                "type": "string"
+              },
+              "lastAuditedAt": {
+                "type": "number"
+              },
+              "attempts": {
+                "type": "number"
+              }
+            },
+            "required": ["attempts"]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "started": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "noteID", "title", "sessionID", "scopeID", "status", "time"]
+      },
+      "BlueprintLoopCreateInput": {
+        "type": "object",
+        "properties": {
+          "noteID": {
+            "description": "Note ID to loop",
+            "type": "string"
+          },
+          "noteVersion": {
+            "description": "Note version to lock",
+            "type": "number"
+          },
+          "title": {
+            "description": "Loop title",
+            "type": "string"
+          },
+          "description": {
+            "description": "Loop description",
+            "type": "string"
+          },
+          "sessionID": {
+            "description": "Session ID driving this loop",
+            "type": "string"
+          },
+          "runMode": {
+            "description": "Loop run mode (default current)",
+            "type": "string",
+            "enum": ["current", "new", "worktree"]
+          },
+          "parentSessionID": {
+            "description": "Parent session ID",
+            "type": "string"
+          },
+          "firstPrompt": {
+            "description": "First user prompt for the loop",
+            "type": "string"
+          },
+          "loopIndex": {
+            "description": "Zero-based loop index",
+            "type": "number"
+          }
+        },
+        "required": ["noteID", "title", "sessionID"]
+      },
+      "BlueprintLoopActivity": {
+        "type": "object",
+        "properties": {
+          "stepCount": {
+            "type": "number"
+          },
+          "messageCount": {
+            "type": "number"
+          },
+          "lastActivityAt": {
+            "type": "number"
+          }
+        },
+        "required": ["stepCount", "messageCount"]
       },
       "AssetInfo": {
         "type": "object",
@@ -19817,6 +21192,118 @@
       "MailboxMessageList": {
         "type": "array",
         "items": {}
+      },
+      "PluginUIContribution": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "ui": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["pluginId", "version", "trustTier"]
+      },
+      "PluginInteractResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "type"]
+      },
+      "PluginConfigSchema": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginConfig": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginStatus": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["trusted", "sandbox"]
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["pluginId", "loaded", "hasManifest", "trustTier"]
       },
       "ExternalAgentInfo": {
         "type": "object",
@@ -21132,6 +22619,145 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.blueprint_loop.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.cancelled": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.cancelled"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.auditing": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.auditing"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.restarted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.restarted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "reason"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -21728,6 +23354,27 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"

@@ -16,6 +16,9 @@ export namespace NoteTypes {
           description: z.string().optional(),
           status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
           defaultAgent: z.string().optional(),
+          activeLoopID: z.string().optional(),
+          runCount: z.number().optional(),
+          lastRunAt: z.number().optional(),
         })
         .optional(),
       version: z.number(),
@@ -38,6 +41,9 @@ export namespace NoteTypes {
           description: z.string().optional(),
           status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
           defaultAgent: z.string().optional(),
+          activeLoopID: z.string().optional(),
+          runCount: z.number().optional(),
+          lastRunAt: z.number().optional(),
         })
         .optional(),
     })
@@ -57,7 +63,11 @@ export namespace NoteTypes {
           description: z.string().optional(),
           status: z.enum(["draft", "ready", "archived"]).optional(),
           defaultAgent: z.string().optional(),
+          activeLoopID: z.string().nullable().optional(),
+          runCount: z.number().optional(),
+          lastRunAt: z.number().optional(),
         })
+        .nullable()
         .optional(),
       expectedVersion: z.number().optional(),
     })
@@ -89,6 +99,13 @@ export namespace NoteTypes {
       }),
       searchText: z.string(),
       previewHtml: z.string().optional(),
+      blueprint: z
+        .object({
+          activeLoopID: z.string().optional(),
+          runCount: z.number().optional(),
+          lastRunAt: z.number().optional(),
+        })
+        .optional(),
     })
     .meta({ ref: "NoteMetaInfo" })
   export type MetaInfo = z.infer<typeof MetaInfo>

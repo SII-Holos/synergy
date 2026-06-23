@@ -47,6 +47,29 @@ import type {
   Auth as Auth2,
   AuthSetErrors,
   AuthSetResponses,
+  BlueprintLoopActivityErrors,
+  BlueprintLoopActivityResponses,
+  BlueprintLoopBindErrors,
+  BlueprintLoopBindResponses,
+  BlueprintLoopCancelErrors,
+  BlueprintLoopCancelResponses,
+  BlueprintLoopCompleteErrors,
+  BlueprintLoopCompleteResponses,
+  BlueprintLoopCreateErrors,
+  BlueprintLoopCreateInput,
+  BlueprintLoopCreateResponses,
+  BlueprintLoopGetErrors,
+  BlueprintLoopGetResponses,
+  BlueprintLoopListErrors,
+  BlueprintLoopListResponses,
+  BlueprintLoopResumeErrors,
+  BlueprintLoopResumeResponses,
+  BlueprintLoopStartErrors,
+  BlueprintLoopStartResponses,
+  BlueprintLoopWaitErrors,
+  BlueprintLoopWaitResponses,
+  BlueprintSessionPlanModeErrors,
+  BlueprintSessionPlanModeResponses,
   ChannelAppResetResponses,
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
@@ -230,6 +253,20 @@ import type {
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
+  PluginConfigSchemaErrors,
+  PluginConfigSchemaResponses,
+  PluginInteractErrors,
+  PluginInteractResponses,
+  PluginListUiContributionsErrors,
+  PluginListUiContributionsResponses,
+  PluginSandboxErrors,
+  PluginSandboxResponses,
+  PluginServeAssetErrors,
+  PluginServeAssetResponses,
+  PluginStatusErrors,
+  PluginStatusResponses,
+  PluginUpdateConfigErrors,
+  PluginUpdateConfigResponses,
   ProviderAuthResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -1822,6 +1859,47 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/unrevert",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Toggle Plan Mode
+   *
+   * Enable or disable Plan Mode on a session.
+   */
+  public planMode<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      planMode?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "planMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      BlueprintSessionPlanModeResponses,
+      BlueprintSessionPlanModeErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/session/{id}/plan-mode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -5216,6 +5294,329 @@ export class Note extends HeyApiClient {
   }
 }
 
+export class Loop extends HeyApiClient {
+  /**
+   * List BlueprintLoops
+   *
+   * List all BlueprintLoops for the current scope.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<BlueprintLoopListResponses, BlueprintLoopListErrors, ThrowOnError>({
+      url: "/blueprint/loop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create BlueprintLoop
+   *
+   * Create a new BlueprintLoop in the current scope. Returns armed status.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      blueprintLoopCreateInput?: BlueprintLoopCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "blueprintLoopCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCreateResponses, BlueprintLoopCreateErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Complete BlueprintLoop
+   *
+   * Mark a BlueprintLoop as completed.
+   */
+  public complete<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BlueprintLoopCompleteResponses,
+      BlueprintLoopCompleteErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/complete",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel BlueprintLoop
+   *
+   * Cancel a BlueprintLoop.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCancelResponses, BlueprintLoopCancelErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop/{id}/cancel",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get BlueprintLoop
+   *
+   * Get a specific BlueprintLoop by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BlueprintLoopGetResponses, BlueprintLoopGetErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Bind session to BlueprintLoop
+   *
+   * Bind the current session to a BlueprintLoop so the session drives loop execution.
+   */
+  public bind<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<BlueprintLoopBindResponses, BlueprintLoopBindErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/bind",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Start BlueprintLoop (armed → running)
+   *
+   * Transition a BlueprintLoop from armed to running.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopStartResponses, BlueprintLoopStartErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/start",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Wait BlueprintLoop (running → waiting)
+   *
+   * Transition a BlueprintLoop from running to waiting.
+   */
+  public wait<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopWaitResponses, BlueprintLoopWaitErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/wait",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resume BlueprintLoop (waiting → running)
+   *
+   * Transition a BlueprintLoop from waiting back to running.
+   */
+  public resume<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopResumeResponses, BlueprintLoopResumeErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop/{id}/resume",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get BlueprintLoop activity
+   *
+   * Get derived activity metrics for a BlueprintLoop (derived from session state).
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      BlueprintLoopActivityResponses,
+      BlueprintLoopActivityErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/activity",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Blueprint extends HeyApiClient {
+  loop = new Loop({ client: this.client })
+
+  session = new Session({ client: this.client })
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -5329,6 +5730,227 @@ export class Stats extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).sse.get<StatsProgressResponses, unknown, ThrowOnError>({
       url: "/stats/progress",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Plugin extends HeyApiClient {
+  /**
+   * List plugin UI contributions
+   *
+   * Return aggregated UI manifests for all loaded plugins.
+   */
+  public listUiContributions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      PluginListUiContributionsResponses,
+      PluginListUiContributionsErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/ui/contributions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin static asset
+   *
+   * Serve a static file from a plugin's directory with immutable cache headers.
+   */
+  public serveAsset<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      versionHash: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "versionHash" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
+      url: "/plugin/assets/{pluginId}/{versionHash}/*",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin sandbox iframe shell
+   *
+   * Serve an HTML shell for loading a plugin panel in a sandboxed iframe.
+   */
+  public sandbox<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      panelId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "panelId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/sandbox/{panelId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Relay plugin interaction
+   *
+   * Relay a postMessage interaction for a plugin.
+   */
+  public interact<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      type?: string
+      payload?: unknown
+      source?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "type" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "source" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginInteractResponses, PluginInteractErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/interact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin config schema
+   *
+   * Return the plugin's contributed config schema from its manifest.
+   */
+  public configSchema<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginConfigSchemaResponses, PluginConfigSchemaErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config-schema",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update plugin config
+   *
+   * Merge values into the plugin's configuration namespace.
+   */
+  public updateConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      body?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ in: "path", key: "pluginId" }, { in: "query", key: "directory" }, { in: "body" }] }],
+    )
+    return (options?.client ?? this.client).patch<PluginUpdateConfigResponses, PluginUpdateConfigErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin status
+   *
+   * Report the current status of a loaded plugin.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginStatusResponses, PluginStatusErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/status",
       ...options,
       ...params,
     })
@@ -6148,9 +6770,13 @@ export class SynergyClient extends HeyApiClient {
 
   note = new Note({ client: this.client })
 
+  blueprint = new Blueprint({ client: this.client })
+
   asset = new Asset({ client: this.client })
 
   stats = new Stats({ client: this.client })
+
+  plugin = new Plugin({ client: this.client })
 
   app = new App({ client: this.client })
 

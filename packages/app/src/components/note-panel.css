@@ -1,6 +1,5 @@
 /* Smooth hover lift/shadow on note cards using project motion tokens */
-.note-card,
-.mini-note-card {
+.note-card {
   transition:
     transform var(--motion-duration-base) var(--motion-ease-standard),
     box-shadow var(--motion-duration-base) var(--motion-ease-standard),
@@ -32,8 +31,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .note-card,
-  .mini-note-card {
+  .note-card {
     transition: none;
   }
 }

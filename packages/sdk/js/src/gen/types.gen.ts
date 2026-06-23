@@ -2314,6 +2314,10 @@ export type Session = {
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
+  blueprint?: {
+    loopID?: string
+    planMode?: boolean
+  }
 }
 
 export type SessionStatus =
@@ -3325,6 +3329,7 @@ export type NoteMetaInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
+  kind?: "note" | "blueprint"
   version: number
   time: {
     created: number
@@ -3332,6 +3337,11 @@ export type NoteMetaInfo = {
   }
   searchText: string
   previewHtml?: string
+  blueprint?: {
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
 }
 
 export type NoteMetaScopeGroup = {
@@ -3348,6 +3358,15 @@ export type NoteInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    status?: "draft" | "ready" | "archived"
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
   version: number
   time: {
     created: number
@@ -3365,6 +3384,15 @@ export type NoteCreateInput = {
   title: string
   content?: unknown
   tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    status?: "draft" | "ready" | "archived"
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
 }
 
 export type NoteConflictError = {
@@ -3382,7 +3410,89 @@ export type NotePatchInput = {
   pinned?: boolean
   global?: boolean
   tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    status?: "draft" | "ready" | "archived"
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  } | null
   expectedVersion?: number
+}
+
+export type BlueprintLoopInfo = {
+  id: string
+  noteID: string
+  noteVersion?: number
+  title: string
+  description?: string
+  sessionID: string
+  supervisorSessionID?: string
+  scopeID: string
+  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  runMode?: "current" | "new" | "worktree"
+  parentSessionID?: string
+  firstPrompt?: string
+  error?: string
+  loopIndex?: number
+  audit?: {
+    lastReason?: string
+    lastAuditedAt?: number
+    attempts: number
+  }
+  time: {
+    created: number
+    started?: number
+    updated: number
+    completed?: number
+  }
+}
+
+export type BlueprintLoopCreateInput = {
+  /**
+   * Note ID to loop
+   */
+  noteID: string
+  /**
+   * Note version to lock
+   */
+  noteVersion?: number
+  /**
+   * Loop title
+   */
+  title: string
+  /**
+   * Loop description
+   */
+  description?: string
+  /**
+   * Session ID driving this loop
+   */
+  sessionID: string
+  /**
+   * Loop run mode (default current)
+   */
+  runMode?: "current" | "new" | "worktree"
+  /**
+   * Parent session ID
+   */
+  parentSessionID?: string
+  /**
+   * First user prompt for the loop
+   */
+  firstPrompt?: string
+  /**
+   * Zero-based loop index
+   */
+  loopIndex?: number
+}
+
+export type BlueprintLoopActivity = {
+  stepCount: number
+  messageCount: number
+  lastActivityAt?: number
 }
 
 export type AssetInfo = {
@@ -3644,6 +3754,44 @@ export type HolosRetryResponse = {
 }
 
 export type MailboxMessageList = Array<unknown>
+
+export type PluginUiContribution = {
+  pluginId: string
+  name?: string
+  version: string
+  trustTier: "trusted" | "sandbox"
+  ui?: {
+    [key: string]: unknown
+  } | null
+  permissions?: {
+    [key: string]: unknown
+  } | null
+}
+
+export type PluginInteractResult = {
+  status: string
+  type: string
+}
+
+export type PluginConfigSchema = {
+  [key: string]: unknown
+}
+
+export type PluginConfig = {
+  [key: string]: unknown
+}
+
+export type PluginStatus = {
+  pluginId: string
+  loaded: boolean
+  name?: string
+  version?: string
+  hasManifest: boolean
+  trustTier: "trusted" | "sandbox"
+  manifest?: {
+    [key: string]: unknown
+  } | null
+}
 
 export type ExternalAgentInfo = {
   adapter: string
@@ -4106,6 +4254,57 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRestarted = {
+  type: "blueprint_loop.restarted"
+  properties: {
+    loopID: string
+    reason: string
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -4322,6 +4521,13 @@ export type Event =
   | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRestarted
   | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
@@ -8596,6 +8802,395 @@ export type NoteUpdateResponses = {
 
 export type NoteUpdateResponse = NoteUpdateResponses[keyof NoteUpdateResponses]
 
+export type BlueprintLoopListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop"
+}
+
+export type BlueprintLoopListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type BlueprintLoopListError = BlueprintLoopListErrors[keyof BlueprintLoopListErrors]
+
+export type BlueprintLoopListResponses = {
+  /**
+   * List of BlueprintLoops
+   */
+  200: Array<BlueprintLoopInfo>
+}
+
+export type BlueprintLoopListResponse = BlueprintLoopListResponses[keyof BlueprintLoopListResponses]
+
+export type BlueprintLoopCreateData = {
+  body?: BlueprintLoopCreateInput
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop"
+}
+
+export type BlueprintLoopCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type BlueprintLoopCreateError = BlueprintLoopCreateErrors[keyof BlueprintLoopCreateErrors]
+
+export type BlueprintLoopCreateResponses = {
+  /**
+   * Created BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCreateResponse = BlueprintLoopCreateResponses[keyof BlueprintLoopCreateResponses]
+
+export type BlueprintLoopCompleteData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/complete"
+}
+
+export type BlueprintLoopCompleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopCompleteError = BlueprintLoopCompleteErrors[keyof BlueprintLoopCompleteErrors]
+
+export type BlueprintLoopCompleteResponses = {
+  /**
+   * Completed BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCompleteResponse = BlueprintLoopCompleteResponses[keyof BlueprintLoopCompleteResponses]
+
+export type BlueprintLoopCancelData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/cancel"
+}
+
+export type BlueprintLoopCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopCancelError = BlueprintLoopCancelErrors[keyof BlueprintLoopCancelErrors]
+
+export type BlueprintLoopCancelResponses = {
+  /**
+   * Cancelled BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCancelResponse = BlueprintLoopCancelResponses[keyof BlueprintLoopCancelResponses]
+
+export type BlueprintLoopGetData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}"
+}
+
+export type BlueprintLoopGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopGetError = BlueprintLoopGetErrors[keyof BlueprintLoopGetErrors]
+
+export type BlueprintLoopGetResponses = {
+  /**
+   * BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopGetResponse = BlueprintLoopGetResponses[keyof BlueprintLoopGetResponses]
+
+export type BlueprintLoopBindData = {
+  body?: {
+    /**
+     * Session ID to bind
+     */
+    sessionID: string
+  }
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/bind"
+}
+
+export type BlueprintLoopBindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopBindError = BlueprintLoopBindErrors[keyof BlueprintLoopBindErrors]
+
+export type BlueprintLoopBindResponses = {
+  /**
+   * Updated BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopBindResponse = BlueprintLoopBindResponses[keyof BlueprintLoopBindResponses]
+
+export type BlueprintLoopStartData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/start"
+}
+
+export type BlueprintLoopStartErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopStartError = BlueprintLoopStartErrors[keyof BlueprintLoopStartErrors]
+
+export type BlueprintLoopStartResponses = {
+  /**
+   * Started BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
+
+export type BlueprintLoopWaitData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/wait"
+}
+
+export type BlueprintLoopWaitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
+
+export type BlueprintLoopWaitResponses = {
+  /**
+   * Waiting BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
+
+export type BlueprintLoopResumeData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/resume"
+}
+
+export type BlueprintLoopResumeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
+
+export type BlueprintLoopResumeResponses = {
+  /**
+   * Resumed BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
+
+export type BlueprintLoopActivityData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/activity"
+}
+
+export type BlueprintLoopActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopActivityError = BlueprintLoopActivityErrors[keyof BlueprintLoopActivityErrors]
+
+export type BlueprintLoopActivityResponses = {
+  /**
+   * Activity summary
+   */
+  200: BlueprintLoopActivity
+}
+
+export type BlueprintLoopActivityResponse = BlueprintLoopActivityResponses[keyof BlueprintLoopActivityResponses]
+
+export type BlueprintSessionPlanModeData = {
+  body?: {
+    /**
+     * Enable or disable Plan Mode
+     */
+    planMode: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/session/{id}/plan-mode"
+}
+
+export type BlueprintSessionPlanModeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintSessionPlanModeError = BlueprintSessionPlanModeErrors[keyof BlueprintSessionPlanModeErrors]
+
+export type BlueprintSessionPlanModeResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type BlueprintSessionPlanModeResponse =
+  BlueprintSessionPlanModeResponses[keyof BlueprintSessionPlanModeResponses]
+
 export type AssetUploadData = {
   body?: {
     file: unknown
@@ -9336,6 +9931,220 @@ export type HolosThreadGetResponses = {
 }
 
 export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type PluginListUiContributionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/ui/contributions"
+}
+
+export type PluginListUiContributionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PluginListUiContributionsError = PluginListUiContributionsErrors[keyof PluginListUiContributionsErrors]
+
+export type PluginListUiContributionsResponses = {
+  /**
+   * List of plugin UI contributions
+   */
+  200: Array<PluginUiContribution>
+}
+
+export type PluginListUiContributionsResponse =
+  PluginListUiContributionsResponses[keyof PluginListUiContributionsResponses]
+
+export type PluginServeAssetData = {
+  body?: never
+  path: {
+    pluginId: string
+    versionHash: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/assets/{pluginId}/{versionHash}/*"
+}
+
+export type PluginServeAssetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAssetErrors]
+
+export type PluginServeAssetResponses = {
+  /**
+   * Plugin static asset
+   */
+  200: unknown
+}
+
+export type PluginSandboxData = {
+  body?: never
+  path: {
+    pluginId: string
+    panelId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/sandbox/{panelId}"
+}
+
+export type PluginSandboxErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginSandboxError = PluginSandboxErrors[keyof PluginSandboxErrors]
+
+export type PluginSandboxResponses = {
+  /**
+   * Sandbox HTML page
+   */
+  200: unknown
+}
+
+export type PluginInteractData = {
+  body?: {
+    type: string
+    payload?: unknown
+    source?: string
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/interact"
+}
+
+export type PluginInteractErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginInteractError = PluginInteractErrors[keyof PluginInteractErrors]
+
+export type PluginInteractResponses = {
+  /**
+   * Interaction relayed
+   */
+  200: PluginInteractResult
+}
+
+export type PluginInteractResponse = PluginInteractResponses[keyof PluginInteractResponses]
+
+export type PluginConfigSchemaData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config-schema"
+}
+
+export type PluginConfigSchemaErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginConfigSchemaError = PluginConfigSchemaErrors[keyof PluginConfigSchemaErrors]
+
+export type PluginConfigSchemaResponses = {
+  /**
+   * Plugin config schema
+   */
+  200: PluginConfigSchema
+}
+
+export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
+
+export type PluginUpdateConfigData = {
+  body?: {
+    [key: string]: unknown
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginUpdateConfigErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginUpdateConfigError = PluginUpdateConfigErrors[keyof PluginUpdateConfigErrors]
+
+export type PluginUpdateConfigResponses = {
+  /**
+   * Updated plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginUpdateConfigResponse = PluginUpdateConfigResponses[keyof PluginUpdateConfigResponses]
+
+export type PluginStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/status"
+}
+
+export type PluginStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginStatusError = PluginStatusErrors[keyof PluginStatusErrors]
+
+export type PluginStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
 
 export type AppLogData = {
   body?: {

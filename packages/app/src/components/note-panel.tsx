@@ -1,27 +1,13 @@
-import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, untrack } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { Editor } from "@tiptap/core"
-import StarterKit from "@tiptap/starter-kit"
-import Placeholder from "@tiptap/extension-placeholder"
-import Link from "@tiptap/extension-link"
-import Image from "@tiptap/extension-image"
-import { Table } from "@tiptap/extension-table"
-import { TableRow } from "@tiptap/extension-table-row"
-import { TableHeader } from "@tiptap/extension-table-header"
-import { TableCell } from "@tiptap/extension-table-cell"
-import TaskList from "@tiptap/extension-task-list"
-import TaskItem from "@tiptap/extension-task-item"
-import CodeBlockShiki from "tiptap-extension-code-block-shiki"
-import MathExtension from "@aarkue/tiptap-math-extension"
+import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
-import { createSlashCommands } from "@/components/note/slash-menu"
-import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
+import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
 import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
@@ -51,55 +37,77 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
   setTimeout(() => document.body.removeChild(dragImage), 0)
 }
 
-function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () => void }) {
+type NoteCardVariant = "compact" | "balanced" | "featured"
+
+function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: NoteCardVariant; onClick: () => void }) {
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
   const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
+  const variant = createMemo(() => props.variant ?? "balanced")
+  const cardHeight = createMemo(() => {
+    if (variant() === "compact") return "h-[220px]"
+    if (variant() === "featured") return "h-[320px]"
+    return "h-[260px]"
+  })
 
   return (
     <button
       type="button"
-      class="group note-card relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer"
+      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
-          <Icon name="folder" class="size-2.5 text-text-weak" />
-          <span class="text-10-medium leading-tight">{props.originName}</span>
+        <div class="absolute right-2 top-2 z-10 flex max-w-[60%] items-center gap-1 rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
+          <Icon name="folder" class="size-2.5 shrink-0 text-text-weak" />
+          <span class="truncate text-10-medium leading-tight">{props.originName}</span>
         </div>
       </Show>
+
+      <div class="px-3.5 pt-3.5">
+        <span
+          classList={{
+            "line-clamp-2 text-text-strong": true,
+            "text-12-medium": variant() !== "featured",
+            "text-14-medium tracking-tight": variant() === "featured",
+          }}
+        >
+          {props.note.title || "Untitled"}
+        </span>
+      </div>
+
       <Show
         when={hasContent()}
         fallback={
-          <div class="flex items-center justify-center py-6 text-text-weaker opacity-40">
+          <div class="flex flex-1 items-center justify-center text-text-weaker opacity-35">
             <Icon name="notebook-pen" size="large" />
           </div>
         }
       >
-        <Show
-          when={previewHtml()}
-          fallback={
-            <div class="px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-4 whitespace-pre-line">
-              {searchPreview()}
-            </div>
-          }
-        >
-          <div
-            class="note-preview-content px-3.5 py-3 text-11-regular leading-relaxed text-text-weak line-clamp-4"
-            innerHTML={previewHtml()!}
-          />
-        </Show>
+        <div class="min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
+          <Show
+            when={previewHtml()}
+            fallback={
+              <div class="whitespace-pre-line text-[10.5px] leading-[1.35] text-text-weaker">{searchPreview()}</div>
+            }
+          >
+            <div
+              class="note-preview-content text-[10.5px] leading-[1.35] text-text-weaker"
+              innerHTML={previewHtml()!}
+            />
+          </Show>
+        </div>
       </Show>
 
-      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-2.5">
-        <div class="flex items-center justify-between">
+      <div class="mt-auto shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+        <div class="flex items-center gap-2">
           <Show when={props.note.pinned}>
             <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
               <Icon name="pin" size="small" class="size-3" />
             </span>
           </Show>
+          <span class="flex-1" />
           <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
         </div>
       </div>
@@ -110,53 +118,20 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () 
 /** Skeleton placeholder matching NoteCard shape, shown during list loading */
 function NoteCardSkeleton() {
   return (
-    <div class="flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
-      <div class="px-3.5 py-4 space-y-2">
-        <div class="h-2.5 w-full rounded bg-surface-inset-base/70" />
-        <div class="h-2.5 w-3/4 rounded bg-surface-inset-base/70" />
-        <div class="h-2.5 w-1/2 rounded bg-surface-inset-base/70" />
+    <div class="flex w-full h-[260px] flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
+      <div class="px-3.5 pt-3.5 space-y-1.5">
+        <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
+        <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
       </div>
-      <div class="mt-auto border-t border-border-weaker-base px-3.5 py-2.5">
-        <div class="h-3 w-1/4 rounded bg-surface-inset-base/70" />
+      <div class="flex-1 px-3.5 pt-2 space-y-1">
+        <div class="h-2 w-full rounded bg-surface-inset-base/70" />
+        <div class="h-2 w-5/6 rounded bg-surface-inset-base/70" />
+        <div class="h-2 w-2/3 rounded bg-surface-inset-base/70" />
+      </div>
+      <div class="shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+        <div class="ml-auto h-3 w-1/4 rounded bg-surface-inset-base/70" />
       </div>
     </div>
-  )
-}
-
-function MiniNoteCard(props: { note: NoteMetaInfo; originName?: string; onClick: () => void }) {
-  const tags = createMemo(() => props.note.tags ?? [])
-
-  return (
-    <button
-      type="button"
-      class="mini-note-card min-w-0 rounded-xl border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985]"
-      draggable={true}
-      onDragStart={(e) => attachNoteDragData(e, props.note)}
-      onClick={props.onClick}
-    >
-      <div class="flex min-w-0 items-center gap-1.5">
-        <Show when={props.note.pinned}>
-          <Icon name="pin" size="small" class="size-3 shrink-0 text-text-interactive-base" />
-        </Show>
-        <span class="min-w-0 flex-1 truncate text-11-medium leading-snug text-text-strong">
-          {props.note.title || "Untitled"}
-        </span>
-      </div>
-      <div class="mt-1.5 flex min-w-0 items-center gap-1.5 text-10-medium leading-none text-text-weaker">
-        <Show when={props.originName}>
-          <span class="inline-flex min-w-0 items-center gap-1 truncate text-text-weak">
-            <Icon name="folder" class="size-2.5 shrink-0" />
-            <span class="truncate">{props.originName}</span>
-          </span>
-        </Show>
-        <Show when={tags()[0]}>
-          <span class="max-w-[5.5rem] truncate rounded-md bg-surface-raised-stronger-non-alpha/72 px-1.5 py-0.5 text-text-weak">
-            {tags()[0]}
-          </span>
-        </Show>
-        <span class="shrink-0">{relativeTime(props.note.time.updated)}</span>
-      </div>
-    </button>
   )
 }
 
@@ -174,7 +149,7 @@ function ScopeSection(props: {
   onCreateNote: () => void
   scopeLookup: Map<string, { name: string; directory: string }>
 }) {
-  const previewNotes = createMemo(() => props.group.notes.slice(0, 3))
+  const [columns, setColumns] = createSignal(2)
   const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
   const noteCountLabel = createMemo(
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
@@ -184,15 +159,33 @@ function ScopeSection(props: {
     if (props.group.isCurrent) return "bg-surface-inset-base/42"
   })
 
+  const shelfNotes = createMemo(() => props.group.notes.slice(0, columns()))
+  const hasMore = createMemo(() => props.group.notes.length > columns())
+
+  let sectionRef!: HTMLElement
+
+  onMount(() => {
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width
+      // section p-2 (16px) + grid px-1 (8px)
+      const inner = w - 24
+      const cols = inner < 310 ? 2 : inner < 470 ? 3 : 4
+      setColumns(cols)
+    })
+    ro.observe(sectionRef)
+    onCleanup(() => ro.disconnect())
+  })
+
   function getOriginName(note: NoteMetaInfo): string | undefined {
     if (props.group.scopeType !== "global") return undefined
-    const origin = (note as any).originScope as string | undefined
+    const origin = note.originScope
     if (!origin) return undefined
     return props.scopeLookup.get(origin)?.name ?? origin
   }
 
   return (
     <section
+      ref={sectionRef}
       class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
     >
       <Show when={props.group.isCurrent}>
@@ -247,18 +240,32 @@ function ScopeSection(props: {
       <Show
         when={props.expanded}
         fallback={
-          <Show when={previewNotes().length > 0}>
-            <div class="flex flex-col gap-2 px-1 pb-1 pt-1.5">
-              <For each={previewNotes()}>
+          <Show when={shelfNotes().length > 0}>
+            <div
+              class="mt-1.5 grid gap-2.5 px-1 pb-1"
+              style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
+            >
+              <For each={shelfNotes()}>
                 {(note) => (
-                  <MiniNoteCard
+                  <NoteCard
                     note={note}
                     originName={getOriginName(note)}
+                    variant="compact"
                     onClick={() => props.onOpenNote(note.id)}
                   />
                 )}
               </For>
             </div>
+            <Show when={hasMore()}>
+              <button
+                type="button"
+                class="flex w-full items-center justify-center gap-1 rounded-xl px-1 pb-1.5 pt-0.5 text-11-medium text-text-weak transition-colors hover:text-text-base"
+                onClick={props.onToggle}
+              >
+                View all {props.group.notes.length} notes
+                <Icon name="chevron-right" size="small" class="size-3" />
+              </button>
+            </Show>
           </Show>
         }
       >
@@ -268,11 +275,16 @@ function ScopeSection(props: {
         >
           <div
             class="mt-2 grid gap-2.5 px-1 mb-1"
-            style="grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr))"
+            style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
           >
             <For each={props.group.notes}>
               {(note) => (
-                <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
+                <NoteCard
+                  note={note}
+                  originName={getOriginName(note)}
+                  variant={note.pinned ? "featured" : "balanced"}
+                  onClick={() => props.onOpenNote(note.id)}
+                />
               )}
             </For>
           </div>
@@ -605,8 +617,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
 
-  let editorRef!: HTMLDivElement
-  let bubbleRef!: HTMLDivElement
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
   let saveInFlight: Promise<void> | undefined
@@ -638,7 +648,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     setConflict(null)
     setDirty(false)
     if (ed && !ed.isDestroyed) {
-      const scrollTop = editorRef?.scrollTop ?? 0
       const { from } = ed.state.selection
       ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
       const docSize = ed.state.doc.content.size
@@ -649,7 +658,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           /* position may be invalid */
         }
       }
-      if (editorRef) editorRef.scrollTop = scrollTop
     }
   }
 
@@ -843,76 +851,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     return assetHttpUrl(sdk.url, res.data as { id?: string; url?: string } | undefined)
   }
 
-  createEffect(() => {
-    const loaded = noteLoaded()
-    if (!loaded || untrack(() => editor())) return
-    untrack(() => {
-      const snapshot = baseNote()!
-      const instance = new Editor({
-        element: editorRef,
-        extensions: [
-          StarterKit.configure({
-            codeBlock: false,
-            link: false,
-          }),
-          Placeholder.configure({
-            placeholder: "Type / for commands...",
-          }),
-          Link.configure({
-            openOnClick: false,
-            autolink: true,
-          }),
-          Image,
-          Table.configure({
-            resizable: true,
-          }),
-          TableRow,
-          TableHeader,
-          TableCell,
-          CrossCellSelection,
-          TaskList,
-          TaskItem.configure({
-            nested: true,
-          }),
-          CodeBlockShiki.configure({
-            defaultTheme: "github-dark",
-          }),
-          MathExtension,
-          Video,
-          Mermaid,
-          createFileUpload(sdk.client, sdk.url),
-          createSlashCommands({ onUploadFile: uploadFile }),
-          createBubbleMenu(bubbleRef),
-        ],
-        content: snapshot.content as any,
-        onUpdate: ({ editor }) => {
-          if (editor.isDestroyed) return
-          markDirty()
-          scheduleSave()
-        },
-      })
-
-      onCleanup(() => instance.destroy())
-      setEditor(instance)
-    })
-  })
-
-  function handleEditorAreaClick(e: MouseEvent) {
-    const ed = editor()
-    if (!ed || ed.isDestroyed || ed.isFocused) return
-    const target = e.target as HTMLElement
-    if (target === editorRef) {
-      ed.commands.focus()
-      return
-    }
-    if (!target.classList.contains("tiptap")) return
-    const pos = ed.view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (pos) {
-      ed.commands.focus()
-      ed.commands.setTextSelection(pos.pos)
-    }
-  }
-
   function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
     setTitle(e.currentTarget.value)
     markDirty()
@@ -970,6 +908,26 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+  }
+
+  async function convertToBlueprint() {
+    const dir = directory()
+    const base = baseNote()
+    if (!dir || !base) return
+
+    try {
+      await sdk.client.note.update({
+        id: base.id,
+        directory: dir,
+        notePatchInput: {
+          kind: "blueprint",
+          blueprint: { status: "draft" as const },
+        },
+      })
+      await refetch()
+    } catch (e) {
+      console.error("Failed to convert note to blueprint", e)
+    }
   }
 
   async function deleteNote() {
@@ -1046,6 +1004,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             >
               <Icon name="download" size="small" />
             </button>
+            <button
+              type="button"
+              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-interactive-base"
+              onClick={convertToBlueprint}
+              title="Convert to Blueprint"
+            >
+              <Icon name="workflow" size="small" />
+            </button>
 
             <button
               type="button"
@@ -1118,243 +1084,19 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </div>
 
-        <div class="relative flex-1 min-h-0 bg-background-base px-4 pb-4 pt-3">
-          <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-raised-base">
-            <div
-              ref={editorRef}
-              class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              onClick={handleEditorAreaClick}
-            />
-            <div
-              class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
-              style={{ background: "linear-gradient(to top, var(--surface-raised-base), transparent)" }}
-            />
-          </div>
-          <div ref={bubbleRef} class="note-bubble-menu">
-            <Show when={editor()}>
-              <BubbleMenuContent editor={editor()!} />
-            </Show>
-          </div>
-          <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
-            <Show when={saving()} fallback="Saved">
-              Saving...
-            </Show>
-          </div>
-        </div>
+        <DocumentEditorCore
+          content={baseNote()!.content}
+          onUpdate={() => {
+            markDirty()
+            scheduleSave()
+          }}
+          onEditorReady={(instance) => setEditor(instance)}
+          uploadFile={uploadFile}
+          sdkClient={sdk.client}
+          sdkUrl={sdk.url}
+          saving={saving()}
+        />
       </Show>
     </div>
   )
 }
-
-const TIPTAP_STYLES = `
-  .tiptap {
-    outline: none;
-    min-height: 100%;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    color: var(--text-base);
-  }
-  .tiptap::after {
-    content: '';
-    display: block;
-    height: 50vh;
-  }
-  .tiptap p {
-    margin-bottom: 0.75em;
-    line-height: 1.6;
-    font-size: 0.9375rem;
-    color: var(--text-base);
-  }
-  .tiptap h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap h2 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-top: 1.25em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap h3 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap ul, .tiptap ol {
-    padding-left: 1.5em;
-    margin-bottom: 0.75em;
-    color: var(--text-base);
-  }
-  .tiptap ul { list-style-type: disc; }
-  .tiptap ol { list-style-type: decimal; }
-  .tiptap blockquote {
-    margin-left: 0;
-    margin-right: 0;
-    margin-bottom: 0.95em;
-    border-left: 3px solid color-mix(in srgb, var(--border-strong-base) 78%, var(--surface-brand-base));
-    border-radius: 0 0.9rem 0.9rem 0;
-    background: color-mix(in srgb, var(--surface-inset-base) 74%, transparent);
-    padding: 0.9em 1.05em;
-    font-style: italic;
-    color: var(--text-weak);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
-  }
-  .tiptap pre {
-    background: var(--surface-inset-base);
-    border: 1px solid color-mix(in srgb, var(--border-base) 72%, transparent);
-    border-radius: 0.95rem;
-    padding: 1em 1.05em;
-    overflow-x: auto;
-    margin-bottom: 0.95em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
-  }
-  .tiptap pre code {
-    background: none;
-    padding: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.875rem;
-    color: color-mix(in srgb, var(--text-strong) 82%, white 18%);
-  }
-  .tiptap code {
-    background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-base) 58%, transparent);
-    padding: 0.18em 0.45em;
-    border-radius: 0.45rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.85em;
-    color: var(--text-strong);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
-  }
-  .tiptap table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 0.95em;
-    overflow: hidden;
-    border-radius: 0.95rem;
-  }
-  .tiptap td, .tiptap th {
-    border: 1px solid color-mix(in srgb, var(--border-weak-base) 82%, transparent);
-    padding: 0.6em 0.7em;
-    text-align: left;
-  }
-  .tiptap th {
-    background: color-mix(in srgb, var(--surface-inset-base) 72%, transparent);
-    font-weight: 600;
-  }
-  .tiptap p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
-    float: left;
-    color: var(--text-weaker);
-    pointer-events: none;
-    height: 0;
-  }
-  .tiptap ul[data-type="taskList"] {
-    list-style: none;
-    padding: 0;
-  }
-  .tiptap ul[data-type="taskList"] li {
-    display: flex;
-    gap: 0.5em;
-    align-items: flex-start;
-  }
-  .tiptap ul[data-type="taskList"] li input[type="checkbox"] {
-    margin-top: 0.3em;
-  }
-  .tiptap a {
-    color: var(--text-interactive-base);
-    text-decoration: none;
-    text-decoration-color: color-mix(in srgb, var(--text-interactive-base) 38%, transparent);
-  }
-  .tiptap a:hover {
-    text-decoration: underline;
-  }
-  .katex-display {
-    margin: 0.5em 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-  .tiptap video {
-    max-width: 100%;
-    border-radius: 0.5rem;
-    margin-bottom: 0.75em;
-  }
-  .tiptap .mermaid-node {
-    margin-bottom: 0.75em;
-  }
-  .note-bubble-menu {
-    z-index: 100;
-  }
-  .note-preview-content p,
-  .note-preview-content ul,
-  .note-preview-content ol,
-  .note-preview-content blockquote,
-  .note-preview-content pre {
-    margin-bottom: 0.4em;
-  }
-  .note-preview-content ul,
-  .note-preview-content ol {
-    padding-left: 1.2em;
-  }
-  .note-preview-content ul { list-style-type: disc; }
-  .note-preview-content ol { list-style-type: decimal; }
-  .note-preview-content h1,
-  .note-preview-content h2,
-  .note-preview-content h3 {
-    font-weight: 600;
-    margin-bottom: 0.3em;
-    color: var(--text-base);
-  }
-  .note-preview-content h1 { font-size: 1rem; }
-  .note-preview-content h2 { font-size: 0.9375rem; }
-  .note-preview-content h3 { font-size: 0.875rem; }
-  .note-preview-content code {
-    background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
-    border-radius: 0.3rem;
-    padding: 0.05em 0.3em;
-    font-size: 0.85em;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-  .note-preview-content pre {
-    background: var(--surface-inset-base);
-    border-radius: 0.5rem;
-    padding: 0.5em 0.65em;
-    overflow-x: auto;
-    font-size: 0.8em;
-  }
-  .note-preview-content pre code {
-    background: none;
-    padding: 0;
-    border-radius: 0;
-  }
-  .note-preview-content blockquote {
-    border-left: 2px solid color-mix(in srgb, var(--border-weak-base) 80%, transparent);
-    padding-left: 0.6em;
-    color: var(--text-weaker);
-  }
-  .note-preview-content .note-preview-task-list {
-    list-style: none;
-    padding-left: 0;
-  }
-  .note-preview-content .note-preview-task-list li {
-    display: flex;
-    gap: 0.4em;
-    align-items: flex-start;
-  }
-  .note-preview-content .note-preview-task-list input[type="checkbox"] {
-    margin-top: 0.2em;
-  }
-  .note-preview-content strong {
-    font-weight: 600;
-  }
-  .note-preview-content em {
-    font-style: italic;
-  }
-  .note-preview-content s {
-    text-decoration: line-through;
-  }
-`

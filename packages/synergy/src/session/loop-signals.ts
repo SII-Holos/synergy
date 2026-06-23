@@ -225,10 +225,11 @@ LoopJob.register({
 LoopJob.defineSignal({
   type: "blueprint_loop_bound",
   async detect(ctx) {
-    const loops = (ctx.session as any).blueprint?.loopID
-      ? [await BlueprintLoopStore.get(ctx.session.scope.id, (ctx.session as any).blueprint.loopID).catch(() => null)]
-      : []
-    return loops.some((l) => l !== null && l.status === "running")
+    const loopID = ctx.session.blueprint?.loopID
+    const loops = loopID ? [await BlueprintLoopStore.get(ctx.session.scope.id, loopID).catch(() => null)] : []
+    return loops.some(
+      (l) => l !== null && (l.status === "running" || l.status === "waiting" || l.status === "auditing"),
+    )
   },
 })
 
@@ -241,7 +242,7 @@ LoopJob.register({
     return []
   },
   async execute(ctx) {
-    const loopID = (ctx.session as any).blueprint?.loopID as string | undefined
+    const loopID = ctx.session.blueprint?.loopID
     if (!loopID) return "pass"
     const scopeID = ctx.session.scope.id
     const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => null)

@@ -144,7 +144,12 @@ export namespace NoteStore {
       global: isGlobal,
       tags: create.note.tags ?? [],
       kind: create.note.kind ?? "note",
-      blueprint: create.note.blueprint,
+      blueprint: create.note.blueprint
+        ? {
+            ...create.note.blueprint,
+            runCount: create.note.blueprint.runCount ?? 0,
+          }
+        : create.note.blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
@@ -239,7 +244,15 @@ export namespace NoteStore {
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
       if (update.patch.kind !== undefined) draft.kind = update.patch.kind
-      if (update.patch.blueprint !== undefined) draft.blueprint = update.patch.blueprint
+      if (update.patch.blueprint === null) {
+        draft.blueprint = undefined
+      } else if (update.patch.blueprint !== undefined) {
+        const { activeLoopID, ...rest } = update.patch.blueprint
+        const next = { ...(draft.blueprint ?? {}), ...rest }
+        if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
+        if (activeLoopID === null) delete next.activeLoopID
+        draft.blueprint = next
+      }
       if (update.patch.global !== undefined) draft.global = update.patch.global
       if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string

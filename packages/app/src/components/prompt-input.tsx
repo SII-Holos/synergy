@@ -1,3 +1,4 @@
+import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
 import {
   createEffect,
@@ -344,6 +345,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
 
+  type DroppedBlueprintData = {
+    noteID: string
+    title: string
+  }
+
+  type BlueprintSlot = {
+    loopID: string
+    noteID: string
+    title: string
+    runMode: "current" | "new" | "worktree"
+  }
+
+  const [blueprintSlot, setBlueprintSlot] = createSignal<BlueprintSlot | null>(null)
+  const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+
+  const cancelArmedLoop = async () => {
+    const slot = blueprintSlot()
+    if (!slot) return
+    setBlueprintLoading(true)
+    try {
+      await sdk.client.blueprint.loop.cancel({ id: slot.loopID })
+    } catch {
+      // If cancellation fails, still clear the slot locally — the loop is orphaned.
+    } finally {
+      setBlueprintLoading(false)
+      setBlueprintSlot(null)
+    }
+  }
   const scrollCursorIntoView = () => {
     const container = scrollRef
     const selection = window.getSelection()
@@ -648,7 +677,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     addPart({ type: "text", content: plainText, start: 0, end: 0 })
   }
 
-  const DROPPABLE_TYPES = ["Files", "application/x-synergy-note", "application/x-synergy-session"]
+  const DROPPABLE_TYPES = [
+    "Files",
+    "application/x-synergy-note",
+    "application/x-synergy-session",
+    "application/x-synergy-blueprint",
+  ]
 
   const handleDragOver = (event: DragEvent) => {
     if (dialog.active) return
@@ -721,6 +755,61 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         }
         const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
         prompt.set([...prompt.current(), attachment], cursorPosition)
+      } catch {}
+      return
+    }
+
+    const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
+    if (blueprintData) {
+      try {
+        const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
+        if (!dropped.noteID) return
+        if (blueprintSlot()) {
+          showToast({
+            type: "warning",
+            title: "Slot occupied",
+            description: "Remove the armed Blueprint before equipping another.",
+          })
+          return
+        }
+        setBlueprintLoading(true)
+        try {
+          // On a new-session page (no params.id), we cannot create a loop
+          // immediately — the session doesn't exist yet. Defer to submit flow.
+          const sessionID = params.id
+          if (!sessionID) {
+            showToast({
+              type: "warning",
+              title: "No session available",
+              description: "Start a session before equipping a Blueprint.",
+            })
+            return
+          }
+          const result = await sdk.client.blueprint.loop.create({
+            blueprintLoopCreateInput: {
+              noteID: dropped.noteID,
+              title: dropped.title || "Blueprint",
+              sessionID,
+              runMode: "current",
+            },
+          })
+          const loop = result.data as BlueprintLoopInfo | undefined
+          if (!loop) throw new Error("Loop creation returned no data")
+          setBlueprintSlot({
+            loopID: loop.id,
+            noteID: loop.noteID,
+            title: loop.title,
+            runMode: loop.runMode ?? "current",
+          })
+        } catch (err) {
+          showToast({
+            type: "error",
+            title: "Failed to arm Blueprint",
+            description: err instanceof Error ? err.message : "Unknown error",
+          })
+        } finally {
+          setBlueprintLoading(false)
+        }
       } catch {}
       return
     }
@@ -1403,6 +1492,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return "Request failed"
     }
 
+    const armedSlot = blueprintSlot()
+    if (armedSlot && mode === "normal") {
+      // In current mode, start the loop and forward the user text as firstPrompt.
+      try {
+        await sdk.client.blueprint.loop.start({ id: armedSlot.loopID })
+      } catch (err) {
+        showToast({
+          type: "error",
+          title: "Failed to start Blueprint",
+          description: err instanceof Error ? err.message : "Unknown error",
+        })
+        return
+      }
+      setBlueprintSlot(null)
+      // For current mode, continue with the normal send flow.
+      // For new/worktree, the current session text has no target session, so skip.
+      if (armedSlot.runMode !== "current") {
+        showToast({
+          type: "info",
+          title: "Blueprint started",
+          description: `${armedSlot.title} is running in ${armedSlot.runMode} mode. Open its session to follow progress.`,
+        })
+        prompt.reset()
+        setStore("mode", "normal")
+        setStore("popover", null)
+        setBlueprintSlot(null)
+        return
+      }
+    }
     addToHistory(currentPrompt, mode)
     setStore("historyIndex", -1)
     setStore("savedPrompt", null)
@@ -1491,6 +1609,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       prompt.reset()
       setStore("mode", "normal")
       setStore("popover", null)
+      setBlueprintSlot(null)
     }
 
     const restoreInput = () => {
@@ -2100,6 +2219,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               )}
             </For>
           </div>
+        </Show>
+        <Show when={blueprintSlot()}>
+          {(slot) => (
+            <div class="flex items-center gap-2 px-3 pt-3">
+              <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
+                <Show when={!blueprintLoading()} fallback={<Spinner class="text-icon-base size-4" />}>
+                  <Icon name="target" size="small" class="shrink-0 text-text-interactive-base" />
+                </Show>
+                <span class="text-12-medium text-text-base max-w-[200px] truncate">{slot().title}</span>
+                <span class="text-10-medium text-text-interactive-base bg-surface-raised-stronger-non-alpha rounded px-1.5 py-0.5">
+                  Armed
+                </span>
+                <button
+                  type="button"
+                  disabled={blueprintLoading()}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    cancelArmedLoop()
+                  }}
+                  class="size-5 rounded-full flex items-center justify-center hover:bg-surface-raised-base-hover disabled:opacity-40"
+                >
+                  <Icon name="x" class="size-3 text-text-weak" />
+                </button>
+              </div>
+            </div>
+          )}
         </Show>
         <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
           <div
