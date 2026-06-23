@@ -4,7 +4,6 @@ import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { Instance } from "../scope/instance"
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
-import { Identifier } from "../id/id"
 import DESCRIPTION from "./blueprint-loop-finish.txt"
 
 const parameters = z.object({
@@ -83,6 +82,8 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
         )
       }
     }
+    let supervisorSessionID: string | undefined
+
     if (params.status === "auditing") {
       const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
@@ -97,11 +98,12 @@ If fully implemented, call blueprint_loop_finish(status="completed").`
         executionRole: "delegated_subagent",
         category: "general",
         parentSessionID: loop.sessionID,
-        parentMessageID: Identifier.ascending("message"),
+        parentMessageID: ctx.messageID,
       })
+      supervisorSessionID = task.sessionID
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
         status: "auditing",
-        supervisorSessionID: task.sessionID,
+        supervisorSessionID,
       })
       await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
@@ -113,7 +115,7 @@ If fully implemented, call blueprint_loop_finish(status="completed").`
     }
 
     const statusLabel: Record<string, string> = {
-      auditing: "auditing (supervisor will be spawned)",
+      auditing: "auditing",
       failed: "failed",
       completed: "completed",
     }
@@ -121,7 +123,8 @@ If fully implemented, call blueprint_loop_finish(status="completed").`
     return {
       title: `Loop ${params.loopID} → ${params.status}`,
       output: [
-        `BlueprintLoop ${params.loopID} finished with status: ${statusLabel[params.status]}.`,
+        `BlueprintLoop ${params.loopID} is now ${statusLabel[params.status]}.`,
+        supervisorSessionID ? `Supervisor session: ${supervisorSessionID}` : "",
         params.summary ? `Summary: ${params.summary}` : "",
       ]
         .filter(Boolean)
@@ -129,6 +132,7 @@ If fully implemented, call blueprint_loop_finish(status="completed").`
       metadata: {
         loopID: params.loopID,
         status: params.status,
+        supervisorSessionID,
       } as Record<string, any>,
     }
   },

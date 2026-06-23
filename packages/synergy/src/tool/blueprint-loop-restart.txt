@@ -1,10 +1,10 @@
-Restart a BlueprintLoop that is in "auditing" status, sending it back to "running" with new instructions.
+Use this as supervisor when the audit finds remaining work.
 
-Only the supervisor agent uses this tool to send a loop back to the execution agent after reviewing its output.
+This sends a restart message to the original execution session, records the audit reason, and returns the loop to running.
 
 Parameters:
-- loopID: The BlueprintLoop ID to restart
-- reason: Explanation for the restart (will be recorded in the audit trail)
-- completed: Optional summary of what was completed successfully
-- remaining: Optional summary of remaining work
-- instructions: Optional additional instructions for the execution agent
+- loopID: The BlueprintLoop ID under audit
+- reason: Clear explanation of why the loop is not complete
+- completed: Optional summary of work that is already correct
+- remaining: Optional summary of missing or incorrect work
+- instructions: Optional next actions for the execution agent

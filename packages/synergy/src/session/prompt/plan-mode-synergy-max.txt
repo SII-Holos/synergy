@@ -10,7 +10,7 @@ It should cover:
 - Edge cases and failure modes
 - Security, performance, compatibility, and UX risks where relevant
 - Verification commands and quality gates
-- Suggested worktree/session strategy for execution
+- Implementation boundaries, sequencing, and cleanup expectations
 
 Use research/design subagents freely to deepen the plan before writing the Blueprint.
 </plan-mode-synergy-max>

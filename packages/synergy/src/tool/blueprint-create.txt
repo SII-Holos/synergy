@@ -1,7 +1,6 @@
-Create a new blueprint note. Content should be provided in markdown format — it will be converted to the internal ProseMirror JSON format for storage.
+Create a new Blueprint document from Markdown content.
 
-Blueprint notes are kind="blueprint" and include blueprint-specific metadata (description, status, defaultAgent). The status defaults to "draft".
-
+Use this when Plan Mode has produced a design document that should be saved, reviewed, edited by the user, or executed later.
 The `scope` parameter controls where the blueprint is created:
 - "current" (default): Creates in the current project scope
 - "global": Creates in the global scope (visible from all projects)

@@ -862,6 +862,15 @@ export namespace ToolResolver {
     if (input.session?.blueprint?.planMode) {
       result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
     }
+
+    const activeBlueprintLoopID = input.session?.blueprint?.loopID
+    const isSupervisor = input.agent.name === "supervisor"
+    if (!isSupervisor) {
+      result = result.filter((d) => d.id !== "blueprint_loop_restart")
+    }
+    if (!isSupervisor && !activeBlueprintLoopID) {
+      result = result.filter((d) => d.id !== "blueprint_loop_finish")
+    }
     const disabled = PermissionNext.disabled(
       result.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),

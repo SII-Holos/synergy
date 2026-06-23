@@ -54,11 +54,11 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
     })
 
     const messageLines = [
-      `[BlueprintLoop Restarted]`,
+      `Supervisor audit found remaining work for BlueprintLoop ${params.loopID}.`,
       params.reason ? `Reason: ${params.reason}` : "",
       params.completed ? `Completed: ${params.completed}` : "",
       params.remaining ? `Remaining: ${params.remaining}` : "",
-      params.instructions ? `Instructions: ${params.instructions}` : "",
+      params.instructions ? `Required next actions: ${params.instructions}` : "",
     ]
       .filter(Boolean)
       .join("\n")
@@ -70,16 +70,6 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
       type: "text",
       text: messageLines,
     }
-
-    await ctx.ask({
-      permission: "identity_act",
-      patterns: [`blueprint_loop_restart session=${loop.sessionID}`],
-      metadata: {
-        nonBypassable: true,
-        action: "blueprint_loop_restart",
-        target: loop.sessionID,
-      },
-    })
 
     const mail: SessionManager.SessionMail.User = {
       type: "user",
@@ -96,8 +86,8 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
     return {
       title: `Loop ${params.loopID} restarted`,
       output: [
-        `BlueprintLoop ${params.loopID} restarted (attempt ${audit.attempts}).`,
-        `Sent message to execution session ${loop.sessionID}.`,
+        `BlueprintLoop ${params.loopID} returned to running (attempt ${audit.attempts}).`,
+        `Restart message delivered to execution session ${loop.sessionID}.`,
         `Reason: ${params.reason}`,
       ].join("\n"),
       metadata: {
