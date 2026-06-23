@@ -84,7 +84,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const sessions = input.sessionAttachments().slice()
     const mode = input.store.mode
 
+    const blueprintSlot = input.localArmedLoop()
     if (
+      !blueprintSlot &&
       text.trim().length === 0 &&
       images.length === 0 &&
       attachments.length === 0 &&
@@ -106,30 +108,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    const armedSlot = input.localArmedLoop()
-    if (armedSlot && mode === "normal") {
-      input.setBlueprintLoading(true)
-      try {
-        const userText = inlineText(currentPrompt).trim()
-        await sdk.client.blueprint.loop.start({
-          id: armedSlot.loopID,
-          userPrompt: userText || undefined,
-        })
-        input.setLocalArmedLoop(null)
-        prompt.reset()
-        input.setStore("mode", "normal")
-        input.setStore("popover", null)
-      } catch (err) {
-        showToast({
-          type: "error",
-          title: "Failed to start Blueprint",
-          description: err instanceof Error ? err.message : "Unknown error",
-        })
-      } finally {
-        input.setBlueprintLoading(false)
-      }
-      return
-    }
     input.addToHistory(currentPrompt, mode)
     input.setStore("historyIndex", -1)
     input.setStore("savedPrompt", null)
@@ -236,6 +214,43 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (!createdSessionForSubmit) return
       await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
       navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
+    }
+
+    if (blueprintSlot && mode === "normal") {
+      input.setBlueprintLoading(true)
+      try {
+        const userText = text.trim()
+        let loopID: string
+        if (blueprintSlot.type === "pending") {
+          const result = await sdk.client.blueprint.loop.create({
+            blueprintLoopCreateInput: {
+              noteID: blueprintSlot.noteID,
+              title: blueprintSlot.title,
+              sessionID: activeSession.id,
+              runMode: blueprintSlot.runMode,
+            },
+          })
+          const loop = result.data
+          if (!loop?.id) throw new Error("Loop creation returned no data")
+          loopID = loop.id
+        } else {
+          loopID = blueprintSlot.loopID
+        }
+
+        clearInput()
+        await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
+      } catch (err) {
+        showToast({
+          type: "error",
+          title: "Failed to start Blueprint",
+          description: errorMessage(err),
+        })
+        rollbackCreatedSession()
+        restoreInput()
+      } finally {
+        input.setBlueprintLoading(false)
+      }
+      return
     }
 
     if (mode === "shell") {

@@ -70,6 +70,7 @@ import { usePromptAttachments } from "@/components/prompt-input/attachments-hook
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
@@ -115,49 +116,90 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
   )
 
-  const getBlueprintSlotIcon = (status: string) => {
+  type BlueprintSlotDisplay = {
+    slot: BlueprintSlot
+    mode: string
+  }
+
+  const getBlueprintSlotStatusLabel = (status: string) => {
     switch (status) {
+      case "pending":
+        return "Ready to start"
       case "armed":
-        return "crosshair"
+        return "Equipped"
       case "running":
-        return "play"
+        return "Running"
+      case "waiting":
+        return "Waiting"
       case "auditing":
-        return "search"
+        return "In review"
       case "completed":
-        return "check"
+        return "Completed"
       case "failed":
-        return "x"
+        return "Needs attention"
       case "cancelled":
-        return "ban"
+        return "Unequipped"
       default:
-        return "target"
+        return titlecaseStatusLabel(status)
     }
   }
 
-  const [slotHover, setSlotHover] = createSignal(false)
-  const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
+  const getBlueprintSlotIconClass = (status: string) => {
+    switch (status) {
+      case "armed":
+      case "pending":
+        return "text-text-interactive-base"
+      case "running":
+        return "text-green-600"
+      case "auditing":
+        return "text-amber-600"
+      case "completed":
+        return "text-green-700"
+      case "failed":
+      case "cancelled":
+        return "text-red-600"
+      default:
+        return "text-icon-base"
+    }
+  }
 
-  const startLongPress = () => {
+  const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
+  const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
+  let slotLongPressFrame: number | undefined
+
+  const startLongPress = (slot: BlueprintSlotDisplay) => {
     if (slotLongPress()) return
-    const bp = displayedBlueprintLoop()
-    if (
-      !bp ||
-      (bp.mode !== "armed" &&
-        bp.mode !== "completed" &&
-        bp.mode !== "failed" &&
-        bp.mode !== "cancelled" &&
-        bp.mode !== "running" &&
-        bp.mode !== "waiting")
-    )
-      return
+    const startedAt = performance.now()
+    const duration = 2000
+    const tick = (now: number) => {
+      setSlotLongPressProgress(Math.min(1, (now - startedAt) / duration))
+      slotLongPressFrame = requestAnimationFrame(tick)
+    }
+    setSlotLongPressProgress(0)
+    slotLongPressFrame = requestAnimationFrame(tick)
     const t = setTimeout(async () => {
       setSlotLongPress(null)
-      const armed = localArmedLoop()
-      if (armed) {
-        await sdk.client.blueprint.loop.cancel({ id: armed.loopID }).catch(() => {})
-        setLocalArmedLoop(null)
-        showToast({ type: "info", title: "Blueprint unequipped", description: armed.title })
+      if (slotLongPressFrame !== undefined) cancelAnimationFrame(slotLongPressFrame)
+      slotLongPressFrame = undefined
+      setSlotLongPressProgress(1)
+      if (slot.slot.type === "loop") {
+        const loopID = slot.slot.loopID
+        await sdk.client.blueprint.loop.cancel({ id: loopID }).catch(() => {})
+        const sessionID = params.id
+        if (sessionID) {
+          sync.set(
+            produce((draft) => {
+              const session = draft.session.find((item) => item.id === sessionID)
+              if (session && session.blueprint?.loopID === loopID) {
+                session.blueprint = { ...session.blueprint, loopID: undefined }
+              }
+            }),
+          )
+        }
       }
+      if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
+      setSlotLongPressProgress(0)
+      showToast({ type: "info", title: "Blueprint unequipped", description: slot.slot.title })
     }, 2000)
     setSlotLongPress(t)
   }
@@ -168,22 +210,52 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       clearTimeout(t)
       setSlotLongPress(null)
     }
+    if (slotLongPressFrame !== undefined) {
+      cancelAnimationFrame(slotLongPressFrame)
+      slotLongPressFrame = undefined
+    }
+    setSlotLongPressProgress(0)
   }
+  onCleanup(cancelLongPress)
 
-  const displayedBlueprintLoop = createMemo(() => {
-    const localArmed = localArmedLoop()
-    if (localArmed) return { loop: localArmed, mode: "armed" as const }
+  const displayedBlueprintLoop = createMemo<BlueprintSlotDisplay | null>(() => {
+    const localSlot = localArmedLoop()
+    if (localSlot) return { slot: localSlot, mode: localSlot.type === "pending" ? "pending" : "armed" }
     const loop = sessionLoop()
-    if (loop) return { loop, mode: loop.status }
+    if (loop)
+      return {
+        slot: {
+          type: "loop" as const,
+          loopID: loop.id,
+          noteID: loop.noteID,
+          title: loop.title,
+          runMode: loop.runMode ?? "current",
+        },
+        mode: loop.status,
+      }
     return null
   })
+
+  const canSubmit = createMemo(() => prompt.dirty() || working() || !!localArmedLoop())
+  const blueprintSubmitActive = createMemo(() => !!displayedBlueprintLoop() && !!localArmedLoop() && !working())
+
+  createEffect(
+    on(
+      () => sessionKey(),
+      () => {
+        cancelLongPress()
+        setLocalArmedLoop(null)
+      },
+      { defer: true },
+    ),
+  )
 
   const cancelArmedLoop = async () => {
     const slot = localArmedLoop()
     if (!slot) return
     setBlueprintLoading(true)
     try {
-      await sdk.client.blueprint.loop.cancel({ id: slot.loopID })
+      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel({ id: slot.loopID })
     } catch {
       // If cancellation fails, still clear the slot locally — the loop is orphaned.
     } finally {
@@ -539,6 +611,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       noteAttachments,
       sessionAttachments,
       localArmedLoop,
+      activeLoopID: () => info()?.blueprint?.loopID,
       setLocalArmedLoop,
       setBlueprintLoading,
       setStore,
@@ -1048,15 +1121,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Switch>
           </div>
           <div class="flex items-center gap-2">
-            <Show when={displayedBlueprintLoop()}>
-              {(bp) => (
-                <div class="bp-slot flex items-center h-8 rounded-full border border-border-weak-base bg-surface-base px-3 gap-2 hover:bg-surface-raised-base-hover cursor-default">
-                  <Icon name={getBlueprintSlotIcon(bp().mode)} class="text-icon-interactive-base" size="small" />
-                  <span class="text-12-medium text-text-base truncate max-w-[120px]">{bp().loop.title}</span>
-                  <span class="text-10-medium text-text-weak">{bp().mode}</span>
-                </div>
-              )}
-            </Show>
             <input
               ref={fileInputRef}
               type="file"
@@ -1075,40 +1139,127 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Tooltip>
             </Show>
-            <Tooltip
-              placement="top"
-              inactive={!prompt.dirty() && !working()}
-              value={
-                <Switch>
-                  <Match when={working() && !prompt.dirty()}>
-                    <div class="flex items-center gap-2">
-                      <span>Stop</span>
-                      <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
-                    </div>
-                  </Match>
-                  <Match when={true}>
-                    <div class="flex items-center gap-2">
-                      <span>Send</span>
-                      <Icon name="corner-down-left" size="small" class="text-icon-base" />
-                    </div>
-                  </Match>
-                </Switch>
-              }
-            >
-              <Tooltip
-                placement="top"
-                inactive={!prompt.dirty() && !working() && !localArmedLoop()}
-                value={localArmedLoop() ? "Start BlueprintLoop" : working() && !prompt.dirty() ? "Stop" : "Send"}
-              >
-                <IconButton
-                  type="submit"
-                  disabled={!prompt.dirty() && !working() && !localArmedLoop()}
-                  icon={localArmedLoop() ? "zap" : working() && !prompt.dirty() ? "square" : "arrow-up"}
-                  variant="primary"
-                  class={localArmedLoop() ? "size-9 rounded-full! bg-text-interactive-base!" : "size-9 rounded-full!"}
-                />
-              </Tooltip>
-            </Tooltip>
+            <Switch>
+              <Match when={blueprintSubmitActive() && displayedBlueprintLoop()}>
+                {(bp) => (
+                  <div class="flex h-9 items-center rounded-full border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
+                    <Tooltip
+                      placement="top"
+                      value={
+                        <div class="min-w-56 max-w-72">
+                          <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
+                          <div class="mt-1 text-10-regular text-text-weak">Ready to start this BlueprintLoop.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">Hold the Blueprint icon to unequip.</div>
+                        </div>
+                      }
+                    >
+                      <button
+                        type="button"
+                        class="relative flex h-8 min-w-0 max-w-44 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover select-none"
+                        aria-label={`Blueprint: ${bp().slot.title}`}
+                        onPointerDown={() => startLongPress(bp())}
+                        onPointerUp={cancelLongPress}
+                        onPointerCancel={cancelLongPress}
+                        onPointerLeave={cancelLongPress}
+                      >
+                        <Icon
+                          name={getSemanticIcon("orchestration.blueprint")}
+                          class={getBlueprintSlotIconClass(bp().mode)}
+                          size="small"
+                        />
+                        <span class="max-w-28 truncate text-11-medium">Loop ready</span>
+                        <span
+                          class="absolute bottom-0 left-2 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
+                          style={{ width: `${slotLongPressProgress() * 82}%` }}
+                        />
+                      </button>
+                    </Tooltip>
+                    <Tooltip
+                      placement="top"
+                      value={
+                        <div class="flex items-center gap-2">
+                          <span>Start BlueprintLoop</span>
+                          <Icon name="corner-down-left" size="small" class="text-icon-base" />
+                        </div>
+                      }
+                    >
+                      <IconButton
+                        type="submit"
+                        icon="zap"
+                        variant="primary"
+                        class="size-9 rounded-full! bg-text-interactive-base!"
+                      />
+                    </Tooltip>
+                  </div>
+                )}
+              </Match>
+              <Match when={true}>
+                <Show when={displayedBlueprintLoop()}>
+                  {(bp) => (
+                    <Tooltip
+                      placement="top"
+                      value={
+                        <div class="min-w-48 max-w-64">
+                          <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
+                          <div class="mt-1 text-10-regular text-text-weak">
+                            Blueprint {getBlueprintSlotStatusLabel(bp().mode).toLowerCase()}
+                          </div>
+                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
+                        </div>
+                      }
+                    >
+                      <button
+                        type="button"
+                        class="bp-slot relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors cursor-default select-none"
+                        aria-label={`Blueprint: ${bp().slot.title}`}
+                        onPointerDown={() => startLongPress(bp())}
+                        onPointerUp={cancelLongPress}
+                        onPointerCancel={cancelLongPress}
+                        onPointerLeave={cancelLongPress}
+                      >
+                        <Icon
+                          name={getSemanticIcon("orchestration.blueprint")}
+                          class={getBlueprintSlotIconClass(bp().mode)}
+                          size="small"
+                        />
+                        <span
+                          class="absolute bottom-1 left-1 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
+                          style={{ width: `${slotLongPressProgress() * 75}%` }}
+                        />
+                      </button>
+                    </Tooltip>
+                  )}
+                </Show>
+                <Tooltip
+                  placement="top"
+                  inactive={!canSubmit()}
+                  value={
+                    <Switch>
+                      <Match when={working() && !prompt.dirty()}>
+                        <div class="flex items-center gap-2">
+                          <span>Stop</span>
+                          <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                        </div>
+                      </Match>
+                      <Match when={true}>
+                        <div class="flex items-center gap-2">
+                          <span>Send</span>
+                          <Icon name="corner-down-left" size="small" class="text-icon-base" />
+                        </div>
+                      </Match>
+                    </Switch>
+                  }
+                >
+                  <IconButton
+                    type="submit"
+                    disabled={!canSubmit()}
+                    icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
+                    variant="primary"
+                    class="size-9 rounded-full!"
+                  />
+                </Tooltip>
+              </Match>
+            </Switch>
           </div>
         </div>
       </form>

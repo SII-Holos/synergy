@@ -7,12 +7,20 @@ export type DroppedSessionData = {
   updatedAt?: number
 }
 
-export type BlueprintSlot = {
-  loopID: string
-  noteID: string
-  title: string
-  runMode: "current" | "new" | "worktree"
-}
+export type BlueprintSlot =
+  | {
+      type: "pending"
+      noteID: string
+      title: string
+      runMode: "current" | "new" | "worktree"
+    }
+  | {
+      type: "loop"
+      loopID: string
+      noteID: string
+      title: string
+      runMode: "current" | "new" | "worktree"
+    }
 
 export type DroppedBlueprintData = {
   noteID: string

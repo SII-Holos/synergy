@@ -26,6 +26,7 @@ type PromptAttachmentsInput = {
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
+  activeLoopID: Accessor<string | undefined>
   setBlueprintLoading: Setter<boolean>
   setStore: SetStoreFunction<PromptInputStore>
 }
@@ -174,6 +175,60 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     event.preventDefault()
     input.setStore("dragging", false)
 
+    const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
+    if (blueprintData) {
+      try {
+        const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
+        if (!dropped.noteID) return
+        if (input.localArmedLoop() || input.activeLoopID()) {
+          showToast({
+            type: "warning",
+            title: "Blueprint slot occupied",
+            description: "Wait for the current BlueprintLoop to finish before equipping another Blueprint.",
+          })
+          return
+        }
+        if (params.id) {
+          input.setBlueprintLoading(true)
+          try {
+            const result = await sdk.client.blueprint.loop.create({
+              blueprintLoopCreateInput: {
+                noteID: dropped.noteID,
+                title: dropped.title || "Blueprint",
+                sessionID: params.id,
+                runMode: "current",
+              },
+            })
+            const loop = result.data as BlueprintLoopInfo | undefined
+            if (!loop) throw new Error("Loop creation returned no data")
+            input.setLocalArmedLoop({
+              type: "loop",
+              loopID: loop.id,
+              noteID: loop.noteID,
+              title: loop.title,
+              runMode: loop.runMode ?? "current",
+            })
+          } catch (err) {
+            showToast({
+              type: "error",
+              title: "Failed to arm Blueprint",
+              description: err instanceof Error ? err.message : "Unknown error",
+            })
+          } finally {
+            input.setBlueprintLoading(false)
+          }
+        } else {
+          input.setLocalArmedLoop({
+            type: "pending",
+            noteID: dropped.noteID,
+            title: dropped.title || "Blueprint",
+            runMode: "current",
+          })
+        }
+      } catch {}
+      return
+    }
+
     const sessionData = event.dataTransfer?.getData("application/x-synergy-session")
     if (sessionData) {
       try {
@@ -223,59 +278,6 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           ],
           cursorPosition,
         )
-      } catch {}
-      return
-    }
-
-    const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
-    if (blueprintData) {
-      try {
-        const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
-        if (!dropped.noteID) return
-        if (input.localArmedLoop()) {
-          showToast({
-            type: "warning",
-            title: "Slot occupied",
-            description: "Remove the armed Blueprint before equipping another.",
-          })
-          return
-        }
-        input.setBlueprintLoading(true)
-        try {
-          const sessionID = params.id
-          if (!sessionID) {
-            showToast({
-              type: "warning",
-              title: "No session available",
-              description: "Start a session before equipping a Blueprint.",
-            })
-            return
-          }
-          const result = await sdk.client.blueprint.loop.create({
-            blueprintLoopCreateInput: {
-              noteID: dropped.noteID,
-              title: dropped.title || "Blueprint",
-              sessionID,
-              runMode: "current",
-            },
-          })
-          const loop = result.data as BlueprintLoopInfo | undefined
-          if (!loop) throw new Error("Loop creation returned no data")
-          input.setLocalArmedLoop({
-            loopID: loop.id,
-            noteID: loop.noteID,
-            title: loop.title,
-            runMode: loop.runMode ?? "current",
-          })
-        } catch (err) {
-          showToast({
-            type: "error",
-            title: "Failed to arm Blueprint",
-            description: err instanceof Error ? err.message : "Unknown error",
-          })
-        } finally {
-          input.setBlueprintLoading(false)
-        }
       } catch {}
       return
     }
