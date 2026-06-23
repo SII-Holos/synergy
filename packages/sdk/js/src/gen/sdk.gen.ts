@@ -5493,6 +5493,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      userPrompt?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5503,6 +5504,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "body", key: "userPrompt" },
           ],
         },
       ],
@@ -5511,6 +5513,11 @@ export class Loop extends HeyApiClient {
       url: "/blueprint/loop/{id}/start",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

@@ -42,13 +42,18 @@ async function bindSessionToLoop(sessionID: string, loopID: string) {
 async function deliverFirstPrompt(
   sessionID: string,
   loop: { id: string; noteID: string; title: string; firstPrompt?: string },
+  userPrompt?: string,
 ) {
+  let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop)
+  if (userPrompt?.trim()) {
+    text += `\n\nUser instruction:\n${userPrompt.trim()}`
+  }
   const textPart: MessageV2.TextPart = {
     id: Identifier.ascending("part"),
     sessionID,
     messageID: Identifier.ascending("message"),
     type: "text",
-    text: loop.firstPrompt?.trim() || defaultFirstPrompt(loop),
+    text,
   }
   const mail: SessionManager.SessionMail.User = {
     type: "user",
@@ -241,12 +246,24 @@ export const BlueprintRoute = new Hono()
       },
     }),
     validator("param", z.object({ id: z.string().meta({ description: "BlueprintLoop ID" }) })),
+    validator(
+      "json",
+      z
+        .object({
+          userPrompt: z
+            .string()
+            .optional()
+            .meta({ description: "User-provided prompt to merge into execution start message" }),
+        })
+        .optional(),
+    ),
     async (c) => {
       try {
         const id = c.req.valid("param").id
+        const body = c.req.valid("json")
         const before = await BlueprintLoopStore.get(Instance.scope.id, id)
         await bindSessionToLoop(before.sessionID, id)
-        await deliverFirstPrompt(before.sessionID, before)
+        await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
         const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
         return c.json(loop)
       } catch (err: any) {

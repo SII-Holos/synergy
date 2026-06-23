@@ -12,6 +12,7 @@ import {
   Match,
   createMemo,
   createSignal,
+  createResource,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
@@ -357,11 +358,87 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     runMode: "current" | "new" | "worktree"
   }
 
-  const [blueprintSlot, setBlueprintSlot] = createSignal<BlueprintSlot | null>(null)
+  const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
 
+  const [sessionLoop] = createResource(
+    () => (params.id ? info()?.blueprint?.loopID : null),
+    async (loopID) => {
+      if (!loopID) return null
+      try {
+        const result = await sdk.client.blueprint.loop.get({ id: loopID })
+        return (result.data as BlueprintLoopInfo) ?? null
+      } catch {
+        return null
+      }
+    },
+  )
+
+  const getBlueprintSlotIcon = (status: string) => {
+    switch (status) {
+      case "armed":
+        return "crosshair"
+      case "running":
+        return "play"
+      case "auditing":
+        return "search"
+      case "completed":
+        return "check"
+      case "failed":
+        return "x"
+      case "cancelled":
+        return "ban"
+      default:
+        return "target"
+    }
+  }
+
+  const [slotHover, setSlotHover] = createSignal(false)
+  const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
+
+  const startLongPress = () => {
+    if (slotLongPress()) return
+    const bp = displayedBlueprintLoop()
+    if (
+      !bp ||
+      (bp.mode !== "armed" &&
+        bp.mode !== "completed" &&
+        bp.mode !== "failed" &&
+        bp.mode !== "cancelled" &&
+        bp.mode !== "running" &&
+        bp.mode !== "waiting")
+    )
+      return
+    const t = setTimeout(async () => {
+      setSlotLongPress(null)
+      const armed = localArmedLoop()
+      if (armed) {
+        await sdk.client.blueprint.loop.cancel({ id: armed.loopID }).catch(() => {})
+        setLocalArmedLoop(null)
+        showToast({ type: "info", title: "Blueprint unequipped", description: armed.title })
+      }
+    }, 2000)
+    setSlotLongPress(t)
+  }
+
+  const cancelLongPress = () => {
+    const t = slotLongPress()
+    if (t) {
+      clearTimeout(t)
+      setSlotLongPress(null)
+    }
+  }
+
+  const displayedBlueprintLoop = createMemo(() => {
+    const localArmed = localArmedLoop()
+    if (localArmed) return { loop: localArmed, mode: "armed" as const }
+    const loop = sessionLoop()
+    if (loop) return { loop, mode: loop.status }
+    return null
+  })
+
   const cancelArmedLoop = async () => {
-    const slot = blueprintSlot()
+    const slot = localArmedLoop()
     if (!slot) return
     setBlueprintLoading(true)
     try {
@@ -370,7 +447,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // If cancellation fails, still clear the slot locally — the loop is orphaned.
     } finally {
       setBlueprintLoading(false)
-      setBlueprintSlot(null)
+      setLocalArmedLoop(null)
     }
   }
   const scrollCursorIntoView = () => {
@@ -415,6 +492,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
+  const planMode = createMemo(() => info()?.blueprint?.planMode ?? false)
+
+  const togglePlanMode = async () => {
+    if (!params.id) return
+    const current = planMode()
+    try {
+      await sdk.client.blueprint.session.planMode({
+        id: params.id,
+        planMode: !current,
+      })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Failed to toggle Plan Mode",
+        description: err instanceof Error ? err.message : "Unknown error",
+      })
+    }
+  }
+
   const selectedControlProfile = createMemo<ControlProfileId>(() => {
     const configured = params.id
       ? (info()?.controlProfile ?? sync.data.config.controlProfile)
@@ -764,7 +860,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       try {
         const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
         if (!dropped.noteID) return
-        if (blueprintSlot()) {
+        if (localArmedLoop()) {
           showToast({
             type: "warning",
             title: "Slot occupied",
@@ -795,7 +891,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
           const loop = result.data as BlueprintLoopInfo | undefined
           if (!loop) throw new Error("Loop creation returned no data")
-          setBlueprintSlot({
+          setLocalArmedLoop({
             loopID: loop.id,
             noteID: loop.noteID,
             title: loop.title,
@@ -1491,35 +1587,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (err instanceof Error) return err.message
       return "Request failed"
     }
-
-    const armedSlot = blueprintSlot()
+    const armedSlot = localArmedLoop()
     if (armedSlot && mode === "normal") {
-      // In current mode, start the loop and forward the user text as firstPrompt.
+      setBlueprintLoading(true)
       try {
-        await sdk.client.blueprint.loop.start({ id: armedSlot.loopID })
+        const userText = inlineText(currentPrompt).trim()
+        await sdk.client.blueprint.loop.start({
+          id: armedSlot.loopID,
+          userPrompt: userText || undefined,
+        })
+        setLocalArmedLoop(null)
+        prompt.reset()
+        setStore("mode", "normal")
+        setStore("popover", null)
       } catch (err) {
         showToast({
           type: "error",
           title: "Failed to start Blueprint",
           description: err instanceof Error ? err.message : "Unknown error",
         })
-        return
+      } finally {
+        setBlueprintLoading(false)
       }
-      setBlueprintSlot(null)
-      // For current mode, continue with the normal send flow.
-      // For new/worktree, the current session text has no target session, so skip.
-      if (armedSlot.runMode !== "current") {
-        showToast({
-          type: "info",
-          title: "Blueprint started",
-          description: `${armedSlot.title} is running in ${armedSlot.runMode} mode. Open its session to follow progress.`,
-        })
-        prompt.reset()
-        setStore("mode", "normal")
-        setStore("popover", null)
-        setBlueprintSlot(null)
-        return
-      }
+      return
     }
     addToHistory(currentPrompt, mode)
     setStore("historyIndex", -1)
@@ -1609,7 +1699,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       prompt.reset()
       setStore("mode", "normal")
       setStore("popover", null)
-      setBlueprintSlot(null)
+      setLocalArmedLoop(null)
     }
 
     const restoreInput = () => {
@@ -2220,33 +2310,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </For>
           </div>
         </Show>
-        <Show when={blueprintSlot()}>
-          {(slot) => (
-            <div class="flex items-center gap-2 px-3 pt-3">
-              <div class="h-10 rounded-md bg-surface-base flex items-center gap-2 px-2.5 border border-border-base">
-                <Show when={!blueprintLoading()} fallback={<Spinner class="text-icon-base size-4" />}>
-                  <Icon name="target" size="small" class="shrink-0 text-text-interactive-base" />
-                </Show>
-                <span class="text-12-medium text-text-base max-w-[200px] truncate">{slot().title}</span>
-                <span class="text-10-medium text-text-interactive-base bg-surface-raised-stronger-non-alpha rounded px-1.5 py-0.5">
-                  Armed
-                </span>
-                <button
-                  type="button"
-                  disabled={blueprintLoading()}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    cancelArmedLoop()
-                  }}
-                  class="size-5 rounded-full flex items-center justify-center hover:bg-surface-raised-base-hover disabled:opacity-40"
-                >
-                  <Icon name="x" class="size-3 text-text-weak" />
-                </button>
-              </div>
-            </div>
-          )}
-        </Show>
         <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
           <div
             data-component="prompt-input"
@@ -2271,9 +2334,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
               {store.mode === "shell"
                 ? "Enter shell command..."
-                : isGlobalScope(sdk.directory)
-                  ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
-                  : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
+                : planMode()
+                  ? "Plan your approach..."
+                  : isGlobalScope(sdk.directory)
+                    ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
+                    : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
             </div>
           </Show>
         </div>
@@ -2438,6 +2503,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Switch>
           </div>
           <div class="flex items-center gap-2">
+            <Show when={displayedBlueprintLoop()}>
+              {(bp) => (
+                <div class="bp-slot flex items-center h-8 rounded-full border border-border-weak-base bg-surface-base px-3 gap-2 hover:bg-surface-raised-base-hover cursor-default">
+                  <Icon name={getBlueprintSlotIcon(bp().mode)} class="text-icon-interactive-base" size="small" />
+                  <span class="text-12-medium text-text-base truncate max-w-[120px]">{bp().loop.title}</span>
+                  <span class="text-10-medium text-text-weak">{bp().mode}</span>
+                </div>
+              )}
+            </Show>
             <input
               ref={fileInputRef}
               type="file"
@@ -2476,13 +2550,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Switch>
               }
             >
-              <IconButton
-                type="submit"
-                disabled={!prompt.dirty() && !working()}
-                icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
-                variant="primary"
-                class="size-9 rounded-full!"
-              />
+              <Tooltip
+                placement="top"
+                inactive={!prompt.dirty() && !working() && !localArmedLoop()}
+                value={localArmedLoop() ? "Start BlueprintLoop" : working() && !prompt.dirty() ? "Stop" : "Send"}
+              >
+                <IconButton
+                  type="submit"
+                  disabled={!prompt.dirty() && !working() && !localArmedLoop()}
+                  icon={localArmedLoop() ? "zap" : working() && !prompt.dirty() ? "square" : "arrow-up"}
+                  variant="primary"
+                  class={localArmedLoop() ? "size-9 rounded-full! bg-text-interactive-base!" : "size-9 rounded-full!"}
+                />
+              </Tooltip>
             </Tooltip>
           </div>
         </div>

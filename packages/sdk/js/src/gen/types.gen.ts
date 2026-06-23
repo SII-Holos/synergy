@@ -3415,7 +3415,7 @@ export type NotePatchInput = {
     description?: string
     status?: "draft" | "ready" | "archived"
     defaultAgent?: string
-    activeLoopID?: string
+    activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
   } | null
@@ -9006,7 +9006,12 @@ export type BlueprintLoopBindResponses = {
 export type BlueprintLoopBindResponse = BlueprintLoopBindResponses[keyof BlueprintLoopBindResponses]
 
 export type BlueprintLoopStartData = {
-  body?: never
+  body?: {
+    /**
+     * User-provided prompt to merge into execution start message
+     */
+    userPrompt?: string
+  }
   path: {
     /**
      * BlueprintLoop ID

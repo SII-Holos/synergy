@@ -8957,6 +8957,21 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userPrompt": {
+                    "description": "User-provided prompt to merge into execution start message",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
@@ -20187,7 +20202,14 @@
                     "type": "string"
                   },
                   "activeLoopID": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "runCount": {
                     "type": "number"
