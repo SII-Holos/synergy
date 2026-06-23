@@ -1,6 +1,7 @@
 import type { BuiltinAgentContext } from "../../builtin-context"
 import { createSubagent } from "../../builtin-context"
-import { buildAgentTable, type AgentInfo } from "../synergy/builder"
+import { buildAgentTable } from "../agent-table"
+import type { AgentInfo } from "../types"
 import PROMPT_BASE from "./base.txt"
 
 export function buildSupervisorPrompt(agents: AgentInfo[]): string {
