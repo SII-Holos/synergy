@@ -4,6 +4,7 @@ import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { Instance } from "../scope/instance"
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
+import { Identifier } from "../id/id"
 import DESCRIPTION from "./blueprint-loop-finish.txt"
 
 const parameters = z.object({
@@ -82,19 +83,32 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
         )
       }
     }
-
-    await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
-      status: params.status,
-    })
-
     if (params.status === "auditing") {
+      const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
+      const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
+Read the Blueprint Note via blueprint_read, examine the implementation evidence (session trajectory, git diff, test results), and determine if the Blueprint is fully implemented.
+If NOT fully implemented, call blueprint_loop_restart with detailed reason.
+If fully implemented, call blueprint_loop_finish(status="completed").`
+      const { Cortex } = await import("../cortex")
+      const task = await Cortex.launch({
+        description: `[Supervisor] Audit BlueprintLoop ${params.loopID}`,
+        prompt: auditPrompt,
+        agent: "supervisor",
+        executionRole: "delegated_subagent",
+        category: "general",
+        parentSessionID: loop.sessionID,
+        parentMessageID: Identifier.ascending("message"),
+      })
+      await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
+        status: "auditing",
+        supervisorSessionID: task.sessionID,
+      })
       await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
-      await Bus.publish(LoopEvent.Failed, {
-        loopID: params.loopID,
-        error: params.summary ?? "Loop execution failed",
-      })
+      await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "failed" })
+      await Bus.publish(LoopEvent.Failed, { loopID: params.loopID, error: params.summary ?? "Loop execution failed" })
     } else if (params.status === "completed") {
+      await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
       await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
     }
 
