@@ -1,54 +1,154 @@
-/* Smooth hover lift/shadow on note cards using project motion tokens */
+.note-scope-section {
+  position: relative;
+  margin-bottom: 1.15rem;
+  padding-top: 0.15rem;
+}
+
+.note-scope-section + .note-scope-section {
+  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 72%, transparent);
+  padding-top: 1rem;
+}
+
+.note-scope-section--current {
+  scroll-margin-top: 1rem;
+}
+
+.note-scope-header {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.8rem;
+  padding: 0.45rem 0.25rem;
+  text-align: left;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-scope-header:hover {
+  background: color-mix(in srgb, var(--surface-raised-base-hover) 54%, transparent);
+}
+
+.note-scope-current-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--surface-success-base) 13%, var(--surface-raised-base));
+  padding: 0.125rem 0.45rem;
+  color: var(--text-diff-add-base);
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.note-scope-new-button {
+  display: flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--icon-weak);
+  opacity: 0.76;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-scope-new-button:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--icon-base);
+  opacity: 1;
+}
+
+.note-card-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.note-card-grid--shelf {
+  margin-top: 0.45rem;
+  padding-bottom: 0.1rem;
+}
+
+.note-card-grid--expanded {
+  margin-top: 0.55rem;
+}
+
+.note-scope-view-all {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: 0.75rem;
+  padding: 0.45rem 0.25rem 0.1rem;
+  color: var(--text-weak);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-scope-view-all:hover {
+  color: var(--text-base);
+}
+
 .note-card {
   transition:
     transform var(--motion-duration-base) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-base) var(--motion-ease-standard),
     border-color var(--motion-duration-base) var(--motion-ease-standard),
     background-color var(--motion-duration-base) var(--motion-ease-standard);
 }
 
 .note-card--blueprint {
-  border-color: color-mix(in srgb, var(--border-strong-base) 28%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-inset-base) 32%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-strong-base) 18%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-inset-base) 22%, var(--surface-raised-base));
 }
 
 .note-card--blueprint:hover {
-  border-color: color-mix(in srgb, var(--border-strong-base) 42%, var(--border-weak-hover));
-  background: color-mix(in srgb, var(--surface-inset-base) 40%, var(--surface-raised-base-hover));
+  border-color: color-mix(in srgb, var(--border-strong-base) 30%, var(--border-weak-hover));
+  background: color-mix(in srgb, var(--surface-inset-base) 30%, var(--surface-raised-base-hover));
 }
 
 .note-card--blueprint-ready {
-  border-color: color-mix(in srgb, var(--border-success-base) 26%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-success-base) 7%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-success-base) 20%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-success-base) 5%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-running,
 .note-card--blueprint-auditing {
-  border-color: color-mix(in srgb, var(--border-success-base) 38%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-success-base) 11%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-success-base) 28%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-success-base) 8%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-waiting {
-  border-color: color-mix(in srgb, var(--border-warning-base) 34%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-warning-base) 8%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-warning-base) 26%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-warning-base) 6%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-failed {
-  border-color: color-mix(in srgb, var(--border-diff-delete-base) 30%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-diff-delete-base) 7%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-diff-delete-base) 24%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 5%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-completed {
-  border-color: color-mix(in srgb, var(--border-diff-add-base) 26%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-diff-add-base) 6%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-diff-add-base) 20%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-add-base) 5%, var(--surface-raised-base));
 }
 
 .note-card-footer {
-  background: color-mix(in srgb, var(--surface-raised-base) 68%, transparent);
+  background: color-mix(in srgb, var(--surface-raised-base) 58%, transparent);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--border-weaker-base) 58%, transparent);
 }
 
 .note-card--blueprint .note-card-footer {
-  background: color-mix(in srgb, var(--surface-inset-base) 42%, transparent);
+  background: color-mix(in srgb, var(--surface-inset-base) 30%, transparent);
 }
 
 .note-card-status {
@@ -57,7 +157,6 @@
   gap: 0.25rem;
   min-width: 0;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-weaker-base);
   background: var(--surface-inset-base);
   padding: 0.1875rem 0.5rem;
   color: var(--text-weak);
@@ -67,33 +166,28 @@
 }
 
 .note-card-status--ready {
-  border-color: color-mix(in srgb, var(--border-success-base) 34%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-success-base) 14%, transparent);
+  background: color-mix(in srgb, var(--surface-success-base) 14%, var(--surface-raised-base));
   color: var(--text-diff-add-base);
 }
 
 .note-card-status--running,
 .note-card-status--auditing {
-  border-color: color-mix(in srgb, var(--border-success-base) 38%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-success-base) 15%, transparent);
+  background: color-mix(in srgb, var(--surface-success-base) 16%, var(--surface-raised-base));
   color: var(--text-diff-add-base);
 }
 
 .note-card-status--waiting {
-  border-color: color-mix(in srgb, var(--border-warning-base) 36%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-warning-base) 13%, transparent);
+  background: color-mix(in srgb, var(--surface-warning-base) 14%, var(--surface-raised-base));
   color: var(--text-warning-base);
 }
 
 .note-card-status--failed {
-  border-color: color-mix(in srgb, var(--border-diff-delete-base) 34%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-diff-delete-base) 12%, transparent);
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 13%, var(--surface-raised-base));
   color: var(--text-diff-delete-base);
 }
 
 .note-card-status--completed {
-  border-color: color-mix(in srgb, var(--border-diff-add-base) 30%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-diff-add-base) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-diff-add-base) 11%, var(--surface-raised-base));
   color: var(--text-diff-add-base);
 }
 
@@ -141,6 +235,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .note-card {
+    transition: none;
+  }
+
+  .note-scope-header,
+  .note-scope-new-button,
+  .note-scope-view-all {
     transition: none;
   }
 }

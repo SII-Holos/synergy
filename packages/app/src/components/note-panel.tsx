@@ -168,7 +168,7 @@ function NoteCard(props: {
   return (
     <button
       type="button"
-      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
+      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/80 text-left hover:border-border-weak-hover hover:bg-surface-raised-base-hover active:scale-[0.99] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background-base`}
       classList={{
         "note-card--blueprint": isBlueprint(),
         [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
@@ -178,7 +178,7 @@ function NoteCard(props: {
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex max-w-[60%] items-center gap-1 rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
+        <div class="absolute right-2 top-2 z-10 flex max-w-[60%] items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-text-weak">
           <Icon name="folder" class="size-2.5 shrink-0 text-text-weak" />
           <span class="truncate text-10-medium leading-tight">{props.originName}</span>
         </div>
@@ -219,7 +219,7 @@ function NoteCard(props: {
         </div>
       </Show>
 
-      <div class="note-card-footer mt-auto shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+      <div class="note-card-footer mt-auto shrink-0 px-3.5 py-2.5">
         <Show
           when={isBlueprint()}
           fallback={
@@ -262,7 +262,7 @@ function NoteCard(props: {
 /** Skeleton placeholder matching NoteCard shape, shown during list loading */
 function NoteCardSkeleton() {
   return (
-    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
+    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/70 animate-pulse">
       <div class="px-3.5 pt-3.5 space-y-1.5">
         <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
         <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
@@ -272,7 +272,7 @@ function NoteCardSkeleton() {
         <div class="h-2 w-5/6 rounded bg-surface-inset-base/70" />
         <div class="h-2 w-2/3 rounded bg-surface-inset-base/70" />
       </div>
-      <div class="shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+      <div class="note-card-footer shrink-0 px-3.5 py-2.5">
         <div class="ml-auto h-3 w-1/4 rounded bg-surface-inset-base/70" />
       </div>
     </div>
@@ -364,11 +364,6 @@ function ScopeSection(props: {
   const noteCountLabel = createMemo(
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
   )
-  const sectionClass = createMemo(() => {
-    if (props.expanded) return "border-border-weak-base bg-surface-inset-base/70"
-    if (props.group.isCurrent) return "bg-surface-inset-base/42"
-  })
-
   const shelfNotes = createMemo(() => props.group.notes.slice(0, columns()))
   const hasMore = createMemo(() => props.group.notes.length > columns())
 
@@ -377,9 +372,7 @@ function ScopeSection(props: {
   onMount(() => {
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width
-      // section p-2 (16px) + grid px-1 (8px)
-      const inner = w - 24
-      const cols = inner < 380 ? 1 : inner < 660 ? 2 : 3
+      const cols = w < 380 ? 1 : w < 660 ? 2 : 3
       setColumns(cols)
     })
     ro.observe(sectionRef)
@@ -396,16 +389,15 @@ function ScopeSection(props: {
   return (
     <section
       ref={sectionRef}
-      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
+      class="note-scope-section"
+      classList={{
+        "note-scope-section--current": props.group.isCurrent,
+      }}
     >
-      <Show when={props.group.isCurrent}>
-        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-border-strong-base/70" />
-      </Show>
-
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-surface-raised-base-hover/55"
+          class="note-scope-header"
           aria-expanded={props.expanded}
           aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.group.name} notes`}
           onClick={props.onToggle}
@@ -424,7 +416,7 @@ function ScopeSection(props: {
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
-            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-diff-add-base ring-1 ring-inset ring-border-weaker-base">
+            <span class="note-scope-current-badge">
               <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
               Current
             </span>
@@ -439,7 +431,7 @@ function ScopeSection(props: {
         </button>
         <button
           type="button"
-          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
+          class="note-scope-new-button"
           onClick={props.onCreateNote}
           title="New note"
         >
@@ -452,7 +444,7 @@ function ScopeSection(props: {
         fallback={
           <Show when={shelfNotes().length > 0}>
             <div
-              class="mt-1.5 grid gap-2.5 px-1 pb-1"
+              class="note-card-grid note-card-grid--shelf"
               style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
             >
               <For each={shelfNotes()}>
@@ -470,7 +462,7 @@ function ScopeSection(props: {
             <Show when={hasMore()}>
               <button
                 type="button"
-                class="flex w-full items-center justify-center gap-1 rounded-xl px-1 pb-1.5 pt-0.5 text-11-medium text-text-weak transition-colors hover:text-text-base"
+                class="note-scope-view-all"
                 onClick={props.onToggle}
               >
                 View all {props.group.notes.length} notes
@@ -485,7 +477,7 @@ function ScopeSection(props: {
           fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
           <div
-            class="mt-2 grid gap-2.5 px-1 mb-1"
+            class="note-card-grid note-card-grid--expanded"
             style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
           >
             <For each={props.group.notes}>
@@ -768,7 +760,7 @@ export function NotePanel() {
                   </div>
                 }
               >
-                <div class="flex flex-col gap-1">
+                <div class="flex flex-col">
                   <For each={displayGroups()}>
                     {(group) => (
                       <ScopeSection
