@@ -8,24 +8,24 @@
 }
 
 .note-card--blueprint {
-  border-color: color-mix(in srgb, var(--border-interactive-base) 18%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-interactive-base) 5%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-strong-base) 28%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-inset-base) 32%, var(--surface-raised-base));
 }
 
 .note-card--blueprint:hover {
-  border-color: color-mix(in srgb, var(--border-interactive-base) 30%, var(--border-weak-hover));
-  background: color-mix(in srgb, var(--surface-interactive-base) 8%, var(--surface-raised-base-hover));
+  border-color: color-mix(in srgb, var(--border-strong-base) 42%, var(--border-weak-hover));
+  background: color-mix(in srgb, var(--surface-inset-base) 40%, var(--surface-raised-base-hover));
 }
 
 .note-card--blueprint-ready {
-  border-color: color-mix(in srgb, var(--border-info-base) 22%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-info-base) 5%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-success-base) 26%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-success-base) 7%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-running,
 .note-card--blueprint-auditing {
-  border-color: color-mix(in srgb, var(--border-interactive-base) 36%, var(--border-weak-base));
-  background: color-mix(in srgb, var(--surface-interactive-base) 9%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-success-base) 38%, var(--border-weak-base));
+  background: color-mix(in srgb, var(--surface-success-base) 11%, var(--surface-raised-base));
 }
 
 .note-card--blueprint-waiting {
@@ -48,7 +48,7 @@
 }
 
 .note-card--blueprint .note-card-footer {
-  background: color-mix(in srgb, var(--surface-interactive-base) 7%, transparent);
+  background: color-mix(in srgb, var(--surface-inset-base) 42%, transparent);
 }
 
 .note-card-status {
@@ -67,16 +67,16 @@
 }
 
 .note-card-status--ready {
-  border-color: color-mix(in srgb, var(--border-info-base) 32%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-info-base) 12%, transparent);
-  color: var(--text-info-base);
+  border-color: color-mix(in srgb, var(--border-success-base) 34%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-success-base) 14%, transparent);
+  color: var(--text-diff-add-base);
 }
 
 .note-card-status--running,
 .note-card-status--auditing {
-  border-color: color-mix(in srgb, var(--border-interactive-base) 36%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-interactive-base) 14%, transparent);
-  color: var(--text-interactive-base);
+  border-color: color-mix(in srgb, var(--border-success-base) 38%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-success-base) 15%, transparent);
+  color: var(--text-diff-add-base);
 }
 
 .note-card-status--waiting {
@@ -103,7 +103,7 @@
 
 .note-blueprint-meta {
   border-radius: 0.85rem;
-  background: color-mix(in srgb, var(--surface-interactive-base) 5%, var(--surface-inset-base));
+  background: color-mix(in srgb, var(--surface-inset-base) 74%, var(--surface-raised-base));
   padding: 0.5rem 0.65rem;
 }
 
@@ -111,11 +111,9 @@
   border: 1px solid var(--border-weak-base);
   border-radius: 1rem;
   background: var(--surface-raised-base);
-}
-
-.note-run-menu-backdrop {
-  background: color-mix(in srgb, var(--background-base) 88%, transparent);
-  backdrop-filter: blur(6px);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.12),
+    0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 80%, transparent);
 }
 
 /* Horizontal scrollbar for the tag filter bar when tags overflow */
@@ -144,9 +142,5 @@
 @media (prefers-reduced-motion: reduce) {
   .note-card {
     transition: none;
-  }
-
-  .note-run-menu-backdrop {
-    backdrop-filter: none;
   }
 }

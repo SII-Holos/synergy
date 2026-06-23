@@ -50,10 +50,10 @@ function isActiveLoopStatus(status: LoopStatus) {
 }
 
 function getLoopLabel(status: LoopStatus) {
-  if (status === "armed") return "Queued"
+  if (status === "armed") return "Run queued"
   if (status === "running") return "Running"
-  if (status === "waiting") return "Waiting"
-  if (status === "auditing") return "Auditing"
+  if (status === "waiting") return "Needs input"
+  if (status === "auditing") return "Reviewing"
   if (status === "completed") return "Completed"
   if (status === "failed") return "Failed"
   return "Cancelled"
@@ -69,9 +69,16 @@ function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
 }
 
 function getStatusLabel(status: BlueprintStatus) {
-  if (status === "ready") return "Ready"
+  if (status === "ready") return "Ready plan"
   if (status === "archived") return "Archived"
-  return "Draft"
+  return "Draft plan"
+}
+
+function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
+  if (mode === "current") return "In current session"
+  if (mode === "new") return "In new session"
+  if (mode === "worktree") return "In worktree"
+  return "Active run"
 }
 
 function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
@@ -79,19 +86,19 @@ function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: Blueprint
   if (active) {
     return {
       label: getLoopLabel(active.status),
-      detail: active.runMode ? `${active.runMode} session` : "active loop",
+      detail: getRunModeLabel(active.runMode),
       tone: getLoopTone(active.status),
       icon: active.status === "auditing" ? "clipboard-check" : active.status === "waiting" ? "hourglass" : "zap",
     }
   }
   const latest = loops[0]
   if (latest?.status === "failed") {
-    return { label: "Failed", detail: "last run", tone: "failed", icon: "circle-x" }
+    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: "circle-x" }
   }
   const status = (note.blueprint?.status ?? "draft") as BlueprintStatus
   return {
     label: getStatusLabel(status),
-    detail: status === "ready" ? "runnable" : status === "archived" ? "reference" : "planning",
+    detail: status === "ready" ? "Ready to run" : status === "archived" ? "Reference only" : "Not ready to run",
     tone: status,
     icon: status === "ready" ? "circle-check" : status === "archived" ? "archive" : "file-pen",
   }
@@ -161,7 +168,7 @@ function NoteCard(props: {
   return (
     <button
       type="button"
-      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
+      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
       classList={{
         "note-card--blueprint": isBlueprint(),
         [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
@@ -218,7 +225,7 @@ function NoteCard(props: {
           fallback={
             <div class="flex items-center gap-2">
               <Show when={props.note.pinned}>
-                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
+                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
                   <Icon name="pin" size="small" class="size-3" />
                 </span>
               </Show>
@@ -234,7 +241,7 @@ function NoteCard(props: {
             </span>
             <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
             <Show when={props.note.pinned}>
-              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-interactive-base" />
+              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-weak" />
             </Show>
           </div>
           <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
@@ -300,31 +307,38 @@ function RunMenu(props: {
   ]
 
   return (
-    <div
-      class="note-run-menu-backdrop fixed inset-0 z-50 flex items-start justify-center pt-24"
-      onClick={props.onClose}
-    >
-      <div class="note-run-menu mx-4 w-full max-w-sm p-3" onClick={(e) => e.stopPropagation()}>
-        <div class="px-2 pb-2">
-          <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
-          <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+    <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))] p-3">
+      <div class="px-2 pb-2">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+            <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+          </div>
+          <button
+            type="button"
+            class="flex size-6 shrink-0 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+            onClick={props.onClose}
+            title="Close"
+          >
+            <Icon name="x" size="small" class="size-3" />
+          </button>
         </div>
-        <div class="space-y-1.5">
-          <For each={options}>
-            {(option) => (
-              <button
-                type="button"
-                class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
-                classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
-                disabled={option.disabled}
-                onClick={() => props.onRun(option.mode)}
-              >
-                <span class="block text-12-medium text-text-strong">{option.title}</span>
-                <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
-              </button>
-            )}
-          </For>
-        </div>
+      </div>
+      <div class="space-y-1.5">
+        <For each={options}>
+          {(option) => (
+            <button
+              type="button"
+              class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+              disabled={option.disabled}
+              onClick={() => props.onRun(option.mode)}
+            >
+              <span class="block text-12-medium text-text-strong">{option.title}</span>
+              <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+            </button>
+          )}
+        </For>
       </div>
     </div>
   )
@@ -385,7 +399,7 @@ function ScopeSection(props: {
       class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
     >
       <Show when={props.group.isCurrent}>
-        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-text-interactive-base/70" />
+        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-border-strong-base/70" />
       </Show>
 
       <div class="flex items-center gap-2">
@@ -403,15 +417,15 @@ function ScopeSection(props: {
             <Icon name="chevron-right" size="small" />
           </span>
           <Show when={props.group.scopeType === "global"}>
-            <Icon name="home" size="small" class="text-text-interactive-base shrink-0" />
+            <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <Show when={props.group.scopeType === "project"}>
             <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
-            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-weaker-base">
-              <span class="size-1.5 rounded-full bg-text-interactive-base/80" />
+            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-diff-add-base ring-1 ring-inset ring-border-weaker-base">
+              <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
               Current
             </span>
           </Show>
@@ -1326,7 +1340,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   return (
-    <div class="flex flex-col h-full bg-background-base">
+    <div class="relative flex flex-col h-full bg-background-base">
       <Show when={note.loading && !noteLoaded()}>
         <div class="flex items-center justify-center h-full">
           <Spinner class="size-6" />
@@ -1338,7 +1352,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           <div class="flex items-center gap-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={handleBack}
               title="Back to list"
             >
@@ -1358,8 +1372,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             <Show when={isBlueprint()}>
               <button
                 type="button"
-                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-interactive-base/14 px-3 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => setShowRunMenu(true)}
+                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-success-base/58 px-3 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/82 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-success-base/35 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setShowRunMenu((current) => !current)}
                 disabled={runningBlueprint()}
                 title="Run Blueprint"
               >
@@ -1372,9 +1386,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base": baseNote()!.pinned,
+                "bg-surface-inset-base text-text-base": baseNote()!.pinned,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.pinned,
               }}
@@ -1386,7 +1400,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
                 "bg-surface-diff-add-base/12 text-text-diff-add-base": baseNote()!.global,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
@@ -1400,7 +1414,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={downloadNote}
               title="Download as Markdown"
             >
@@ -1408,10 +1422,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
             <button
               type="button"
-              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base": isBlueprint(),
-                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-interactive-base":
+                "bg-surface-inset-base text-text-base": isBlueprint(),
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !isBlueprint(),
                 "opacity-60 cursor-not-allowed": convertingBlueprint(),
               }}
@@ -1430,7 +1444,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/35"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={deleteNote}
               title="Delete"
             >
@@ -1482,7 +1496,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 </button>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/18"
+                  class="rounded-full bg-surface-success-base/40 px-3 py-1.5 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/62"
                   onClick={overwriteRemote}
                 >
                   Overwrite remote
