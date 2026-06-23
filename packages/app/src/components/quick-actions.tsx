@@ -24,7 +24,7 @@ const COMMANDS: CommandAction[] = [
 
 const PROMPTS: PromptAction[] = [
   {
-    icon: "scroll-text",
+    icon: "notebook-pen",
     label: "Note",
     description: "Save last response as a note",
     prompt:

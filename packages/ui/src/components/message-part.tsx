@@ -217,6 +217,12 @@ function pushArg(args: string[], value: unknown) {
   args.push(String(value))
 }
 
+function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
+  if ((metadata.kind || input.kind) === "blueprint") return true
+  const kinds = metadata.kinds
+  return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
+}
+
 function qzScopeLabel(input: any = {}) {
   return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
 }
@@ -658,12 +664,30 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: input.title,
       }
     case "note_list":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Blueprints",
+          subtitle: input.scope,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Notes",
         subtitle: input.scope,
       }
     case "note_read":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Read Blueprint",
+          subtitle: Array.isArray(input.ids)
+            ? input.ids.length === 1
+              ? input.ids[0]
+              : `${input.ids.length} blueprints`
+            : undefined,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Read Note",
@@ -674,22 +698,55 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           : undefined,
       }
     case "note_search":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Blueprint Search",
+          subtitle: input.pattern,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Note Search",
         subtitle: input.pattern,
       }
     case "note_write":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Write Blueprint",
+          subtitle: input.title || input.mode,
+        }
+      }
       return {
         icon: "notebook-pen",
-        title: input.kind === "blueprint" ? "Write Blueprint" : "Write Note",
+        title: "Write Note",
         subtitle: input.title || input.mode,
       }
     case "note_edit":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Edit Blueprint",
+          subtitle: input.title || input.id,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Edit Note",
         subtitle: input.title || input.id,
+      }
+    case "blueprint_loop_finish":
+      return {
+        icon: "stamp",
+        title: "Finish BlueprintLoop",
+        subtitle: input.loopID,
+      }
+    case "blueprint_loop_restart":
+      return {
+        icon: "stamp",
+        title: "Restart BlueprintLoop",
+        subtitle: input.loopID,
       }
     case "task_list":
       return {

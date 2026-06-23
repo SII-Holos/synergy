@@ -28,7 +28,7 @@ export const SemanticIconToken = {
   "connection.cortex": "workflow", // background orchestration tasks
 
   // === 编排 ===
-  "orchestration.blueprint": "scroll-text", // Blueprint design document — distinct from Cortex workflow runtime
+  "orchestration.blueprint": "stamp", // Blueprint design document — stamped executable spec, distinct from notes/papers/tasks
   "orchestration.dag": "route", // DAG execution path
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
 } as const satisfies Record<string, IconName>

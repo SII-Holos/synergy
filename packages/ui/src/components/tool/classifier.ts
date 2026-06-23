@@ -20,6 +20,7 @@ export type SemanticCategory =
   | "web"
   | "memory"
   | "note"
+  | "blueprint"
   | "task"
   | "dag"
   | "schedule"
@@ -82,6 +83,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     label: "Note",
     subtitleKeys: ["title", "pattern"],
     argsKeys: ["scope", "mode"],
+  },
+  blueprint: {
+    icon: "stamp",
+    label: "Blueprint",
+    subtitleKeys: ["title", "loopID", "id"],
+    argsKeys: ["status"],
   },
   task: {
     icon: "list-todo",
@@ -194,6 +201,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   note_edit: "note",
   note_list: "note",
   note_read: "note",
+  blueprint_loop_finish: "blueprint",
+  blueprint_loop_restart: "blueprint",
   skill: "skill",
 
   // orchestration
