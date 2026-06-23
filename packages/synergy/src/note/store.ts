@@ -42,7 +42,7 @@ export namespace NoteStore {
     const { content, ...meta } = note
     const markdown = NoteMarkdown.toMarkdown(content)
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
-    const previewHtml = NoteMarkdown.toPreviewHtml(content) || undefined
+    const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
     return { ...meta, searchText: searchParts.join("\n"), previewHtml }
   }
 

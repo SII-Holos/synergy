@@ -183,7 +183,7 @@ function NoteCard(props: {
           </div>
         }
       >
-        <div class="min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
+        <div class="note-card-preview min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
           <Show
             when={previewHtml()}
             fallback={

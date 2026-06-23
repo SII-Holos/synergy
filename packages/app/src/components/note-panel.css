@@ -106,6 +106,25 @@
     background-color var(--motion-duration-base) var(--motion-ease-standard);
 }
 
+.note-card-preview {
+  position: relative;
+}
+
+.note-card-preview::after {
+  position: absolute;
+  right: 0.875rem;
+  bottom: 0;
+  left: 0.875rem;
+  height: 1.6rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--surface-raised-base) 92%, transparent));
+  content: "";
+}
+
+.note-card--blueprint .note-card-preview::after {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--surface-inset-base) 64%, transparent));
+}
+
 .note-card--blueprint {
   border-color: color-mix(in srgb, var(--border-strong-base) 18%, var(--border-weaker-base));
   background: color-mix(in srgb, var(--surface-inset-base) 22%, var(--surface-raised-base));
