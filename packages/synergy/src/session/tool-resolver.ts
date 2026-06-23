@@ -502,6 +502,8 @@ export namespace ToolResolver {
     "note_list",
     "note_read",
     "note_search",
+    "note_write",
+    "note_edit",
     // Memory read
     "memory_search",
     "memory_get",
@@ -513,12 +515,6 @@ export namespace ToolResolver {
     "dagpatch",
     "task",
     "task_cancel",
-    // Blueprint all
-    "blueprint_list",
-    "blueprint_read",
-    "blueprint_create",
-    "blueprint_write",
-    "blueprint_duplicate",
     // UI
     "question",
     "skill",

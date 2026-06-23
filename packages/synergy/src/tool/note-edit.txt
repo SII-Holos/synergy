@@ -1,4 +1,4 @@
-Performs precise block-level edits to a note's content.
+Performs precise block-level edits to a note's content. This includes Blueprint notes, because a Blueprint is a note with kind:"blueprint".
 
 This tool operates on numbered blocks from the note's internal document model (ProseMirror JSON). Each block corresponds to a top-level element: a paragraph, heading, list, code block, image, etc. The block index is 1:1 with `note_read` format:'blocks' output.
 

@@ -24,11 +24,6 @@ import { NoteReadTool } from "./note-read"
 import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
-import { BlueprintListTool } from "./blueprint-list"
-import { BlueprintReadTool } from "./blueprint-read"
-import { BlueprintCreateTool } from "./blueprint-create"
-import { BlueprintWriteTool } from "./blueprint-write"
-import { BlueprintDuplicateTool } from "./blueprint-duplicate"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { SessionListTool } from "./session-list"
@@ -249,11 +244,6 @@ export namespace ToolRegistry {
       NoteSearchTool,
       NoteWriteTool,
       NoteEditTool,
-      BlueprintListTool,
-      BlueprintReadTool,
-      BlueprintCreateTool,
-      BlueprintWriteTool,
-      BlueprintDuplicateTool,
       BlueprintLoopFinishTool,
       BlueprintLoopRestartTool,
       SessionListTool,

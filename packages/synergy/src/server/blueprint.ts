@@ -27,7 +27,7 @@ const CreateInput = z
 
 function defaultFirstPrompt(loop: { title: string; noteID: string }) {
   return `Execute the "${loop.title}" blueprint (note ID: ${loop.noteID}).
-Before doing any implementation work, call blueprint_read with noteID=${loop.noteID} to read the full Blueprint content.
+Before doing any implementation work, call note_read with ids=["${loop.noteID}"] to read the full Blueprint content.
 Continue working until fully implemented.
 When the blueprint is ready for audit, call blueprint_loop_finish with status="auditing".
 If the task is blocked beyond recovery, call blueprint_loop_finish with status="failed".`

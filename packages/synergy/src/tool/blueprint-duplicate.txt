@@ -1,5 +1,0 @@
-Duplicate an existing blueprint note. Creates a copy of the blueprint with "(Copy)" appended to the title.
-
-The new blueprint inherits the original's content, tags, blueprint metadata (description, status, defaultAgent), and scope. The duplicate is unpinned regardless of the original's pinned status.
-
-Use this to create variations or templates from an existing blueprint.

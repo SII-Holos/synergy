@@ -147,9 +147,22 @@ export const NoteReadTool = Tool.define("note_read", {
         const pinned = note.pinned ? "yes" : "no"
         const global = note.global ? "yes" : "no"
         const updated = formatLocalDateTime(note.time.updated)
+        const kind = note.kind ?? "note"
+        const blueprintLines =
+          kind === "blueprint"
+            ? [
+                `Description: ${note.blueprint?.description ?? "none"}`,
+                `Default Agent: ${note.blueprint?.defaultAgent ?? "none"}`,
+                `Active Loop: ${note.blueprint?.activeLoopID ?? "none"}`,
+                `Run Count: ${note.blueprint?.runCount ?? 0}`,
+                `Last Run: ${note.blueprint?.lastRunAt ? formatLocalDateTime(note.blueprint.lastRunAt) : "never"}`,
+              ]
+            : []
 
         const header = [
           `[${id}] ${note.title}`,
+          `Kind: ${kind}`,
+          ...blueprintLines,
           `Tags: ${tags}`,
           `Pinned: ${pinned} | Global: ${global}`,
           `Updated: ${updated}`,

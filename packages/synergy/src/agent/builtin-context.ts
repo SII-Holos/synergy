@@ -196,8 +196,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_search: "allow",
         note_write: "deny",
         note_edit: "deny",
-        blueprint_read: "allow",
-        blueprint_list: "allow",
         blueprint_loop_restart: "allow",
         blueprint_loop_finish: "allow",
       }),

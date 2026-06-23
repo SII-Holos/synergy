@@ -972,14 +972,17 @@ ToolRegistry.register({
   render(props) {
     const total = () => props.metadata?.total as number | undefined
     const scope = () => (props.input.scope || props.metadata?.scope || "all") as string
+    const kind = () => (props.input.kind || props.metadata?.kind || "all") as string
+    const label = () => (kind() === "blueprint" ? "Blueprint" : "Note")
     return (
       <BasicTool
         {...props}
         trigger={{
           icon: "notebook-pen",
-          title: "Notes",
+          title: kind() === "blueprint" ? "Blueprints" : "Notes",
           subtitle: scope(),
-          tags: total() != null ? [{ label: `${total()} note${total() === 1 ? "" : "s"}` }] : undefined,
+          tags:
+            total() != null ? [{ label: `${total()} ${label().toLowerCase()}${total() === 1 ? "" : "s"}` }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -1073,6 +1076,8 @@ ToolRegistry.register({
   render(props) {
     const action = () => (props.metadata?.action || props.input.mode || "") as string
     const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
+    const kind = () => (props.metadata?.kind || props.input.kind || "note") as string
+    const label = () => (kind() === "blueprint" ? "Blueprint" : "Note")
     const actionLabel = () => {
       switch (action()) {
         case "create":
@@ -1090,7 +1095,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "notebook-pen",
-          title: "Write Note",
+          title: `Write ${label()}`,
           subtitle: noteTitle(),
           tags: actionLabel() ? [{ label: actionLabel() }] : undefined,
         }}

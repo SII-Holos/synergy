@@ -1,8 +1,0 @@
-Create a new Blueprint document from Markdown content.
-
-Use this when Plan Mode has produced a design document that should be saved, reviewed, edited by the user, or executed later.
-The `scope` parameter controls where the blueprint is created:
-- "current" (default): Creates in the current project scope
-- "global": Creates in the global scope (visible from all projects)
-
-Use `tags` to organize blueprints. Use `blueprint_read` to read a blueprint after creating it.

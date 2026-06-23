@@ -523,7 +523,7 @@ export namespace SessionInvoke {
                 `Description: ${loop.description ?? "N/A"}`,
                 `Status: ${loop.status}`,
                 "",
-                `You are executing this BlueprintLoop. Before doing implementation work, call blueprint_read with noteID=${loop.noteID} and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                `You are executing this BlueprintLoop. Before doing implementation work, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
                 "</blueprint-loop-context>",
               ].join("\n"),
             )

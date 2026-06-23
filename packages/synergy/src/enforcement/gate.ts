@@ -722,18 +722,6 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Blueprint read tools — low risk, file-level read equivalent
-      if (toolName === "blueprint_list" || toolName === "blueprint_read") {
-        caps.push({ class: "file_read", nonBypassable: false })
-        return { capabilities: caps }
-      }
-
-      // Blueprint write tools — persistent state change
-      if (toolName === "blueprint_create" || toolName === "blueprint_write" || toolName === "blueprint_duplicate") {
-        caps.push({ class: "file_write", nonBypassable: false })
-        return { capabilities: caps }
-      }
-
       // Blueprint loop management tools — session state coordination
       if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
         caps.push({ class: "session_state", nonBypassable: false })

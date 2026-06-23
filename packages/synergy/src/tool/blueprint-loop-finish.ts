@@ -134,7 +134,7 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
 
     if (params.status === "auditing") {
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
-Read the Blueprint Note via blueprint_read, examine the implementation evidence (session trajectory, git diff, test results), and determine if the Blueprint is fully implemented.
+Read the Blueprint Note via note_read, examine the implementation evidence (session trajectory, git diff, test results), and determine if the Blueprint is fully implemented.
 If NOT fully implemented, call blueprint_loop_restart with detailed reason.
 If fully implemented, call blueprint_loop_finish(status="completed").`
       const { Cortex } = await import("../cortex")

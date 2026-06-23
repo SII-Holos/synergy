@@ -13,6 +13,12 @@ const parameters = z.object({
     .default("create")
     .describe("'create': new note, 'append': add content to end of existing note, 'replace': overwrite content."),
   tags: z.array(z.string()).optional().describe("Tags for the note."),
+  kind: z
+    .enum(["note", "blueprint"])
+    .optional()
+    .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
+  description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
+  defaultAgent: z.string().optional().describe("Default agent for this blueprint. Only used when kind is 'blueprint'."),
   scope: z
     .enum(["current", "global"])
     .default("current")
@@ -44,18 +50,37 @@ async function updateExisting(input: {
   action: "append" | "replace"
   title?: string
   tags?: string[]
+  kind?: "note" | "blueprint"
+  description?: string
+  defaultAgent?: string
   content: unknown
 }) {
   const existing = await NoteStore.getAny(Instance.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
+  const nextKind =
+    input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : undefined)
+
+  const patch: Record<string, unknown> = {
+    title: input.title ?? undefined,
+    content: input.content,
+    tags: input.tags ?? undefined,
+    expectedVersion: existing.version,
+  }
+
+  if (nextKind === "note") {
+    patch.kind = "note"
+    patch.blueprint = null
+  } else if (nextKind === "blueprint") {
+    patch.kind = "blueprint"
+    patch.blueprint = {
+      ...(existing.blueprint ?? {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.defaultAgent !== undefined ? { defaultAgent: input.defaultAgent } : {}),
+    }
+  }
 
   try {
-    await NoteStore.updateAny(Instance.scope.id, input.id, {
-      title: input.title ?? undefined,
-      content: input.content,
-      tags: input.tags ?? undefined,
-      expectedVersion: existing.version,
-    })
+    await NoteStore.updateAny(Instance.scope.id, input.id, patch as any)
   } catch (error) {
     if (error instanceof NoteError.Conflict) {
       return createConflictResult({
@@ -69,15 +94,19 @@ async function updateExisting(input: {
     throw error
   }
 
+  const kind = nextKind ?? existing.kind ?? "note"
+  const label = kind === "blueprint" ? "Blueprint" : "Note"
+
   return {
     title: nextTitle,
     output: [
-      `Note updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
+      `${label} updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
       `ID: ${input.id}`,
       `Title: ${nextTitle}`,
+      `Kind: ${kind}`,
       ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
     ].join("\n"),
-    metadata: { id: input.id, action: input.action, title: nextTitle } as Record<string, any>,
+    metadata: { id: input.id, action: input.action, title: nextTitle, kind } as Record<string, any>,
   }
 }
 
@@ -97,25 +126,37 @@ export const NoteWriteTool = Tool.define("note_write", {
       }
 
       const scopeID = params.scope === "global" ? "global" : Instance.scope.id
+      const kind =
+        params.kind ?? (params.description !== undefined || params.defaultAgent !== undefined ? "blueprint" : "note")
       const note = await NoteStore.create(
         {
           title: params.title,
           content: tiptapContent,
           tags: params.tags,
+          kind,
+          blueprint:
+            kind === "blueprint"
+              ? {
+                  description: params.description,
+                  defaultAgent: params.defaultAgent,
+                }
+              : undefined,
         },
         { scopeID },
       )
 
+      const label = kind === "blueprint" ? "Blueprint" : "Note"
       return {
         title: note.title,
         output: [
-          "Note created successfully.",
+          `${label} created successfully.`,
           `ID: ${note.id}`,
           `Title: ${note.title}`,
+          `Kind: ${kind}`,
           `Scope: ${scopeID}`,
           ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
         ].join("\n"),
-        metadata: { id: note.id, action: "create", title: note.title } as Record<string, any>,
+        metadata: { id: note.id, action: "create", title: note.title, kind } as Record<string, any>,
       }
     }
 
@@ -138,6 +179,9 @@ export const NoteWriteTool = Tool.define("note_write", {
         action: "append",
         title: params.title,
         tags: params.tags,
+        kind: params.kind,
+        description: params.description,
+        defaultAgent: params.defaultAgent,
         content: merged,
       })
     }
@@ -148,6 +192,9 @@ export const NoteWriteTool = Tool.define("note_write", {
         action: "replace",
         title: params.title,
         tags: params.tags,
+        kind: params.kind,
+        description: params.description,
+        defaultAgent: params.defaultAgent,
         content: tiptapContent,
       })
     }

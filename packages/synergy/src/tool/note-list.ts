@@ -12,6 +12,10 @@ const parameters = z.object({
     .describe(
       "Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global).",
     ),
+  kind: z
+    .enum(["all", "note", "blueprint"])
+    .default("all")
+    .describe("Filter by document kind. Blueprints are executable notes."),
   since: z
     .string()
     .optional()
@@ -46,6 +50,9 @@ export const NoteListTool = Tool.define("note_list", {
         return true
       })
     }
+    if (params.kind !== "all") {
+      notes = notes.filter((note) => (note.kind ?? "note") === params.kind)
+    }
 
     const total = notes.length
     const clampedLimit = Math.min(params.limit, 100)
@@ -62,8 +69,10 @@ export const NoteListTool = Tool.define("note_list", {
 
     const lines = page.map((note) => {
       const parts: string[] = [`- [${note.id}] "${note.title}"`]
+      if ((note.kind ?? "note") === "blueprint") parts.push("[blueprint]")
       if (note.pinned) parts.push("[pinned]")
       if (note.global) parts.push("[global]")
+      if (note.blueprint?.runCount) parts.push(`[${note.blueprint.runCount} runs]`)
       if (note.tags.length > 0) parts.push(`— tags: ${note.tags.join(", ")}`)
       parts.push(`— updated ${formatLocalDateTime(note.time.updated)}`)
       return parts.join(" ")
@@ -88,9 +97,15 @@ export const NoteListTool = Tool.define("note_list", {
         : ""
 
     return {
-      title: `${total} note${total === 1 ? "" : "s"}`,
+      title: `${total} ${params.kind === "all" ? "note" : params.kind}${total === 1 ? "" : "s"}`,
       output: `${header}\n\n${lines.join("\n")}${tagSummary}`,
-      metadata: { count: shown, total, scope: params.scope, tags: Object.fromEntries(tagFreq) } as Record<string, any>,
+      metadata: {
+        count: shown,
+        total,
+        scope: params.scope,
+        kind: params.kind,
+        tags: Object.fromEntries(tagFreq),
+      } as Record<string, any>,
     }
   },
 })

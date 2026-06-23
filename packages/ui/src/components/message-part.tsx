@@ -682,7 +682,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_write":
       return {
         icon: "notebook-pen",
-        title: "Write Note",
+        title: input.kind === "blueprint" ? "Write Blueprint" : "Write Note",
         subtitle: input.title || input.mode,
       }
     case "note_edit":

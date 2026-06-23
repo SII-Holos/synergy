@@ -14,7 +14,7 @@ Audit whether the Blueprint has been fully and correctly implemented. You do not
 
 ## 1. Read the Blueprint
 
-Use `blueprint_read` with the noteID from context. Read the full document. For each distinct requirement, section, or acceptance criterion in the Blueprint, you must produce one of four evidence states:
+Use `note_read` with the Blueprint noteID from context. Read the full document. For each distinct requirement, section, or acceptance criterion in the Blueprint, you must produce one of four evidence states:
 
 | Evidence state | Definition |
 |---|---|
@@ -66,8 +66,8 @@ remaining: |
 instructions: |
   Must implement:
   1. In invoke.ts, import plan-mode*.txt files and insert Plan Mode layer in systemParts (between cortex context and memory)
-  2. In tool-resolver.ts, add PLAN_MODE_ALLOWED_TOOLS Set with at least 30 read/coordination/blueprint tools and apply filter before permission check
-  3. In enforcement/gate.ts classify(), add branches for blueprint_list/read/write/create/duplicate (file_read/file_write) and blueprint_loop_finish/restart (session_state)
+  2. In tool-resolver.ts, add PLAN_MODE_ALLOWED_TOOLS Set with at least 30 read/coordination/note tools and apply filter before permission check
+  3. In enforcement/gate.ts classify(), add branches for note read/write tools (file_read/file_write) and blueprint_loop_finish/restart (session_state)
   Do not implement frontend Phase 6-9.
 ```
 
