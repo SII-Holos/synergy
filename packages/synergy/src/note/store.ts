@@ -18,6 +18,7 @@ export namespace NoteStore {
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
     note.version ??= 1
+    note.kind ??= "note"
     return note
   }
 
@@ -142,6 +143,8 @@ export namespace NoteStore {
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
+      kind: create.note.kind ?? "note",
+      blueprint: create.note.blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
@@ -176,6 +179,11 @@ export namespace NoteStore {
     const notes = results.filter((n): n is NoteTypes.Info => n !== undefined).map(normalize)
     sortByPinAndTime(notes)
     return notes
+  }
+
+  export async function listByKind(scopeID: string, kind: string): Promise<NoteTypes.Info[]> {
+    const notes = await list(scopeID)
+    return notes.filter((n) => n.kind === kind)
   }
 
   export async function listWithGlobal(scopeID: string): Promise<NoteTypes.Info[]> {
@@ -230,6 +238,8 @@ export namespace NoteStore {
       if (update.patch.content !== undefined) draft.content = update.patch.content
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
+      if (update.patch.kind !== undefined) draft.kind = update.patch.kind
+      if (update.patch.blueprint !== undefined) draft.blueprint = update.patch.blueprint
       if (update.patch.global !== undefined) draft.global = update.patch.global
       if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string

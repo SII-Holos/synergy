@@ -13,6 +13,7 @@ import "../engram/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../note/migration"
+import "../blueprint/migration"
 import "../holos/migration"
 import type { Migration, RunOptions, MigrationContext } from "./types"
 

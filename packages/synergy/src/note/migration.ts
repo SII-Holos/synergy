@@ -77,6 +77,42 @@ export const migrations: Migration[] = [
       })
     },
   },
+  {
+    id: "20260623-note-add-blueprint-fields",
+    description: "Add kind and blueprint fields to existing notes; set kind default to 'note'",
+    domain: "note",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let totalNotes = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        totalNotes += ids.filter((id) => !id.startsWith("_")).length
+      }
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        const noteIDs = ids.filter((id) => !id.startsWith("_"))
+        for (const noteID of noteIDs) {
+          const notePath = StoragePath.note(s, noteID)
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (!raw.kind) raw.kind = "note"
+            if (!raw.blueprint) raw.blueprint = { status: "draft" }
+            await Storage.write(notePath, raw)
+          } catch (err) {
+            log.warn("failed to migrate note blueprint fields", { scopeID: sid, noteID, error: String(err) })
+          }
+          done++
+          if (done % 10 === 0 || done === totalNotes) {
+            progress(done, totalNotes)
+          }
+        }
+      }
+      log.info("blueprint fields migration complete", { totalNotes, scopes: scopeIDs.length })
+    },
+  },
 ]
 
 MigrationRegistry.register("note", migrations)

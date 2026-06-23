@@ -136,6 +136,12 @@ export const Info = z
       cortex: CortexDelegationInfo.optional(),
       working: WorkingInfo.optional(),
       workspace: Workspace.optional(),
+      blueprint: z
+        .object({
+          loopID: z.string().optional(),
+          planMode: z.boolean().optional(),
+        })
+        .optional(),
     }),
   )
   .meta({

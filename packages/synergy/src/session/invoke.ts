@@ -16,6 +16,9 @@ import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
+import PLAN_MODE from "./prompt/plan-mode.txt"
+import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
+import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
 import { Command } from "../command/command"
 import "../project/worktree-command"
@@ -58,6 +61,7 @@ import "./loop-signals"
 import "../engram/chronicler"
 import { ExperienceEncoder } from "../engram/experience-encoder"
 import { GitHealth } from "../project/git-health"
+import { BlueprintLoopStore } from "../blueprint/loop-store"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -499,6 +503,32 @@ export namespace SessionInvoke {
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
+
+        // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
+        const sessionBlueprint = session?.blueprint
+        if (sessionBlueprint?.planMode) {
+          systemParts.push(PLAN_MODE.trim())
+          if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
+          if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
+        }
+        if (sessionBlueprint?.loopID) {
+          const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
+          if (loop) {
+            systemParts.push(
+              [
+                "<blueprint-loop-context>",
+                `Active BlueprintLoop: ${loop.id}`,
+                `Blueprint Note: ${loop.noteID}`,
+                `Title: ${loop.title}`,
+                `Description: ${loop.description ?? "N/A"}`,
+                `Status: ${loop.status}`,
+                "",
+                `You are executing this BlueprintLoop. Before doing implementation work, call blueprint_read with noteID=${loop.noteID} and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                "</blueprint-loop-context>",
+              ].join("\n"),
+            )
+          }
+        }
 
         // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {

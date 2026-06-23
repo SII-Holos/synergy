@@ -25,6 +25,7 @@ export type SubagentPermissionProfile =
   | "sessionHistory"
   | "externalResearch"
   | "research"
+  | "supervisor"
 
 export interface SubagentDefinition {
   name: string
@@ -172,6 +173,33 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         session_search: "allow",
         session_send: "deny",
         session_control: "deny",
+      }),
+    )
+  }
+
+  if (profile === "supervisor") {
+    return PermissionNext.merge(
+      common,
+      anchoredReadTools(),
+      PermissionNext.fromConfig({
+        dagwrite: "allow",
+        dagread: "allow",
+        dagpatch: "allow",
+        task: "allow",
+        task_list: "allow",
+        task_output: "allow",
+        task_cancel: "allow",
+        session_send: "deny",
+        session_control: "deny",
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "deny",
+        note_edit: "deny",
+        blueprint_read: "allow",
+        blueprint_list: "allow",
+        blueprint_loop_restart: "allow",
+        blueprint_loop_finish: "allow",
       }),
     )
   }

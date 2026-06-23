@@ -482,9 +482,58 @@ export namespace ToolResolver {
     }
   }
 
+  const PLAN_MODE_ALLOWED_TOOLS = new Set([
+    // Read tools
+    "read",
+    "glob",
+    "grep",
+    "view_file",
+    "scan_files",
+    "parse_code",
+    "look_at",
+    "scan_document",
+    "ast_grep",
+    "lsp",
+    // Session read
+    "session_list",
+    "session_read",
+    "session_search",
+    // Note read
+    "note_list",
+    "note_read",
+    "note_search",
+    // Memory read
+    "memory_search",
+    "memory_get",
+    // Coordination read/write
+    "task_list",
+    "task_output",
+    "dagread",
+    "dagwrite",
+    "dagpatch",
+    "task",
+    "task_cancel",
+    // Blueprint all
+    "blueprint_list",
+    "blueprint_read",
+    "blueprint_create",
+    "blueprint_write",
+    "blueprint_duplicate",
+    // UI
+    "question",
+    "skill",
+    // Network
+    "websearch",
+    "webfetch",
+    // Agenda read
+    "agenda_list",
+    "agenda_logs",
+    // Platform read
+    "worktree_list",
+  ])
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
-    const result: Definition[] = []
+    let result: Definition[] = []
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
@@ -810,6 +859,9 @@ export namespace ToolResolver {
       }
     }
 
+    if (input.session?.blueprint?.planMode) {
+      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+    }
     const disabled = PermissionNext.disabled(
       result.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),

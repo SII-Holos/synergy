@@ -1,0 +1,11 @@
+List blueprint notes accessible to the current session. Returns blueprint metadata (ID, title, status, tags, pinned status, timestamps) without full content.
+
+Use this to browse available blueprints before reading specific ones with `blueprint_read`. Results are sorted by pinned status first, then by last updated time.
+
+The `scope` parameter controls which blueprints are listed:
+- "all" (default): Blueprints from the current project scope plus global blueprints
+- "current": Only blueprints from the current project scope
+- "global": Only global blueprints
+
+Use `since` and `before` to filter blueprints by last updated time (ISO 8601 dates).
+Use `offset` and `limit` for pagination when there are many blueprints.

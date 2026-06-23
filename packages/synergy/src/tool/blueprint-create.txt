@@ -1,0 +1,9 @@
+Create a new blueprint note. Content should be provided in markdown format — it will be converted to the internal ProseMirror JSON format for storage.
+
+Blueprint notes are kind="blueprint" and include blueprint-specific metadata (description, status, defaultAgent). The status defaults to "draft".
+
+The `scope` parameter controls where the blueprint is created:
+- "current" (default): Creates in the current project scope
+- "global": Creates in the global scope (visible from all projects)
+
+Use `tags` to organize blueprints. Use `blueprint_read` to read a blueprint after creating it.

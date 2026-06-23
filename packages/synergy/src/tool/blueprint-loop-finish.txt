@@ -1,0 +1,10 @@
+Finish a BlueprintLoop by setting its status to signal completion, auditing, or failure.
+
+The execution agent uses this tool after completing its work to signal the loop should be audited. The execution agent can only set status to "auditing" or "failed". The supervisor agent can set status to "completed" or "failed".
+
+Setting status to "auditing" triggers the loop-continuation system which spawns a supervisor subagent to review the results.
+
+Parameters:
+- loopID: The BlueprintLoop ID to finish
+- status: The new status — "auditing" (execution agent only), "failed", or "completed" (supervisor only)
+- summary: Optional summary of the finish reason or audit result

@@ -10,6 +10,14 @@ export namespace NoteTypes {
       global: z.boolean(),
       originScope: z.string().optional(),
       tags: z.array(z.string()),
+      kind: z.enum(["note", "blueprint"]).optional(),
+      blueprint: z
+        .object({
+          description: z.string().optional(),
+          status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
+          defaultAgent: z.string().optional(),
+        })
+        .optional(),
       version: z.number(),
       time: z.object({
         created: z.number(),
@@ -24,6 +32,14 @@ export namespace NoteTypes {
       title: z.string(),
       content: z.any().optional(),
       tags: z.array(z.string()).optional(),
+      kind: z.enum(["note", "blueprint"]).optional(),
+      blueprint: z
+        .object({
+          description: z.string().optional(),
+          status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
+          defaultAgent: z.string().optional(),
+        })
+        .optional(),
     })
     .meta({ ref: "NoteCreateInput" })
   export type CreateInput = z.infer<typeof CreateInput>
@@ -35,6 +51,14 @@ export namespace NoteTypes {
       pinned: z.boolean().optional(),
       global: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
+      kind: z.enum(["note", "blueprint"]).optional(),
+      blueprint: z
+        .object({
+          description: z.string().optional(),
+          status: z.enum(["draft", "ready", "archived"]).optional(),
+          defaultAgent: z.string().optional(),
+        })
+        .optional(),
       expectedVersion: z.number().optional(),
     })
     .meta({ ref: "NotePatchInput" })
@@ -57,6 +81,7 @@ export namespace NoteTypes {
       global: z.boolean(),
       originScope: z.string().optional(),
       tags: z.array(z.string()),
+      kind: z.enum(["note", "blueprint"]).optional(),
       version: z.number(),
       time: z.object({
         created: z.number(),
