@@ -89,6 +89,25 @@ export const TIPTAP_STYLES = `
     margin-bottom: 0.95em;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
   }
+  .tiptap pre.shiki,
+  .tiptap pre.shiki code,
+  .tiptap pre.shiki span {
+    background-color: var(--shiki-light-bg, var(--surface-inset-base)) !important;
+  }
+  [data-color-scheme="dark"] .tiptap pre.shiki,
+  [data-color-scheme="dark"] .tiptap pre.shiki code,
+  [data-color-scheme="dark"] .tiptap pre.shiki span {
+    color: var(--shiki-dark, var(--text-base)) !important;
+    background-color: var(--shiki-dark-bg, var(--surface-inset-base)) !important;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-color-scheme]) .tiptap pre.shiki,
+    :root:not([data-color-scheme]) .tiptap pre.shiki code,
+    :root:not([data-color-scheme]) .tiptap pre.shiki span {
+      color: var(--shiki-dark, var(--text-base)) !important;
+      background-color: var(--shiki-dark-bg, var(--surface-inset-base)) !important;
+    }
+  }
   .tiptap pre code {
     background: none;
     padding: 0;
@@ -278,7 +297,11 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       nested: true,
     }),
     CodeBlockShiki.configure({
-      defaultTheme: "github-dark",
+      defaultTheme: "github-light",
+      themes: {
+        light: "github-light",
+        dark: "github-dark",
+      },
     }),
     MathExtension,
     Video,
