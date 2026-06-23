@@ -368,6 +368,8 @@ export function NotePanel() {
       .map((g): DisplayGroup => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
+        const groupDirectory =
+          meta?.directory ?? (g.scopeID === "global" ? "global" : isCurrent ? (directory() ?? "") : "")
         let notes = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
@@ -387,7 +389,7 @@ export function NotePanel() {
           ...g,
           notes,
           name: meta?.name ?? g.scopeID,
-          directory: meta?.directory ?? "global",
+          directory: groupDirectory,
           isCurrent,
         }
       })
@@ -416,12 +418,14 @@ export function NotePanel() {
   }
 
   function openNote(id: string, dir: string) {
+    if (!dir) return
     setSelectedNoteId(id)
     setSelectedNoteDir(dir)
     setView("editor")
   }
 
   async function createNoteInScope(dir: string) {
+    if (!dir) return
     try {
       const result = await sdk.client.note.create({
         directory: dir,

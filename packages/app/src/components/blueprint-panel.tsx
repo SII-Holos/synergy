@@ -26,6 +26,8 @@ import "./blueprint-panel.css"
 
 type BlueprintMetaInfo = NoteMetaInfo & {
   kind?: "blueprint" | "note"
+  sourceDirectory?: string
+  sourceScopeID?: string
   blueprint?: {
     status?: "draft" | "ready" | "archived"
     activeLoopID?: string
@@ -61,20 +63,30 @@ function isActiveLoop(s: LoopStatus) {
 
 function RunMenu(props: {
   blueprint: BlueprintMetaInfo
+  hasCurrentSession: boolean
   onRun: (mode: "current" | "new" | "worktree") => void
   onClose: () => void
 }) {
   const options = [
-    { mode: "current" as const, title: "Current session", description: "Run in the session you are viewing." },
+    {
+      mode: "current" as const,
+      title: "Current session",
+      description: props.hasCurrentSession
+        ? "Run in the session you are viewing."
+        : "Open a session first to use this mode.",
+      disabled: !props.hasCurrentSession,
+    },
     {
       mode: "new" as const,
       title: "New session",
       description: "Create a fresh session in this scope and start immediately.",
+      disabled: false,
     },
     {
       mode: "worktree" as const,
       title: "New worktree session",
       description: "Create an isolated worktree session and start immediately.",
+      disabled: false,
     },
   ]
 
@@ -91,6 +103,8 @@ function RunMenu(props: {
               <button
                 type="button"
                 class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover"
+                classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+                disabled={option.disabled}
                 onClick={() => props.onRun(option.mode)}
               >
                 <span class="block text-12-medium text-text-strong">{option.title}</span>
@@ -420,24 +434,46 @@ export function BlueprintPanel() {
   const globalSync = useGlobalSync()
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
+  const currentScopeID = createMemo(() => {
+    const dir = directory()
+    if (!dir || dir === "global") return "global"
+    const scope = globalSync.data.scope.find((s) => s.worktree === dir || (s.sandboxes ?? []).includes(dir))
+    return scope?.id ?? ""
+  })
 
   const [view, setView] = createSignal<"list" | "detail">("list")
   const [selectedBpId, setSelectedBpId] = createSignal<string | null>(null)
   const [selectedBpDir, setSelectedBpDir] = createSignal<string | null>(null)
   const [search, setSearch] = createSignal("")
   const [showRunMenu, setShowRunMenu] = createSignal(false)
+  const scopeDirectoryKey = createMemo(() =>
+    globalSync.data.scope.map((scope) => `${scope.id}:${scope.worktree}`).join("|"),
+  )
+
+  function resolveScopeDirectory(scopeID: string) {
+    if (scopeID === "global") return "global"
+    const currentDir = directory()
+    if (currentDir && scopeID === currentScopeID()) return currentDir
+    return globalSync.data.scope.find((s) => s.id === scopeID)?.worktree
+  }
 
   // Fetch all notes, filter blueprints
   const [blueprintMeta, { refetch: refetchNotes }] = createResource(
-    () => ({ dir: directory(), ver: globalSync.noteVersion() }),
+    () => ({ dir: directory(), ver: globalSync.noteVersion(), scopeKey: scopeDirectoryKey() }),
     async ({ dir }) => {
       if (!dir) return [] as BlueprintMetaInfo[]
       const result = await sdk.client.note.listMeta({ directory: dir })
       const blueprints: BlueprintMetaInfo[] = []
       for (const g of result.data ?? []) {
+        const sourceDirectory = resolveScopeDirectory(g.scopeID)
+        if (!sourceDirectory) continue
         for (const n of g.notes) {
           if (n.kind === "blueprint") {
-            blueprints.push(n as BlueprintMetaInfo)
+            blueprints.push({
+              ...(n as BlueprintMetaInfo),
+              sourceDirectory,
+              sourceScopeID: g.scopeID,
+            })
           }
         }
       }
@@ -490,8 +526,8 @@ export function BlueprintPanel() {
     setView("detail")
   }
 
-  async function createExecutionSession(mode: "current" | "new" | "worktree") {
-    const dir = directory()
+  async function createExecutionSession(mode: "current" | "new" | "worktree", blueprintDir: string) {
+    const dir = blueprintDir
     if (!dir) return undefined
 
     if (mode === "current") {
@@ -526,11 +562,14 @@ export function BlueprintPanel() {
   async function runBlueprint(mode: "current" | "new" | "worktree") {
     const bp = allBlueprints().find((b) => b.id === selectedBpId())
     if (!bp) return
+    const blueprintDir = bp.sourceDirectory ?? selectedBpDir() ?? directory()
+    if (!blueprintDir) return
     try {
-      const target = await createExecutionSession(mode)
+      const target = await createExecutionSession(mode, blueprintDir)
       if (!target) return
       const loop = await sdk.client.blueprint.loop
         .create({
+          directory: blueprintDir,
           blueprintLoopCreateInput: {
             noteID: bp.id,
             title: bp.title || "Blueprint run",
@@ -541,7 +580,7 @@ export function BlueprintPanel() {
         })
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
-      await sdk.client.blueprint.loop.start({ id: loop.id })
+      await sdk.client.blueprint.loop.start({ id: loop.id, directory: blueprintDir })
       setShowRunMenu(false)
       await refetchLoops()
       await refetchNotes()
@@ -725,10 +764,10 @@ export function BlueprintPanel() {
                 subtitle="Runnable blueprints with a defined next step"
                 items={readyBps()}
                 loopsByNote={loopsByNote()}
-                onOpen={(bp) => openDetail(bp.id, directory()!)}
+                onOpen={(bp) => openDetail(bp.id, bp.sourceDirectory ?? directory()!)}
                 onRun={(bp) => {
                   setSelectedBpId(bp.id)
-                  setSelectedBpDir(directory() ?? null)
+                  setSelectedBpDir(bp.sourceDirectory ?? directory() ?? null)
                   setShowRunMenu(true)
                 }}
               />
@@ -738,7 +777,7 @@ export function BlueprintPanel() {
                 subtitle="Designs still being shaped"
                 items={draftBps()}
                 loopsByNote={loopsByNote()}
-                onOpen={(bp) => openDetail(bp.id, directory()!)}
+                onOpen={(bp) => openDetail(bp.id, bp.sourceDirectory ?? directory()!)}
               />
 
               <BlueprintListSection
@@ -746,7 +785,7 @@ export function BlueprintPanel() {
                 subtitle="Kept for reference"
                 items={archivedBps()}
                 loopsByNote={loopsByNote()}
-                onOpen={(bp) => openDetail(bp.id, directory()!)}
+                onOpen={(bp) => openDetail(bp.id, bp.sourceDirectory ?? directory()!)}
               />
 
               {/* Empty state */}
@@ -787,6 +826,7 @@ export function BlueprintPanel() {
       <Show when={showRunMenu() && selectedBpId()}>
         <RunMenu
           blueprint={allBlueprints().find((b) => b.id === selectedBpId())!}
+          hasCurrentSession={!!params.id}
           onRun={runBlueprint}
           onClose={() => setShowRunMenu(false)}
         />
