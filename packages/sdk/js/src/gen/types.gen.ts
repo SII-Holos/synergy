@@ -3339,7 +3339,6 @@ export type NoteMetaInfo = {
   previewHtml?: string
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string
     runCount?: number
@@ -3364,7 +3363,6 @@ export type NoteInfo = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string
     runCount?: number
@@ -3390,7 +3388,6 @@ export type NoteCreateInput = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string
     runCount?: number
@@ -3416,7 +3413,6 @@ export type NotePatchInput = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string | null
     runCount?: number

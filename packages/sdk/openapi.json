@@ -19972,11 +19972,6 @@
               "description": {
                 "type": "string"
               },
-              "status": {
-                "default": "draft",
-                "type": "string",
-                "enum": ["draft", "ready", "archived"]
-              },
               "defaultAgent": {
                 "type": "string"
               },
@@ -20047,11 +20042,6 @@
             "properties": {
               "description": {
                 "type": "string"
-              },
-              "status": {
-                "default": "draft",
-                "type": "string",
-                "enum": ["draft", "ready", "archived"]
               },
               "defaultAgent": {
                 "type": "string"
@@ -20127,11 +20117,6 @@
               "description": {
                 "type": "string"
               },
-              "status": {
-                "default": "draft",
-                "type": "string",
-                "enum": ["draft", "ready", "archived"]
-              },
               "defaultAgent": {
                 "type": "string"
               },
@@ -20204,10 +20189,6 @@
                 "properties": {
                   "description": {
                     "type": "string"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": ["draft", "ready", "archived"]
                   },
                   "defaultAgent": {
                     "type": "string"

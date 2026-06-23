@@ -17,7 +17,6 @@ import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
 import "./note-panel.css"
 
-type BlueprintStatus = "draft" | "ready" | "archived"
 type LoopStatus = BlueprintLoopInfo["status"]
 
 type NoteCardInfo = NoteMetaInfo & {
@@ -27,12 +26,12 @@ type NoteCardInfo = NoteMetaInfo & {
 type BlueprintVisualState = {
   label: string
   detail: string
-  tone: "draft" | "ready" | "archived" | "running" | "waiting" | "auditing" | "failed" | "completed"
+  tone: "idle" | "running" | "waiting" | "auditing" | "failed" | "completed"
   icon: string
 }
 
 function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
-  return note.kind === "blueprint" || !!note.blueprint
+  return note.kind === "blueprint"
 }
 
 function isActiveLoopStatus(status: LoopStatus) {
@@ -55,13 +54,7 @@ function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
   if (status === "auditing") return "auditing"
   if (status === "completed") return "completed"
   if (status === "failed") return "failed"
-  return "archived"
-}
-
-function getStatusLabel(status: BlueprintStatus) {
-  if (status === "ready") return "Ready plan"
-  if (status === "archived") return "Archived"
-  return "Draft plan"
+  return "idle"
 }
 
 function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
@@ -85,12 +78,11 @@ function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: Blueprint
   if (latest?.status === "failed") {
     return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: "circle-x" }
   }
-  const status = (note.blueprint?.status ?? "draft") as BlueprintStatus
   return {
-    label: getStatusLabel(status),
-    detail: status === "ready" ? "Ready to run" : status === "archived" ? "Reference only" : "Not ready to run",
-    tone: status,
-    icon: status === "ready" ? "circle-check" : status === "archived" ? "archive" : "file-pen",
+    label: "Blueprint",
+    detail: "No active run",
+    tone: "idle",
+    icon: getSemanticIcon("orchestration.blueprint"),
   }
 }
 
@@ -1178,7 +1170,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         directory: dir,
         notePatchInput: {
           kind: "blueprint",
-          blueprint: { status: "draft" as const },
+          blueprint: {},
           expectedVersion: base.version,
         },
       })

@@ -15,10 +15,26 @@ export namespace NoteStore {
 
   export type Metadata = NoteTypes.MetaInfo
 
+  function normalizeBlueprint(note: NoteTypes.Info): void {
+    if (note.kind !== "blueprint") {
+      note.blueprint = undefined
+      return
+    }
+
+    const blueprint = note.blueprint as (NoteTypes.Info["blueprint"] & { status?: unknown }) | undefined
+    if (!blueprint) {
+      note.blueprint = {}
+      return
+    }
+    delete blueprint.status
+    note.blueprint = blueprint
+  }
+
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
     note.version ??= 1
     note.kind ??= "note"
+    normalizeBlueprint(note)
     return note
   }
 
@@ -247,7 +263,10 @@ export namespace NoteStore {
       if (update.patch.blueprint === null) {
         draft.blueprint = undefined
       } else if (update.patch.blueprint !== undefined) {
-        const { activeLoopID, ...rest } = update.patch.blueprint
+        const { activeLoopID, ...rest } = update.patch.blueprint as NoteTypes.PatchInput["blueprint"] & {
+          status?: unknown
+        }
+        delete rest.status
         const next = { ...(draft.blueprint ?? {}), ...rest }
         if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
         if (activeLoopID === null) delete next.activeLoopID

@@ -116,11 +116,6 @@
   background: color-mix(in srgb, var(--surface-inset-base) 30%, var(--surface-raised-base-hover));
 }
 
-.note-card--blueprint-ready {
-  border-color: color-mix(in srgb, var(--border-success-base) 20%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-success-base) 5%, var(--surface-raised-base));
-}
-
 .note-card--blueprint-running,
 .note-card--blueprint-auditing {
   border-color: color-mix(in srgb, var(--border-success-base) 28%, var(--border-weaker-base));
@@ -177,9 +172,9 @@
   line-height: 1;
 }
 
-.note-card-status--ready {
-  background: color-mix(in srgb, var(--surface-success-base) 14%, var(--surface-raised-base));
-  color: var(--text-diff-add-base);
+.note-card-status--idle {
+  background: color-mix(in srgb, var(--surface-inset-base) 80%, var(--surface-raised-base));
+  color: var(--text-weak);
 }
 
 .note-card-status--running,
@@ -201,10 +196,6 @@
 .note-card-status--completed {
   background: color-mix(in srgb, var(--surface-diff-add-base) 11%, var(--surface-raised-base));
   color: var(--text-diff-add-base);
-}
-
-.note-card-status--archived {
-  color: var(--text-weaker);
 }
 
 .note-blueprint-meta {
