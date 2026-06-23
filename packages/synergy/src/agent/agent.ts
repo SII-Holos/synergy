@@ -13,6 +13,7 @@ import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
+import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -254,6 +255,7 @@ export namespace Agent {
     }))
     if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
     if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
+    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
 
     return result
   })

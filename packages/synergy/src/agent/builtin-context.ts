@@ -216,7 +216,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     permission: PermissionNext.merge(ctx.defaults, baseToolPermissions(definition.permission), ctx.user),
     mode: "subagent",
     native: true,
-    visibleTo: definition.visibleTo ?? ["synergy-max"],
+    visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
     model: ctx.role(definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,
