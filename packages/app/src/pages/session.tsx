@@ -800,7 +800,9 @@ function SessionPageContent() {
 
   return (
     <>
-      <WorkspaceBrowserTool />
+      <Show when={!!params.id}>
+        <WorkspaceBrowserTool />
+      </Show>
       <WorkspaceNotesTool />
       <WorkspaceBlueprintsTool />
       <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
@@ -994,10 +996,10 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show when={isDesktop() && !!params.id}>
+          <Show when={isDesktop()}>
             <WorkspaceDrawer />
           </Show>
-          <Show when={isDesktop() && !!params.id}>
+          <Show when={isDesktop()}>
             <WorkspaceRail />
           </Show>
         </div>
