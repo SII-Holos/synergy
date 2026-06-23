@@ -75,6 +75,76 @@ describe("ProviderTransform.options - setCacheKey", () => {
   })
 })
 
+describe("ProviderTransform.message - Anthropic cache boundary", () => {
+  const mockModel = {
+    id: "anthropic/claude-3-5-sonnet",
+    providerID: "anthropic",
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: {
+      input: 0.003,
+      output: 0.015,
+      cache: { read: 0.0003, write: 0.00375 },
+    },
+    limit: {
+      context: 200000,
+      output: 8192,
+    },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("places cache control only on the selected stable system block", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md" },
+      { role: "system", content: "permission context" },
+      { role: "system", content: "dynamic env time" },
+      { role: "user", content: "hello" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mockModel, { systemCacheBreakpoint: 2 })
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  test("keeps legacy cache markers when no boundary is provided", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "custom system" },
+      { role: "system", content: "dynamic env time" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mockModel)
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+})
+
 describe("ProviderTransform.maxOutputTokens", () => {
   test("returns 32k when modelLimit > 32k", () => {
     const modelLimit = 100000
