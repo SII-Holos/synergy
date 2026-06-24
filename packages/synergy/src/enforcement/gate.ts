@@ -725,7 +725,7 @@ export namespace EnforcementGate {
         }
 
         // shell_destructive is high-risk by definition; it must always be a hard
-        // boundary so the classifier can never bypass a profile deny on it.
+        // boundary so Smart allow can never bypass a profile deny on it.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
 
         if (risk !== "shell_destructive") {

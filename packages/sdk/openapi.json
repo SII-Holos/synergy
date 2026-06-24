@@ -19097,8 +19097,8 @@
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
           },
-          "auto_classifier": {
-            "description": "Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)",
+          "smartAllow": {
+            "description": "Use the Smart allow internal agent to auto-allow safe asks and soft denies",
             "type": "boolean"
           },
           "tools": {
@@ -25869,6 +25869,94 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.message.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Message"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.message.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.message.part.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.part.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "part": {
+                "$ref": "#/components/schemas/Part"
+              },
+              "delta": {
+                "type": "string"
+              }
+            },
+            "required": ["part"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.message.part.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.part.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID", "partID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.permission.asked": {
         "type": "object",
         "properties": {
@@ -25904,66 +25992,6 @@
               }
             },
             "required": ["sessionID", "requestID", "reply"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              }
-            },
-            "required": ["note"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              }
-            },
-            "required": ["note"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -26091,6 +26119,66 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.note.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              }
+            },
+            "required": ["note"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              }
+            },
+            "required": ["note"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.question.asked": {
         "type": "object",
         "properties": {
@@ -26206,94 +26294,6 @@
               }
             },
             "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.message.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "message.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Message"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.message.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "message.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "messageID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID", "messageID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.message.part.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "message.part.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "part": {
-                "$ref": "#/components/schemas/Part"
-              },
-              "delta": {
-                "type": "string"
-              }
-            },
-            "required": ["part"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.message.part.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "message.part.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "messageID": {
-                "type": "string"
-              },
-              "partID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID", "messageID", "partID"]
           }
         },
         "required": ["type", "properties"]
@@ -27022,19 +27022,22 @@
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.message.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.part.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
             "$ref": "#/components/schemas/Event.permission.asked"
           },
           {
             "$ref": "#/components/schemas/Event.permission.replied"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"
@@ -27055,6 +27058,15 @@
             "$ref": "#/components/schemas/Event.session.idle"
           },
           {
+            "$ref": "#/components/schemas/Event.note.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.deleted"
+          },
+          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -27068,18 +27080,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
-            "$ref": "#/components/schemas/Event.message.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.message.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.message.part.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.message.part.removed"
           },
           {
             "$ref": "#/components/schemas/Event.dag.updated"

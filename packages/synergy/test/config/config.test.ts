@@ -978,6 +978,66 @@ test("removes legacy channel holos config when top-level holos already exists", 
   }
 })
 
+test("migrates legacy auto_classifier config to smartAllow", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-smart-allow-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "$schema": "file:///test/config.schema.json",
+  "auto_classifier": true
+}`,
+    )
+
+    resetMigrations()
+    await runMigrations()
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.smartAllow).toBe(true)
+    expect(migrated.auto_classifier).toBeUndefined()
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("migrates project permissions domain auto_classifier config to smartAllow", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-smart-allow-domain-${Math.random().toString(36).slice(2)}`)
+  const project = path.join(home, "project")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const permissionsDir = path.join(project, ".synergy", "synergy.d")
+    await fs.mkdir(permissionsDir, { recursive: true })
+    const target = path.join(permissionsDir, "80-permissions.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "controlProfile": "guarded",
+  "auto_classifier": false
+}`,
+    )
+
+    process.chdir(project)
+    resetMigrations()
+    await runMigrations()
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.smartAllow).toBe(false)
+    expect(migrated.auto_classifier).toBeUndefined()
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 test("migrates legacy identity config to valid engram config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]

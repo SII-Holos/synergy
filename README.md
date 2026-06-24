@@ -326,6 +326,7 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 ```jsonc
 {
   "controlProfile": "guarded",
+  "smartAllow": false,
   "agent": {
     "synergy-max": {
       "controlProfile": "autonomous",
@@ -335,6 +336,8 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 ```
 
 **Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
+
+`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. In autonomous sessions, failed Smart allow checks deny rather than prompting.
 
 Built-in profiles:
 

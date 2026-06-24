@@ -2051,9 +2051,9 @@ export type Config = {
   layout?: LayoutConfig
   permission?: PermissionConfig
   /**
-   * Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)
+   * Use the Smart allow internal agent to auto-allow safe asks and soft denies
    */
-  auto_classifier?: boolean
+  smartAllow?: boolean
   tools?: {
     [key: string]: boolean
   }
@@ -4435,6 +4435,38 @@ export type EventVcsBranchUpdated = {
   }
 }
 
+export type EventMessageUpdated = {
+  type: "message.updated"
+  properties: {
+    info: Message
+  }
+}
+
+export type EventMessageRemoved = {
+  type: "message.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
+export type EventMessagePartUpdated = {
+  type: "message.part.updated"
+  properties: {
+    part: Part
+    delta?: string
+  }
+}
+
+export type EventMessagePartRemoved = {
+  type: "message.part.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+}
+
 export type EventPermissionAsked = {
   type: "permission.asked"
   properties: PermissionRequest
@@ -4446,28 +4478,6 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
-  }
-}
-
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
   }
 }
 
@@ -4516,6 +4526,28 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -4552,38 +4584,6 @@ export type EventRuntimeReloaded = {
     executed: Array<RuntimeReloadTarget>
     cascaded: Array<RuntimeReloadTarget>
     changedFields: Array<string>
-  }
-}
-
-export type EventMessageUpdated = {
-  type: "message.updated"
-  properties: {
-    info: Message
-  }
-}
-
-export type EventMessageRemoved = {
-  type: "message.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-  }
-}
-
-export type EventMessagePartUpdated = {
-  type: "message.part.updated"
-  properties: {
-    part: Part
-    delta?: string
-  }
-}
-
-export type EventMessagePartRemoved = {
-  type: "message.part.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-    partID: string
   }
 }
 
@@ -4848,26 +4848,26 @@ export type Event =
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventVcsBranchUpdated
+  | EventMessageUpdated
+  | EventMessageRemoved
+  | EventMessagePartUpdated
+  | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventRuntimeReloaded
-  | EventMessageUpdated
-  | EventMessageRemoved
-  | EventMessagePartUpdated
-  | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
   | EventBlueprintLoopCreated

@@ -3,11 +3,13 @@ import type { Agent } from "./agent"
 import type { BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
+import PROMPT_AGENT_GENERATE from "./generate.txt"
 import { buildCompactionPrompt } from "./prompt/compaction/builder"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
 import PROMPT_SCRIPT from "./prompt/script.txt"
+import PROMPT_SMART_ALLOW from "./prompt/smart-allow.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 
@@ -129,6 +131,28 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_REWARD,
+      model: ctx.role("mini"),
+    },
+    "smart-allow": {
+      name: "smart-allow",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_SMART_ALLOW,
+      model: ctx.role("mini"),
+    },
+    "agent-generator": {
+      name: "agent-generator",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0.3,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_AGENT_GENERATE,
       model: ctx.role("mini"),
     },
     anima: {

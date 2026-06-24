@@ -3,7 +3,7 @@ import { Filesystem } from "../util/filesystem"
 /**
  * Paths that are ALWAYS protected regardless of permission profile/mode.
  * Touching these triggers an ask even in full_access mode. This is a hard
- * security boundary that cannot be overridden by profile, classifier, or
+ * security boundary that cannot be overridden by profile, Smart allow, or
  * session-level memory.
  */
 export const PROTECTED_WRITE_PATHS = [

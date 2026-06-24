@@ -6,7 +6,7 @@ import { Identifier } from "@/id/id"
 import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
 import { PermissionRules } from "@/permission/rules"
-import { RiskClassifier } from "@/permission/classifier"
+import { SmartAllow } from "@/permission/smart-allow"
 import { Plugin } from "@/plugin"
 import { PluginToolId } from "../plugin/ids.js"
 import { toolCapabilities } from "../plugin/capability"
@@ -328,62 +328,20 @@ export namespace ToolResolver {
     // exec-policy, and approval cache. policyDecision provides risk/capabilities
     // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
-    // Deny is a hard policy boundary (profile-level security decision). It
-    // must be enforced before anything else — the classifier and user rules
-    // exist only to save a confirmation prompt, never to override a deny.
-    if (decision.action === "deny") {
-      // Use the refusal's diagnostic reason when available — this carries
-      // specific detail like "matched destructive pattern: git push" that
-      // should be visible both in the error message AND the frontend audit tooltip.
-      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
-      const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
-      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
-      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
-    }
 
-    // Profile already permits the operation — no need for the classifier.
+    // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
 
-    // Classifier (auto mode): may promote an ask → allow to save the user a
-    // confirmation prompt. It must NEVER run for a non-bypassable ask
-    // (protected_op, file_external_*, identity_act, shell_destructive) — those
-    // are hard boundaries that must always reach the user. Nor can it ever
-    // promote a deny, which was already handled above.
-    const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
-    if (!hasNonBypassable) {
-      const cfg = await Config.current()
-      const autoEnabled = cfg.auto_classifier === true
-      if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
-        const caps = envelope.capabilities.map((c) => c.class)
-        const classification = await RiskClassifier.classify({
-          tool: toolName,
-          args,
-          capabilities: caps,
-          workspace: ScopeContext.current.directory,
-        })
-        if (RiskClassifier.shouldAutoAllow(classification)) {
-          await setApprovalMetadata(ctx, {
-            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
-            source: "classifier",
-            reason: `Auto-allowed by classifier: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
-          })
-          if (toolName === "bash") markShellSandboxBypass(ctx)
-          return
-        }
-        if (classification) {
-          ;(ctx.extra as any).classifierRisk = classification
-        }
-      }
-    }
+    const smartAllowEligible = SmartAllow.isEligible(decision.action, envelope.capabilities)
 
     // User/session rules: check persistent user rules (from "Always allow"
     // button) and ephemeral session rules. Deny always wins. Allow only
     // bypasses soft asks; non-bypassable asks must still reach the user.
-    if (decision.action === "ask") {
+    if (decision.action === "ask" || decision.action === "deny") {
       const patterns = [
         PermissionRules.extractPattern(toolName, args),
         ...envelope.capabilities.flatMap((cap) => patternsForGateCapability(toolName, cap, args)),
@@ -409,7 +367,7 @@ export namespace ToolResolver {
           envelope.profileId,
         )
       }
-      if (ruleDecision.action === "allow" && !hasNonBypassable) {
+      if (decision.action === "ask" && ruleDecision.action === "allow" && smartAllowEligible) {
         await setApprovalMetadata(ctx, {
           ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
           source: "user",
@@ -418,7 +376,43 @@ export namespace ToolResolver {
         if (toolName === "bash") markShellSandboxBypass(ctx)
         return
       }
-      // action === "ask" → fall through to gateOwnedAsks
+      // ask → fall through to Smart allow / gateOwnedAsks; deny → Smart allow or policy denial.
+    }
+
+    if (smartAllowEligible) {
+      const cfg = await Config.current()
+      if (cfg.smartAllow === true && !SmartAllow.isDisabled(ctx.sessionID)) {
+        const classification = await SmartAllow.classify({
+          sessionID: ctx.sessionID,
+          tool: toolName,
+          args,
+          capabilities: envelope.capabilities.map((c) => c.class),
+          workspace: ScopeContext.current.directory,
+          policyAction: decision.action,
+        })
+        if (SmartAllow.shouldAutoAllow(classification, ctx.sessionID)) {
+          await setApprovalMetadata(ctx, {
+            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+            source: "smart_allow",
+            reason: `Auto-allowed by Smart allow: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
+          })
+          if (toolName === "bash") markShellSandboxBypass(ctx)
+          return
+        }
+        if (classification) {
+          ;(ctx.extra as any).smartAllowRisk = classification
+        }
+      }
+    }
+
+    if (decision.action === "deny") {
+      // Use the refusal's diagnostic reason when available — this carries
+      // specific detail like "matched destructive pattern: git push" that
+      // should be visible both in the error message AND the frontend audit tooltip.
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
     // Provenance: sessions created by system scheduling (e.g. agenda wake)
@@ -598,11 +592,11 @@ export namespace ToolResolver {
             }
             rememberShellApproval(ctx, req.permission, requestMetadata)
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
-            RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, true)
+            SmartAllow.recordUserFeedback(ctx.sessionID, (ctx.extra as any).smartAllowRisk, true)
           } catch (error) {
             if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
               await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_denied"))
-              RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, false)
+              SmartAllow.recordUserFeedback(ctx.sessionID, (ctx.extra as any).smartAllowRisk, false)
             }
             throw error
           }

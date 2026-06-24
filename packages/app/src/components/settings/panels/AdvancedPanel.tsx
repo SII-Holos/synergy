@@ -71,19 +71,19 @@ export function AdvancedPanel(props: {
       <div class="ds-setting-section">
         <SectionLabel title="Permission" />
         <SettingRow
-          title="Auto Mode (Classifier)"
-          description="Use a lightweight LLM to auto-allow safe operations. Reduces ~90% of prompts. Protected paths and identity ops always ask."
+          title="Smart allow"
+          description="Use an internal agent to auto-allow safe asks and soft denies. Hard safety boundaries remain blocked; Autonomous never prompts."
           trailing={
             <SegmentPill
-              value={props.advanced.auto_classifier}
+              value={props.advanced.smartAllow}
               options={[
                 { value: "false", label: "Off" },
                 { value: "true", label: "On" },
               ]}
-              onChange={(value) => props.onAdvancedChange("auto_classifier", value)}
+              onChange={(value) => props.onAdvancedChange("smartAllow", value)}
               showReset
               defaultValue="false"
-              onReset={() => props.onAdvancedChange("auto_classifier", "false")}
+              onReset={() => props.onAdvancedChange("smartAllow", "false")}
             />
           }
         />

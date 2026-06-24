@@ -20,7 +20,7 @@ export interface ApprovalMetadata {
     | "policy_denied"
     | "sandbox_blocked"
     | "pre_authorized"
-  source: "profile" | "automatic" | "user" | "sandbox" | "provenance" | "classifier"
+  source: "profile" | "automatic" | "user" | "sandbox" | "provenance" | "smart_allow"
   mode?: ProfileApproval["mode"]
   risk?: RiskLevel
   reason?: string
