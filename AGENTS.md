@@ -102,9 +102,11 @@ This starts the server from `packages/synergy` and preserves the invoking direct
 Connect clients from another terminal:
 
 ```bash
-bun dev web --dev
+bun dev web            # preferred: server-served Web UI
 bun dev send "your message here"
 ```
+
+Only start `bun dev web --dev` when actively debugging frontend/HMR behavior. Do not leave the Vite dev server running by default.
 
 ### Type checking and formatting
 

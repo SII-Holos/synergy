@@ -1,8 +1,11 @@
 ## Debugging
 
-- To test the Synergy app, use the playwright MCP server, the app is already
-  running at http://localhost:3000
-- NEVER try to restart the app, or the server process, EVER.
+- Prefer testing the Synergy app through the server-served Web UI after building:
+  `http://localhost:4096`.
+- Only start the Vite dev server at `http://localhost:3000` when actively
+  debugging frontend/HMR behavior. Do not leave it running by default.
+- Do not restart unrelated app or server processes unless the current task
+  requires it.
 
 ## SolidJS
 

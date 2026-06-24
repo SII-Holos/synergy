@@ -10,11 +10,13 @@ The web client connects to a running Synergy server. From the monorepo root:
 # Start the server first
 bun dev
 
-# Then, in another terminal, start the web client in dev mode
-bun dev web --dev
+# Then connect to the server-served Web UI
+bun dev web
 ```
 
-Vite handles hot module replacement, so changes appear in the browser immediately.
+Use `bun dev web --dev` only when actively debugging Vite/HMR behavior. Do not leave the Vite dev server running by default; the server-served Web UI is the normal path.
+
+Vite handles hot module replacement when the dev server is intentionally started.
 
 ## Build
 

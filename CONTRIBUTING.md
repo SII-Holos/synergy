@@ -39,8 +39,10 @@ Start the dev server:
 
 ```bash
 bun dev server         # start the server
-bun dev web --dev      # open the web UI (separate terminal)
+bun dev web            # open the server-served web UI (separate terminal)
 ```
+
+Only use `bun dev web --dev` when actively debugging Vite/HMR behavior. Do not leave the Vite dev server running by default.
 
 After editing code:
 

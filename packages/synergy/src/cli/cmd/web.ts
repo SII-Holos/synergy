@@ -47,7 +47,7 @@ export const WebCommand = cmd({
       })
       .option("dev", {
         type: "boolean",
-        describe: "start with Vite dev server (HMR enabled)",
+        describe: "start with Vite dev server (HMR enabled; use only for active frontend debugging)",
         default: false,
       }),
   describe: "open web interface (connects to running server)",
@@ -84,6 +84,10 @@ export const WebCommand = cmd({
       const viteUrl = `http://localhost:${vitePort}`
 
       UI.println(UI.Style.TEXT_INFO_BOLD + "  Web UI (dev):      ", UI.Style.TEXT_NORMAL, viteUrl)
+      UI.println(
+        UI.Style.TEXT_DIM +
+          "  Note: Vite dev is for active frontend/HMR debugging; use synergy web for normal access.",
+      )
       UI.empty()
 
       Bun.spawn([process.execPath, "run", "dev"], {
@@ -100,7 +104,7 @@ export const WebCommand = cmd({
         UI.println(
           UI.Style.TEXT_DIM + "  If you're developing the web app, use:",
           UI.Style.TEXT_NORMAL,
-          "  synergy web --dev",
+          "  synergy web --dev  # active Vite/HMR debugging only",
         )
         UI.println(
           UI.Style.TEXT_DIM + "  If you need the production app bundle, build it with:",

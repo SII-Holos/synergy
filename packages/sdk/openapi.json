@@ -20187,7 +20187,14 @@
                     "type": "string"
                   },
                   "activeLoopID": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "runCount": {
                     "type": "number"

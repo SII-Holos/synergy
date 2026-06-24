@@ -3415,7 +3415,7 @@ export type NotePatchInput = {
     description?: string
     status?: "draft" | "ready" | "archived"
     defaultAgent?: string
-    activeLoopID?: string
+    activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
   } | null

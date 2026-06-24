@@ -115,9 +115,17 @@ bun dev server     # start the server
 Then connect from another terminal:
 
 ```bash
-bun dev web --dev
+bun dev web        # preferred: use the server-served Web UI
 bun dev send "hello"
 ```
+
+Only start the Vite dev server when you are actively debugging frontend/HMR behavior:
+
+```bash
+bun dev web --dev
+```
+
+Do not leave `web --dev` running by default; the built Web UI served by the Synergy server is the normal path.
 
 After editing code:
 
