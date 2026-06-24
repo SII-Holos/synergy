@@ -4,6 +4,7 @@ import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 import { Global } from "../../src/global"
+import { Asset } from "../../src/asset/asset"
 
 describe("server runtime startup output", () => {
   test("startup scope label does not require a scope context", () => {
@@ -50,6 +51,20 @@ describe("server request scope boundaries", () => {
     const body = await response.json()
     expect(body.home).toBe(Global.Path.home)
     expect(body.root).toBe(Global.Path.root)
+  })
+
+  test("asset route does not require a scope", async () => {
+    const app = Server.App()
+    const id = await Asset.write(
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'),
+      "image/svg+xml",
+      "demo.svg",
+    )
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/svg+xml")
+    expect(await response.text()).toContain("<svg")
   })
 
   test("scoped routes use home scopeID without resolving a project directory", async () => {

@@ -46,11 +46,19 @@ Stale cache may be used for browsing when `offlineCache` is enabled. Installatio
 Plugin authors publish through GitHub PR review:
 
 ```bash
-synergy plugin build
-synergy plugin pack
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz \
-  --registry github \
+synergy-plugin publish-market \
+  --repo https://github.com/owner/my-plugin
+```
+
+`publish-market` validates, builds, packs, signs, uploads or checks GitHub Release assets, updates the local `SII-Holos/synergy-plugins` checkout, runs registry validation, and opens a PR when `gh` is available.
+
+For manual entry generation:
+
+```bash
+synergy-plugin build
+synergy-plugin pack
+synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin entry my-plugin-0.1.0.synergy-plugin.tgz \
   --repo https://github.com/owner/my-plugin \
   --write-entry ../synergy-plugins/plugins/my-plugin.json
 ```
@@ -66,7 +74,7 @@ bun run build-registry --check
 
 Open a PR against `SII-Holos/synergy-plugins`. After CI and maintainer review pass, merging to `main` makes the plugin visible to all Synergy clients using the official registry URL.
 
-`plugin publish --registry github` does not mutate the remote registry. It generates or updates the metadata entry needed for the aggregator PR.
+`synergy-plugin entry` does not mutate the remote registry. It generates or updates the metadata entry needed for the aggregator PR.
 
 ## Local Publish Flow
 

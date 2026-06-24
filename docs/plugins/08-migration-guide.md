@@ -52,16 +52,16 @@ Use a built JavaScript entry:
 }
 ```
 
-Put source in `src/ui.tsx` or `src/ui/index.tsx`; `synergy plugin build` compiles it to the declared entry.
+Put source in `src/ui.tsx` or `src/ui/index.tsx`; `synergy-plugin build` compiles it to the declared entry.
 
 ## Validation
 
 Run:
 
 ```bash
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
+synergy-plugin validate --runtime-discovery
+synergy-plugin build
+synergy-plugin pack
 ```
 
 Fix any identity mismatch, undeclared runtime tool, missing UI export, or capability warning before publishing.

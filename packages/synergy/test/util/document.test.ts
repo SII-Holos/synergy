@@ -5,6 +5,17 @@ import os from "os"
 import { Filesystem } from "../../src/util/filesystem"
 
 describe("Document.supported", () => {
+  test("does not load the conversion engine for extension checks", () => {
+    const packageDir = path.resolve(import.meta.dir, "../..")
+    const result = Bun.spawnSync(
+      ["bun", "-e", 'import { Document } from "./src/util/document.ts"; console.log(Document.supported("sample.pdf"))'],
+      { cwd: packageDir, stdout: "pipe", stderr: "pipe" },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(new TextDecoder().decode(result.stdout).trim()).toBe("true")
+    expect(new TextDecoder().decode(result.stderr)).not.toContain("DOMMatrix")
+  })
+
   test("returns true for known document extensions", () => {
     const known = [
       ".pdf",

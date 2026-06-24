@@ -186,7 +186,27 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => session)
     }
     if (!session) return
-    if (input.planMode() && !session.blueprint?.planMode) {
+    if (blueprintSlot && session.blueprint?.planMode) {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.blueprint.session
+        .planMode({ id: sessionID, planMode: false })
+        .then((x) => x.data ?? fallbackSession)
+        .catch(async (err) => {
+          showToast({
+            type: "error",
+            title: "Failed to exit Plan Mode",
+            description: errorMessage(err),
+          })
+          if (createdSessionForSubmit) {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+            navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+          }
+          return undefined
+        })
+      if (!session) return
+    }
+    if (!blueprintSlot && input.planMode() && !session.blueprint?.planMode) {
       const sessionID = session.id
       const fallbackSession = session
       session = await client.blueprint.session

@@ -83,11 +83,13 @@ The Web client reads UI metadata through the generated SDK method `plugin.listUi
 ## Development Commands
 
 ```bash
-synergy plugin create my-plugin
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin
+cd my-plugin
+bun install
+synergy-plugin validate --runtime-discovery
+synergy-plugin build
+synergy-plugin pack
+synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin publish-market
 synergy plugin add file:///absolute/path/to/my-plugin
 ```

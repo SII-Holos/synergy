@@ -124,8 +124,8 @@ export function computePermissionsHash(manifest: PluginManifest, capabilities: s
   const normalized = {
     capabilities: [...capabilities].sort(),
     permissions: manifest.permissions ?? {},
-    contributes: manifest.contributes?.ui != null ? { ui: manifest.contributes.ui } : undefined,
-    hooks: manifest.permissions?.hooks ?? undefined,
+    contributes: manifest.contributes ?? {},
+    lifecycle: manifest.lifecycle ?? {},
   }
   return sha256(JSON.stringify(sortKeys(normalized)))
 }
@@ -136,13 +136,7 @@ export function computePermissionsHash(manifest: PluginManifest, capabilities: s
  * (e.g. key reordering) do not invalidate approvals.
  */
 export function computeManifestHash(manifest: PluginManifest): string {
-  // Strip top-level fields that are mutable or irrelevant to identity.
-  const { contributes, lifecycle, permissions, ...identity } = manifest as PluginManifest & {
-    contributes?: unknown
-    lifecycle?: unknown
-    permissions?: unknown
-  }
-  return sha256(JSON.stringify(sortKeys(identity)))
+  return sha256(JSON.stringify(sortKeys(manifest)))
 }
 
 // ---------------------------------------------------------------------------

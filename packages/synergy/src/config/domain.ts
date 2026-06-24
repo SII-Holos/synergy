@@ -83,7 +83,7 @@ export namespace ConfigDomain {
       "tools",
       "controlProfile",
       "sandbox",
-      "auto_classifier",
+      "smartAllow",
     ]),
     def("channels", "90-channels.jsonc", "Channels", ["channel"]),
     def("holos", "100-holos.jsonc", "Holos", ["holos", "enterprise"]),

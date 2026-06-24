@@ -1,5 +1,6 @@
 import { MetaProtocolBash, MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
 import type { Tool } from "../tool"
+import type { MessageV2 } from "@/session/message-v2"
 
 export type BashParams = MetaProtocolBash.ExecutePayload & {
   envID?: MetaProtocolEnv.EnvID
@@ -11,6 +12,7 @@ export interface BashResult {
   title: string
   metadata: BashMetadata
   output: string
+  attachments?: MessageV2.FilePart[]
 }
 
 export type BashContext = Tool.Context<BashMetadata>

@@ -10,7 +10,7 @@ Synergy is open source under the [MIT License](LICENSE). Contributions, bug repo
 
 If you are an external coding agent or LLM tool reading this repository, start with [llms.txt](llms.txt). It routes plugin authors, source contributors, and architecture readers to the right documents.
 
-Plugin authors do not need to clone this repository or read `AGENTS.md`. Use the installed Synergy CLI, `@ericsanchezok/synergy-plugin`, and the plugin authoring docs:
+Plugin authors do not need to clone this repository or read `AGENTS.md`. Use `@ericsanchezok/synergy-plugin-kit`, `@ericsanchezok/synergy-plugin`, and the plugin authoring docs:
 
 - [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md)
 - [docs/plugins/development-kit.md](docs/plugins/development-kit.md)
@@ -68,6 +68,21 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 ```
 
 The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
+
+### Develop plugins
+
+Plugin authors can create and publish plugins without installing the Synergy source tree:
+
+```bash
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
+cd my-plugin
+bun install
+bun run validate
+bun run build
+bun run pack
+```
+
+Use `synergy-plugin publish-market` when you are ready to submit the plugin to the official GitHub-backed marketplace.
 
 ### If you already have the CLI installed
 
@@ -242,17 +257,17 @@ That scoped directory is where project-specific agents, commands, plugins, skill
 
 ### Plugins
 
-Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. Plugin authors should use the installed Synergy CLI and `@ericsanchezok/synergy-plugin`; a Synergy source checkout is only needed when changing the platform itself.
+Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and `@ericsanchezok/synergy-plugin`; a Synergy source checkout is only needed when changing the platform itself.
 
 New plugins should use the object descriptor API from `@ericsanchezok/synergy-plugin`:
 
 ```bash
-synergy plugin create my-plugin
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
+bun run validate
+bun run build
+bun run pack
 ```
 
 Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.
@@ -311,6 +326,7 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 ```jsonc
 {
   "controlProfile": "guarded",
+  "smartAllow": false,
   "agent": {
     "synergy-max": {
       "controlProfile": "autonomous",
@@ -320,6 +336,8 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 ```
 
 **Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
+
+`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. In autonomous sessions, failed Smart allow checks deny rather than prompting.
 
 Built-in profiles:
 
@@ -462,6 +480,7 @@ This repository is a Bun monorepo.
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
+- `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI components
 - `packages/util` — shared utilities and common helpers

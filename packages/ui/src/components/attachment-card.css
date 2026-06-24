@@ -1,3 +1,4 @@
+[data-component="artifact-gallery"],
 [data-component="tool-attachments"] {
   width: 100%;
   max-width: 100%;
@@ -19,6 +20,7 @@
   min-width: 0;
 }
 
+[data-component="artifact-gallery"][data-columns="1"] [data-slot="attachment-column-layout"],
 [data-component="tool-attachments"][data-columns="1"] [data-slot="attachment-column-layout"] {
   max-width: 100%;
 }
@@ -110,6 +112,10 @@
   }
 }
 
+[data-component="attachment-card"][data-disabled="true"] {
+  cursor: default;
+}
+
 [data-component="attachment-card"][data-type="image"] {
   min-height: 180px;
   max-height: 420px;
@@ -123,7 +129,8 @@
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+    background: var(--surface-base);
   }
 }
 

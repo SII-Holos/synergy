@@ -223,10 +223,12 @@ export default plugin
 Create a plugin package with:
 
 ```bash
-synergy plugin create my-plugin
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin
+cd my-plugin
+bun install
+bun run validate
+bun run build
+bun run pack
 ```
 
 ### Plugin dependencies

@@ -136,9 +136,9 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     patch.permission = advanced.permission || undefined
   }
 
-  const origAutoClassifier = (cfg as Record<string, unknown>).auto_classifier === true ? "true" : "false"
-  if (advanced.auto_classifier !== origAutoClassifier) {
-    patch.auto_classifier = advanced.auto_classifier === "true"
+  const origSmartAllow = cfg.smartAllow === true ? "true" : "false"
+  if (advanced.smartAllow !== origSmartAllow) {
+    patch.smartAllow = advanced.smartAllow === "true"
   }
 
   const origEmail = JSON.stringify(cfg.email ?? {})

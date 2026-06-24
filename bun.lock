@@ -137,6 +137,31 @@
         "zod": ">=4.0.0",
       },
     },
+    "packages/plugin-kit": {
+      "name": "@ericsanchezok/synergy-plugin-kit",
+      "version": "1.1.26",
+      "bin": {
+        "synergy-plugin": "./dist/cli.js",
+        "synergy-plugin-kit": "./dist/cli.js",
+      },
+      "dependencies": {
+        "@ericsanchezok/synergy-plugin": "workspace:*",
+        "yargs": "18.0.0",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@types/yargs": "17.0.33",
+        "@typescript/native-preview": "catalog:",
+        "solid-js": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "peerDependencies": {
+        "zod": ">=4.0.0",
+      },
+    },
     "packages/script": {
       "name": "@ericsanchezok/synergy-script",
       "devDependencies": {
@@ -245,6 +270,7 @@
         "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
         "@ast-grep/cli-linux-x64-gnu": "0.40.5",
         "@ast-grep/cli-win32-x64-msvc": "0.40.5",
+        "@ericsanchezok/synergy-plugin-kit": "workspace:*",
         "@ericsanchezok/synergy-script": "workspace:*",
         "@parcel/watcher-darwin-arm64": "2.5.1",
         "@parcel/watcher-darwin-x64": "2.5.1",
@@ -504,6 +530,8 @@
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:packages/app"],
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
+
+    "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin-kit@workspace:packages/plugin-kit"],
 
     "@ericsanchezok/synergy-script": ["@ericsanchezok/synergy-script@workspace:packages/script"],
 

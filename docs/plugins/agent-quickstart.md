@@ -24,15 +24,15 @@ Use these when relevant:
 
 ## Development Kit
 
-A plugin project should use the installed Synergy CLI and the published plugin SDK. It should not depend on this monorepo checkout.
+A plugin project should use the published plugin kit and plugin SDK. It should not depend on this monorepo checkout.
 
 ```bash
-synergy plugin create my-plugin --template tool-ui
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
+bun run validate
+bun run build
+bun run pack
 ```
 
 Install a local development plugin with:
@@ -72,12 +72,7 @@ const plugin: PluginDescriptor = {
 export default plugin
 ```
 
-Do not use:
-
-- `definePlugin`
-- function-style descriptors
-- default-exported plugin factory functions
-- `tools` as the runtime hook key; use `tool`
+Use only the object descriptor API shown above. Export the descriptor object directly, and use `tool` as the runtime hook key for tool definitions.
 
 The descriptor `id`, `plugin.json.name`, registry id, lockfile key, and approval id must be the same canonical plugin id.
 
@@ -126,25 +121,24 @@ Each plugin has a root `plugin.json`:
 Always run runtime discovery before build or pack:
 
 ```bash
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
+synergy-plugin validate --runtime-discovery
+synergy-plugin build
+synergy-plugin pack
 ```
 
 For distribution:
 
 ```bash
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin publish-market
 ```
 
-`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. Plain `publish` stores the real tarball, download URL, integrity, permission summary, and registry metadata in the local development registry.
+`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. `publish-market` prepares the official marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` still publishes to the local development registry.
 
-For the public Plugin Marketplace, publish the tarball and `.sig` as GitHub Release assets in the plugin repo, then generate the aggregator entry:
+For manual public Plugin Marketplace entry generation:
 
 ```bash
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz \
-  --registry github \
+synergy-plugin entry my-plugin-0.1.0.synergy-plugin.tgz \
   --repo https://github.com/owner/my-plugin \
   --write-entry ../synergy-plugins/plugins/my-plugin.json
 ```

@@ -72,6 +72,61 @@
         "additionalProperties": false
       }
     },
+    "timeout": {
+      "description": "Timeout configuration for agent turns, provider requests, and tool execution",
+      "type": "object",
+      "properties": {
+        "invoke_sec": {
+          "description": "Max wall-clock seconds for one agent turn (default: 900 = 15min)",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "ttfb_sec": {
+              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "idle_sec": {
+              "description": "Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.",
+              "type": "number",
+              "minimum": 0
+            },
+            "wall_sec": {
+              "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "default_sec": {
+              "description": "Default timeout per tool execution in seconds (default: 300 = 5min)",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "overrides": {
+              "description": "Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "watcher": {
       "type": "object",
       "properties": {
@@ -89,6 +144,118 @@
       "items": {
         "type": "string"
       }
+    },
+    "pluginApprovalPolicy": {
+      "description": "Plugin approval policy configuration",
+      "ref": "PluginApprovalPolicyConfig",
+      "type": "object",
+      "properties": {
+        "allowUnsignedLocal": {
+          "description": "Allow unsigned local plugins with user consent",
+          "default": true,
+          "type": "boolean"
+        },
+        "autoApproveBuiltin": {
+          "description": "Auto-approve builtin plugins without user consent",
+          "default": true,
+          "type": "boolean"
+        },
+        "denyHighRiskThirdParty": {
+          "description": "Block third-party plugins with high-risk capabilities",
+          "default": true,
+          "type": "boolean"
+        },
+        "requireSignatureForMarketplace": {
+          "description": "Require cryptographic signature for non-local plugins",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "allowUnsignedLocal",
+        "autoApproveBuiltin",
+        "denyHighRiskThirdParty",
+        "requireSignatureForMarketplace"
+      ],
+      "additionalProperties": false
+    },
+    "pluginRuntimePolicy": {
+      "description": "Plugin runtime isolation policy configuration",
+      "ref": "PluginRuntimePolicyConfig",
+      "type": "object",
+      "properties": {
+        "thirdPartyDefaultMode": {
+          "description": "Default isolation mode for third-party plugins (npm, git, url)",
+          "default": "process",
+          "type": "string",
+          "enum": ["process", "worker"]
+        },
+        "highRiskRequiresProcess": {
+          "description": "Require process isolation for high-risk plugins regardless of source",
+          "default": true,
+          "type": "boolean"
+        },
+        "allowThirdPartyInProcess": {
+          "description": "Allow third-party plugins to request in-process mode (not recommended)",
+          "default": false,
+          "type": "boolean"
+        },
+        "allowWorkerMode": {
+          "description": "Allow plugins to request worker thread isolation",
+          "default": true,
+          "type": "boolean"
+        },
+        "allowLocalInProcess": {
+          "description": "Allow local plugins to run in-process",
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "thirdPartyDefaultMode",
+        "highRiskRequiresProcess",
+        "allowThirdPartyInProcess",
+        "allowWorkerMode",
+        "allowLocalInProcess"
+      ],
+      "additionalProperties": false
+    },
+    "pluginMarketplace": {
+      "description": "Public plugin marketplace registry configuration",
+      "ref": "PluginMarketplaceConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the public GitHub-backed plugin marketplace",
+          "default": true,
+          "type": "boolean"
+        },
+        "registryUrl": {
+          "description": "URL of the official plugin registry.json index",
+          "default": "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+          "type": "string",
+          "format": "uri"
+        },
+        "includeLocalRegistry": {
+          "description": "Include the local development registry in marketplace search and detail routes",
+          "default": true,
+          "type": "boolean"
+        },
+        "cacheTtlMs": {
+          "description": "Remote marketplace cache TTL in milliseconds",
+          "default": 300000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "offlineCache": {
+          "description": "Use stale marketplace cache for browsing when the remote registry cannot be reached",
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": ["enabled", "registryUrl", "includeLocalRegistry", "cacheTtlMs", "offlineCache"],
+      "additionalProperties": false
     },
     "snapshot": {
       "type": "boolean"
@@ -148,7 +315,7 @@
       "type": "string"
     },
     "vision_model": {
-      "description": "Model for vision tasks (image/PDF/video analysis), in the format of provider/model. Required for the look_at tool to work. If not set, vision capabilities are disabled.",
+      "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
       "type": "string"
     },
     "default_agent": {
@@ -457,10 +624,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 300000 (5 minutes). Set to false to disable timeout.",
+                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -479,315 +646,293 @@
         "additionalProperties": false
       }
     },
-    "identity": {
-      "description": "Identity configuration for embedding and evolution",
-      "ref": "IdentityConfig",
+    "embedding": {
+      "ref": "EmbeddingConfig",
+      "description": "Embedding model configuration. When absent, a local model is used automatically.",
       "type": "object",
       "properties": {
-        "embedding": {
-          "description": "Embedding model configuration for memory and retrieval",
+        "baseURL": {
+          "description": "Base URL for the embedding API",
+          "type": "string"
+        },
+        "apiKey": {
+          "description": "API key for the embedding service",
+          "type": "string"
+        },
+        "model": {
+          "description": "Embedding model name",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rerank": {
+      "ref": "RerankConfig",
+      "description": "Rerank model for memory retrieval refinement. Disabled when not configured.",
+      "type": "object",
+      "properties": {
+        "baseURL": {
+          "description": "Base URL for the rerank API",
+          "type": "string"
+        },
+        "apiKey": {
+          "description": "API key for the rerank service",
+          "type": "string"
+        },
+        "model": {
+          "description": "Rerank model name",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "engram": {
+      "ref": "EngramConfig",
+      "type": "object",
+      "properties": {
+        "memory": {
+          "ref": "MemoryConfig",
           "type": "object",
           "properties": {
-            "baseURL": {
-              "description": "Base URL for the embedding API",
-              "type": "string"
-            },
-            "apiKey": {
-              "description": "API key for the embedding service",
-              "type": "string"
-            },
-            "model": {
-              "description": "Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')",
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "rerank": {
-          "description": "Rerank model configuration for memory retrieval refinement",
-          "type": "object",
-          "properties": {
-            "baseURL": {
-              "description": "Base URL for the rerank API",
-              "type": "string"
-            },
-            "apiKey": {
-              "description": "API key for the rerank service (falls back to embedding.apiKey)",
-              "type": "string"
-            },
-            "model": {
-              "description": "Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')",
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "evolution": {
-          "description": "Dual-mode evolution system: passive experience learning + active memory curation (default: true)",
-          "anyOf": [
-            {
+            "enabled": {
+              "description": "Enable agent-initiated memory curation via chronicler (default: true)",
               "type": "boolean"
             },
-            {
-              "ref": "EvolutionConfig",
+            "retrieval": {
+              "description": "Semantic memory retrieval settings",
               "type": "object",
               "properties": {
-                "passive": {
-                  "description": "RL-enhanced passive experience learning (default: true)",
-                  "anyOf": [
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "ref": "EvolutionPassive",
-                      "type": "object",
-                      "properties": {
-                        "encode": {
-                          "description": "Learn from conversations — extract intent, reward, and scripts (default: true)",
-                          "type": "boolean"
-                        },
-                        "retrieve": {
-                          "description": "Inject relevant past experiences into new conversations (default: true)",
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "ref": "PassiveRetrievalConfig",
-                              "type": "object",
-                              "properties": {
-                                "simThreshold": {
-                                  "description": "Minimum cosine similarity for retrieval candidates (default: 0.7)",
-                                  "type": "number",
-                                  "minimum": 0,
-                                  "maximum": 1
-                                },
-                                "topK": {
-                                  "description": "Number of experiences to retrieve (default: 8)",
-                                  "type": "integer",
-                                  "minimum": 1,
-                                  "maximum": 9007199254740991
-                                },
-                                "epsilon": {
-                                  "description": "ε-greedy exploration probability (default: 0.1)",
-                                  "type": "number",
-                                  "minimum": 0,
-                                  "maximum": 1
-                                },
-                                "wSim": {
-                                  "description": "Weight for similarity in hybrid score (default: 0.5)",
-                                  "type": "number",
-                                  "minimum": 0,
-                                  "maximum": 1
-                                },
-                                "wQ": {
-                                  "description": "Weight for Q-value in hybrid score (default: 0.5)",
-                                  "type": "number",
-                                  "minimum": 0,
-                                  "maximum": 1
-                                },
-                                "explorationConstant": {
-                                  "description": "UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)",
-                                  "type": "number",
-                                  "minimum": 0
-                                }
-                              },
-                              "additionalProperties": false
-                            }
-                          ]
-                        },
-                        "learning": {
-                          "description": "Hyperparameters for the experience learning pipeline",
-                          "ref": "LearningConfig",
-                          "type": "object",
-                          "properties": {
-                            "alpha": {
-                              "description": "Q-learning step size / learning rate (default: 0.3)",
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "qInit": {
-                              "description": "Optimistic Q-value initialization per reward dimension (default: 1.0)",
-                              "type": "number"
-                            },
-                            "dedupIntentThreshold": {
-                              "description": "Intent cosine similarity threshold for deduplicating experiences (default: 0.85)",
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "dedupScriptThreshold": {
-                              "description": "Script cosine similarity threshold for deduplicating experiences (default: 0.8)",
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "qHistorySize": {
-                              "description": "Maximum Q-value history entries per experience (default: 50)",
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 9007199254740991
-                            },
-                            "snapThreshold": {
-                              "description": "Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)",
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "legacyRewardConfidence": {
-                              "description": "Default confidence for legacy scalar reward format (default: 0.3)",
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "encoderRetries": {
-                              "description": "LLM retry count for intent/script/reward generation (default: 3)",
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "digestToolOutputBudget": {
-                              "description": "Max estimated tokens for tool output in turn digest (default: 800)",
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "encoderToolFieldBudget": {
-                              "description": "Max chars per tool input field in encoder context (default: 500)",
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "encoderToolOutputBudget": {
-                              "description": "Max chars for tool output in encoder context (default: 300)",
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "rewardWeights": {
-                              "description": "Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)",
-                              "type": "object",
-                              "properties": {
-                                "outcome": {
-                                  "description": "Weight for outcome dimension (default: 0.35)",
-                                  "type": "number"
-                                },
-                                "intent": {
-                                  "description": "Weight for intent dimension (default: 0.25)",
-                                  "type": "number"
-                                },
-                                "execution": {
-                                  "description": "Weight for execution dimension (default: 0.2)",
-                                  "type": "number"
-                                },
-                                "orchestration": {
-                                  "description": "Weight for orchestration dimension (default: 0.1)",
-                                  "type": "number"
-                                },
-                                "expression": {
-                                  "description": "Weight for expression dimension (default: 0.1)",
-                                  "type": "number"
-                                }
-                              },
-                              "additionalProperties": false
-                            },
-                            "rewardDelay": {
-                              "description": "Number of subsequent turns to wait before evaluating reward (default: 2)",
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            }
-                          },
-                          "additionalProperties": false
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  ]
+                "simThreshold": {
+                  "description": "Minimum similarity for auto-injection (default: 0.7)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
                 },
-                "active": {
-                  "description": "Agent-initiated active memory curation via memory tools (default: true)",
-                  "anyOf": [
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "ref": "EvolutionActive",
-                      "type": "object",
-                      "properties": {
-                        "retrieve": {
-                          "description": "Auto-inject relevant memories into new conversations (default: true)",
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "object",
-                              "properties": {
-                                "simThreshold": {
-                                  "description": "Default minimum similarity for auto-injection (default: 0.7)",
-                                  "type": "number"
-                                },
-                                "topK": {
-                                  "description": "Default maximum entries per category to contextually retrieve (default: 3)",
-                                  "type": "number"
-                                },
-                                "categories": {
-                                  "description": "Per-category contextual retrieval overrides",
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string",
-                                    "enum": [
-                                      "user",
-                                      "self",
-                                      "relationship",
-                                      "interaction",
-                                      "workflow",
-                                      "coding",
-                                      "writing",
-                                      "asset",
-                                      "insight",
-                                      "knowledge",
-                                      "personal",
-                                      "general"
-                                    ]
-                                  },
-                                  "additionalProperties": {
-                                    "type": "object",
-                                    "properties": {
-                                      "simThreshold": {
-                                        "description": "Minimum similarity for contextual retrieval",
-                                        "type": "number"
-                                      },
-                                      "topK": {
-                                        "description": "Maximum contextual entries to retrieve",
-                                        "type": "number"
-                                      }
-                                    },
-                                    "additionalProperties": false
-                                  }
-                                }
-                              },
-                              "additionalProperties": false
-                            }
-                          ]
-                        },
-                        "memoryDedupThreshold": {
-                          "description": "Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)",
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        }
+                "topK": {
+                  "description": "Max entries per category to retrieve (default: 3)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "categories": {
+                  "description": "Per-category retrieval overrides",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "self",
+                      "relationship",
+                      "interaction",
+                      "workflow",
+                      "coding",
+                      "writing",
+                      "asset",
+                      "insight",
+                      "knowledge",
+                      "personal",
+                      "general"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "simThreshold": {
+                        "description": "Minimum similarity for contextual retrieval",
+                        "type": "number"
                       },
-                      "additionalProperties": false
-                    }
-                  ]
+                      "topK": {
+                        "description": "Maximum contextual entries to retrieve",
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "dedup": {
+              "description": "Memory deduplication settings",
+              "type": "object",
+              "properties": {
+                "threshold": {
+                  "description": "Cosine similarity threshold for duplicate detection (default: 0.75)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
                 }
               },
               "additionalProperties": false
             }
-          ]
+          },
+          "additionalProperties": false
+        },
+        "experience": {
+          "ref": "ExperienceConfig",
+          "type": "object",
+          "properties": {
+            "encode": {
+              "description": "Auto-encode conversation patterns into experiences (default: true)",
+              "type": "boolean"
+            },
+            "retrieve": {
+              "description": "Inject relevant past experiences into prompts (default: true)",
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "ref": "PassiveRetrievalConfig",
+                  "type": "object",
+                  "properties": {
+                    "simThreshold": {
+                      "description": "Minimum cosine similarity for retrieval candidates (default: 0.7)",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "topK": {
+                      "description": "Number of experiences to retrieve (default: 8)",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "epsilon": {
+                      "description": "ε-greedy exploration probability (default: 0.1)",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "wSim": {
+                      "description": "Weight for similarity in hybrid score (default: 0.5)",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "wQ": {
+                      "description": "Weight for Q-value in hybrid score (default: 0.5)",
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "explorationConstant": {
+                      "description": "UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "learning": {
+              "description": "Q-learning hyperparameters for experience evaluation",
+              "ref": "LearningConfig",
+              "type": "object",
+              "properties": {
+                "alpha": {
+                  "description": "Q-learning step size / learning rate (default: 0.3)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "qInit": {
+                  "description": "Optimistic Q-value initialization per reward dimension (default: 1.0)",
+                  "type": "number"
+                },
+                "dedupIntentThreshold": {
+                  "description": "Intent cosine similarity threshold for deduplicating experiences (default: 0.85)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "dedupScriptThreshold": {
+                  "description": "Script cosine similarity threshold for deduplicating experiences (default: 0.8)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "qHistorySize": {
+                  "description": "Maximum Q-value history entries per experience (default: 50)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "snapThreshold": {
+                  "description": "Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "legacyRewardConfidence": {
+                  "description": "Default confidence for legacy scalar reward format (default: 0.3)",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "encoderRetries": {
+                  "description": "LLM retry count for intent/script/reward generation (default: 3)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "digestToolOutputBudget": {
+                  "description": "Max estimated tokens for tool output in turn digest (default: 800)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "encoderToolFieldBudget": {
+                  "description": "Max chars per tool input field in encoder context (default: 500)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "encoderToolOutputBudget": {
+                  "description": "Max chars for tool output in encoder context (default: 300)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rewardWeights": {
+                  "description": "Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)",
+                  "type": "object",
+                  "properties": {
+                    "outcome": {
+                      "description": "Weight for outcome dimension (default: 0.35)",
+                      "type": "number"
+                    },
+                    "intent": {
+                      "description": "Weight for intent dimension (default: 0.25)",
+                      "type": "number"
+                    },
+                    "execution": {
+                      "description": "Weight for execution dimension (default: 0.2)",
+                      "type": "number"
+                    },
+                    "orchestration": {
+                      "description": "Weight for orchestration dimension (default: 0.1)",
+                      "type": "number"
+                    },
+                    "expression": {
+                      "description": "Weight for expression dimension (default: 0.1)",
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "rewardDelay": {
+                  "description": "Number of subsequent turns to wait before evaluating reward (default: 2)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         },
         "autonomy": {
           "description": "Enable autonomous background routines like anima daily wake (default: true)",
@@ -822,6 +967,10 @@
                       "type": "string"
                     }
                   },
+                  "cwd": {
+                    "description": "Working directory for local MCP servers",
+                    "type": "string"
+                  },
                   "environment": {
                     "description": "Environment variables to set when running the MCP server",
                     "type": "object",
@@ -837,10 +986,134 @@
                     "type": "boolean"
                   },
                   "timeout": {
-                    "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+                    "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "startup": {
+                    "description": "MCP startup mode",
+                    "type": "string",
+                    "enum": ["eager", "lazy", "manual"]
+                  },
+                  "required": {
+                    "description": "If true, this MCP server is required for the configured workflow",
+                    "type": "boolean"
+                  },
+                  "connectTimeout": {
+                    "description": "Timeout in ms for initial connection handshake",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "listTimeout": {
+                    "description": "Timeout in ms for listing tools",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "callTimeout": {
+                    "description": "Timeout in ms for tool call execution",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "retry": {
+                    "description": "Retry policy for connecting to this server",
+                    "ref": "McpRetryConfig",
+                    "type": "object",
+                    "properties": {
+                      "maxAttempts": {
+                        "description": "Maximum connection attempts before giving up",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "backoffMs": {
+                        "description": "Initial backoff delay in ms between retries",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "backoffMultiplier": {
+                        "description": "Multiplier applied to backoff on each retry",
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "cooldownMs": {
+                        "description": "Cooldown period in ms before a retry cycle resets",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "idleShutdownMs": {
+                    "description": "Idle time in ms after which the server is shut down",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "toolFilter": {
+                    "description": "Filter which tools are exposed from this server",
+                    "ref": "McpToolFilterConfig",
+                    "type": "object",
+                    "properties": {
+                      "include": {
+                        "description": "Tool names to include (allowlist)",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude": {
+                        "description": "Tool names to exclude (blocklist)",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "tools": {
+                    "description": "Tool execution behavior config",
+                    "ref": "McpToolsConfig",
+                    "type": "object",
+                    "properties": {
+                      "approval": {
+                        "description": "Tool approval mode",
+                        "type": "string",
+                        "enum": ["auto", "always", "per_session"]
+                      },
+                      "maxOutputBytes": {
+                        "description": "Maximum tool output size in bytes",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "toolCache": {
+                    "description": "Tool list caching behavior",
+                    "ref": "McpToolCacheConfig",
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "description": "Tool list caching mode",
+                        "type": "string",
+                        "enum": ["disabled", "session", "persistent"]
+                      },
+                      "ttlMs": {
+                        "description": "Time-to-live for cached tool list in ms",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "required": ["type", "command"],
@@ -902,10 +1175,134 @@
                     ]
                   },
                   "timeout": {
-                    "description": "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
+                    "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "startup": {
+                    "description": "MCP startup mode",
+                    "type": "string",
+                    "enum": ["eager", "lazy", "manual"]
+                  },
+                  "required": {
+                    "description": "If true, this MCP server is required for the configured workflow",
+                    "type": "boolean"
+                  },
+                  "connectTimeout": {
+                    "description": "Timeout in ms for initial connection handshake",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "listTimeout": {
+                    "description": "Timeout in ms for listing tools",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "callTimeout": {
+                    "description": "Timeout in ms for tool call execution",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "retry": {
+                    "description": "Retry policy for connecting to this server",
+                    "ref": "McpRetryConfig",
+                    "type": "object",
+                    "properties": {
+                      "maxAttempts": {
+                        "description": "Maximum connection attempts before giving up",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "backoffMs": {
+                        "description": "Initial backoff delay in ms between retries",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "backoffMultiplier": {
+                        "description": "Multiplier applied to backoff on each retry",
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "cooldownMs": {
+                        "description": "Cooldown period in ms before a retry cycle resets",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "idleShutdownMs": {
+                    "description": "Idle time in ms after which the server is shut down",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "toolFilter": {
+                    "description": "Filter which tools are exposed from this server",
+                    "ref": "McpToolFilterConfig",
+                    "type": "object",
+                    "properties": {
+                      "include": {
+                        "description": "Tool names to include (allowlist)",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude": {
+                        "description": "Tool names to exclude (blocklist)",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "tools": {
+                    "description": "Tool execution behavior config",
+                    "ref": "McpToolsConfig",
+                    "type": "object",
+                    "properties": {
+                      "approval": {
+                        "description": "Tool approval mode",
+                        "type": "string",
+                        "enum": ["auto", "always", "per_session"]
+                      },
+                      "maxOutputBytes": {
+                        "description": "Maximum tool output size in bytes",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "toolCache": {
+                    "description": "Tool list caching behavior",
+                    "ref": "McpToolCacheConfig",
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "description": "Tool list caching mode",
+                        "type": "string",
+                        "enum": ["disabled", "session", "persistent"]
+                      },
+                      "ttlMs": {
+                        "description": "Time-to-live for cached tool list in ms",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "required": ["type", "url"],
@@ -925,6 +1322,138 @@
           }
         ]
       }
+    },
+    "mcpDefaults": {
+      "description": "Default settings applied to all MCP servers that don't override them",
+      "ref": "McpDefaultsConfig",
+      "type": "object",
+      "properties": {
+        "startup": {
+          "description": "MCP startup mode",
+          "type": "string",
+          "enum": ["eager", "lazy", "manual"]
+        },
+        "required": {
+          "description": "If true, this MCP server is required for the configured workflow",
+          "type": "boolean"
+        },
+        "connectTimeout": {
+          "description": "Timeout in ms for initial connection handshake",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "listTimeout": {
+          "description": "Timeout in ms for listing tools",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "callTimeout": {
+          "description": "Timeout in ms for tool call execution",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retry": {
+          "description": "Retry policy for connecting to this server",
+          "ref": "McpRetryConfig",
+          "type": "object",
+          "properties": {
+            "maxAttempts": {
+              "description": "Maximum connection attempts before giving up",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "backoffMs": {
+              "description": "Initial backoff delay in ms between retries",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "backoffMultiplier": {
+              "description": "Multiplier applied to backoff on each retry",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "cooldownMs": {
+              "description": "Cooldown period in ms before a retry cycle resets",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        },
+        "idleShutdownMs": {
+          "description": "Idle time in ms after which the server is shut down",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "toolFilter": {
+          "description": "Filter which tools are exposed from this server",
+          "ref": "McpToolFilterConfig",
+          "type": "object",
+          "properties": {
+            "include": {
+              "description": "Tool names to include (allowlist)",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "description": "Tool names to exclude (blocklist)",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "tools": {
+          "description": "Tool execution behavior config",
+          "ref": "McpToolsConfig",
+          "type": "object",
+          "properties": {
+            "approval": {
+              "description": "Tool approval mode",
+              "type": "string",
+              "enum": ["auto", "always", "per_session"]
+            },
+            "maxOutputBytes": {
+              "description": "Maximum tool output size in bytes",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        },
+        "toolCache": {
+          "description": "Tool list caching behavior",
+          "ref": "McpToolCacheConfig",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "description": "Tool list caching mode",
+              "type": "string",
+              "enum": ["disabled", "session", "persistent"]
+            },
+            "ttlMs": {
+              "description": "Time-to-live for cached tool list in ms",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "channel": {
       "description": "Channel configurations for messaging platform integrations",
@@ -1056,6 +1585,108 @@
           }
         ]
       }
+    },
+    "sandbox": {
+      "description": "Sandbox configuration for workspace boundary enforcement",
+      "ref": "SandboxConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the sandbox runtime when available (default: true)",
+          "type": "boolean"
+        },
+        "fallbackPolicy": {
+          "description": "How to proceed when the requested sandbox runtime is unavailable (default: 'warn')",
+          "type": "string",
+          "enum": ["warn", "allow", "deny"]
+        },
+        "backend": {
+          "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+          "type": "string",
+          "enum": [
+            "auto",
+            "seatbelt-deny-default",
+            "seatbelt-legacy-allow-default",
+            "synergy-sandbox-linux",
+            "bwrap-inline-debug",
+            "windows-restricted-token",
+            "windows-elevated"
+          ]
+        },
+        "network": {
+          "description": "Network configuration for sandbox enforcement",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "description": "Network access mode within the sandbox (default: 'restricted')",
+              "type": "string",
+              "enum": ["restricted", "proxy_only", "full"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "macos": {
+          "description": "macOS-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "denialLogger": {
+              "description": "Log sandbox denials via macOS Seatbelt (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "linux": {
+          "description": "Linux-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "bundledBwrap": {
+              "description": "Use the bundled bwrap binary instead of system bwrap (default: true)",
+              "type": "boolean"
+            },
+            "landlockFallback": {
+              "description": "Fall back to Landlock LSM when bwrap is unavailable (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "windows": {
+          "description": "Windows-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "level": {
+              "description": "Windows sandbox level (default: 'restricted-token')",
+              "type": "string",
+              "enum": ["disabled", "restricted-token", "elevated"]
+            },
+            "helperPath": {
+              "description": "Path to the synergy-sandbox-windows.exe helper binary",
+              "type": "string"
+            },
+            "verifyHelperHash": {
+              "description": "Verify the helper binary SHA-256 hash before use (default: true)",
+              "type": "boolean"
+            },
+            "privateDesktop": {
+              "description": "Create a private desktop for the sandboxed process (default: true)",
+              "type": "boolean"
+            },
+            "conpty": {
+              "description": "Use ConPTY for pseudo-terminal support (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "controlProfile": {
+      "description": "Default control profile applied to all agents",
+      "ref": "ControlProfileId",
+      "type": "string",
+      "enum": ["guarded", "autonomous", "full_access"]
     },
     "holos": {
       "description": "Holos platform configuration",
@@ -1301,6 +1932,10 @@
     "permission": {
       "ref": "PermissionConfig"
     },
+    "smartAllow": {
+      "description": "Use the Smart allow internal agent to auto-allow safe asks and soft denies",
+      "type": "boolean"
+    },
     "tools": {
       "type": "object",
       "propertyNames": {
@@ -1315,25 +1950,6 @@
       "properties": {
         "url": {
           "description": "Enterprise URL",
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "agora": {
-      "description": "Agora Q&A platform configuration",
-      "type": "object",
-      "properties": {
-        "url": {
-          "description": "Agora API base URL (defaults to https://agora.holosai.io)",
-          "type": "string"
-        },
-        "tokenUrl": {
-          "description": "Holos API URL for Agora token exchange (defaults to https://www.holosai.io)",
-          "type": "string"
-        },
-        "giteaSSHHost": {
-          "description": "Override SSH hostname used for Agora's Gitea remote",
           "type": "string"
         }
       },
@@ -1366,6 +1982,12 @@
           "type": "number",
           "minimum": 0.5,
           "maximum": 1
+        },
+        "maxHistoryImages": {
+          "description": "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false
@@ -1413,6 +2035,34 @@
         },
         "additionalProperties": false
       }
+    },
+    "toast": {
+      "description": "Toast notification preferences",
+      "type": "object",
+      "properties": {
+        "muted": {
+          "description": "Toast types to suppress. The underlying logic still runs but the visual card is not rendered.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["info", "success", "warning", "error"]
+          }
+        },
+        "durationOverrides": {
+          "description": "Override auto-dismiss duration in ms per toast type (max 30s).",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["info", "success", "warning", "error"]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 30000
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

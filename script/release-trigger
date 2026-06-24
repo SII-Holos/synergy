@@ -5,7 +5,9 @@ usage() {
     cat <<EOF
 Synergy Release Script
 
-Usage: ./script/release-trigger <bump>
+Usage:
+    ./script/release-trigger <bump>
+    ./script/release-trigger packages <bump> <package-aliases> [tag]
 
 Bump types:
     patch               Stable release: x.x.0 → x.x.1
@@ -15,9 +17,11 @@ Bump types:
 Examples:
     ./script/release-trigger patch        # Stable: v0.0.1
     ./script/release-trigger minor        # Stable: v0.1.0
+    ./script/release-trigger packages patch plugin-kit
+    ./script/release-trigger packages patch plugin-kit,plugin next
 
 What gets released:
-    1. npm packages (sdk, meta-protocol, plugin, synergy)
+    1. npm packages (sdk, meta-protocol, plugin, plugin-kit, synergy)
     2. CLI binaries (uploaded to GitHub Release draft, then finalized)
 
 Local dev publishes now use:
@@ -26,11 +30,26 @@ EOF
 }
 
 BUMP_TYPE=""
+TARGET="product"
+PACKAGES=""
+TAG="latest"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        packages)
+            TARGET="packages"
+            shift
+            ;;
         patch|minor|major)
             BUMP_TYPE="$1"
+            shift
+            ;;
+        plugin-kit|plugin|sdk|meta|meta-protocol|*,*)
+            PACKAGES="$1"
+            shift
+            ;;
+        next|latest|dev|canary)
+            TAG="$1"
             shift
             ;;
         -h|--help|help)
@@ -51,11 +70,22 @@ if [[ -z "$BUMP_TYPE" ]]; then
     exit 1
 fi
 
+if [[ "$TARGET" == "packages" && -z "$PACKAGES" ]]; then
+    echo "Missing package aliases for package-only release"
+    usage
+    exit 1
+fi
+
 echo "Triggering stable release workflow..."
-echo "  Type: Stable release ($BUMP_TYPE)"
+echo "  Target: $TARGET"
+echo "  Bump: $BUMP_TYPE"
+if [[ "$TARGET" == "packages" ]]; then
+    echo "  Packages: $PACKAGES"
+    echo "  Tag: $TAG"
+fi
 echo ""
 
-gh workflow run release.yml -f bump="$BUMP_TYPE"
+gh workflow run release.yml -f target="$TARGET" -f bump="$BUMP_TYPE" -f packages="$PACKAGES" -f tag="$TAG"
 
 echo ""
 echo "Workflow triggered! Check progress at:"

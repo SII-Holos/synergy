@@ -26,12 +26,12 @@ const parameters = z.object({
 export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>("process", {
   description: DESCRIPTION,
   parameters,
-  async execute(params) {
+  async execute(params, ctx) {
     const target = RemoteExecution.resolveTarget(params.envID)
     if (target.kind === "remote") {
       return RemoteProcessBackend.execute(params, target.envID)
     }
 
-    return LocalProcessBackend.execute(params as ProcessParams)
+    return LocalProcessBackend.execute(params as ProcessParams, ctx)
   },
 })

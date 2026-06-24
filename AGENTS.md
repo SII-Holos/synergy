@@ -36,6 +36,7 @@ Use current terms consistently.
 - `packages/synergy` — core runtime, server, CLI, sessions, tools, permissions, integrations, orchestration
 - `packages/app` — main Web application
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
+- `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI component library
 - `packages/util` — shared utilities and error helpers
@@ -372,6 +373,11 @@ Do not push directly to `main`.
 ### Release process
 
 Releases are triggered through GitHub Actions. Keep versioning and release docs aligned with the actual scripts and workflow in the repo.
+
+The release workflow has two targets:
+
+- `product` for the full Synergy release, including app, schema, binaries, npm wrapper, platform packages, SDK, plugin SDK, plugin kit, and meta-protocol.
+- `packages` for package-only npm releases such as `plugin-kit`, `plugin`, `sdk`, and `meta-protocol`; this path does not build app/binaries or create product GitHub release assets.
 
 If you change release behavior, update the internal documentation in the same task.
 

@@ -50,7 +50,7 @@ Approval records store manifest capability names under the canonical plugin id. 
 ## Development Commands
 
 ```bash
-synergy plugin validate --runtime-discovery
+synergy-plugin validate --runtime-discovery
 synergy plugin dev --sandbox-preview
 synergy plugin status <id>
 ```

@@ -102,7 +102,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
-  const planMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
+  const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
+  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
+  const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
 
   createEffect(
     on(
@@ -303,25 +305,50 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     requestAnimationFrame(scrollCursorIntoView)
   }
 
-  const togglePlanMode = async () => {
-    const current = planMode()
+  const setPlanMode = async (next: boolean, title = "Failed to toggle Plan Mode") => {
     if (!params.id) {
-      setPendingPlanMode(!current)
-      return
+      setPendingPlanMode(next)
+      return true
     }
     try {
       await sdk.client.blueprint.session.planMode({
         id: params.id,
-        planMode: !current,
+        planMode: next,
       })
+      return true
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to toggle Plan Mode",
+        title,
         description: err instanceof Error ? err.message : "Unknown error",
       })
+      return false
     }
   }
+
+  const togglePlanMode = async () => {
+    if (blueprintModeLocked()) return
+    await setPlanMode(!storedPlanMode())
+  }
+
+  const selectPlanModeFromMenu = (event?: Event) => {
+    if (blueprintModeLocked()) {
+      event?.preventDefault()
+      return
+    }
+    if (planMode()) return
+    void togglePlanMode()
+  }
+
+  createEffect(
+    on(
+      () => [blueprintModeLocked(), storedPlanMode()] as const,
+      ([locked, active]) => {
+        if (!locked || !active) return
+        void setPlanMode(false, "Failed to exit Plan Mode")
+      },
+    ),
+  )
 
   const selectedControlProfile = createMemo<ControlProfileId>(() => {
     const configured = params.id
@@ -1042,8 +1069,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="px-4 py-2.5 flex items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5">
+        <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="min-w-0 flex flex-wrap items-center gap-1.5">
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
@@ -1154,21 +1181,43 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <Icon name="paperclip" size="small" class="text-icon-base" />
                         <DropdownMenu.ItemLabel>Add files</DropdownMenu.ItemLabel>
                       </DropdownMenu.Item>
-                      <DropdownMenu.Item disabled={planMode()} onSelect={() => void togglePlanMode()}>
-                        <Icon
-                          name={planMode() ? "check" : "list-checks"}
-                          size="small"
-                          class={planMode() ? "text-icon-weak" : "text-icon-base"}
-                        />
-                        <DropdownMenu.ItemLabel>Plan mode</DropdownMenu.ItemLabel>
-                      </DropdownMenu.Item>
+                      <Tooltip
+                        placement="right"
+                        inactive={!blueprintModeLocked()}
+                        value="Plan Mode is unavailable while a Blueprint is equipped"
+                      >
+                        <DropdownMenu.Item
+                          disabled={planMode()}
+                          aria-disabled={blueprintModeLocked() ? "true" : undefined}
+                          title={
+                            blueprintModeLocked()
+                              ? "Plan Mode is unavailable while a Blueprint is equipped"
+                              : planMode()
+                                ? "Plan Mode is already enabled"
+                                : undefined
+                          }
+                          classList={{
+                            "opacity-60": blueprintModeLocked(),
+                          }}
+                          onSelect={selectPlanModeFromMenu}
+                        >
+                          <Icon
+                            name={planMode() ? "check" : "list-checks"}
+                            size="small"
+                            class={planMode() || blueprintModeLocked() ? "text-icon-weak" : "text-icon-base"}
+                          />
+                          <DropdownMenu.ItemLabel class={blueprintModeLocked() ? "text-text-weak" : undefined}>
+                            Plan mode
+                          </DropdownMenu.ItemLabel>
+                        </DropdownMenu.Item>
+                      </Tooltip>
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu>
               </Match>
             </Switch>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -1190,32 +1239,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={blueprintSubmitActive() && displayedBlueprintLoop()}>
                 {(bp) => (
-                  <div class="flex h-9 items-center rounded-full border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
+                  <div class="flex h-9 max-w-full items-center rounded-full border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
                     <Tooltip
                       placement="top"
                       value={
                         <div class="min-w-56 max-w-72">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
                           <div class="mt-1 text-10-regular text-text-weak">Ready to start this BlueprintLoop.</div>
-                          <div class="mt-2 text-10-regular text-text-weak">Hold the Blueprint icon to unequip.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
                         </div>
                       }
                     >
                       <button
                         type="button"
-                        class="relative flex h-8 min-w-0 max-w-44 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover select-none"
-                        aria-label={`Blueprint: ${bp().slot.title}`}
+                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
+                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
                         onPointerLeave={cancelLongPress}
                       >
-                        <Icon
-                          name={getSemanticIcon("orchestration.blueprint")}
-                          class={getBlueprintSlotIconClass(bp().mode)}
-                          size="small"
-                        />
-                        <span class="max-w-28 truncate text-11-medium">Loop ready</span>
+                        <span class="relative flex size-4 shrink-0 items-center justify-center">
+                          <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                            <Icon
+                              name={getSemanticIcon("orchestration.blueprint")}
+                              class={getBlueprintSlotIconClass(bp().mode)}
+                              size="small"
+                            />
+                          </span>
+                          <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                            <Icon name="x" class="text-text-interactive-base" size="small" />
+                          </span>
+                        </span>
+                        <span class="max-w-24 truncate text-11-medium">Loop ready</span>
                         <span
                           class="absolute bottom-0 left-2 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
                           style={{ width: `${slotLongPressProgress() * 82}%` }}
@@ -1258,18 +1314,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <button
                         type="button"
-                        class="bp-slot relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors cursor-default select-none"
-                        aria-label={`Blueprint: ${bp().slot.title}`}
+                        class="bp-slot group relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 cursor-default select-none"
+                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
                         onPointerLeave={cancelLongPress}
                       >
-                        <Icon
-                          name={getSemanticIcon("orchestration.blueprint")}
-                          class={getBlueprintSlotIconClass(bp().mode)}
-                          size="small"
-                        />
+                        <span class="relative flex size-4 shrink-0 items-center justify-center">
+                          <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                            <Icon
+                              name={getSemanticIcon("orchestration.blueprint")}
+                              class={getBlueprintSlotIconClass(bp().mode)}
+                              size="small"
+                            />
+                          </span>
+                          <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                            <Icon name="x" class="text-icon-base" size="small" />
+                          </span>
+                        </span>
                         <span
                           class="absolute bottom-1 left-1 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
                           style={{ width: `${slotLongPressProgress() * 75}%` }}

@@ -8,6 +8,7 @@ import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
+import { ConfigDomain } from "./domain"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -174,6 +175,58 @@ async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promi
   await fs.mkdir(path.dirname(filepath), { recursive: true })
   await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
   log.info("removed deprecated top-level config keys", { path: filepath, keys: present })
+  return true
+}
+
+function addAncestorPermissionDomainFiles(files: Set<string>, start: string) {
+  let current = path.resolve(start)
+  while (true) {
+    files.add(ConfigDomain.filepath("permissions", path.join(current, ".synergy")))
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+}
+
+async function findSmartAllowConfigFiles(): Promise<string[]> {
+  const files = new Set(await findConfigFiles())
+  const workingDirectory = Flag.SYNERGY_CWD || process.cwd()
+
+  files.add(ConfigDomain.filepath("permissions", Global.Path.config))
+  addAncestorPermissionDomainFiles(files, workingDirectory)
+
+  if (Flag.SYNERGY_CONFIG_DIR) {
+    files.add(ConfigDomain.filepath("permissions", Flag.SYNERGY_CONFIG_DIR))
+  }
+
+  return [...files]
+}
+
+async function migrateAutoClassifierToSmartAllow(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  if (!("auto_classifier" in config)) return false
+
+  let text = raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  if (config.smartAllow === undefined && typeof config.auto_classifier === "boolean") {
+    text = applyEdits(text, modify(text, ["smartAllow"], config.auto_classifier, { formattingOptions }))
+  }
+
+  text = applyEdits(text, modify(text, ["auto_classifier"], undefined, { formattingOptions }))
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("migrated auto_classifier config to smartAllow", { path: filepath })
   return true
 }
 
@@ -673,6 +726,21 @@ export const migrations: Migration[] = [
       let done = 0
       for (const filepath of files) {
         await removeTopLevelConfigKeys(filepath, ["holos_friend_reply_model"])
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260625-config-smart-allow",
+    description: "Migrate auto_classifier config to smartAllow",
+    async up(progress) {
+      const files = await findSmartAllowConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await migrateAutoClassifierToSmartAllow(filepath)
         done++
         progress(done, files.length)
       }

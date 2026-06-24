@@ -120,7 +120,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     compaction_overflow_threshold: "" as string,
     permission: "" as string,
     question_timeout: "" as string,
-    auto_classifier: "false" as string,
+    smartAllow: "false" as string,
   })
 
   const [email, setEmail] = createStore<EmailSettings>({
