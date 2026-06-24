@@ -50,7 +50,9 @@ synergy-plugin publish-market \
   --repo https://github.com/owner/my-plugin
 ```
 
-`publish-market` validates, builds, packs, signs, uploads or checks GitHub Release assets, updates the local `SII-Holos/synergy-plugins` checkout, runs registry validation, and opens a PR when `gh` is available.
+`publish-market` validates, builds, packs, signs, uploads or checks GitHub Release assets, updates the local `SII-Holos/synergy-plugins` checkout, regenerates `registry.json`, runs registry validation, and opens a PR when `gh` is available. If GitHub upload, push, or PR creation cannot be automated, it leaves exact manual commands.
+
+`official` and `verified` are maintainer review labels. The CLI does not grant them automatically for third-party submissions.
 
 For manual entry generation:
 
@@ -67,8 +69,8 @@ Then run this in the `SII-Holos/synergy-plugins` checkout:
 
 ```bash
 bun install
-bun run validate
 bun run build-registry
+bun run validate
 bun run build-registry --check
 ```
 
@@ -124,6 +126,10 @@ An official detail entry points to real release artifacts:
       "version": "0.1.0",
       "downloadUrl": "https://github.com/owner/my-plugin/releases/download/v0.1.0/my-plugin-0.1.0.synergy-plugin.tgz",
       "signatureUrl": "https://github.com/owner/my-plugin/releases/download/v0.1.0/my-plugin-0.1.0.synergy-plugin.tgz.sig",
+      "signature": {
+        "algorithm": "ed25519",
+        "signer": "<public-key-hex>",
+      },
       "integrity": "sha256-...",
       "manifestHash": "...",
       "permissionsHash": "...",
@@ -141,12 +147,14 @@ An official detail entry points to real release artifacts:
 
 The plugin id, detail filename, `plugin.json.name`, signature `pluginId`, approval id, and registry id must all be the same canonical plugin id.
 
+Third-party plugins are signed by the plugin author. The registry entry records the author signer public key for each version, CI verifies the release signature with that key, and Synergy clients trust the signer only because it was reviewed through the official registry PR.
+
 ## Install Flow
 
 Official installation resolves the selected registry source and version:
 
 ```text
-registry detail -> selected version -> downloadUrl -> sha256 integrity -> signature -> package inspection -> approval -> install cached artifact
+registry detail -> selected version -> downloadUrl -> sha256 integrity -> registry-reviewed signer -> signature verification -> package inspection -> approval -> install cached artifact
 ```
 
 The artifact must be an installable plugin tarball, not a source archive. It must contain:
@@ -162,6 +170,7 @@ Remote install rejects the artifact if:
 
 - `integrity` does not match the downloaded tarball
 - the signature is missing or invalid
+- the signature signer does not match the registry-reviewed signer
 - signature payload hashes do not match artifact, manifest, or permissions
 - `plugin.json.name` or `plugin.json.version` does not match the registry entry
 - the version is yanked

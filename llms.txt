@@ -17,7 +17,7 @@ You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin auth
 - [packages/plugin/README.md](packages/plugin/README.md): SDK API reference and descriptor examples.
 - [docs/plugins/02-manifest-reference.md](docs/plugins/02-manifest-reference.md): `plugin.json` manifest reference.
 - [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy-plugin create/validate/build/pack/sign/publish-market/entry` plus Synergy runtime install commands.
-- [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
+- [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, registry-reviewed signer trust, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
 - [docs/plugin/runtime-isolation.md](docs/plugin/runtime-isolation.md): in-process, worker, and process runtime behavior.
 - [docs/plugin/permissions-consent.md](docs/plugin/permissions-consent.md): approval and capability model.
 - [docs/plugins/04-tool-renderer-guide.md](docs/plugins/04-tool-renderer-guide.md): Web tool renderer contributions.
@@ -31,6 +31,7 @@ You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin auth
 - Keep `PluginDescriptor.id`, `plugin.json.name`, registry id, lockfile key, and approval id identical.
 - `contributes.ui.entry` points to a built JavaScript asset, normally `./dist/ui/index.js`; source files such as `src/ui.tsx` are build inputs.
 - Validate with `synergy-plugin validate --runtime-discovery` before build, pack, or publish.
+- Publish to the official market with `synergy-plugin publish-market`; it prepares release assets and the `SII-Holos/synergy-plugins` PR.
 
 ## If You Are Modifying Synergy Source
 
@@ -64,6 +65,7 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 - `synergy-plugin validate --runtime-discovery`
 - `synergy-plugin build`
 - `synergy-plugin pack`
+- `synergy-plugin publish-market`
 
 ## Source Verification
 

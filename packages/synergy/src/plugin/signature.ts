@@ -90,7 +90,38 @@ export async function verifySignature(tarballPath: string, sigMeta: SignatureMet
       return false
     }
 
-    // 3. Verify the tarball hash matches
+    return verifySignatureWithPublicKey(tarballPath, sigMeta, publicKeyHex)
+  } catch (err) {
+    log.error("signature verification error", { err })
+    return false
+  }
+}
+
+/**
+ * Verify a tarball signature against an explicit registry-reviewed public key.
+ *
+ * This is used by the official GitHub-backed plugin registry, where the registry
+ * entry itself is the trust root for the version signer.
+ */
+export async function verifySignatureWithPublicKey(
+  tarballPath: string,
+  sigMeta: SignatureMetadata,
+  publicKeyHex: string,
+): Promise<boolean> {
+  try {
+    if (sigMeta.algorithm !== "ed25519") {
+      log.warn("unsupported signature algorithm", { algorithm: sigMeta.algorithm })
+      return false
+    }
+
+    if (sigMeta.signer !== publicKeyHex) {
+      log.warn("signature signer does not match trusted public key", {
+        signer: sigMeta.signer.slice(0, 16) + "...",
+        trusted: publicKeyHex.slice(0, 16) + "...",
+      })
+      return false
+    }
+
     const actualTarballHash = sha256File(tarballPath)
     if (actualTarballHash !== sigMeta.payload.tarballHash) {
       log.warn("tarball hash mismatch", {
@@ -100,17 +131,12 @@ export async function verifySignature(tarballPath: string, sigMeta: SignatureMet
       return false
     }
 
-    // 4. Reconstruct the signed payload
     const payloadJSON = JSON.stringify(sigMeta.payload)
-
-    // 5. Import the public key and verify
     const raw = Buffer.from(publicKeyHex, "hex")
     const publicKey = await subtle.importKey("raw", raw, "Ed25519" as any, false, ["verify"])
     const signature = Buffer.from(sigMeta.signature, "hex")
 
-    const valid = await subtle.verify("Ed25519" as any, publicKey, signature, new TextEncoder().encode(payloadJSON))
-
-    return valid
+    return await subtle.verify("Ed25519" as any, publicKey, signature, new TextEncoder().encode(payloadJSON))
   } catch (err) {
     log.error("signature verification error", { err })
     return false

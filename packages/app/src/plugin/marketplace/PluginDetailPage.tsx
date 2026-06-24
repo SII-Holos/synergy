@@ -40,6 +40,11 @@ function formatDate(ts: number): string {
   })
 }
 
+function formatSigner(signer?: string): string {
+  if (!signer) return "—"
+  return `${signer.slice(0, 10)}…${signer.slice(-8)}`
+}
+
 /** Convert SDK RegistryPermissionItem → consent PermissionItem for PermissionDiffList. */
 function toConsentPermission(sp: RegistryPermissionItem): PermissionItem {
   const cat = detectCategory(sp.key)
@@ -414,6 +419,7 @@ export function PluginDetailPage() {
                   <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
                   <MetaBox icon="download" label="Downloads" value={pluginData()!.downloads?.toLocaleString() ?? "0"} />
                   <MetaBox icon="package-open" label="Source" value={source() === "local" ? "Local" : "Official"} />
+                  <MetaBox icon="key-round" label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
                 </div>
 
                 {/* Description */}
@@ -540,7 +546,7 @@ export function PluginDetailPage() {
                             <span>Published {formatDate(ver.publishedAt)}</span>
                             <span>•</span>
                             <span>{ver.permissionsSummary?.length ?? 0} permissions</span>
-                            <Show when={ver.signature || (ver as any).signatureUrl}>
+                            <Show when={ver.signature || ver.signatureUrl}>
                               <span>•</span>
                               <span class="text-text-success">Signed</span>
                             </Show>

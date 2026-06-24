@@ -87,9 +87,6 @@ bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
 synergy-plugin validate --runtime-discovery
-synergy-plugin build
-synergy-plugin pack
-synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy-plugin publish-market
 synergy plugin add file:///absolute/path/to/my-plugin
 ```

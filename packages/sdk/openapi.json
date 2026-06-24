@@ -22684,6 +22684,9 @@
               }
             },
             "required": ["toolCalls", "lastUpdate"]
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -25185,19 +25188,15 @@
         "type": "object",
         "properties": {
           "algorithm": {
-            "type": "string"
+            "type": "string",
+            "const": "ed25519"
           },
-          "value": {
-            "type": "string"
-          },
-          "keyId": {
-            "type": "string"
-          },
-          "timestamp": {
-            "type": "number"
+          "signer": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         },
-        "required": ["algorithm", "value"]
+        "required": ["algorithm", "signer"]
       },
       "RegistryPermissionItem": {
         "type": "object",

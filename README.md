@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 
 The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
 
-### Develop plugins
+### Develop Plugins
 
 Plugin authors can create and publish plugins without installing the Synergy source tree:
 
@@ -85,12 +85,12 @@ Plugin authors can create and publish plugins without installing the Synergy sou
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
-Use `synergy-plugin publish-market` when you are ready to submit the plugin to the official GitHub-backed marketplace.
+`publish-market` builds, packs, signs, uploads GitHub Release assets when `gh` is available, prepares the official `SII-Holos/synergy-plugins` registry PR, and leaves clear manual steps when a GitHub action cannot be automated.
 
 ### If you already have the CLI installed
 
@@ -273,9 +273,9 @@ New plugins should use the object descriptor API from `@ericsanchezok/synergy-pl
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
 Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.

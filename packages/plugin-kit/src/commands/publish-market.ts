@@ -119,6 +119,7 @@ async function ensureGitHubReleaseAssets(input: {
 
 async function runRegistryValidation(registryDir: string) {
   await $`bun install`.cwd(registryDir)
+  await $`bun run build-registry`.cwd(registryDir)
   await $`bun run validate`.cwd(registryDir)
   await $`bun run build-registry --check`.cwd(registryDir)
 }
@@ -201,10 +202,10 @@ export const PluginPublishMarketCommand = cmd({
         default: false,
         describe: "do not create/upload GitHub Release assets",
       })
-      .option("no-pr", {
+      .option("pr", {
         type: "boolean",
-        default: false,
-        describe: "prepare registry changes but do not open a PR",
+        default: true,
+        describe: "open a PR after preparing registry changes; pass --no-pr to skip",
       })
       .option("changelog", {
         type: "string",
@@ -262,7 +263,7 @@ export const PluginPublishMarketCommand = cmd({
         registryDir,
         pluginId: entry.id,
         version: manifest.version,
-        noPr: Boolean(args["no-pr"]),
+        noPr: (args.pr as boolean | undefined) === false,
       })
 
       UI.println(

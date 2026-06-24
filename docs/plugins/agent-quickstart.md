@@ -30,9 +30,9 @@ A plugin project should use the published plugin kit and plugin SDK. It should n
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
 Install a local development plugin with:
@@ -129,11 +129,10 @@ synergy-plugin pack
 For distribution:
 
 ```bash
-synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy-plugin publish-market
 ```
 
-`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. `publish-market` prepares the official marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` still publishes to the local development registry.
+`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. `publish-market` validates, builds, packs, signs, uploads release assets when possible, updates the official registry checkout, and prepares the marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` still publishes to the local development registry.
 
 For manual public Plugin Marketplace entry generation:
 

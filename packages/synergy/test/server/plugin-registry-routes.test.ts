@@ -135,6 +135,10 @@ async function writeOfficialRegistryCache(): Promise<void> {
               "https://github.com/SII-Holos/official-test-plugin/releases/download/v1.0.0/official-test-plugin-1.0.0.synergy-plugin.tgz",
             signatureUrl:
               "https://github.com/SII-Holos/official-test-plugin/releases/download/v1.0.0/official-test-plugin-1.0.0.synergy-plugin.tgz.sig",
+            signature: {
+              algorithm: "ed25519",
+              signer: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
             integrity: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             manifestHash: "manifest-hash",
             permissionsHash: "permissions-hash",

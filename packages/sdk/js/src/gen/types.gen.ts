@@ -3313,6 +3313,7 @@ export type CortexTask = {
       updatedAt: number
     }>
   }
+  notifyParentOnComplete?: boolean
 }
 
 export type Command = {
@@ -4128,10 +4129,8 @@ export type RegistryPluginSummary = {
 }
 
 export type RegistryPluginSignature = {
-  algorithm: string
-  value: string
-  keyId?: string
-  timestamp?: number
+  algorithm: "ed25519"
+  signer: string
 }
 
 export type RegistryPermissionItem = {

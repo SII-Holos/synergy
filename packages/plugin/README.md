@@ -12,11 +12,9 @@ Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and this SDK from 
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
-bun run sign my-plugin-0.1.0.synergy-plugin.tgz
-bun run publish:market
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
 During local development you can also install directly:
@@ -157,7 +155,7 @@ Worker and process plugins are started through Synergy's plugin runner. The runn
 - `dist/permissions.summary.json`
 - `dist/integrity.json`
 
-`synergy-plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy-plugin sign` writes `<tarball>.sig`. `synergy-plugin publish-market` prepares the official marketplace submission by uploading or checking GitHub Release assets, writing a `SII-Holos/synergy-plugins` entry, running registry validation, and opening a PR when `gh` is available.
+`synergy-plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy-plugin sign` writes `<tarball>.sig`. `synergy-plugin publish-market` prepares the official marketplace submission by uploading or checking GitHub Release assets, writing a `SII-Holos/synergy-plugins` entry with the signer public key, regenerating the registry index, running registry validation, and opening a PR when `gh` is available.
 
 For local marketplace UX testing, the Synergy runtime still provides `synergy plugin publish <tarball>` to publish into the local development registry.
 
