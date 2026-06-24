@@ -10,13 +10,13 @@
 
 ## If You Are Building A Synergy Plugin
 
-You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin authors should use the installed Synergy CLI and `@ericsanchezok/synergy-plugin` SDK instead of cloning this monorepo.
+You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and the `@ericsanchezok/synergy-plugin` SDK instead of cloning this monorepo.
 
 - [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md): shortest agent-facing plugin authoring path.
 - [docs/plugins/development-kit.md](docs/plugins/development-kit.md): what the Plugin Development Kit includes and when a source checkout is needed.
 - [packages/plugin/README.md](packages/plugin/README.md): SDK API reference and descriptor examples.
 - [docs/plugins/02-manifest-reference.md](docs/plugins/02-manifest-reference.md): `plugin.json` manifest reference.
-- [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy plugin create/validate/build/pack/sign/publish/add`.
+- [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy-plugin create/validate/build/pack/sign/publish-market/entry` plus Synergy runtime install commands.
 - [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
 - [docs/plugin/runtime-isolation.md](docs/plugin/runtime-isolation.md): in-process, worker, and process runtime behavior.
 - [docs/plugin/permissions-consent.md](docs/plugin/permissions-consent.md): approval and capability model.
@@ -27,10 +27,10 @@ You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin auth
 ## Plugin API Invariants
 
 - Use only the object descriptor API: `PluginDescriptor { id, name?, init() }`.
-- Do not use `definePlugin`, function-style descriptors, or default-exported plugin factory functions.
+- Export the descriptor object directly.
 - Keep `PluginDescriptor.id`, `plugin.json.name`, registry id, lockfile key, and approval id identical.
 - `contributes.ui.entry` points to a built JavaScript asset, normally `./dist/ui/index.js`; source files such as `src/ui.tsx` are build inputs.
-- Validate with `synergy plugin validate --runtime-discovery` before build, pack, or publish.
+- Validate with `synergy-plugin validate --runtime-discovery` before build, pack, or publish.
 
 ## If You Are Modifying Synergy Source
 
@@ -61,9 +61,9 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 
 ## Plugin Verification
 
-- `synergy plugin validate --runtime-discovery`
-- `synergy plugin build`
-- `synergy plugin pack`
+- `synergy-plugin validate --runtime-discovery`
+- `synergy-plugin build`
+- `synergy-plugin pack`
 
 ## Source Verification
 

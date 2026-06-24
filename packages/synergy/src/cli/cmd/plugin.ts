@@ -9,6 +9,8 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { PluginRuntimeCommand } from "./plugin-runtime"
 import { PluginTestCommand } from "./plugin-test"
 import { PluginPublishCommand } from "./plugin-publish"
+import { PluginPublishMarketCommand } from "./plugin-publish-market"
+import { PluginEntryCommand } from "./plugin-entry"
 import { PluginInfoCommand } from "./plugin-info"
 import { PluginPermissionsCommand } from "./plugin-permissions"
 import { PluginApproveCommand } from "./plugin-approve"
@@ -881,6 +883,8 @@ export const PluginCommand = cmd({
       .command(PluginRuntimeCommand)
       .command(PluginTestCommand)
       .command(PluginPublishCommand)
+      .command(PluginPublishMarketCommand)
+      .command(PluginEntryCommand)
       .command(PluginInfoCommand)
       .command(PluginPermissionsCommand)
       .command(PluginApproveCommand)

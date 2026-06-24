@@ -3,7 +3,7 @@
 ## 1. Create
 
 ```bash
-synergy plugin create my-plugin --template tool-ui
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
 ```
@@ -90,7 +90,7 @@ Do not change `plugin.id` without changing `plugin.json.name` to the same value.
 ## 4. Validate
 
 ```bash
-synergy plugin validate --runtime-discovery
+synergy-plugin validate --runtime-discovery
 ```
 
 Runtime discovery imports the descriptor, calls `init()`, and checks that returned runtime tools match `contributes.tools`.
@@ -98,8 +98,8 @@ Runtime discovery imports the descriptor, calls `init()`, and checks that return
 ## 5. Build And Pack
 
 ```bash
-synergy plugin build
-synergy plugin pack
+synergy-plugin build
+synergy-plugin pack
 ```
 
 Build creates:
@@ -121,11 +121,11 @@ my-plugin-0.1.0.synergy-plugin.tgz
 ## 6. Sign And Publish
 
 ```bash
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin publish-market
 ```
 
-Publish records the real tarball artifact, `downloadUrl`, integrity, permission summary, and registry metadata.
+`publish-market` prepares the official marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` records the real tarball artifact, `downloadUrl`, integrity, permission summary, and registry metadata in the local development registry.
 
 ## 7. Install Locally
 

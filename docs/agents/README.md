@@ -30,7 +30,7 @@ Read:
 
 ## Source Checkout Boundary
 
-Plugin authors should not need a Synergy source checkout. They should use the installed Synergy CLI, `synergy plugin ...` commands, and the `@ericsanchezok/synergy-plugin` SDK.
+Plugin authors should not need a Synergy source checkout. They should use `@ericsanchezok/synergy-plugin-kit`, the `synergy-plugin ...` commands, and the `@ericsanchezok/synergy-plugin` SDK.
 
 A source checkout is only needed when:
 

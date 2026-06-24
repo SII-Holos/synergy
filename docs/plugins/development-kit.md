@@ -5,13 +5,14 @@ The Synergy Plugin Development Kit is the supported toolset for building plugins
 ## What It Includes
 
 - Synergy CLI plugin commands:
-  - `synergy plugin create`
-  - `synergy plugin validate --runtime-discovery`
-  - `synergy plugin dev`
-  - `synergy plugin build`
-  - `synergy plugin pack`
-  - `synergy plugin sign`
-  - `synergy plugin publish`
+  - `synergy-plugin create`
+  - `synergy-plugin validate --runtime-discovery`
+  - `synergy-plugin dev`
+  - `synergy-plugin build`
+  - `synergy-plugin pack`
+  - `synergy-plugin sign`
+  - `synergy-plugin publish-market`
+  - `synergy-plugin entry`
   - `synergy plugin add`
 - `@ericsanchezok/synergy-plugin` runtime SDK.
 - `@ericsanchezok/synergy-plugin/tool` helper APIs.
@@ -26,32 +27,34 @@ The Synergy Plugin Development Kit is the supported toolset for building plugins
 
 ## Recommended Setup
 
-Plugin authors should install Synergy and create a standalone plugin project:
+Plugin authors should create a standalone plugin project with the plugin kit:
 
 ```bash
-synergy plugin create my-plugin --template tool-ui
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
 ```
 
-The generated plugin project depends on `@ericsanchezok/synergy-plugin`. It should not import from this Synergy monorepo or assume local workspace aliases.
+The generated plugin project depends on `@ericsanchezok/synergy-plugin` and keeps `@ericsanchezok/synergy-plugin-kit` as a dev tool. It should not import from this Synergy monorepo or assume local workspace aliases.
 
 ## Canonical Workflow
 
 ```bash
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+bun run validate
+bun run build
+bun run pack
+bun run sign my-plugin-0.1.0.synergy-plugin.tgz
+bun run publish:market
 ```
 
 During local development:
 
 ```bash
 synergy plugin add file:///absolute/path/to/my-plugin
-synergy plugin dev /absolute/path/to/my-plugin
+synergy-plugin dev /absolute/path/to/my-plugin
 ```
+
+`synergy plugin ...` remains available inside the Synergy CLI as a compatibility and runtime-management surface. External plugin authoring docs use `synergy-plugin ...` as the primary command.
 
 ## Source Checkout Is Not Required
 
@@ -71,8 +74,8 @@ If a plugin can be built using only the CLI, `plugin.json`, and `@ericsanchezok/
 ## Compatibility Rules
 
 - Use `PluginDescriptor { id, name?, init() }`.
-- Do not use legacy `definePlugin` or function-style descriptors.
 - Keep descriptor id and manifest name identical.
+- Export the descriptor object directly.
 - Use `tool` as the runtime hook key for tool definitions.
 - Use `contributes.ui.entry` only for built JavaScript output.
 - Run `validate --runtime-discovery` before packaging.

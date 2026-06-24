@@ -87,7 +87,7 @@ Command exports receive host context and may perform plugin UI actions.
 ## Template
 
 ```bash
-synergy plugin create my-theme --template theme-icon
-synergy plugin build
-synergy plugin pack
+synergy-plugin create my-theme --template theme-icon
+synergy-plugin build
+synergy-plugin pack
 ```

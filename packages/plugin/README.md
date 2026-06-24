@@ -4,19 +4,19 @@
 
 Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. The current API is intentionally strict: a plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
 
-Plugin authors should use the installed Synergy CLI and this SDK from a standalone plugin project. Cloning the Synergy source repository is only needed when changing or debugging the plugin platform itself.
+Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and this SDK from a standalone plugin project. Cloning the Synergy source repository is only needed when changing or debugging the plugin platform itself.
 
 ## Recommended Flow
 
 ```bash
-synergy plugin create my-plugin --template tool-ui
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
-synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
-synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+bun run validate
+bun run build
+bun run pack
+bun run sign my-plugin-0.1.0.synergy-plugin.tgz
+bun run publish:market
 ```
 
 During local development you can also install directly:
@@ -124,7 +124,7 @@ Each distributable plugin has a root `plugin.json`:
 }
 ```
 
-`contributes.ui.entry` is a runtime-loadable JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry.
+`contributes.ui.entry` is a runtime-loadable JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy-plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry.
 
 ## UI Types
 
@@ -148,7 +148,7 @@ Worker and process plugins are started through Synergy's plugin runner. The runn
 
 ## Packaging
 
-`synergy plugin build` writes a distributable `dist/` directory:
+`synergy-plugin build` writes a distributable `dist/` directory:
 
 - `dist/plugin.json`
 - `dist/runtime/index.js`
@@ -157,7 +157,9 @@ Worker and process plugins are started through Synergy's plugin runner. The runn
 - `dist/permissions.summary.json`
 - `dist/integrity.json`
 
-`synergy plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy plugin publish` accepts that tarball, stores the real artifact, records its `downloadUrl` and `sha256-...` integrity, and publishes registry metadata.
+`synergy-plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy-plugin sign` writes `<tarball>.sig`. `synergy-plugin publish-market` prepares the official marketplace submission by uploading or checking GitHub Release assets, writing a `SII-Holos/synergy-plugins` entry, running registry validation, and opening a PR when `gh` is available.
+
+For local marketplace UX testing, the Synergy runtime still provides `synergy plugin publish <tarball>` to publish into the local development registry.
 
 ## Exports
 

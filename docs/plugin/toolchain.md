@@ -1,18 +1,18 @@
 # Plugin Toolchain
 
-**Source of truth:** `packages/synergy/src/cli/cmd/plugin-*.ts`
+**Source of truth:** `packages/plugin-kit/src/commands/*.ts` for authoring commands and `packages/synergy/src/cli/cmd/plugin-*.ts` for runtime/install commands.
 
 The supported plugin development flow is:
 
 ```bash
-synergy plugin create <name> --template <template>
+bunx @ericsanchezok/synergy-plugin-kit create <name> --template <template>
 cd <name>
 bun install
-synergy plugin validate --runtime-discovery
-synergy plugin build
-synergy plugin pack
-synergy plugin sign <name>-<version>.synergy-plugin.tgz
-synergy plugin publish <name>-<version>.synergy-plugin.tgz
+bun run validate
+bun run build
+bun run pack
+bun run sign <name>-<version>.synergy-plugin.tgz
+bun run publish:market
 ```
 
 Local installation uses the same resolver as runtime loading:
@@ -47,7 +47,7 @@ export default plugin
 ## create
 
 ```bash
-synergy plugin create <name> [--template tool-ui|workspace-panel|api-connector|theme-icon]
+synergy-plugin create <name> [--template tool-ui|workspace-panel|api-connector|theme-icon]
 ```
 
 Generated projects include `plugin.json`, `package.json`, `tsconfig.json`, runtime source, and any template UI/assets.
@@ -64,7 +64,7 @@ Templates:
 ## validate
 
 ```bash
-synergy plugin validate [path] [--runtime-discovery]
+synergy-plugin validate [path] [--runtime-discovery]
 ```
 
 Validation checks:
@@ -87,7 +87,7 @@ Development mode validates the manifest, prints permission and runtime previews,
 ## build
 
 ```bash
-synergy plugin build [path]
+synergy-plugin build [path]
 ```
 
 Build output is written to `dist/`:
@@ -104,7 +104,7 @@ Build output is written to `dist/`:
 ## pack
 
 ```bash
-synergy plugin pack [path]
+synergy-plugin pack [path]
 ```
 
 Creates `<name>-<version>.synergy-plugin.tgz` from `dist/`. The archive must contain installable runtime assets, `plugin.json`, UI assets, permission summary, and integrity metadata.
@@ -112,29 +112,36 @@ Creates `<name>-<version>.synergy-plugin.tgz` from `dist/`. The archive must con
 ## sign
 
 ```bash
-synergy plugin sign <tarball>
+synergy-plugin sign <tarball>
 ```
 
-Signs the plugin archive metadata with the local Ed25519 signing key under `~/.synergy/keys/signing-key.json`.
+Signs the plugin archive metadata with the local Ed25519 signing key under `~/.synergy/keys/signing-key.json` and writes `<tarball>.sig`.
 
-## publish
+## publish-market
+
+```bash
+synergy-plugin publish-market [tarball]
+```
+
+Builds, packs, signs, prepares GitHub Release assets, writes or updates `SII-Holos/synergy-plugins/plugins/<id>.json`, runs registry validation, and opens a PR when `gh` is installed and authenticated.
+
+For CI or manual workflows, generate only the aggregator entry:
+
+```bash
+synergy-plugin entry <tarball> \
+  --repo https://github.com/owner/my-plugin \
+  --write-entry ../synergy-plugins/plugins/<name>.json
+```
+
+`entry` does not upload assets or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`.
+
+## local publish
 
 ```bash
 synergy plugin publish <tarball>
 ```
 
 Accepts `.synergy-plugin.tgz` or `.tgz`, inspects the packaged `plugin.json`, copies the real artifact to the local registry artifact store, computes `sha256-...` integrity, and publishes metadata with a `file://` download URL.
-
-For the public GitHub-backed marketplace, publish the plugin artifact and `.sig` in the plugin repository's GitHub Release, then generate an aggregator entry:
-
-```bash
-synergy plugin publish <tarball> \
-  --registry github \
-  --repo https://github.com/owner/my-plugin \
-  --write-entry ../synergy-plugins/plugins/<name>.json
-```
-
-`--registry github` prints or writes the JSON entry for `SII-Holos/synergy-plugins`. It does not push or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`.
 
 ## Registry Install
 

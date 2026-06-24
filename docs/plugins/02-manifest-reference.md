@@ -22,7 +22,7 @@
 }
 ```
 
-During `synergy plugin build`, the runtime entry is bundled to `dist/runtime/index.js` and the packaged manifest is rewritten to:
+During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/index.js` and the packaged manifest is rewritten to:
 
 ```jsonc
 {
@@ -92,7 +92,7 @@ Per-tool capabilities live under `contributes.tools[].capabilities` and are merg
 }
 ```
 
-`synergy plugin validate --runtime-discovery` imports the descriptor, calls `init()`, reads returned runtime tools, and compares them with `contributes.tools`.
+`synergy-plugin validate --runtime-discovery` imports the descriptor, calls `init()`, reads returned runtime tools, and compares them with `contributes.tools`.
 
 ## UI Contributions
 

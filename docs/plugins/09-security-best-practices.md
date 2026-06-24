@@ -44,9 +44,9 @@ Use plugin `config`, `auth`, and `cache` stores instead of ad hoc files. In work
 Publish `.synergy-plugin.tgz` archives produced by:
 
 ```bash
-synergy plugin build
-synergy plugin pack
-synergy plugin sign <tarball>
+synergy-plugin build
+synergy-plugin pack
+synergy-plugin sign <tarball>
 ```
 
 Do not publish source-only archives. A valid package contains `plugin.json`, `runtime/index.js`, integrity metadata, permission summary, and any declared UI assets.
