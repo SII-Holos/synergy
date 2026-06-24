@@ -6874,6 +6874,7 @@ export class Plugins extends HeyApiClient {
         [key: string]: unknown
       }
       capabilities?: Array<string>
+      source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6887,6 +6888,7 @@ export class Plugins extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
             { in: "body", key: "capabilities" },
+            { in: "body", key: "source" },
           ],
         },
       ],
@@ -6966,6 +6968,7 @@ export class Plugins extends HeyApiClient {
         [key: string]: unknown
       }
       capabilities?: Array<string>
+      source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6979,6 +6982,7 @@ export class Plugins extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
             { in: "body", key: "capabilities" },
+            { in: "body", key: "source" },
           ],
         },
       ],
@@ -7074,7 +7078,7 @@ export class Plugins extends HeyApiClient {
   /**
    * Install plugin from registry
    *
-   * Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.
+   * Install a plugin from the official or local registry. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.
    */
   public installFromRegistry<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -7082,6 +7086,7 @@ export class Plugins extends HeyApiClient {
       scopeID?: string
       id?: string
       version?: string
+      source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7094,6 +7099,7 @@ export class Plugins extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "body", key: "id" },
             { in: "body", key: "version" },
+            { in: "body", key: "source" },
           ],
         },
       ],
@@ -7169,6 +7175,7 @@ export class Plugins extends HeyApiClient {
       q?: string
       offset?: number
       limit?: number
+      source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7182,6 +7189,7 @@ export class Plugins extends HeyApiClient {
             { in: "query", key: "q" },
             { in: "query", key: "offset" },
             { in: "query", key: "limit" },
+            { in: "query", key: "source" },
           ],
         },
       ],
@@ -7207,6 +7215,7 @@ export class Plugins extends HeyApiClient {
       id: string
       directory?: string
       scopeID?: string
+      source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7218,6 +7227,7 @@ export class Plugins extends HeyApiClient {
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "source" },
           ],
         },
       ],
@@ -7244,6 +7254,7 @@ export class Plugins extends HeyApiClient {
       version: string
       directory?: string
       scopeID?: string
+      source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7256,6 +7267,7 @@ export class Plugins extends HeyApiClient {
             { in: "path", key: "version" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "source" },
           ],
         },
       ],

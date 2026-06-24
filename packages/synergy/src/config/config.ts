@@ -79,6 +79,8 @@ export namespace Config {
 
   export const Permission = Schema.Permission
   export type Permission = Schema.Permission
+  export const PluginMarketplace = Schema.PluginMarketplace
+  export type PluginMarketplace = Schema.PluginMarketplace
   export const Command = Schema.Command
   export type Command = Schema.Command
   export const Agent = Schema.Agent

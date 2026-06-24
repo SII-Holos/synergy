@@ -6,6 +6,7 @@ import { baseCapabilities } from "../../plugin/capability"
 import { computeRisk } from "../../plugin/consent/risk"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
+import { readSignatureFile } from "../../plugin/signature"
 import { sha256File } from "../../util/crypto"
 import path from "path"
 import os from "os"
@@ -41,6 +42,36 @@ interface PublishInput {
   uiSurfaces: string[]
   tools: string[]
   downloads: number
+}
+
+interface GithubRegistryEntry {
+  schemaVersion: 1
+  id: string
+  name: string
+  description: string
+  repo: string
+  homepage?: string
+  author: { name: string; email?: string; url?: string }
+  verified: boolean
+  official: boolean
+  keywords: string[]
+  compatibility: { synergy: string }
+  versions: Array<{
+    version: string
+    downloadUrl: string
+    signatureUrl: string
+    integrity: string
+    manifestHash: string
+    permissionsHash: string
+    risk: "low" | "medium" | "high"
+    runtimeMode: "in-process" | "worker" | "process"
+    permissionsSummary: Array<{ key: string; description: string; risk: string }>
+    tools: string[]
+    uiSurfaces: string[]
+    publishedAt: string
+    changelog?: string
+  }>
+  yankedVersions: string[]
 }
 
 function parseAuthor(input?: string): PublishInput["author"] {
@@ -108,17 +139,167 @@ function copyArtifact(tarballPath: string, id: string, version: string): string 
   return dest
 }
 
+function normalizeRepoUrl(input?: string): string | undefined {
+  if (!input) return undefined
+  const trimmed = input.trim()
+  const gitSsh = trimmed.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/)
+  if (gitSsh) return `https://github.com/${gitSsh[1]}`
+  if (/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(trimmed)) return trimmed.replace(/\.git$/, "")
+  return trimmed
+}
+
+function releaseAssetUrl(repo: string | undefined, version: string, filename: string): string | undefined {
+  const normalized = normalizeRepoUrl(repo)
+  if (!normalized || !normalized.startsWith("https://github.com/")) return undefined
+  return `${normalized}/releases/download/v${version}/${encodeURIComponent(filename)}`
+}
+
+function githubEntry(input: {
+  manifest: PluginManifestType
+  capabilities: string[]
+  risk: "low" | "medium" | "high"
+  runtimeMode: "in-process" | "worker" | "process"
+  integrity: string
+  tarballPath: string
+  downloadUrl?: string
+  signatureUrl?: string
+  repo?: string
+  verified: boolean
+  official: boolean
+  changelog?: string
+}): GithubRegistryEntry {
+  const repo = normalizeRepoUrl(input.repo ?? input.manifest.repository ?? input.manifest.homepage)
+  if (!repo) {
+    throw new Error("GitHub registry publishing requires --repo or manifest.repository")
+  }
+  const filename = path.basename(input.tarballPath)
+  const downloadUrl = input.downloadUrl ?? releaseAssetUrl(repo, input.manifest.version, filename)
+  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
+  if (!downloadUrl || !signatureUrl) {
+    throw new Error("GitHub registry publishing requires --download-url and --signature-url")
+  }
+
+  const manifestHash = computeManifestHash(input.manifest)
+  const permissionsHash = computePermissionsHash(input.manifest, input.capabilities)
+  const signature = readSignatureFile(input.tarballPath)
+  if (!signature) throw new Error(`Signature file not found or invalid: ${input.tarballPath}.sig`)
+  if (signature.pluginId !== input.manifest.name) throw new Error("Signature pluginId does not match manifest name")
+  if (signature.version !== input.manifest.version) throw new Error("Signature version does not match manifest version")
+  if (signature.payload.tarballHash !== input.integrity.slice("sha256-".length)) {
+    throw new Error("Signature tarball hash does not match artifact integrity")
+  }
+  if (signature.payload.manifestHash !== manifestHash)
+    throw new Error("Signature manifest hash does not match manifest")
+  if (signature.payload.permissionsHash !== permissionsHash) {
+    throw new Error("Signature permissions hash does not match manifest capabilities")
+  }
+
+  const permissionsSummary = registryPermissions(input.capabilities)
+  return {
+    schemaVersion: 1,
+    id: input.manifest.name,
+    name: input.manifest.name,
+    description: input.manifest.description,
+    repo,
+    ...(input.manifest.homepage ? { homepage: input.manifest.homepage } : {}),
+    author: parseAuthor(input.manifest.author),
+    verified: input.verified,
+    official: input.official,
+    keywords: [...new Set([...(input.manifest.keywords ?? []), "synergy-plugin"])].sort(),
+    compatibility: { synergy: input.manifest.engines?.synergy ?? input.manifest.minSynergyVersion ?? ">=1.0.0" },
+    versions: [
+      {
+        version: input.manifest.version,
+        downloadUrl,
+        signatureUrl,
+        integrity: input.integrity,
+        manifestHash,
+        permissionsHash,
+        risk: input.risk,
+        runtimeMode: input.runtimeMode,
+        permissionsSummary: permissionsSummary.map((item) => ({
+          key: item.key,
+          description: item.description,
+          risk: item.severity,
+        })),
+        tools: (input.manifest.contributes?.tools ?? []).map((tool) => tool.name),
+        uiSurfaces: uiSurfaces(input.manifest),
+        publishedAt: new Date().toISOString(),
+        ...(input.changelog ? { changelog: input.changelog } : {}),
+      },
+    ],
+    yankedVersions: [],
+  }
+}
+
+function writeGithubEntry(filepath: string, next: GithubRegistryEntry) {
+  let merged = next
+  if (fs.existsSync(filepath)) {
+    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as GithubRegistryEntry
+    const versions = [
+      ...existing.versions.filter((version) => version.version !== next.versions[0]?.version),
+      ...next.versions,
+    ].sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt))
+    merged = {
+      ...existing,
+      ...next,
+      versions,
+      yankedVersions: existing.yankedVersions ?? [],
+    }
+  }
+  fs.mkdirSync(path.dirname(filepath), { recursive: true })
+  fs.writeFileSync(filepath, JSON.stringify(merged, null, 2) + "\n")
+}
+
 export const PluginPublishCommand = cmd({
   command: "publish <tarball>",
   describe: "submit a plugin tarball to the registry",
   builder: (yargs: Argv) =>
-    yargs.positional("tarball", {
-      type: "string",
-      describe: "path to the plugin .synergy-plugin.tgz tarball",
-      demandOption: true,
-    }),
+    yargs
+      .positional("tarball", {
+        type: "string",
+        describe: "path to the plugin .synergy-plugin.tgz tarball",
+        demandOption: true,
+      })
+      .option("registry", {
+        type: "string",
+        choices: ["local", "github"] as const,
+        default: "local",
+        describe: "registry target: local publishes to the running local registry, github prints aggregator JSON",
+      })
+      .option("write-entry", {
+        type: "string",
+        describe: "write or update a synergy-plugins plugins/<id>.json entry when --registry github is used",
+      })
+      .option("download-url", {
+        type: "string",
+        describe: "release asset URL for the .synergy-plugin.tgz when --registry github is used",
+      })
+      .option("signature-url", {
+        type: "string",
+        describe: "release asset URL for the .sig file when --registry github is used",
+      })
+      .option("repo", {
+        type: "string",
+        describe: "plugin repository URL for the GitHub aggregator entry",
+      })
+      .option("verified", {
+        type: "boolean",
+        default: false,
+        describe: "mark the generated GitHub aggregator entry as verified",
+      })
+      .option("official", {
+        type: "boolean",
+        default: false,
+        describe: "mark the generated GitHub aggregator entry as official",
+      })
+      .option("changelog", {
+        type: "string",
+        describe: "version changelog for the generated GitHub aggregator entry",
+      }),
   async handler(args) {
     const tarballPath = path.resolve(args.tarball as string)
+    const registry = (args.registry as "local" | "github" | undefined) ?? "local"
 
     if (!fs.existsSync(tarballPath)) {
       UI.error(`Tarball not found: ${tarballPath}`)
@@ -144,9 +325,41 @@ export const PluginPublishCommand = cmd({
         userTrusted: true,
         risk,
       })
-      const artifactPath = copyArtifact(tarballPath, manifest.name, manifest.version)
-      const integrity = `sha256-${sha256File(artifactPath)}`
+      const integrity = `sha256-${sha256File(tarballPath)}`
       const permissionsSummary = registryPermissions(capabilities)
+
+      if (registry === "github") {
+        const entry = githubEntry({
+          manifest,
+          capabilities,
+          risk,
+          runtimeMode,
+          integrity,
+          tarballPath,
+          downloadUrl: args.downloadUrl as string | undefined,
+          signatureUrl: args.signatureUrl as string | undefined,
+          repo: args.repo as string | undefined,
+          verified: Boolean(args.verified),
+          official: Boolean(args.official),
+          changelog: args.changelog as string | undefined,
+        })
+        const rendered = JSON.stringify(entry, null, 2)
+        const writeEntry = args.writeEntry as string | undefined
+        if (writeEntry) {
+          const outputPath = path.resolve(writeEntry)
+          writeGithubEntry(outputPath, entry)
+          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Wrote GitHub registry entry ${outputPath}`)
+          UI.println(
+            `  ${UI.Style.TEXT_DIM}Run in synergy-plugins:${UI.Style.TEXT_NORMAL} bun run validate && bun run build-registry`,
+          )
+        } else {
+          UI.println(rendered)
+        }
+        return
+      }
+
+      const artifactPath = copyArtifact(tarballPath, manifest.name, manifest.version)
+      const artifactIntegrity = `sha256-${sha256File(artifactPath)}`
       const input: PublishInput = {
         id: manifest.name,
         name: manifest.name,
@@ -175,7 +388,7 @@ export const PluginPublishCommand = cmd({
               risk: item.severity,
             })),
             publishedAt: Date.now(),
-            integrity,
+            integrity: artifactIntegrity,
             downloadUrl: `file://${artifactPath}`,
           },
         ],

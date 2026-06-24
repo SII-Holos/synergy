@@ -1,8 +1,9 @@
 import { createSignal, createResource, For, Show, Switch, Match, createMemo } from "solid-js"
-import { useParams, useNavigate } from "@solidjs/router"
+import { useParams, useNavigate, useSearchParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { PermissionDiffList } from "../consent/PermissionDiffList"
@@ -16,8 +17,6 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import type { PermissionItem, PluginPermissionDiff, TrustTier, PermissionSeverity } from "../consent/schema"
 import { computeVersionDiffs } from "./changelog-utils"
-import { ratingStars } from "./rating-stars"
-import { StarRating } from "./StarRating"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,6 +78,40 @@ function collectAllPermissions(versions: RegistryPluginVersion[]): RegistryPermi
   return all
 }
 
+type RegistrySource = "official" | "local"
+
+interface ApprovalRequiredError {
+  code: "approval_required"
+  source?: RegistrySource
+  pluginId: string
+  version: string
+  manifest: { name: string; version: string; displayName?: string; [key: string]: unknown }
+  capabilities: string[]
+  diff: PluginPermissionDiff
+  risk: PermissionSeverity
+  artifactCacheKey?: string
+  message?: string
+}
+
+function isApprovalRequiredError(input: unknown): input is ApprovalRequiredError {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    (input as { code?: unknown }).code === "approval_required" &&
+    typeof (input as { pluginId?: unknown }).pluginId === "string" &&
+    typeof (input as { version?: unknown }).version === "string"
+  )
+}
+
+function installErrorMessage(input: unknown): string {
+  if (typeof input === "string") return input
+  if (typeof input === "object" && input !== null) {
+    const message = (input as { message?: unknown }).message
+    if (typeof message === "string") return message
+  }
+  return "Install failed"
+}
+
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -86,34 +119,43 @@ const TABS = [
   { id: "permissions", label: "Permissions", icon: "shield-check" as const },
   { id: "versions", label: "Versions", icon: "history" as const },
   { id: "changelog", label: "Changelog", icon: "scroll-text" as const },
-  { id: "reviews", label: "Reviews", icon: "message-square" as const },
 ] as const
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function PluginDetailPage() {
   const params = useParams<{ pluginId: string }>()
+  const [searchParams] = useSearchParams()
   const globalSDK = useGlobalSDK()
+  const pluginHost = usePluginHost()
   const navigate = useNavigate()
   const dialog = useDialog()
 
   const pluginId = () => decodeURIComponent(params.pluginId)
+  const source = createMemo<"official" | "local">(() => (searchParams.source === "local" ? "local" : "official"))
 
   const [activeTab, setActiveTab] = createSignal<string>("overview")
   const [installing, setInstalling] = createSignal(false)
+  const [installError, setInstallError] = createSignal<string | null>(null)
 
   // Fetch plugin summary from search (registry has no direct GET /:id in SDK)
-  const [summary] = createResource(pluginId, async (id: string) => {
-    const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 5 })
-    const plugins = (res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []
-    return plugins.find((p: RegistryPluginSummary) => p.id === id || p.name === id) ?? null
-  })
+  const [summary] = createResource(
+    () => ({ id: pluginId(), source: source() }),
+    async ({ id, source }) => {
+      const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 5, source })
+      const plugins = (res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []
+      return plugins.find((p: RegistryPluginSummary) => p.id === id || p.name === id) ?? null
+    },
+  )
 
   // Fetch versions from registry
-  const [versions] = createResource(pluginId, async (id: string) => {
-    const res = await globalSDK.client.registry.plugins.versions({ id })
-    return (res.data as RegistryPluginVersion[]) ?? []
-  })
+  const [versions] = createResource(
+    () => ({ id: pluginId(), source: source() }),
+    async ({ id, source }) => {
+      const res = await globalSDK.client.registry.plugins.versions({ id, source })
+      return (res.data as RegistryPluginVersion[]) ?? []
+    },
+  )
 
   const latestVersion = createMemo(() => {
     const v = versions()
@@ -135,7 +177,7 @@ export function PluginDetailPage() {
 
   // ── Fetch installed plugins ─────────────────────────────────────────
 
-  const [installedPlugins] = createResource(
+  const [installedPlugins, { refetch: refetchInstalledPlugins }] = createResource(
     () => true,
     async () => {
       const res = await globalSDK.client.api.plugins.list()
@@ -159,17 +201,62 @@ export function PluginDetailPage() {
 
   // ── Install flow ──────────────────────────────────────────────────────
 
+  const finishInstall = async () => {
+    await refetchInstalledPlugins()
+    await pluginHost.reload()
+  }
+
+  const performInstall = async (id: string, version: string) => {
+    await globalSDK.client.api.plugins.installFromRegistry({ id, version, source: source() })
+    await finishInstall()
+  }
+
+  const openApprovalDialog = (approval: ApprovalRequiredError) => {
+    dialog.show(() => (
+      <InstallConsentDialog
+        manifest={approval.manifest}
+        diff={approval.diff}
+        trustTier={"trusted-import" as TrustTier}
+        onApprove={async () => {
+          setInstalling(true)
+          setInstallError(null)
+          try {
+            await globalSDK.client.api.plugins.approveInstall({
+              pluginId: approval.pluginId,
+              manifest: approval.manifest,
+              capabilities: approval.capabilities,
+              source: approval.source ?? source(),
+            })
+            await performInstall(approval.pluginId, approval.version)
+          } catch (err) {
+            setInstallError(installErrorMessage(err))
+            throw err
+          } finally {
+            setInstalling(false)
+          }
+        }}
+        onDeny={() => setInstalling(false)}
+      />
+    ))
+  }
+
   const handleInstall = async () => {
     const p = summary()
     const v = latestVersion()
     if (!p || !v) return
 
     setInstalling(true)
+    setInstallError(null)
 
     try {
-      await globalSDK.client.api.plugins.installFromRegistry({ id: p.id, version: v.version })
+      await performInstall(p.id, v.version)
     } catch (err) {
-      console.error("Install failed:", err)
+      if (isApprovalRequiredError(err)) {
+        setInstalling(false)
+        openApprovalDialog(err)
+        return
+      }
+      setInstallError(installErrorMessage(err))
     } finally {
       setInstalling(false)
     }
@@ -201,8 +288,14 @@ export function PluginDetailPage() {
               <Show when={pluginData()}>
                 <VerifiedBadge verified={pluginData()!.verified} official={pluginData()!.official} />
               </Show>
+              <span class="text-11-medium text-text-weaker bg-surface-inset-base rounded px-1.5 py-px">
+                {source() === "local" ? "Local" : "Official"}
+              </span>
             </div>
             <p class="text-12-regular text-text-weak mt-1">{pluginData()?.description}</p>
+            <Show when={installError()}>
+              <p class="text-12-regular text-text-critical mt-2">{installError()}</p>
+            </Show>
           </div>
 
           {/* Install / Update button */}
@@ -320,7 +413,7 @@ export function PluginDetailPage() {
                   />
                   <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
                   <MetaBox icon="download" label="Downloads" value={pluginData()!.downloads?.toLocaleString() ?? "0"} />
-                  <MetaBox icon="star" label="Rating" value={<StarRating rating={pluginData()!.rating} />} />
+                  <MetaBox icon="package-open" label="Source" value={source() === "local" ? "Local" : "Official"} />
                 </div>
 
                 {/* Description */}
@@ -340,6 +433,51 @@ export function PluginDetailPage() {
                         {(kw) => (
                           <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
                             {kw}
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+
+                <Show when={(pluginData() as any)!.repo}>
+                  <div>
+                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Repository</h3>
+                    <a
+                      href={(pluginData() as any)!.repo}
+                      target="_blank"
+                      rel="noreferrer"
+                      class="inline-flex items-center gap-1.5 text-13-medium text-text-action hover:underline"
+                    >
+                      <Icon name="external-link" size="small" />
+                      {(pluginData() as any)!.repo}
+                    </a>
+                  </div>
+                </Show>
+
+                <Show when={pluginData()!.tools?.length > 0}>
+                  <div>
+                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Tools</h3>
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={pluginData()!.tools}>
+                        {(tool) => (
+                          <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
+                            {tool}
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+
+                <Show when={pluginData()!.uiSurfaces?.length > 0}>
+                  <div>
+                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">UI Surfaces</h3>
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={pluginData()!.uiSurfaces}>
+                        {(surface) => (
+                          <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
+                            {surface}
                           </span>
                         )}
                       </For>
@@ -402,7 +540,7 @@ export function PluginDetailPage() {
                             <span>Published {formatDate(ver.publishedAt)}</span>
                             <span>•</span>
                             <span>{ver.permissionsSummary?.length ?? 0} permissions</span>
-                            <Show when={ver.signature}>
+                            <Show when={ver.signature || (ver as any).signatureUrl}>
                               <span>•</span>
                               <span class="text-text-success">Signed</span>
                             </Show>
@@ -563,47 +701,6 @@ export function PluginDetailPage() {
                     )}
                   </For>
                 </Show>
-              </div>
-            </Match>
-
-            {/* ── Reviews ── */}
-            <Match when={activeTab() === "reviews"}>
-              <div class="flex flex-col gap-4 pt-5">
-                {/* Rating summary card */}
-                <div class="flex items-center gap-6 p-4 rounded-xl bg-surface-raised-base">
-                  <div class="flex flex-col items-center gap-1 min-w-[80px]">
-                    <span class="text-28-medium text-text-strong leading-none">
-                      {pluginData()!.rating?.toFixed(1) ?? "—"}
-                    </span>
-                    <StarRating rating={pluginData()!.rating} />
-                    <span class="text-11-regular text-text-weaker">
-                      {(pluginData() as any).ratingCount != null
-                        ? `${(pluginData() as any).ratingCount} reviews`
-                        : "No ratings yet"}
-                    </span>
-                  </div>
-                  {/* Rating distribution bars (skeleton) */}
-                  <div class="flex-1 flex flex-col gap-1.5">
-                    {[5, 4, 3, 2, 1].map((star) => (
-                      <div class="flex items-center gap-1.5">
-                        <span class="text-11-regular text-text-weaker w-5 text-right">{star}</span>
-                        <Icon name="star" size="small" class="text-text-weaker/40" />
-                        <div class="flex-1 h-1.5 rounded-full bg-surface-inset-base overflow-hidden">
-                          <div class="h-full rounded-full bg-surface-inset-base" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Reviews list skeleton */}
-                <div class="flex flex-col items-center justify-center py-12 gap-3">
-                  <Icon name="message-square" size="large" class="text-icon-weak" />
-                  <p class="text-14-medium text-text-weak">No reviews yet</p>
-                  <p class="text-12-regular text-text-weaker max-w-64 text-center">
-                    Reviews will appear here once users rate this plugin after installation.
-                  </p>
-                </div>
               </div>
             </Match>
           </Switch>

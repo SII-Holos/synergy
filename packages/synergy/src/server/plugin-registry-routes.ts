@@ -6,6 +6,7 @@ import fs from "fs"
 import { errors } from "./error"
 import { Global } from "../global"
 import { checkPathContainment } from "../util/path-contain"
+import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 
 // ── Types ──
 
@@ -43,12 +44,17 @@ const RegistryPluginVersion = z
     manifestHash: z.string(),
     permissionsHash: z.string(),
     signature: PluginSignature.optional(),
+    signatureUrl: z.string().optional(),
     downloadUrl: z.string().optional(),
     integrity: z.string(),
     risk: z.enum(["low", "medium", "high"]),
+    runtimeMode: z.enum(["in-process", "worker", "process"]).optional(),
     permissionsSummary: z.array(PermissionItem),
+    tools: z.array(z.string()).optional(),
+    uiSurfaces: z.array(z.string()).optional(),
     publishedAt: z.number(),
     changelog: z.string().optional(),
+    source: PluginMarketplaceRegistry.Source.optional(),
   })
   .meta({ ref: "RegistryPluginVersion" })
 
@@ -57,6 +63,8 @@ const RegistryPluginEntry = z
     id: z.string(),
     name: z.string(),
     description: z.string(),
+    repo: z.string().optional(),
+    homepage: z.string().optional(),
     author: z.object({
       name: z.string(),
       email: z.string().optional(),
@@ -80,6 +88,9 @@ const RegistryPluginEntry = z
     rating: z.number().optional(),
     ratingCount: z.number().optional(),
     changelog: z.string().optional(),
+    source: PluginMarketplaceRegistry.Source.optional(),
+    entryUrl: z.string().optional(),
+    yankedVersions: z.array(z.string()).optional(),
   })
   .meta({ ref: "RegistryPluginEntry" })
 
@@ -91,6 +102,7 @@ const RegistryPluginSummary = z
     id: z.string(),
     name: z.string(),
     description: z.string(),
+    repo: z.string().optional(),
     author: z.object({
       name: z.string(),
       email: z.string().optional(),
@@ -109,6 +121,7 @@ const RegistryPluginSummary = z
     tools: z.array(z.string()),
     downloads: z.number(),
     rating: z.number().optional(),
+    source: PluginMarketplaceRegistry.Source,
   })
   .meta({ ref: "RegistryPluginSummary" })
 
@@ -144,6 +157,66 @@ async function loadRegistry(): Promise<RegistryPluginEntry[]> {
   if (Array.isArray(parsed)) return parsed
   if (parsed && Array.isArray(parsed.plugins)) return parsed.plugins
   return []
+}
+
+function localSummary(p: RegistryPluginEntry): RegistryPluginSummary {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    repo: p.repo,
+    author: p.author,
+    verified: p.verified,
+    official: p.official,
+    keywords: p.keywords,
+    latestVersion: p.versions.length > 0 ? p.versions[p.versions.length - 1].version : undefined,
+    updatedAt: p.updatedAt,
+    risk: p.risk,
+    trustTier: p.trustTier,
+    runtimeMode: p.runtimeMode,
+    uiSurfaces: p.uiSurfaces,
+    tools: p.tools,
+    downloads: p.downloads,
+    rating: p.rating,
+    source: "local",
+  }
+}
+
+function localEntry(entry: RegistryPluginEntry): RegistryPluginEntry {
+  return {
+    ...entry,
+    source: "local",
+    versions: entry.versions.map((version) => ({ ...version, source: "local" })),
+  }
+}
+
+async function searchLocal(query: string): Promise<RegistryPluginSummary[]> {
+  const plugins = await loadRegistry()
+  const q = query.toLowerCase().trim()
+  const results = q
+    ? plugins.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q) ||
+          p.keywords.some((k) => k.toLowerCase().includes(q)),
+      )
+    : plugins
+  return results.map(localSummary)
+}
+
+function mergeSummaries(
+  official: PluginMarketplaceRegistry.NormalizedSummary[],
+  local: RegistryPluginSummary[],
+): RegistryPluginSummary[] {
+  const seen = new Set<string>()
+  const merged: RegistryPluginSummary[] = []
+  for (const summary of [...official, ...local]) {
+    const key = `${summary.source}:${summary.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(summary)
+  }
+  return merged.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 async function saveRegistry(plugins: RegistryPluginEntry[]): Promise<void> {
@@ -228,45 +301,33 @@ export const RegistryRoute = new Hono()
         q: z.string().optional().default(""),
         offset: z.coerce.number().int().min(0).optional().default(0),
         limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+        source: PluginMarketplaceRegistry.Source.optional(),
       }),
     ),
     async (c) => {
-      const { q, offset, limit } = c.req.valid("query")
-      const plugins = await loadRegistry()
-      const query = q.toLowerCase().trim()
+      const { q, offset, limit, source } = c.req.valid("query")
+      const localEnabled = (await PluginMarketplaceRegistry.currentConfig()).includeLocalRegistry
+      let official: PluginMarketplaceRegistry.NormalizedSummary[] = []
+      let local: RegistryPluginSummary[] = []
 
-      let results = plugins
-      if (query) {
-        results = plugins.filter(
-          (p) =>
-            p.name.toLowerCase().includes(query) ||
-            p.description.toLowerCase().includes(query) ||
-            p.keywords.some((k) => k.toLowerCase().includes(query)),
-        )
+      if (source !== "local") {
+        try {
+          official = (await PluginMarketplaceRegistry.searchOfficial({ q, offset: 0, limit: 1000 })).plugins
+        } catch (err) {
+          if (source === "official") {
+            const message = err instanceof Error ? err.message : String(err)
+            return c.json({ message }, 500)
+          }
+        }
       }
 
+      if (source !== "official" && localEnabled) {
+        local = await searchLocal(q)
+      }
+
+      const results = mergeSummaries(official, local)
       const total = results.length
-      const page = results.slice(offset, offset + limit)
-
-      const summaries: RegistryPluginSummary[] = page.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        author: p.author,
-        verified: p.verified,
-        official: p.official,
-        keywords: p.keywords,
-        latestVersion: p.versions.length > 0 ? p.versions[p.versions.length - 1].version : undefined,
-        updatedAt: p.updatedAt,
-        risk: p.risk,
-        trustTier: p.trustTier,
-        runtimeMode: p.runtimeMode,
-        uiSurfaces: p.uiSurfaces,
-        tools: p.tools,
-        downloads: p.downloads,
-        rating: p.rating,
-      }))
-
+      const summaries = results.slice(offset, offset + limit)
       return c.json({ plugins: summaries, total, offset, limit })
     },
   )
@@ -288,12 +349,32 @@ export const RegistryRoute = new Hono()
         ...errors(404),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        source: PluginMarketplaceRegistry.Source.optional(),
+      }),
+    ),
     async (c) => {
       const id = c.req.param("id")
-      const plugins = await loadRegistry()
-      const entry = plugins.find((p) => p.id === id)
-      if (!entry) return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-      return c.json(entry)
+      const { source } = c.req.valid("query")
+      const config = await PluginMarketplaceRegistry.currentConfig()
+
+      if (source !== "local") {
+        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
+          if (source === "official") throw err
+          return null
+        })
+        if (official) return c.json(official)
+      }
+
+      if (source !== "official" && config.includeLocalRegistry) {
+        const plugins = await loadRegistry()
+        const entry = plugins.find((p) => p.id === id)
+        if (entry) return c.json(localEntry(entry))
+      }
+
+      return c.json({ message: `Registry plugin not found: ${id}` }, 404)
     },
   )
 
@@ -314,12 +395,32 @@ export const RegistryRoute = new Hono()
         ...errors(404),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        source: PluginMarketplaceRegistry.Source.optional(),
+      }),
+    ),
     async (c) => {
       const id = c.req.param("id")
-      const plugins = await loadRegistry()
-      const entry = plugins.find((p) => p.id === id)
-      if (!entry) return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-      return c.json(entry.versions)
+      const { source } = c.req.valid("query")
+      const config = await PluginMarketplaceRegistry.currentConfig()
+
+      if (source !== "local") {
+        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
+          if (source === "official") throw err
+          return null
+        })
+        if (official) return c.json(official.versions)
+      }
+
+      if (source !== "official" && config.includeLocalRegistry) {
+        const plugins = await loadRegistry()
+        const entry = plugins.find((p) => p.id === id)
+        if (entry) return c.json(localEntry(entry).versions)
+      }
+
+      return c.json({ message: `Registry plugin not found: ${id}` }, 404)
     },
   )
 
@@ -340,15 +441,37 @@ export const RegistryRoute = new Hono()
         ...errors(404),
       },
     }),
+    validator(
+      "query",
+      z.object({
+        source: PluginMarketplaceRegistry.Source.optional(),
+      }),
+    ),
     async (c) => {
       const id = c.req.param("id")
       const version = c.req.param("version")
-      const plugins = await loadRegistry()
-      const entry = plugins.find((p) => p.id === id)
-      if (!entry) return c.json({ message: `Registry plugin not found: ${id}` }, 404)
-      const ver = entry.versions.find((v) => v.version === version)
-      if (!ver) return c.json({ message: `Version not found: ${id}@${version}` }, 404)
-      return c.json(ver)
+      const { source } = c.req.valid("query")
+      const config = await PluginMarketplaceRegistry.currentConfig()
+
+      if (source !== "local") {
+        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
+          if (source === "official") throw err
+          return null
+        })
+        const ver = official?.versions.find((v) => v.version === version)
+        if (ver) return c.json(ver)
+      }
+
+      if (source !== "official" && config.includeLocalRegistry) {
+        const plugins = await loadRegistry()
+        const entry = plugins.find((p) => p.id === id)
+        if (entry) {
+          const ver = localEntry(entry).versions.find((v) => v.version === version)
+          if (ver) return c.json(ver)
+        }
+      }
+
+      return c.json({ message: `Version not found: ${id}@${version}` }, 404)
     },
   )
 

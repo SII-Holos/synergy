@@ -1,81 +1,178 @@
 # Plugin Marketplace And Registry
 
-Synergy's current registry is local-first. The registry index lives at:
+Synergy's public Plugin Marketplace is a GitHub-backed aggregator. It does not require a deployed registry server.
+
+The official registry index is:
 
 ```text
-~/.synergy/data/registry/plugins.json
+https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json
 ```
 
-Published plugin artifacts are copied under:
+The registry repository is:
 
 ```text
-~/.synergy/data/registry/artifacts/<pluginId>/<version>/
+https://github.com/SII-Holos/synergy-plugins
 ```
 
-## Publish Flow
+Each plugin keeps its own source repository and GitHub Release artifacts. The aggregator repository stores reviewed metadata only.
+
+## Configuration
+
+Marketplace configuration belongs in the `50-plugins.jsonc` domain:
+
+```jsonc
+{
+  "pluginMarketplace": {
+    "enabled": true,
+    "registryUrl": "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+    "includeLocalRegistry": true,
+    "cacheTtlMs": 300000,
+    "offlineCache": true,
+  },
+}
+```
+
+Synergy caches the official index under:
+
+```text
+~/.synergy/cache/plugin-market/registry.json
+~/.synergy/cache/plugin-market/entries/<pluginId>.json
+```
+
+Stale cache may be used for browsing when `offlineCache` is enabled. Installation still requires a downloadable artifact unless it was already cached during the approval flow.
+
+## Official Publish Flow
+
+Plugin authors publish through GitHub PR review:
 
 ```bash
 synergy plugin build
 synergy plugin pack
 synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz \
+  --registry github \
+  --repo https://github.com/owner/my-plugin \
+  --write-entry ../synergy-plugins/plugins/my-plugin.json
+```
+
+Then run this in the `SII-Holos/synergy-plugins` checkout:
+
+```bash
+bun install
+bun run validate
+bun run build-registry
+bun run build-registry --check
+```
+
+Open a PR against `SII-Holos/synergy-plugins`. After CI and maintainer review pass, merging to `main` makes the plugin visible to all Synergy clients using the official registry URL.
+
+`plugin publish --registry github` does not mutate the remote registry. It generates or updates the metadata entry needed for the aggregator PR.
+
+## Local Publish Flow
+
+The local development registry is still available for testing marketplace UX:
+
+```bash
 synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
 ```
 
-`plugin publish` reads the packaged `plugin.json`, computes manifest and permission hashes, stores the real tarball artifact, computes `sha256-...` integrity, and publishes a registry version with a `downloadUrl` pointing to the stored artifact.
+Local registry metadata lives at:
 
-Registry entries use the plugin's canonical id:
+```text
+~/.synergy/data/registry/plugins.json
+```
+
+Local artifacts are copied under:
+
+```text
+~/.synergy/data/registry/artifacts/<pluginId>/<version>/
+```
+
+The Web Marketplace exposes a source filter:
+
+- `Official` reads the GitHub aggregator.
+- `Local` reads the local development registry.
+
+## Registry Entry Shape
+
+`registry.json` is a lightweight index for list/search views. Detail files live at `plugins/<plugin-id>.json`.
+
+An official detail entry points to real release artifacts:
 
 ```jsonc
 {
+  "schemaVersion": 1,
   "id": "my-plugin",
   "name": "my-plugin",
+  "description": "My Synergy plugin",
+  "repo": "https://github.com/owner/my-plugin",
+  "author": { "name": "Owner" },
+  "verified": false,
+  "official": false,
+  "keywords": ["synergy-plugin"],
+  "compatibility": { "synergy": ">=1.0.0" },
   "versions": [
     {
       "version": "0.1.0",
-      "downloadUrl": "file:///Users/me/.synergy/data/registry/artifacts/my-plugin/0.1.0/my-plugin-0.1.0.synergy-plugin.tgz",
+      "downloadUrl": "https://github.com/owner/my-plugin/releases/download/v0.1.0/my-plugin-0.1.0.synergy-plugin.tgz",
+      "signatureUrl": "https://github.com/owner/my-plugin/releases/download/v0.1.0/my-plugin-0.1.0.synergy-plugin.tgz.sig",
       "integrity": "sha256-...",
       "manifestHash": "...",
       "permissionsHash": "...",
       "risk": "medium",
+      "runtimeMode": "process",
+      "permissionsSummary": [],
+      "tools": [],
+      "uiSurfaces": [],
+      "publishedAt": "2026-06-25T00:00:00.000Z",
     },
   ],
+  "yankedVersions": [],
 }
 ```
 
+The plugin id, detail filename, `plugin.json.name`, signature `pluginId`, approval id, and registry id must all be the same canonical plugin id.
+
 ## Install Flow
 
-Marketplace install resolves the selected registry version and installs `version.downloadUrl` when present:
+Official installation resolves the selected registry source and version:
 
 ```text
-registry detail -> selected version -> downloadUrl -> Plugin.add(downloadUrl)
+registry detail -> selected version -> downloadUrl -> sha256 integrity -> signature -> package inspection -> approval -> install cached artifact
 ```
 
-Older registry entries that do not have `downloadUrl` fall back to `entry.name` or the registry id. New published entries should always include a real tarball URL and integrity.
+The artifact must be an installable plugin tarball, not a source archive. It must contain:
 
-Consent is never bypassed for registry installs. If the manifest requests capabilities that do not have a valid approval record, installation returns a consent-required response.
+```text
+plugin.json
+runtime/index.js
+integrity.json
+permissions.summary.json
+```
+
+Remote install rejects the artifact if:
+
+- `integrity` does not match the downloaded tarball
+- the signature is missing or invalid
+- signature payload hashes do not match artifact, manifest, or permissions
+- `plugin.json.name` or `plugin.json.version` does not match the registry entry
+- the version is yanked
+- required package files are missing
+
+If approval is required, `POST /api/plugins/install-from-registry` returns `409` with `code: "approval_required"`, the manifest, capabilities, risk, diff, and artifact cache key. After the user approves, the same install request reuses the cached artifact.
 
 ## Registry Routes
 
 Current routes:
 
-| Method | Route                                                  | Purpose                           |
-| ------ | ------------------------------------------------------ | --------------------------------- |
-| `GET`  | `/api/registry/plugins/search?q=`                      | Search registry entries           |
-| `GET`  | `/api/registry/plugins/:id`                            | Full entry with all versions      |
-| `GET`  | `/api/registry/plugins/:id/versions`                   | List versions                     |
-| `GET`  | `/api/registry/plugins/:id/versions/:version`          | Version metadata                  |
-| `GET`  | `/api/registry/plugins/:id/versions/:version/download` | Download the stored artifact      |
-| `POST` | `/api/registry/plugins/publish`                        | Publish metadata                  |
-| `POST` | `/api/plugins/install-from-registry`                   | Install selected registry version |
+| Method | Route                                 | Purpose                                   |
+| ------ | ------------------------------------- | ----------------------------------------- |
+| `GET`  | `/api/registry/search?q=&source=`     | Search official/local registry entries    |
+| `GET`  | `/api/registry/:id?source=`           | Full entry with all versions              |
+| `GET`  | `/api/registry/:id/versions?source=`  | List versions                             |
+| `GET`  | `/api/registry/:id/versions/:version` | Version metadata                          |
+| `GET`  | `/api/registry/:id/download/:version` | Download local stored artifact            |
+| `POST` | `/api/registry/publish`               | Publish to the local development registry |
+| `POST` | `/api/plugins/install-from-registry`  | Install selected registry version         |
 
-The app should use generated SDK methods for internal Synergy API calls. Browser-native loading remains appropriate for artifact, script, and asset URLs.
-
-## Update Flow
-
-Updates compare the installed manifest and approval record with the target registry version:
-
-```text
-installed manifest + approval -> registry version -> permission diff -> approve -> install artifact
-```
-
-The permission diff is keyed by canonical plugin id. A package name, registry display name, or tarball filename must not be used as the approval key.
+Use generated SDK methods for internal Synergy API calls. Browser-native loading remains appropriate for artifact, script, and asset URLs.

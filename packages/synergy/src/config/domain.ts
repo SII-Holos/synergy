@@ -67,7 +67,7 @@ export namespace ConfigDomain {
       "plugins",
       "50-plugins.jsonc",
       "Plugins",
-      ["plugin", "pluginConfig", "pluginApprovalPolicy", "pluginRuntimePolicy"],
+      ["plugin", "pluginConfig", "pluginApprovalPolicy", "pluginRuntimePolicy", "pluginMarketplace"],
       "append",
     ),
     def("agents", "60-agents.jsonc", "Agents", [

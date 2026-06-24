@@ -125,6 +125,17 @@ synergy plugin publish <tarball>
 
 Accepts `.synergy-plugin.tgz` or `.tgz`, inspects the packaged `plugin.json`, copies the real artifact to the local registry artifact store, computes `sha256-...` integrity, and publishes metadata with a `file://` download URL.
 
+For the public GitHub-backed marketplace, publish the plugin artifact and `.sig` in the plugin repository's GitHub Release, then generate an aggregator entry:
+
+```bash
+synergy plugin publish <tarball> \
+  --registry github \
+  --repo https://github.com/owner/my-plugin \
+  --write-entry ../synergy-plugins/plugins/<name>.json
+```
+
+`--registry github` prints or writes the JSON entry for `SII-Holos/synergy-plugins`. It does not push or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`.
+
 ## Registry Install
 
-The Web marketplace and `install-from-registry` route install the selected registry version's `downloadUrl` when present. Only older registry entries without an artifact URL fall back to package name/spec installation.
+The Web marketplace and `install-from-registry` route install the selected registry source/version. Official installs download the release artifact, verify `sha256-...` integrity, verify signature metadata, inspect the package contents, request approval when needed, and then install the cached tarball. Local registry installs use the local artifact `downloadUrl` and preserve the previous development workflow.

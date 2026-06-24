@@ -1031,6 +1031,45 @@ export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
   allowWorkerMode: true,
   allowLocalInProcess: true,
 } as const satisfies Required<PluginRuntimePolicy>
+
+export const PluginMarketplace = z
+  .object({
+    enabled: z.boolean().optional().default(true).describe("Enable the public GitHub-backed plugin marketplace"),
+    registryUrl: z
+      .string()
+      .url()
+      .optional()
+      .default("https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json")
+      .describe("URL of the official plugin registry.json index"),
+    includeLocalRegistry: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Include the local development registry in marketplace search and detail routes"),
+    cacheTtlMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(300000)
+      .describe("Remote marketplace cache TTL in milliseconds"),
+    offlineCache: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Use stale marketplace cache for browsing when the remote registry cannot be reached"),
+  })
+  .strict()
+  .meta({ ref: "PluginMarketplaceConfig" })
+export type PluginMarketplace = z.infer<typeof PluginMarketplace>
+
+export const PLUGIN_MARKETPLACE_DEFAULTS = {
+  enabled: true,
+  registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+  includeLocalRegistry: true,
+  cacheTtlMs: 300000,
+  offlineCache: true,
+} as const satisfies Required<PluginMarketplace>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1098,6 +1137,7 @@ export const Info = z
     plugin: z.string().array().optional(),
     pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
+    pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
     autoupdate: z
       .union([z.boolean(), z.literal("notify")])

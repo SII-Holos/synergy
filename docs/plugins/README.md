@@ -29,4 +29,13 @@ synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
 ```
 
+Public marketplace publishing uses the GitHub aggregator repository instead of a deployed registry server:
+
+```bash
+synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz \
+  --registry github \
+  --repo https://github.com/owner/my-plugin \
+  --write-entry ../synergy-plugins/plugins/my-plugin.json
+```
+
 Plugin authors do not need to read the repository root `AGENTS.md` unless they are modifying Synergy itself.

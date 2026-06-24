@@ -69,11 +69,89 @@ async function setupDownloadFile(entryId: string, version: string): Promise<stri
   return filePath
 }
 
-async function cleanRegistry(): Promise<void> {
+function cleanRegistry(): void {
   const registryPath = registryFilePath()
   try {
     fs.rmSync(registryPath, { force: true })
   } catch {}
+  try {
+    fs.rmSync(path.join(Global.Path.cache, "plugin-market"), { recursive: true, force: true })
+  } catch {}
+}
+
+async function writeOfficialRegistryCache(): Promise<void> {
+  const marketRoot = path.join(Global.Path.cache, "plugin-market")
+  const entriesRoot = path.join(marketRoot, "entries")
+  fs.mkdirSync(entriesRoot, { recursive: true })
+  const publishedAt = new Date("2026-06-25T00:00:00.000Z").toISOString()
+  await Bun.write(
+    path.join(marketRoot, "registry.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        updatedAt: publishedAt,
+        plugins: [
+          {
+            id: "official-test-plugin",
+            name: "official-test-plugin",
+            description: "Official cached plugin",
+            repo: "https://github.com/SII-Holos/official-test-plugin",
+            entry: "plugins/official-test-plugin.json",
+            author: { name: "SII Holos" },
+            verified: true,
+            official: true,
+            keywords: ["synergy-plugin", "official"],
+            latestVersion: "1.0.0",
+            updatedAt: publishedAt,
+            risk: "low",
+            runtimeMode: "process",
+            tools: ["greet"],
+            uiSurfaces: ["toolRenderers"],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  )
+  await Bun.write(
+    path.join(entriesRoot, "official-test-plugin.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        id: "official-test-plugin",
+        name: "official-test-plugin",
+        description: "Official cached plugin",
+        repo: "https://github.com/SII-Holos/official-test-plugin",
+        author: { name: "SII Holos" },
+        verified: true,
+        official: true,
+        keywords: ["synergy-plugin", "official"],
+        compatibility: { synergy: ">=1.0.0" },
+        versions: [
+          {
+            version: "1.0.0",
+            downloadUrl:
+              "https://github.com/SII-Holos/official-test-plugin/releases/download/v1.0.0/official-test-plugin-1.0.0.synergy-plugin.tgz",
+            signatureUrl:
+              "https://github.com/SII-Holos/official-test-plugin/releases/download/v1.0.0/official-test-plugin-1.0.0.synergy-plugin.tgz.sig",
+            integrity: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            manifestHash: "manifest-hash",
+            permissionsHash: "permissions-hash",
+            risk: "low",
+            runtimeMode: "process",
+            permissionsSummary: [{ key: "plugin_invoke", description: "Run plugin", risk: "low" }],
+            tools: ["greet"],
+            uiSurfaces: ["toolRenderers"],
+            publishedAt,
+          },
+        ],
+        yankedVersions: [],
+      },
+      null,
+      2,
+    ),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +340,53 @@ describe("plugin registry routes v2", () => {
         expect(summary.downloads).toBe(0)
       },
     })
+  })
+
+  test("search supports official and local source filters", async () => {
+    await using tmp = await tmpdir({ git: true })
+    cleanRegistry()
+    await writeOfficialRegistryCache()
+    const previous = process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
+    process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = "1"
+
+    const entry = buildEntry({ name: "LocalSearchablePlugin", description: "Local source plugin" })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          await app.request("/api/registry/publish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry),
+          })
+
+          const officialRes = await app.request("/api/registry/search?source=official")
+          expect(officialRes.status).toBe(200)
+          const official = await officialRes.json()
+          expect(official.total).toBe(1)
+          expect(official.plugins[0].id).toBe("official-test-plugin")
+          expect(official.plugins[0].source).toBe("official")
+
+          const localRes = await app.request("/api/registry/search?source=local")
+          expect(localRes.status).toBe(200)
+          const local = await localRes.json()
+          expect(local.total).toBe(1)
+          expect(local.plugins[0].id).toBe("test-plugin")
+          expect(local.plugins[0].source).toBe("local")
+
+          const aggregateRes = await app.request("/api/registry/search")
+          expect(aggregateRes.status).toBe(200)
+          const aggregate = await aggregateRes.json()
+          expect(aggregate.total).toBe(2)
+          expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
+        },
+      })
+    } finally {
+      if (previous === undefined) delete process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
+      else process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = previous
+    }
   })
 
   test("search returns empty result without v2 fields for empty registry", async () => {

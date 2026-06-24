@@ -36,6 +36,7 @@ export function MarketplacePage() {
   const navigate = useNavigate()
   const [query, setQuery] = createSignal("")
   const [debouncedQuery, setDebouncedQuery] = createSignal("")
+  const [source, setSource] = createSignal<"official" | "local">("official")
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -46,9 +47,9 @@ export function MarketplacePage() {
   }
 
   const [searchResults] = createResource(
-    () => debouncedQuery(),
-    async (q) => {
-      const res = await globalSDK.client.registry.plugins.search({ q: q || undefined, limit: 50 })
+    () => ({ q: debouncedQuery(), source: source() }),
+    async ({ q, source }) => {
+      const res = await globalSDK.client.registry.plugins.search({ q: q || undefined, limit: 50, source })
       return (res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []
     },
   )
@@ -67,6 +68,24 @@ export function MarketplacePage() {
           <span class="text-15-medium text-text-strong flex-1">Plugin Marketplace</span>
         </div>
         <p class="text-12-regular text-text-weak -mt-1">Browse and install plugins for Synergy</p>
+        <div class="inline-flex items-center self-start rounded-lg bg-surface-inset-base p-0.5 border border-border-weaker-base/40">
+          <For each={["official", "local"] as const}>
+            {(item) => (
+              <button
+                type="button"
+                classList={{
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-12-medium transition-colors": true,
+                  "bg-surface-raised-base text-text-strong shadow-sm": source() === item,
+                  "text-text-weak hover:text-text-base": source() !== item,
+                }}
+                onClick={() => setSource(item)}
+              >
+                <Icon name={item === "official" ? "badge-check" : "hard-drive"} size="small" />
+                {item === "official" ? "Official" : "Local"}
+              </button>
+            )}
+          </For>
+        </div>
         {/* ── Search bar ── */}
         <div class="relative">
           <Icon
@@ -118,7 +137,13 @@ export function MarketplacePage() {
                 <button
                   type="button"
                   class="flex flex-col gap-3 px-4 py-3.5 rounded-xl text-left w-full transition-colors bg-surface-raised-base hover:bg-surface-raised-base-hover cursor-pointer ring-1 ring-transparent hover:ring-border-action/20"
-                  onClick={() => navigate(`/plugins/${encodeURIComponent(plugin.id)}`)}
+                  onClick={() =>
+                    navigate(
+                      `/plugins/${encodeURIComponent(plugin.id)}?source=${encodeURIComponent(
+                        (plugin.source as "official" | "local" | undefined) ?? source(),
+                      )}`,
+                    )
+                  }
                 >
                   {/* Top row: name + badges */}
                   <div class="flex items-start gap-2">
@@ -144,6 +169,10 @@ export function MarketplacePage() {
                     <span class="flex items-center gap-1">
                       <Icon name="user" size="small" class="text-icon-weaker" />
                       {plugin.author?.name ?? "Unknown"}
+                    </span>
+                    <span>•</span>
+                    <span>
+                      {((plugin.source as string | undefined) ?? source()) === "local" ? "Local" : "Official"}
                     </span>
                     <span>•</span>
                     <span>Updated {timeAgo(plugin.updatedAt)}</span>

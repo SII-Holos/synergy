@@ -3,6 +3,7 @@ import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import path from "path"
 import * as fs from "fs"
+import { pathToFileURL } from "url"
 import { errors } from "./error"
 import { decideTrust, derivePluginSource, type PluginTrustDecision } from "../plugin/trust"
 import { Installation } from "../global/installation"
@@ -18,10 +19,12 @@ import {
   getApproval,
   computeManifestHash,
   computePermissionsHash,
+  verifyApproval,
 } from "../plugin/consent/approval-store"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { baseCapabilities } from "../plugin/capability"
 import { checkPathContainment } from "../util/path-contain"
+import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 
 import { PluginStatusSchema } from "../plugin/status.js"
 
@@ -96,6 +99,61 @@ const UIContribution = z
   .meta({ ref: "PluginUIContribution" })
 
 const PluginStatus = PluginStatusSchema
+
+function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType | null) {
+  return {
+    pluginId: loadedPlugin.id,
+    name: loadedPlugin.name ?? manifest?.name,
+    version: manifest?.version ?? "0.0.0",
+    trustTier: getPluginTrust(loadedPlugin.pluginDir).tier,
+    hasManifest: manifest !== null,
+    pluginDir: loadedPlugin.pluginDir,
+    manifest: manifest ?? null,
+    cliCommands: loadedPlugin.cli ? Object.keys(loadedPlugin.cli) : [],
+    skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
+    agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
+  }
+}
+
+async function manifestFor(pluginId: string): Promise<PluginManifestType | null> {
+  try {
+    return await Plugin.manifest(pluginId)
+  } catch {
+    return null
+  }
+}
+
+async function installOfficialRegistryPlugin(id: string, version: string) {
+  const artifact = await PluginMarketplaceRegistry.verifyOfficialArtifact(id, version)
+  const approval = await getApproval(id)
+  if (!approval || !verifyApproval(approval, artifact.manifest, artifact.capabilities)) {
+    const oldManifest = await manifestFor(id)
+    const oldCapabilities = oldManifest ? baseCapabilities(oldManifest) : []
+    const diff = diffPermissions(id, oldManifest, artifact.manifest, oldCapabilities, artifact.capabilities)
+    return {
+      type: "approval_required" as const,
+      body: {
+        code: "approval_required",
+        message: `Plugin ${id}@${version} requires approval before installation.`,
+        source: "official",
+        pluginId: id,
+        version,
+        manifest: artifact.manifest,
+        capabilities: artifact.capabilities,
+        risk: artifact.risk,
+        diff,
+        artifactCacheKey: artifact.cacheKey,
+      },
+    }
+  }
+
+  const loadedPlugin = await Plugin.add(pathToFileURL(artifact.tarballPath).href, {
+    autoReload: true,
+    skipConsent: true,
+  })
+  const manifest = await manifestFor(loadedPlugin.id)
+  return { type: "installed" as const, body: apiPluginDetail(loadedPlugin, manifest) }
+}
 
 // ── Route group ──
 
@@ -621,12 +679,13 @@ export const ApiPluginRoute = new Hono()
       z.object({
         manifest: z.record(z.string(), z.any()),
         capabilities: z.array(z.string()),
+        source: z.enum(["local", "official", "npm", "git", "url", "builtin"]).optional(),
       }),
     ),
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
-      const { manifest, capabilities } = c.req.valid("json")
+      const { manifest, capabilities, source: approvedSource } = c.req.valid("json")
       const m = manifest as PluginManifestType
       if (m.name !== pluginId) {
         return c.json(
@@ -634,7 +693,7 @@ export const ApiPluginRoute = new Hono()
           400,
         )
       }
-      const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
+      const source = approvedSource ?? (plugin ? derivePluginSource(plugin.pluginDir) : "local")
       const risk = computeRisk(capabilities)
       const record: PluginApprovalRecord = {
         pluginId,
@@ -713,12 +772,13 @@ export const ApiPluginRoute = new Hono()
       z.object({
         manifest: z.record(z.string(), z.any()),
         capabilities: z.array(z.string()),
+        source: z.enum(["local", "official", "npm", "git", "url", "builtin"]).optional(),
       }),
     ),
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
-      const { manifest, capabilities } = c.req.valid("json")
+      const { manifest, capabilities, source: approvedSource } = c.req.valid("json")
       const m = manifest as PluginManifestType
       if (m.name !== pluginId) {
         return c.json(
@@ -726,7 +786,7 @@ export const ApiPluginRoute = new Hono()
           400,
         )
       }
-      const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
+      const source = approvedSource ?? (plugin ? derivePluginSource(plugin.pluginDir) : "local")
       const risk = computeRisk(capabilities)
       const record: PluginApprovalRecord = {
         pluginId,
@@ -807,13 +867,13 @@ export const ApiPluginRoute = new Hono()
 
   // ── Install from registry ──
 
-  // POST /install-from-registry — Install a plugin from the local registry
+  // POST /install-from-registry — Install a plugin from the registry
   .post(
     "/install-from-registry",
     describeRoute({
       summary: "Install plugin from registry",
       description:
-        "Install a plugin from the local registry store. Looks up the plugin and version in the registry, " +
+        "Install a plugin from the official or local registry. Looks up the plugin and version in the registry, " +
         "then installs the version archive or package spec and loads it into the runtime.",
       operationId: "api.plugins.installFromRegistry",
       responses: {
@@ -831,10 +891,29 @@ export const ApiPluginRoute = new Hono()
       z.object({
         id: z.string().min(1, "Plugin ID is required"),
         version: z.string().min(1, "Version is required"),
+        source: PluginMarketplaceRegistry.Source.optional(),
       }),
     ),
     async (c) => {
-      const { id, version } = c.req.valid("json")
+      const { id, version, source } = c.req.valid("json")
+
+      if (source !== "local") {
+        try {
+          const result = await installOfficialRegistryPlugin(id, version)
+          if (result.type === "approval_required") return c.json(result.body, 409)
+          return c.json(result.body)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          const canFallbackLocal =
+            source === undefined &&
+            (message.includes("Official registry plugin not found") ||
+              message.includes("Official registry version not found") ||
+              message.includes("public plugin marketplace"))
+          if (!canFallbackLocal) {
+            return c.json({ message: `Install failed: ${message}` }, 500)
+          }
+        }
+      }
 
       // Load registry to find the plugin entry
       const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
@@ -873,26 +952,8 @@ export const ApiPluginRoute = new Hono()
         )
       }
 
-      // Get manifest for version info
-      let manifest: PluginManifestType | null = null
-      try {
-        manifest = await Plugin.manifest(loadedPlugin.id)
-      } catch {
-        // no-op
-      }
-
-      return c.json({
-        pluginId: loadedPlugin.id,
-        name: loadedPlugin.name ?? manifest?.name,
-        version: manifest?.version ?? "0.0.0",
-        trustTier: getPluginTrust(loadedPlugin.pluginDir).tier,
-        hasManifest: manifest !== null,
-        pluginDir: loadedPlugin.pluginDir,
-        manifest: manifest ?? null,
-        cliCommands: loadedPlugin.cli ? Object.keys(loadedPlugin.cli) : [],
-        skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
-        agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
-      })
+      const manifest = await manifestFor(loadedPlugin.id)
+      return c.json(apiPluginDetail(loadedPlugin, manifest))
     },
   )
 

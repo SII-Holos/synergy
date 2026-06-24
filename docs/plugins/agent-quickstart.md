@@ -138,7 +138,18 @@ synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
 ```
 
-`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. `publish` stores the real tarball, download URL, integrity, permission summary, and registry metadata.
+`pack` creates an installable `.synergy-plugin.tgz` from `dist/`. Plain `publish` stores the real tarball, download URL, integrity, permission summary, and registry metadata in the local development registry.
+
+For the public Plugin Marketplace, publish the tarball and `.sig` as GitHub Release assets in the plugin repo, then generate the aggregator entry:
+
+```bash
+synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz \
+  --registry github \
+  --repo https://github.com/owner/my-plugin \
+  --write-entry ../synergy-plugins/plugins/my-plugin.json
+```
+
+Open a PR against `SII-Holos/synergy-plugins`; merging to `main` makes the plugin visible in the Official marketplace source.
 
 ## Runtime And Permission Model
 

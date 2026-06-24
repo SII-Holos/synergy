@@ -17,6 +17,7 @@ You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin auth
 - [packages/plugin/README.md](packages/plugin/README.md): SDK API reference and descriptor examples.
 - [docs/plugins/02-manifest-reference.md](docs/plugins/02-manifest-reference.md): `plugin.json` manifest reference.
 - [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy plugin create/validate/build/pack/sign/publish/add`.
+- [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
 - [docs/plugin/runtime-isolation.md](docs/plugin/runtime-isolation.md): in-process, worker, and process runtime behavior.
 - [docs/plugin/permissions-consent.md](docs/plugin/permissions-consent.md): approval and capability model.
 - [docs/plugins/04-tool-renderer-guide.md](docs/plugins/04-tool-renderer-guide.md): Web tool renderer contributions.

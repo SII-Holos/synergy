@@ -903,6 +903,32 @@ export type PluginRuntimePolicyConfig = {
   allowLocalInProcess?: boolean
 }
 
+/**
+ * Public plugin marketplace registry configuration
+ */
+export type PluginMarketplaceConfig = {
+  /**
+   * Enable the public GitHub-backed plugin marketplace
+   */
+  enabled?: boolean
+  /**
+   * URL of the official plugin registry.json index
+   */
+  registryUrl?: string
+  /**
+   * Include the local development registry in marketplace search and detail routes
+   */
+  includeLocalRegistry?: boolean
+  /**
+   * Remote marketplace cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   */
+  offlineCache?: boolean
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -1882,6 +1908,7 @@ export type Config = {
   plugin?: Array<string>
   pluginApprovalPolicy?: PluginApprovalPolicyConfig
   pluginRuntimePolicy?: PluginRuntimePolicyConfig
+  pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
   /**
    * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
@@ -3994,6 +4021,7 @@ export type RegistryPluginSummary = {
   id: string
   name: string
   description: string
+  repo?: string
   author: {
     name: string
     email?: string
@@ -4011,6 +4039,7 @@ export type RegistryPluginSummary = {
   tools: Array<string>
   downloads: number
   rating?: number
+  source: "official" | "local"
 }
 
 export type RegistryPluginSignature = {
@@ -4032,12 +4061,17 @@ export type RegistryPluginVersion = {
   manifestHash: string
   permissionsHash: string
   signature?: RegistryPluginSignature
+  signatureUrl?: string
   downloadUrl?: string
   integrity: string
   risk: "low" | "medium" | "high"
+  runtimeMode?: "in-process" | "worker" | "process"
   permissionsSummary: Array<RegistryPermissionItem>
+  tools?: Array<string>
+  uiSurfaces?: Array<string>
   publishedAt: number
   changelog?: string
+  source?: "official" | "local"
 }
 
 export type RegistryPermissionSummary = {
@@ -4052,6 +4086,8 @@ export type RegistryPluginEntry = {
   id: string
   name: string
   description: string
+  repo?: string
+  homepage?: string
   author: {
     name: string
     email?: string
@@ -4076,12 +4112,17 @@ export type RegistryPluginEntry = {
   rating?: number
   ratingCount?: number
   changelog?: string
+  source?: "official" | "local"
+  entryUrl?: string
+  yankedVersions?: Array<string>
 }
 
 export type RegistryPublishInput = {
   id: string
   name: string
   description: string
+  repo?: string
+  homepage?: string
   author: {
     name: string
     email?: string
@@ -4104,6 +4145,9 @@ export type RegistryPublishInput = {
   rating?: number
   ratingCount?: number
   changelog?: string
+  source?: "official" | "local"
+  entryUrl?: string
+  yankedVersions?: Array<string>
 }
 
 export type ExternalAgentInfo = {
@@ -10697,6 +10741,7 @@ export type ApiPluginsApproveInstallData = {
       [key: string]: unknown
     }
     capabilities: Array<string>
+    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
   }
   path: {
     pluginId: string
@@ -10779,6 +10824,7 @@ export type ApiPluginsApproveUpdateData = {
       [key: string]: unknown
     }
     capabilities: Array<string>
+    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
   }
   path: {
     pluginId: string
@@ -10879,6 +10925,7 @@ export type ApiPluginsInstallFromRegistryData = {
   body?: {
     id: string
     version: string
+    source?: "official" | "local"
   }
   path?: never
   query?: {
@@ -11085,6 +11132,7 @@ export type RegistryPluginsSearchData = {
     q?: string
     offset?: number
     limit?: number
+    source?: "official" | "local"
   }
   url: "/api/registry/search"
 }
@@ -11120,6 +11168,7 @@ export type RegistryPluginsGetData = {
   query?: {
     directory?: string
     scopeID?: string
+    source?: "official" | "local"
   }
   url: "/api/registry/{id}"
 }
@@ -11150,6 +11199,7 @@ export type RegistryPluginsVersionsData = {
   query?: {
     directory?: string
     scopeID?: string
+    source?: "official" | "local"
   }
   url: "/api/registry/{id}/versions"
 }
@@ -11181,6 +11231,7 @@ export type RegistryPluginsVersionData = {
   query?: {
     directory?: string
     scopeID?: string
+    source?: "official" | "local"
   }
   url: "/api/registry/{id}/versions/{version}"
 }
