@@ -580,10 +580,7 @@ export function SessionTurn(
                       <MailboxSourceBadge message={msg() as UserMessage} />
                     </Show>
                     {/* User message */}
-                    <Show
-                      when={specialUserMessageRenderer()}
-                      fallback={<Message message={msg()} parts={parts()} />}
-                    >
+                    <Show when={specialUserMessageRenderer()} fallback={<Message message={msg()} parts={parts()} />}>
                       {(SpecialUserMessage) => (
                         <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
                       )}

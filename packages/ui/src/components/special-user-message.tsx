@@ -121,12 +121,8 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
         <Show when={title()}>{(value) => <div data-slot="special-message-title">{value()}</div>}</Show>
         <div data-slot="special-message-description">{view().description}</div>
         <div data-slot="special-message-meta">
-          <Show when={loopID()}>
-            {(id) => <span>Loop {id()}</span>}
-          </Show>
-          <Show when={noteID()}>
-            {(id) => <span>Note {id()}</span>}
-          </Show>
+          <Show when={loopID()}>{(id) => <span>Loop {id()}</span>}</Show>
+          <Show when={noteID()}>{(id) => <span>Note {id()}</span>}</Show>
         </div>
         <Show when={userPrompt()}>
           {(prompt) => (
