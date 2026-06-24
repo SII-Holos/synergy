@@ -15,6 +15,7 @@ import { ShellSafety } from "@/enforcement/shell-safety"
 import { ArtifactPromotion } from "../artifact-promotion"
 import type { MessageV2 } from "@/session/message-v2"
 import type { BashResult } from "./shared"
+import { Observability } from "@/observability"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -71,8 +72,30 @@ export const LocalBashBackend: BashBackend = {
     log.info("bash tool using shell", { shell })
 
     const cwd = params.workdir || ScopeContext.current.directory
+    const traceId = ((ctx.extra as any)?.traceId as string | undefined) ?? Observability.traceId("bash")
+    let regProc: ProcessRegistry.Process | undefined
+    const trace = (type: string, data?: Record<string, unknown>, level?: Observability.Event["level"]) =>
+      Observability.emit(type, {
+        traceId,
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        callID: ctx.callID,
+        tool: "bash",
+        processId: regProc?.id,
+        pid: regProc?.pid,
+        cwd,
+        scopeID: ScopeContext.current.scope.id,
+        level,
+        data,
+      })
+
+    await trace("bash.parser.start", {
+      command: params.command,
+      shell,
+    })
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
+      await trace("bash.parser.error", { reason: "parse returned empty tree" }, "error")
       throw new Error("Failed to parse command")
     }
     const patterns = new Set<string>()
@@ -103,14 +126,25 @@ export const LocalBashBackend: BashBackend = {
     } finally {
       tree.delete()
     }
+    await trace("bash.parser.end", {
+      patternCount: patterns.size,
+      patterns: Array.from(patterns),
+    })
 
     if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
+      await trace("bash.permission.ask", {
+        patterns: Array.from(patterns),
+        capability: ShellSafety.capability(params.command),
+      })
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
         metadata: {
           capability: ShellSafety.capability(params.command),
         },
+      })
+      await trace("bash.permission.resolved", {
+        patterns: Array.from(patterns),
       })
     }
 
@@ -120,13 +154,41 @@ export const LocalBashBackend: BashBackend = {
     const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
     const withArtifacts = async (result: BashResult): Promise<BashResult> => {
+      await trace("artifact.promotion.start", {
+        outputChars: result.output.length,
+      })
       const attachments = await ArtifactPromotion.promote({
         output: result.output,
         cwd,
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
         tool: "bash",
-      }).catch((): MessageV2.FilePart[] => [])
+      })
+        .then(async (items) => {
+          await trace("artifact.promotion.end", {
+            attachmentCount: items.length,
+            attachments: items.map((item) => ({
+              filename: item.filename,
+              mime: item.mime,
+              size: (item.metadata as Record<string, unknown> | undefined)?.size,
+              url: item.url,
+            })),
+          })
+          return items
+        })
+        .catch(async (error): Promise<MessageV2.FilePart[]> => {
+          await trace(
+            "artifact.promotion.error",
+            {
+              error:
+                error instanceof Error
+                  ? { name: error.name, message: error.message, stack: error.stack }
+                  : String(error),
+            },
+            "error",
+          )
+          return []
+        })
       if (attachments.length === 0) return result
       return {
         ...result,
@@ -143,10 +205,13 @@ export const LocalBashBackend: BashBackend = {
       }
     }
     // ── ProcessRegistry setup (shared across both paths) ──────────
-    const regProc = ProcessRegistry.create({
+    regProc = ProcessRegistry.create({
       command: params.command,
       description: params.description,
       cwd,
+    })
+    await trace("bash.process.registered", {
+      processId: regProc.id,
     })
 
     ctx.metadata({
@@ -181,7 +246,14 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
+    let sawOutput = false
     const append = (chunk: Buffer) => {
+      if (!sawOutput) {
+        sawOutput = true
+        void trace("bash.first_output", {
+          bytes: chunk.length,
+        })
+      }
       ProcessRegistry.appendOutput(regProc, chunk.toString())
       scheduleMetadata()
     }
@@ -191,6 +263,10 @@ export const LocalBashBackend: BashBackend = {
     // sandbox denial detection, and temp cleanup — all in one call.
     if (sandboxWrapper && !sandboxWrapper.skipReason && !params.background && !params.yieldSeconds) {
       try {
+        await trace("bash.sandbox.execute.start", {
+          command: sandboxWrapper.command,
+          args: sandboxWrapper.args,
+        })
         const result = await SandboxBackend.executeAsync(sandboxWrapper, {
           fallbackPolicy: sandboxFallback ?? "warn",
           env: sandboxEnv,
@@ -200,6 +276,11 @@ export const LocalBashBackend: BashBackend = {
           maxOutputBytes: 1024 * 1024, // 1 MB
           onStdout: append,
           onStderr: append,
+        })
+        await trace("bash.sandbox.execute.end", {
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
+          outputChars: regProc.output.length,
         })
 
         if (metadataDirty) flushMetadata()
@@ -233,6 +314,13 @@ export const LocalBashBackend: BashBackend = {
         })
       } catch (e: unknown) {
         ProcessRegistry.remove(regProc.id)
+        await trace(
+          "bash.sandbox.execute.error",
+          {
+            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
+          },
+          "error",
+        )
         if (e instanceof EnforcementError.SandboxBlocked) throw e
         throw e
       }
@@ -270,6 +358,14 @@ export const LocalBashBackend: BashBackend = {
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
+    await trace("process.spawn", {
+      processId: regProc.id,
+      pid: child.pid,
+      command: params.command,
+      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
+      background: params.background === true,
+      yieldSeconds: params.yieldSeconds,
+    })
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
@@ -284,6 +380,11 @@ export const LocalBashBackend: BashBackend = {
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
+      void trace("bash.child.exit", {
+        exitCode: code,
+        exitSignal: signal,
+        outputChars: regProc?.output.length ?? 0,
+      })
     })
 
     if (params.background) {
@@ -366,6 +467,13 @@ export const LocalBashBackend: BashBackend = {
         if (sandboxWrapper?.tempPath) {
           SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
         }
+        void trace(
+          "bash.child.error",
+          {
+            error: { name: error.name, message: error.message, stack: error.stack },
+          },
+          "error",
+        )
         reject(error)
       })
     })

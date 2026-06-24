@@ -160,6 +160,10 @@ export type StatsSnapshot = {
   watermark: number
 }
 
+export type DiagnosticsSummary = {
+  [key: string]: unknown
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -1720,6 +1724,28 @@ export type SandboxConfig = {
 }
 
 /**
+ * Local logs, traces, and diagnostics settings
+ */
+export type ObservabilityConfig = {
+  /**
+   * Enable local observability trace JSONL events (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Days to retain local trace files (default: 7)
+   */
+  retentionDays?: number
+  /**
+   * Maximum total trace storage in bytes (default: 250MB)
+   */
+  maxBytes?: number
+  /**
+   * Milliseconds without tool activity before emitting a stalled-tool trace event
+   */
+  stalledToolMs?: number
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -2010,6 +2036,7 @@ export type Config = {
     [key: string]: ChannelFeishuConfig
   }
   sandbox?: SandboxConfig
+  observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
@@ -5187,6 +5214,23 @@ export type GlobalStatsProgressResponses = {
 }
 
 export type GlobalStatsProgressResponse = GlobalStatsProgressResponses[keyof GlobalStatsProgressResponses]
+
+export type ObservabilityDiagnosticsSummaryData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/diagnostics"
+}
+
+export type ObservabilityDiagnosticsSummaryResponses = {
+  /**
+   * Diagnostics summary
+   */
+  200: DiagnosticsSummary
+}
+
+export type ObservabilityDiagnosticsSummaryResponse =
+  ObservabilityDiagnosticsSummaryResponses[keyof ObservabilityDiagnosticsSummaryResponses]
 
 export type GlobalDisposeData = {
   body?: never

@@ -33,6 +33,7 @@ import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
+import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
 
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
@@ -109,7 +110,7 @@ const cli = yargs(hideBin(process.argv))
 
     await Log.init({
       print: process.argv.includes("--print-logs"),
-      dev: Installation.isLocal(),
+      dev: Installation.isLocal() && isServerCommand(),
       level: (() => {
         if (opts.logLevel) return opts.logLevel as Log.Level
         if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
@@ -157,6 +158,7 @@ const cli = yargs(hideBin(process.argv))
   .command(BuildCommand)
   .command(StatusCommand)
   .command(LogsCommand)
+  .command(DiagnosticsCommand)
   .command(PluginCommand)
   .command(DataCommand)
   .command(DoctorCommand)
@@ -198,6 +200,10 @@ function isLongRunningCommand() {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }
   return false
+}
+
+function isServerCommand() {
+  return (firstPositionalArg() ?? "server") === "server"
 }
 
 try {

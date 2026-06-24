@@ -279,6 +279,22 @@ export const SandboxConfig = z
   .meta({ ref: "SandboxConfig" })
 export type SandboxConfig = z.infer<typeof SandboxConfig>
 
+export const ObservabilityConfig = z
+  .object({
+    enabled: z.boolean().optional().describe("Enable local observability trace JSONL events (default: true)"),
+    retentionDays: z.number().int().positive().optional().describe("Days to retain local trace files (default: 7)"),
+    maxBytes: z.number().int().positive().optional().describe("Maximum total trace storage in bytes (default: 250MB)"),
+    stalledToolMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+  })
+  .strict()
+  .meta({ ref: "ObservabilityConfig" })
+export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
+
 export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
 export type Channel = z.infer<typeof Channel>
 
@@ -1251,6 +1267,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
+    observability: ObservabilityConfig.optional().describe("Local logs, traces, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),

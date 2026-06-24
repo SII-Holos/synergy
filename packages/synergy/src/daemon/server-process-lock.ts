@@ -1,5 +1,9 @@
 import fs from "fs/promises"
 import { DaemonPaths } from "./paths"
+import { execFile } from "child_process"
+import { promisify } from "util"
+
+const execFileAsync = promisify(execFile)
 
 export namespace ServerProcessLock {
   export interface LockInfo {
@@ -15,6 +19,22 @@ export namespace ServerProcessLock {
       super(`Another Synergy server process is already running (pid ${lock.pid})`)
       this.name = "AlreadyRunningError"
     }
+  }
+
+  export interface ProcessInspection {
+    alive: boolean
+    pid: number
+    ppid?: number
+    pgid?: number
+    stat?: string
+    cpu?: number
+    memory?: number
+    elapsed?: string
+    command?: string
+    listeningPorts?: number[]
+    healthy?: boolean
+    healthUrl?: string
+    error?: string
   }
 
   export async function acquire() {
@@ -45,17 +65,11 @@ export namespace ServerProcessLock {
       }
     }
 
-    process.once("exit", () => {
-      void release()
-    })
-    process.once("SIGINT", () => {
-      void release()
-    })
-    process.once("SIGTERM", () => {
-      void release()
-    })
-
     return { release }
+  }
+
+  export function path() {
+    return DaemonPaths.runtimeLock()
   }
 
   export async function read(): Promise<LockInfo | undefined> {
@@ -70,6 +84,58 @@ export namespace ServerProcessLock {
       return true
     } catch {
       return false
+    }
+  }
+
+  export async function inspect(lock: LockInfo, input?: { healthUrl?: string }): Promise<ProcessInspection> {
+    if (!(await isPidAlive(lock.pid))) {
+      return { alive: false, pid: lock.pid }
+    }
+    const result: ProcessInspection = { alive: true, pid: lock.pid }
+    if (process.platform !== "win32") {
+      const ps = await execFileAsync("ps", [
+        "-p",
+        String(lock.pid),
+        "-o",
+        "pid=,ppid=,pgid=,stat=,%cpu=,%mem=,etime=,command=",
+      ]).catch((error) => ({ stdout: "", stderr: String(error) }))
+      const line = ps.stdout.trim()
+      if (line) {
+        const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+([\s\S]+)$/)
+        if (match) {
+          result.ppid = Number(match[2])
+          result.pgid = Number(match[3])
+          result.stat = match[4]
+          result.cpu = Number(match[5])
+          result.memory = Number(match[6])
+          result.elapsed = match[7]
+          result.command = match[8]
+        }
+      }
+      const lsof = await execFileAsync("lsof", ["-nP", "-Pan", "-p", String(lock.pid), "-iTCP", "-sTCP:LISTEN"]).catch(
+        () => ({ stdout: "" }),
+      )
+      result.listeningPorts = Array.from(lsof.stdout.matchAll(/TCP [^:]+:(\d+) \(LISTEN\)/g)).map((m) => Number(m[1]))
+    }
+    if (input?.healthUrl) {
+      result.healthUrl = input.healthUrl
+      result.healthy = await health(input.healthUrl)
+    }
+    return result
+  }
+
+  async function health(url: string) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 1200)
+    try {
+      const res = await fetch(new URL("/global/health", url), { signal: controller.signal })
+      if (!res.ok) return false
+      const payload = (await res.json().catch(() => undefined)) as { healthy?: boolean } | undefined
+      return payload?.healthy === true
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timeout)
     }
   }
 }

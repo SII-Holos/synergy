@@ -97,6 +97,7 @@ export namespace ConfigDomain {
       "question",
       "compaction",
       "experimental",
+      "observability",
     ]),
   ] as const satisfies Definition[]
 

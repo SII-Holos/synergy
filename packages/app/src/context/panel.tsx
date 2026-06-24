@@ -9,11 +9,21 @@ export interface PanelDef {
   icon: IconName
 }
 
-export const PANELS: PanelDef[] = listGlobalPanels().map((p) => ({
-  id: p.id,
-  label: p.label,
-  icon: p.icon as IconName,
-}))
+const BUILTIN_PANELS: PanelDef[] = [
+  { id: "agenda", label: "Agenda", icon: "clock" },
+  { id: "engram", label: "Library", icon: "book-open" },
+  { id: "lucid", label: "Lucid", icon: "sparkles" },
+  { id: "diagnostics", label: "Diagnostics", icon: "stethoscope" },
+]
+
+export const PANELS: PanelDef[] = [
+  ...BUILTIN_PANELS,
+  ...listGlobalPanels().map((p) => ({
+    id: p.id,
+    label: p.label,
+    icon: p.icon as IconName,
+  })),
+]
 
 export const { use: usePanel, provider: PanelProvider } = createSimpleContext({
   name: "Panel",
