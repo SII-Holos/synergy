@@ -327,33 +327,69 @@ export const LocalBashBackend: BashBackend = {
     }
 
     let child: ReturnType<typeof spawn>
-    if (sandboxWrapper && !sandboxWrapper.skipReason) {
-      // Sandboxed path: use allowlisted env
-      child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
-        cwd,
-        env: sandboxEnv,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32",
-      })
-    } else {
-      // Unsandboxed path: check for deny policy on skip
-      if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
-        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-      }
-      if (sandboxWrapper?.skipReason) {
-        log.warn("sandbox unavailable, running unsandboxed", {
-          reason: sandboxWrapper.skipReason,
-          fallback: sandboxFallback,
+    try {
+      if (sandboxWrapper && !sandboxWrapper.skipReason) {
+        // Sandboxed path: use allowlisted env
+        child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+          cwd,
+          env: sandboxEnv,
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+        })
+      } else {
+        // Unsandboxed path: check for deny policy on skip
+        if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
+          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+        }
+        if (sandboxWrapper?.skipReason) {
+          log.warn("sandbox unavailable, running unsandboxed", {
+            reason: sandboxWrapper.skipReason,
+            fallback: sandboxFallback,
+          })
+        }
+        child = spawn(params.command, {
+          shell,
+          cwd,
+          env: sandboxEnv,
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
         })
       }
-      child = spawn(params.command, {
-        shell,
-        cwd,
-        env: sandboxEnv,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32",
-      })
+    } catch (e: unknown) {
+      ProcessRegistry.remove(regProc.id)
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+      }
+      await trace(
+        "bash.child.error",
+        {
+          error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
+        },
+        "error",
+      )
+      throw e
     }
+    let aborted = false
+    let exited = false
+    let yielded = false
+    let childError: Error | undefined
+    let rejectChildError: ((error: Error) => void) | undefined
+    child.once("error", (error) => {
+      childError = error
+      exited = true
+      ProcessRegistry.remove(regProc.id)
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+      }
+      void trace(
+        "bash.child.error",
+        {
+          error: { name: error.name, message: error.message, stack: error.stack },
+        },
+        "error",
+      )
+      rejectChildError?.(error)
+    })
     // Wire the spawned child into the existing ProcessRegistry entry
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
@@ -366,6 +402,7 @@ export const LocalBashBackend: BashBackend = {
       background: params.background === true,
       yieldSeconds: params.yieldSeconds,
     })
+    if (childError) throw childError
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
@@ -409,10 +446,6 @@ export const LocalBashBackend: BashBackend = {
         ),
       }
     }
-
-    let aborted = false
-    let exited = false
-    let yielded = false
 
     const HARD_BASH_CEILING_MS = 3_600_000 // 60 minutes absolute hard limit
 
@@ -460,22 +493,15 @@ export const LocalBashBackend: BashBackend = {
         resolve("exited")
       })
 
-      child.once("error", (error) => {
-        exited = true
+      if (childError) {
         cleanup()
-        ProcessRegistry.remove(regProc.id)
-        if (sandboxWrapper?.tempPath) {
-          SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-        }
-        void trace(
-          "bash.child.error",
-          {
-            error: { name: error.name, message: error.message, stack: error.stack },
-          },
-          "error",
-        )
+        reject(childError)
+        return
+      }
+      rejectChildError = (error) => {
+        cleanup()
         reject(error)
-      })
+      }
     })
 
     if (yieldResult === "yielded") {
