@@ -38,7 +38,7 @@ import {
   extractRunningTaskSessionID,
   titlecaseStatusLabel,
 } from "./session-status"
-import { getSpecialUserMessageRenderer } from "./special-user-message"
+import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
 
 function getInjectedContext(message: UserMessage | undefined): InjectedContext | undefined {
   if (!message?.metadata) return undefined
@@ -211,8 +211,10 @@ export function SessionTurn(
         const item = messages[i]
         if (!item) continue
         if (item.role === "user") {
-          if ((item as UserMessage).metadata?.synthetic) {
-            validParentIDs.add(item.id)
+          const user = item as UserMessage
+          if (user.metadata?.synthetic) {
+            if (hasSpecialUserMessageRenderer(user)) break
+            validParentIDs.add(user.id)
             continue
           }
           break
