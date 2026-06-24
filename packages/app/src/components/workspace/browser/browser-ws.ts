@@ -1,6 +1,7 @@
 import { onCleanup, onMount } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import type { BrowserStoreAPI } from "./browser-store"
+import { browserDebug, summarizeBrowserMessage } from "./browser-debug"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
@@ -22,24 +23,39 @@ export function createQueuedBrowserSender(
   function send(msg: Record<string, unknown>) {
     const socket = getSocket()
     if (socket?.readyState === openState) {
+      browserDebug("ws.send", summarizeBrowserMessage(msg))
       socket.send(JSON.stringify(msg))
       return
     }
 
+    browserDebug("ws.queue", {
+      ...summarizeBrowserMessage(msg),
+      readyState: socket?.readyState ?? "missing",
+      pendingBefore: pending.length,
+    })
     pending.push(msg)
-    if (pending.length > maxPending) pending.shift()
+    if (pending.length > maxPending) {
+      const dropped = pending.shift()
+      browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped ?? {}))
+    }
   }
 
   function flush() {
     const socket = getSocket()
-    if (socket?.readyState !== openState) return
+    if (socket?.readyState !== openState) {
+      browserDebug("ws.flush.skipped", { readyState: socket?.readyState ?? "missing", pending: pending.length })
+      return
+    }
     const messages = pending.splice(0)
+    browserDebug("ws.flush", { count: messages.length })
     for (const msg of messages) {
+      browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
       socket.send(JSON.stringify(msg))
     }
   }
 
   function clear() {
+    browserDebug("ws.queue.clear", { count: pending.length })
     pending.length = 0
   }
 
@@ -62,18 +78,26 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
   store._setSend(send)
 
   const connect = () => {
-    if (disposed) return
-    if (!sdk.directory) return
+    if (disposed) {
+      browserDebug("ws.connect.skipped", { reason: "disposed" })
+      return
+    }
+    if (!sdk.directory) {
+      browserDebug("ws.connect.skipped", { reason: "missing directory", sessionID })
+      return
+    }
     store.setSession("connectionStatus", "connecting")
     const wsUrl =
       sdk.url.replace(/^http/, "ws") +
       `/${encodeURIComponent(sdk.directory)}/browser/connect?mode=session&sessionID=${encodeURIComponent(sessionID)}`
+    browserDebug("ws.connect", { sessionID, url: wsUrl })
     const socket = new WebSocket(wsUrl)
     ws = socket
 
     socket.addEventListener("open", () => {
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
+      browserDebug("ws.open", { sessionID, pending: queued.size() })
       queued.flush()
     })
 
@@ -83,9 +107,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
         msg = JSON.parse(event.data)
       } catch (e) {
         console.warn("Invalid browser WS message", String(e))
+        browserDebug("ws.message.invalid", { error: String(e), dataLength: String(event.data ?? "").length })
         return
       }
 
+      browserDebug("ws.message", summarizeBrowserMessage(msg))
       switch (msg.type) {
         case "session.state": {
           if (msg.tabs) store.setSession("tabs", msg.tabs)
@@ -222,33 +248,51 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
             message: msg.message ?? "Browser operation failed",
           })
           console.error("Browser WS error:", msg.message)
+          browserDebug("ws.message.error", summarizeBrowserMessage(msg))
           break
         }
       }
     })
 
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (event) => {
       // Handled by close event.
+      browserDebug("ws.error", { sessionID, eventType: event.type })
     })
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       store.setSession("connectionStatus", "disconnected")
       ws = undefined
+      browserDebug("ws.close", {
+        sessionID,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        disposed,
+        reconnectAttempts,
+      })
       if (disposed) return
       reconnectAttempts++
       if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
         store.setSession("connectionStatus", "failed")
+        browserDebug("ws.reconnect.failed", { sessionID, reconnectAttempts })
         return
       }
+      browserDebug("ws.reconnect.schedule", {
+        sessionID,
+        reconnectAttempts,
+        delay: RECONNECT_DELAY * Math.min(4, reconnectAttempts),
+      })
       reconnectTimer = setTimeout(connect, RECONNECT_DELAY * Math.min(4, reconnectAttempts))
     })
   }
 
   onMount(() => {
+    browserDebug("ws.mount", { sessionID })
     connect()
   })
 
   onCleanup(() => {
+    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws), pending: queued.size() })
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
     queued.clear()

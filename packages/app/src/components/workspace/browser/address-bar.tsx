@@ -1,6 +1,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { useBrowser, type DevPanel } from "./browser-store"
+import { browserDebug } from "./browser-debug"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -45,13 +46,26 @@ export function AddressBar(props: AddressBarProps) {
 
   function handleNavigate() {
     const raw = inputEl?.value.trim() ?? ""
-    if (!raw) return
+    browserDebug("address.navigate", {
+      raw,
+      activeUrl: props.activeUrl(),
+      activeTabId: browser.activeTabId(),
+      connectionStatus: browser.session.connectionStatus,
+      tabCount: browser.session.tabs.length,
+    })
+    if (!raw) {
+      browserDebug("address.navigate.ignored", { reason: "empty" })
+      return
+    }
     props.onNavigate(raw)
     inputEl?.blur()
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === "Enter") handleNavigate()
+    if (e.key === "Enter") {
+      browserDebug("address.keydown.enter", { value: inputEl?.value ?? "" })
+      handleNavigate()
+    }
   }
 
   function requestPanel(panel: DevPanel) {

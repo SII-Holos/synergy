@@ -1,5 +1,6 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
+import { browserDebug, summarizeBrowserMessage } from "./browser-debug"
 
 export interface BrowserTab {
   id: string
@@ -154,26 +155,45 @@ export function createBrowserStore() {
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
   function send(msg: Record<string, unknown>) {
+    browserDebug("store.send", {
+      ...summarizeBrowserMessage(msg),
+      hasSender: Boolean(_sendFn),
+      connectionStatus: session.connectionStatus,
+      activeTabId: activeTabId(),
+      tabCount: session.tabs.length,
+    })
+    if (!_sendFn) browserDebug("store.send.dropped", { reason: "missing sender", type: msg.type })
     _sendFn?.(msg)
   }
 
   function _setSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
     _sendFn = fn
+    browserDebug("store.sender", { installed: Boolean(fn) })
   }
 
   function createTab(url?: string) {
+    browserDebug("store.createTab", { url, activeTabId: activeTabId(), tabCount: session.tabs.length })
     send({ type: "createTab", url })
   }
 
   function navigate(url: string) {
+    browserDebug("store.navigate", {
+      url,
+      activeTabId: activeTabId(),
+      activeTabUrl: activeTab()?.url ?? null,
+      connectionStatus: session.connectionStatus,
+      tabCount: session.tabs.length,
+    })
     setFollowAgent(false)
     const tab = activeTab()
     if (!tab) {
+      browserDebug("store.navigate.createTab", { url })
       createTab(url)
       return
     }
 
     setTabLoading(tab.id, true)
+    browserDebug("store.navigate.activeTab", { url, tabId: tab.id, previousUrl: tab.url })
     send({ type: "navigate", source: "user", url, tabId: tab.id })
   }
 
