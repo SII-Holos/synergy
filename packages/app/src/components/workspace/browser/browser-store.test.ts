@@ -53,3 +53,40 @@ describe("createBrowserStore follow agent", () => {
     })
   })
 })
+
+describe("createBrowserStore navigate", () => {
+  test("creates a tab with the URL when no tab is open", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      store.navigate("www.google.com")
+
+      expect(sent).toEqual([
+        { type: "setFollowAgent", enabled: false },
+        { type: "createTab", url: "www.google.com" },
+      ])
+      dispose()
+    })
+  })
+
+  test("navigates the active tab when one is open", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
+      store.setSession("activeTabId", "tab-1")
+
+      store.navigate("www.google.com")
+
+      expect(store.session.tabs[0]?.isLoading).toBe(true)
+      expect(sent).toEqual([
+        { type: "setFollowAgent", enabled: false },
+        { type: "navigate", source: "user", url: "www.google.com", tabId: "tab-1" },
+      ])
+      dispose()
+    })
+  })
+})

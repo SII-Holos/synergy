@@ -89,13 +89,7 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
             onHistory={(direction) => browser.send({ type: "history", direction, tabId: browser.activeTabId() })}
             onReload={() => browser.send({ type: "reload", tabId: browser.activeTabId() })}
             onStop={() => browser.send({ type: "stop", tabId: browser.activeTabId() })}
-            onNavigate={(url) => {
-              const tab = activeTab()
-              if (!tab) return
-              browser.setFollowAgent(false)
-              browser.setTabLoading(tab.id, true)
-              ws.send({ type: "navigate", source: "user", url, tabId: tab.id })
-            }}
+            onNavigate={browser.navigate}
           />
           <div class="flex-1 relative bg-background-stronger">
             <Show

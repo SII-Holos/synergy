@@ -165,6 +165,18 @@ export function createBrowserStore() {
     send({ type: "createTab", url })
   }
 
+  function navigate(url: string) {
+    setFollowAgent(false)
+    const tab = activeTab()
+    if (!tab) {
+      createTab(url)
+      return
+    }
+
+    setTabLoading(tab.id, true)
+    send({ type: "navigate", source: "user", url, tabId: tab.id })
+  }
+
   function closeTab(tabId: string) {
     send({ type: "closeTab", tabId })
   }
@@ -277,6 +289,7 @@ export function createBrowserStore() {
     activeTab,
     activeTabId,
     createTab,
+    navigate,
     closeTab,
     switchTab,
     setTabLoading,
