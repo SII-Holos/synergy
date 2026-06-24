@@ -583,15 +583,27 @@ export namespace Session {
       metadata: z.custom<ProviderMetadata>().optional(),
     }),
     (input) => {
-      const cachedInputTokens = input.usage.cachedInputTokens ?? 0
+      const providerCacheHitTokens = providerMetadataNumber(input.metadata, [
+        ["deepseek", "prompt_cache_hit_tokens"],
+        ["openaiCompatible", "prompt_cache_hit_tokens"],
+        ["openai-compatible", "prompt_cache_hit_tokens"],
+        ["openai", "prompt_cache_hit_tokens"],
+      ])
+      const providerCacheMissTokens = providerMetadataNumber(input.metadata, [
+        ["deepseek", "prompt_cache_miss_tokens"],
+        ["openaiCompatible", "prompt_cache_miss_tokens"],
+        ["openai-compatible", "prompt_cache_miss_tokens"],
+        ["openai", "prompt_cache_miss_tokens"],
+      ])
+      const cachedInputTokens = input.usage.cachedInputTokens ?? providerCacheHitTokens ?? 0
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
-      const adjustedInputTokens = excludesCachedTokens
-        ? (input.usage.inputTokens ?? 0)
-        : (input.usage.inputTokens ?? 0) - cachedInputTokens
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
+      const adjustedInputTokens =
+        providerCacheMissTokens ??
+        (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
 
       const tokens = {
         input: safe(adjustedInputTokens),
@@ -626,6 +638,21 @@ export namespace Session {
       }
     },
   )
+
+  function providerMetadataNumber(metadata: ProviderMetadata | undefined, paths: string[][]): number | undefined {
+    for (const path of paths) {
+      let current: unknown = metadata
+      for (const segment of path) {
+        if (!current || typeof current !== "object") {
+          current = undefined
+          break
+        }
+        current = (current as Record<string, unknown>)[segment]
+      }
+      if (typeof current === "number" && Number.isFinite(current)) return current
+    }
+    return undefined
+  }
 
   export async function findForEndpoint(endpoint: SessionEndpoint.Info) {
     return SessionManager.getSession(endpoint)

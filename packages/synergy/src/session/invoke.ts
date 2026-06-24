@@ -473,9 +473,11 @@ export namespace SessionInvoke {
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
         const systemParts: string[] = []
+        let systemCacheBreakpoint: number | undefined
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
+        if (systemParts.length > 0) systemCacheBreakpoint = systemParts.length - 1
 
         // Layer 1.5: Semi-static — permission context (stable per session)
         try {
@@ -496,6 +498,7 @@ export namespace SessionInvoke {
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
             systemParts.push(ctx)
+            systemCacheBreakpoint = systemParts.length - 1
           }
         } catch {
           // Profile resolution failure is non-fatal — skip permission context
@@ -585,6 +588,7 @@ export namespace SessionInvoke {
         const promptPlan = await PromptBudgeter.buildPlan({
           model,
           system: systemParts,
+          systemCacheBreakpoint,
           messages: preparedMessages,
           toolDefinitions,
         })
@@ -647,6 +651,7 @@ export namespace SessionInvoke {
           abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
           tools,
           model,
