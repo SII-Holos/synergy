@@ -5,6 +5,7 @@ export interface WorkspacePanelEntry {
   label: string
   icon: string // lucide icon name
   component?: Component // for Tier 2 (trusted import)
+  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean // for Tier 3 (iframe)
   sandboxUrl?: string
   pluginId: string

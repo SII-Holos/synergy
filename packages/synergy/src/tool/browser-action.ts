@@ -22,24 +22,33 @@ export const BrowserActionTool = Tool.define("browser_action", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-    const page = tab.page
-    if (!page) throw new Error("No Playwright page available for browser actions")
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "acting",
+      "browser_action",
+      `Running ${params.action}`,
+      async () => {
+        const page = tab.page
+        if (!page) throw new Error("No Playwright page available for browser actions")
 
-    const resolveLocator = (li: BrowserLocator.LocatorInput) => BrowserLocator.toPlaywrightLocator(page, li)
+        const resolveLocator = (li: BrowserLocator.LocatorInput) => BrowserLocator.toPlaywrightLocator(page, li)
 
-    // Build the action input from tool parameters
-    const actionInput = {
-      action: params.action,
-      locator: params.locator,
-      target: params.target,
-      text: params.text,
-      key: params.key,
-      values: params.values,
-      x: params.x,
-      y: params.y,
-    } as BrowserActions.ActionInput
+        // Build the action input from tool parameters
+        const actionInput = {
+          action: params.action,
+          locator: params.locator,
+          target: params.target,
+          text: params.text,
+          key: params.key,
+          values: params.values,
+          x: params.x,
+          y: params.y,
+        } as BrowserActions.ActionInput
 
-    const result = await BrowserActions.run(page, actionInput, resolveLocator)
-    return { ...result, metadata: {} }
+        const result = await BrowserActions.run(page, actionInput, resolveLocator)
+        return { ...result, metadata: {} }
+      },
+    )
   },
 })

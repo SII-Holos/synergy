@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
-import { Hono, type Context, type Next } from "hono"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -12,7 +12,6 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { Instance } from "../scope/instance"
@@ -53,7 +52,9 @@ import { EngramRoute } from "./engram"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
-import { PluginRoute } from "./plugin-routes"
+import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
+import { PluginRuntimeRoute } from "./plugin-runtime-routes"
+import { RegistryRoute } from "./plugin-registry-routes"
 import { StatsRoute } from "./stats"
 import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
@@ -96,6 +97,7 @@ export namespace Server {
     "img-src 'self' data: https: blob:; " +
     "font-src 'self'; " +
     "connect-src 'self' ws: wss:; " +
+    "frame-src 'self'; " +
     "media-src 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
@@ -109,6 +111,18 @@ export namespace Server {
     const sources = [CSP_THEME_SCRIPT_HASH]
     if (nonce) sources.push(`'nonce-${nonce}'`)
     return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
+    }
   }
 
   let _url: URL | undefined
@@ -190,15 +204,7 @@ export namespace Server {
             if (err instanceof Storage.NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
-            else if (ConfigSet.NotFoundError.isInstance(err)) status = 404
-            else if (
-              ConfigSet.ExistsError.isInstance(err) ||
-              ConfigSet.DeleteDefaultError.isInstance(err) ||
-              ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree") ||
-              err.name.startsWith("Command")
-            )
-              status = 400
+            else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }
@@ -245,6 +251,7 @@ export namespace Server {
           }),
         )
         .use(provideRequestScope)
+        .use(cspMiddleware())
         .get(
           "/global/health",
           describeRoute({
@@ -720,6 +727,9 @@ export namespace Server {
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
         .route("/plugin", PluginRoute)
+        .route("/api/plugins", ApiPluginRoute)
+        .route("/api/plugins", PluginRuntimeRoute)
+        .route("/api/registry", RegistryRoute)
 
         .post(
           "/log",

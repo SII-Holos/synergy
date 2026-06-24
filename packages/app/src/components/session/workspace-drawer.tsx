@@ -5,8 +5,8 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
-import { getWorkspacePanel, loadPluginExport, getPluginContribution } from "@/plugin"
-import { SandboxShell } from "@/plugin/sandbox"
+import { getWorkspacePanel } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
 import "./workspace-drawer.css"
 
 /** Wrapper that shows a skeleton/spinner while lazy-loading a plugin panel component. */
@@ -31,17 +31,15 @@ function PluginWorkspaceContent(props: { panelId: string }) {
       setLoading(false)
       return
     }
-    if (e.pluginId && e.exportName) {
-      const contrib = getPluginContribution(e.pluginId)
-      if (contrib) {
-        loadPluginExport(contrib, e.exportName)
-          .then((c) => {
-            setComp(() => c as Component)
-            setLoading(false)
-          })
-          .catch(() => setLoading(false))
-        return
-      }
+    if (e.loader) {
+      e.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
     }
     setLoading(false)
   })
@@ -65,7 +63,7 @@ function PluginWorkspaceContent(props: { panelId: string }) {
             </div>
           )}
         >
-          <SandboxShell src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>

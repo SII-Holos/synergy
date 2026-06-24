@@ -32,58 +32,70 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.getTab(owner, params.tabId)
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "reading",
+      "browser_screenshot",
+      "Capturing screenshot",
+      async () => {
+        let clip: { x: number; y: number; width: number; height: number } | undefined
+        let captureKind: "viewport" | "fullPage" | "locator" | "clip" = "viewport"
+        const format = params.format as "png" | "jpeg"
 
-    let clip: { x: number; y: number; width: number; height: number } | undefined
-    let captureKind: "viewport" | "fullPage" | "locator" | "clip" = "viewport"
-    const format = params.format as "png" | "jpeg"
+        // ── Playwright path (preferred) ──────────────────────────────
+        if (tab.page) {
+          if (params.clip) {
+            captureKind = "clip"
+            clip = params.clip
+            const buf = (await tab.page.screenshot({ type: format, clip })) as Buffer
+            const { width, height } = clip
+            return finishResult(tab, params, ctx, buf, width, height, captureKind)
+          }
 
-    // ── Playwright path (preferred) ──────────────────────────────
-    if (tab.page) {
-      if (params.clip) {
-        captureKind = "clip"
-        clip = params.clip
-        const buf = (await tab.page.screenshot({ type: format, clip })) as Buffer
-        const { width, height } = clip
-        return finishResult(tab, params, ctx, buf, width, height, captureKind)
-      }
+          if (params.locator) {
+            captureKind = "locator"
+            const result = await BrowserScreenshot.captureLocator(
+              tab.page,
+              params.locator as BrowserLocator.LocatorInput,
+              {
+                format,
+                fullPage: params.fullPage,
+              },
+            )
+            return finishResult(tab, params, ctx, result.buffer, result.width, result.height, captureKind)
+          }
 
-      if (params.locator) {
-        captureKind = "locator"
-        const result = await BrowserScreenshot.captureLocator(tab.page, params.locator as BrowserLocator.LocatorInput, {
-          format,
-          fullPage: params.fullPage,
-        })
-        return finishResult(tab, params, ctx, result.buffer, result.width, result.height, captureKind)
-      }
+          // viewport or fullPage via Playwright
+          captureKind = params.fullPage ? "fullPage" : "viewport"
+          const buf = (await tab.page.screenshot({ type: format, fullPage: params.fullPage })) as Buffer
+          const vp = tab.page.viewportSize()
+          return finishResult(tab, params, ctx, buf, vp?.width ?? 0, vp?.height ?? 0, captureKind)
+        }
 
-      // viewport or fullPage via Playwright
-      captureKind = params.fullPage ? "fullPage" : "viewport"
-      const buf = (await tab.page.screenshot({ type: format, fullPage: params.fullPage })) as Buffer
-      const vp = tab.page.viewportSize()
-      return finishResult(tab, params, ctx, buf, vp?.width ?? 0, vp?.height ?? 0, captureKind)
-    }
+        // ── Legacy fallback (tab.screenshot) ──────────────────────────
+        if (params.clip) {
+          clip = params.clip
+          captureKind = "clip"
+        } else if (params.locator) {
+          const resolved = await BrowserLocator.resolve(tab, params.locator as BrowserLocator.LocatorInput)
+          if (!resolved) {
+            throw new Error(`Locator ${JSON.stringify(params.locator)} did not match any element.`)
+          }
+          clip = BrowserScreenshot.computeClipForLocator(
+            { x: resolved.x, y: resolved.y, width: resolved.width, height: resolved.height },
+            params.locator,
+          )
+          captureKind = "locator"
+        } else if (params.fullPage) {
+          captureKind = "fullPage"
+        }
 
-    // ── Legacy fallback (tab.screenshot) ──────────────────────────
-    if (params.clip) {
-      clip = params.clip
-      captureKind = "clip"
-    } else if (params.locator) {
-      const resolved = await BrowserLocator.resolve(tab, params.locator as BrowserLocator.LocatorInput)
-      if (!resolved) {
-        throw new Error(`Locator ${JSON.stringify(params.locator)} did not match any element.`)
-      }
-      clip = BrowserScreenshot.computeClipForLocator(
-        { x: resolved.x, y: resolved.y, width: resolved.width, height: resolved.height },
-        params.locator,
-      )
-      captureKind = "locator"
-    } else if (params.fullPage) {
-      captureKind = "fullPage"
-    }
-
-    const take = tab.screenshot.bind(tab)
-    const { buffer, width, height } = await take(format, undefined, params.fullPage, clip)
-    return finishResult(tab, params, ctx, buffer, width, height, captureKind)
+        const take = tab.screenshot.bind(tab)
+        const { buffer, width, height } = await take(format, undefined, params.fullPage, clip)
+        return finishResult(tab, params, ctx, buffer, width, height, captureKind)
+      },
+    )
   },
 })
 

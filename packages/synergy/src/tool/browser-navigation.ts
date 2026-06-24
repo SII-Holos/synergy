@@ -12,28 +12,37 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const kind = params.action === "current" ? "reading" : "acting"
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      kind,
+      "browser_navigation",
+      `Navigation ${params.action}`,
+      async () => {
+        switch (params.action) {
+          case "back":
+            await tab.goBack()
+            break
+          case "forward":
+            await tab.goForward()
+            break
+          case "reload":
+            await tab.reload(params.ignoreCache)
+            break
+          case "stop":
+            await tab.stop()
+            break
+        }
 
-    switch (params.action) {
-      case "back":
-        await tab.goBack()
-        break
-      case "forward":
-        await tab.goForward()
-        break
-      case "reload":
-        await tab.reload(params.ignoreCache)
-        break
-      case "stop":
-        await tab.stop()
-        break
-    }
-
-    const url = tab.url || "about:blank"
-    const title = tab.title || ""
-    return {
-      title: params.action === "current" ? "Current page" : `Navigation: ${params.action}`,
-      output: `URL: ${url}\nTitle: ${title}`,
-      metadata: { url, title, tabId: tab.id },
-    }
+        const url = tab.url || "about:blank"
+        const title = tab.title || ""
+        return {
+          title: params.action === "current" ? "Current page" : `Navigation: ${params.action}`,
+          output: `URL: ${url}\nTitle: ${title}`,
+          metadata: { url, title, tabId: tab.id },
+        }
+      },
+    )
   },
 })

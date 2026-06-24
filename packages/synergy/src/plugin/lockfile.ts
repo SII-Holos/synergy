@@ -64,13 +64,26 @@ export function removeEntry(lockfile: PluginLockfile, pluginName: string): Plugi
 }
 
 /**
- * Verify installed plugin files match the lockfile integrity hash.
- * Currently a stub that always returns true — integrity checking is a future feature.
+ * Compute SHA-256 hash of a plugin's entry file.
+ * Returns a lowercase hex string, or null if the file cannot be read.
  */
-export async function checkIntegrity(
-  _lockfile: PluginLockfile,
-  _pluginName: string,
-  _installPath: string,
-): Promise<boolean> {
-  return true
+export async function computeIntegrity(entryPath: string): Promise<string | null> {
+  try {
+    const buffer = await Bun.file(entryPath).arrayBuffer()
+    const hash = new Bun.CryptoHasher("sha256").update(new Uint8Array(buffer)).digest("hex")
+    return hash
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Verify a plugin entry file matches its lockfile integrity hash.
+ * Returns false on mismatch or missing file/hash.
+ */
+export async function checkIntegrity(entry: PluginLockEntry): Promise<boolean> {
+  if (!entry.integrity) return false
+  const actual = await computeIntegrity(entry.resolved)
+  if (!actual) return false
+  return actual === entry.integrity
 }

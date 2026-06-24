@@ -5,42 +5,28 @@ import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
 import { ModelsDev } from "../provider/models"
-import { mergeDeep, pipe, unique } from "remeda"
+import { mergeDeep, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
 import { lazy } from "../util/lazy"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Flag } from "../flag/flag"
 import { Auth } from "../provider/api-key"
-import {
-  type ParseError as JsoncParseError,
-  parse as parseJsonc,
-  printParseErrorCode,
-  modify,
-  applyEdits,
-} from "jsonc-parser"
+import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import { Instance } from "../scope/instance"
 import { BusEvent } from "../bus/bus-event"
-import { GlobalBus } from "../bus/global"
 import { LSPServer } from "../lsp/server"
 import { BunProc } from "@/util/bun"
 import { Installation } from "@/global/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
-import { ConfigSet } from "./set"
 import { loadFragments } from "./fragment"
-import { RuntimeSchema } from "../runtime/schema"
 import * as Schema from "./schema"
+import { ConfigDomain } from "./domain"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
   const CONFIG_SCHEMA = Global.Path.configSchemaUrl
-  const formattingOptions = {
-    tabSize: 2,
-    insertSpaces: true,
-    eol: "\n",
-  } as const
-
   // ── Schema re-exports from ./schema.ts ──
 
   export const McpLocal = Schema.McpLocal
@@ -176,6 +162,8 @@ export namespace Config {
   const wellKnownCache = new Map<string, { data: Info; timestamp: number }>()
   const WELL_KNOWN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
+  ConfigDomain.assertRegistryComplete()
+
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
 
@@ -247,15 +235,6 @@ export namespace Config {
       log.debug("loaded custom config", { path: Flag.SYNERGY_CONFIG })
     }
 
-    // Project config has highest precedence (overrides global and remote)
-    // .json files take precedence over .jsonc when both exist
-    for (const file of ["synergy.jsonc", "synergy.json"]) {
-      const found = await Filesystem.findUp(file, Instance.directory, Instance.directory)
-      for (const resolved of found.toReversed()) {
-        result = mergeConfigConcatArrays(result, await loadFile(resolved))
-      }
-    }
-
     // Inline config content has highest precedence
     if (Flag.SYNERGY_CONFIG_CONTENT) {
       result = mergeConfigConcatArrays(result, JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))
@@ -264,7 +243,6 @@ export namespace Config {
 
     result.agent = result.agent || {}
     result.plugin = result.plugin || []
-
     const directories = [
       Global.Path.config,
       ...(await Array.fromAsync(
@@ -288,16 +266,10 @@ export namespace Config {
       log.debug("loading config from SYNERGY_CONFIG_DIR", { path: Flag.SYNERGY_CONFIG_DIR })
     }
 
+    await migrateLegacyProjectConfig(Instance.directory)
+
     for (const dir of unique(directories)) {
       if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
-        for (const file of ["synergy.jsonc", "synergy.json"]) {
-          log.debug(`loading config from ${path.join(dir, file)}`)
-          result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
-          // to satisfy the type checker
-          result.agent ??= {}
-          result.plugin ??= []
-        }
-        // Load synergy.d/ fragments
         const fragmentDir = path.join(dir, "synergy.d")
         const fragments = await loadFragments(fragmentDir)
         for (const fragment of fragments) {
@@ -315,6 +287,10 @@ export namespace Config {
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
       result.plugin.push(...(await loadPlugin(dir)))
     }
+
+    result = mergeConfigConcatArrays(result, await loadLegacyProjectConfigFiles(Instance.directory))
+    result.agent ??= {}
+    result.plugin ??= []
 
     if (Flag.SYNERGY_PERMISSION) {
       result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SYNERGY_PERMISSION))
@@ -510,12 +486,178 @@ export namespace Config {
   }
 
   export const global = lazy(async () => {
-    const activeSet = await ConfigSet.activeName()
-    const result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
-    return result
+    await migrateLegacyGlobalConfig()
+    return loadDomainDirectory(Global.Path.config)
   })
 
-  async function loadFile(filepath: string): Promise<Info> {
+  async function loadDomainDirectory(root: string): Promise<Info> {
+    let result: Info = {}
+    for (const domain of ConfigDomain.definitions) {
+      const filepath = ConfigDomain.filepath(domain.id, root)
+      const fragment = await loadFile(filepath, { addSchema: false })
+      ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id)
+      result = mergeConfigConcatArrays(result, fragment as Info)
+    }
+    return Info.parse(result)
+  }
+
+  async function migrateLegacyGlobalConfig() {
+    const domainDir = ConfigDomain.directory()
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+    if (existingDomainFiles) return
+
+    const legacy = await findLegacyGlobalConfig()
+    if (!legacy) {
+      await ConfigDomain.ensureDir()
+      return
+    }
+
+    log.info("migrating legacy global config to domain fragments", { source: legacy.source })
+    const config = await loadFile(legacy.source)
+    const split = ConfigDomain.split(config)
+    const tempDir = `${domainDir}.tmp-${process.pid}-${Date.now()}`
+    await fs.rm(tempDir, { recursive: true, force: true })
+    await fs.mkdir(tempDir, { recursive: true })
+
+    try {
+      for (const domain of ConfigDomain.definitions) {
+        const fragment = split.get(domain.id) ?? {}
+        await Bun.write(path.join(tempDir, domain.filename), serializeConfig(fragment))
+      }
+
+      await fs.mkdir(path.dirname(domainDir), { recursive: true })
+      await fs.rename(tempDir, domainDir).catch(async (err) => {
+        if (err?.code !== "EXDEV") throw err
+        await fs.cp(tempDir, domainDir, { recursive: true, force: true })
+        await fs.rm(tempDir, { recursive: true, force: true })
+      })
+
+      await archiveLegacyConfigSets()
+      await archiveLegacyGlobalFile(legacy.source)
+      await fs.rm(path.join(Global.Path.config, "config-set.json"), { force: true }).catch(() => {})
+      log.info("migrated legacy global config", { source: legacy.source, target: domainDir })
+    } catch (err) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
+  }
+
+  async function findLegacyGlobalConfig(): Promise<{ source: string } | undefined> {
+    const metadataPath = path.join(Global.Path.config, "config-set.json")
+    const activeName = await Bun.file(metadataPath)
+      .json()
+      .then((data) => (typeof data?.active === "string" ? data.active : "default"))
+      .catch(() => "default")
+
+    const activeSetPath =
+      activeName && activeName !== "default"
+        ? path.join(Global.Path.config, "config-sets", activeName, "synergy.jsonc")
+        : undefined
+    const candidates = [
+      activeSetPath,
+      path.join(Global.Path.config, "synergy.jsonc"),
+      path.join(Global.Path.config, "synergy.json"),
+      path.join(Global.Path.config, "config-sets", "default", "synergy.jsonc"),
+    ].filter((item): item is string => Boolean(item))
+
+    for (const candidate of candidates) {
+      if (await Bun.file(candidate).exists()) return { source: candidate }
+    }
+    return undefined
+  }
+
+  async function archiveLegacyConfigSets() {
+    const source = path.join(Global.Path.config, "config-sets")
+    if (!(await Bun.file(source).exists())) return
+    const target = path.join(Global.Path.config, "archive", "config-sets")
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.cp(source, target, { recursive: true, force: true }).catch((err) => {
+      log.warn("failed to archive legacy config sets", {
+        source,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function archiveLegacyGlobalFile(filepath: string) {
+    if (!filepath.startsWith(Global.Path.config)) return
+    const archiveDir = path.join(Global.Path.config, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    const target = path.join(archiveDir, path.basename(filepath))
+    await fs.rename(filepath, target).catch((err) => {
+      log.warn("failed to archive legacy global config file", {
+        source: filepath,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function migrateLegacyProjectConfig(projectRoot: string) {
+    const synergyDir = path.join(projectRoot, ".synergy")
+    const domainDir = ConfigDomain.directory(synergyDir)
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+    if (existingDomainFiles) return
+
+    const candidates = [
+      path.join(projectRoot, "synergy.jsonc"),
+      path.join(projectRoot, "synergy.json"),
+      path.join(synergyDir, "synergy.jsonc"),
+      path.join(synergyDir, "synergy.json"),
+    ]
+
+    let migrated: Info = {}
+    const sources: string[] = []
+    for (const candidate of candidates) {
+      if (!(await Bun.file(candidate).exists())) continue
+      migrated = mergeConfigConcatArrays(migrated, await loadFile(candidate))
+      sources.push(candidate)
+    }
+    if (sources.length === 0) return
+
+    log.info("migrating legacy project config to domain fragments", { sources, target: domainDir })
+    for (const [id, fragment] of ConfigDomain.split(migrated)) {
+      await writeDomainFile(id, fragment, synergyDir)
+    }
+    const archiveDir = path.join(synergyDir, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    for (const source of sources) {
+      const target = path.join(archiveDir, path.basename(source))
+      await fs.rename(source, target).catch((err) => {
+        log.warn("failed to archive legacy project config file", {
+          source,
+          target,
+          error: err instanceof Error ? err.message : err,
+        })
+      })
+    }
+  }
+
+  async function loadLegacyProjectConfigFiles(projectRoot: string): Promise<Info> {
+    const synergyDir = path.join(projectRoot, ".synergy")
+    const candidates = [
+      path.join(projectRoot, "synergy.jsonc"),
+      path.join(projectRoot, "synergy.json"),
+      path.join(synergyDir, "synergy.jsonc"),
+      path.join(synergyDir, "synergy.json"),
+    ]
+
+    let result: Info = {}
+    for (const candidate of candidates) {
+      if (!(await Bun.file(candidate).exists())) continue
+      result = mergeConfigConcatArrays(result, await loadFile(candidate))
+    }
+    return result
+  }
+
+  async function loadFile(filepath: string, options: { addSchema?: boolean } = {}): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
       .text()
@@ -524,10 +666,10 @@ export namespace Config {
         throw new JsonError({ path: filepath }, { cause: err })
       })
     if (!text) return {}
-    return load(text, filepath)
+    return load(text, filepath, options)
   }
 
-  async function load(text: string, configFilepath: string) {
+  async function load(text: string, configFilepath: string, options: { addSchema?: boolean } = {}) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       const value = process.env[varName]
       if (value === undefined) {
@@ -599,7 +741,7 @@ export namespace Config {
 
     const parsed = Info.safeParse(data)
     if (parsed.success) {
-      if (!parsed.data.$schema) {
+      if (options.addSchema !== false && !parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
       }
       const result = parsed.data
@@ -648,7 +790,7 @@ export namespace Config {
 
     const retried = Info.safeParse(data)
     if (retried.success) {
-      if (!retried.data.$schema) {
+      if (options.addSchema !== false && !retried.data.$schema) {
         retried.data.$schema = CONFIG_SCHEMA
       }
       const result = retried.data
@@ -704,13 +846,6 @@ export namespace Config {
       z.object({
         scope: z.enum(["global", "project"]),
         changedFields: z.string().array(),
-      }),
-    ),
-    SetActivated: BusEvent.define(
-      "config.set.activated",
-      z.object({
-        previous: ConfigSet.Name,
-        active: ConfigSet.Name,
       }),
     ),
   }
@@ -832,220 +967,205 @@ export namespace Config {
     return { config: newConfig, changedFields, oldConfig }
   }
 
-  async function patchFile(filepath: string, config: Info) {
-    let text = await Bun.file(filepath)
-      .text()
-      .catch(() => "{}")
-
-    for (const [key, value] of Object.entries(config)) {
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        for (const [subKey, subValue] of Object.entries(value)) {
-          const edits = modify(text, [key, subKey], subValue, { formattingOptions })
-          text = applyEdits(text, edits)
-        }
-      } else {
-        const edits = modify(text, [key], value, { formattingOptions })
-        text = applyEdits(text, edits)
-      }
-    }
-
-    await Bun.write(filepath, text)
-  }
-
   export async function update(config: Info) {
     const synergyDir = path.join(Instance.directory, ".synergy")
-    const filepath = path.join(synergyDir, "synergy.jsonc")
-    await patchFile(filepath, config)
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      await writeDomainFile(id, fragment, synergyDir)
+    }
     await Instance.dispose()
   }
 
   export async function updateGlobal(config: Info) {
-    const filepath = await globalPath()
-    await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await patchFile(filepath, config)
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      await domainUpdate(id, fragment)
+    }
   }
 
   export async function globalPath() {
-    return ConfigSet.filePath(await ConfigSet.activeName())
-  }
-
-  export const RawValidationResult = z
-    .object({
-      valid: z.boolean(),
-      config: Info.optional(),
-      errors: z.array(z.string()),
-      warnings: z.array(z.string()),
-    })
-    .meta({ ref: "ConfigRawValidationResult" })
-  export type RawValidationResult = z.infer<typeof RawValidationResult>
-
-  export const RawSet = z
-    .object({
-      name: ConfigSet.Name,
-      path: z.string(),
-      raw: z.string(),
-      config: Info.optional(),
-      active: z.boolean(),
-      isDefault: z.boolean(),
-    })
-    .meta({ ref: "ConfigSetRaw" })
-  export type RawSet = z.infer<typeof RawSet>
-
-  export const RawSaveResult = z
-    .object({
-      configSet: RawSet,
-      validation: RawValidationResult,
-      saved: z.boolean(),
-      runtimeReload: RuntimeSchema.ReloadResult.optional(),
-    })
-    .meta({ ref: "ConfigSetRawSaveResult" })
-  export type RawSaveResult = z.infer<typeof RawSaveResult>
-
-  export async function readRawFile(filepath: string) {
-    const text = await Bun.file(filepath)
-      .text()
-      .catch((err) => {
-        if (err.code === "ENOENT") return "{}\n"
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
-    return text && text.length > 0 ? text : "{}\n"
-  }
-
-  export async function validateRaw(text: string, filepath: string): Promise<RawValidationResult> {
-    const warnings: string[] = []
-
-    try {
-      const config = await load(text, filepath)
-      if (!config.model) {
-        warnings.push("No default model specified — you may need to set one before using this Config Set.")
-      }
-      return {
-        valid: true,
-        config,
-        errors: [],
-        warnings,
-      }
-    } catch (error) {
-      if (JsonError.isInstance(error) || InvalidError.isInstance(error)) {
-        const issues =
-          InvalidError.isInstance(error) && error.data.issues?.length
-            ? error.data.issues.map((issue) => {
-                const location = issue.path.length > 0 ? `${issue.path.join(".")}: ` : ""
-                return `${location}${issue.message}`
-              })
-            : []
-        const details = [error.data.message, ...issues].filter((item): item is string => Boolean(item))
-        return {
-          valid: false,
-          errors: details.length > 0 ? details : ["Invalid config"],
-          warnings,
-        }
-      }
-      throw error
-    }
-  }
-
-  export async function configSetGetRaw(name: string): Promise<RawSet> {
-    await ConfigSet.assertExists(name)
-    const summary = await ConfigSet.summary(name)
-    const filepath = ConfigSet.filePath(name)
-    const raw = await readRawFile(filepath)
-    const validation = await validateRaw(raw, filepath)
-    return {
-      ...summary,
-      path: filepath,
-      raw,
-      config: validation.config,
-    }
-  }
-
-  export async function configSetSaveRaw(name: string, raw: string, reload = true): Promise<RawSaveResult> {
-    const parsed = await ConfigSet.assertExists(name)
-    const filepath = ConfigSet.filePath(parsed)
-    const validation = await validateRaw(raw, filepath)
-    if (!validation.valid) {
-      throw new InvalidError({
-        path: filepath,
-        message: validation.errors.join("\n\n"),
-      })
-    }
-
-    await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await Bun.write(filepath, raw.endsWith("\n") ? raw : raw + "\n")
-
-    const configSet = await configSetGetRaw(parsed)
-    const shouldReload = reload && configSet.active
-    const runtimeReload = shouldReload
-      ? await import("../runtime/reload").then((mod) =>
-          mod.RuntimeReload.reload({
-            targets: ["config"],
-            scope: "global",
-            reason: `config.set.raw.save:${parsed}`,
-          }),
-        )
-      : undefined
-
-    return {
-      configSet,
-      validation,
-      saved: true,
-      runtimeReload,
-    }
+    return ConfigDomain.directory()
   }
 
   export async function globalRaw() {
-    return loadFile(await globalPath())
+    await migrateLegacyGlobalConfig()
+    return loadDomainDirectory(Global.Path.config)
   }
 
-  export async function configSetList() {
-    return ConfigSet.list()
+  export const DomainSummary = z
+    .object({
+      id: ConfigDomain.Id,
+      filename: z.string(),
+      label: z.string(),
+      path: z.string(),
+      ownedKeys: z.array(z.string()),
+      mergePolicy: ConfigDomain.MergeMode,
+      reloadTargets: z.array(z.string()),
+      uiSection: z.string(),
+      importable: z.boolean(),
+      config: Info.optional(),
+    })
+    .meta({ ref: "ConfigDomainSummary" })
+  export type DomainSummary = z.infer<typeof DomainSummary>
+
+  export async function domainList(): Promise<DomainSummary[]> {
+    await migrateLegacyGlobalConfig()
+    return Promise.all(
+      ConfigDomain.definitions.map(async (domain) => ({
+        ...domain,
+        path: ConfigDomain.filepath(domain.id),
+        ownedKeys: domain.ownedKeys.map(String),
+        config: redactForClient(await domainGet(domain.id)),
+      })),
+    )
   }
 
-  export async function configSetGet(name: string) {
-    await ConfigSet.assertExists(name)
-    return {
-      ...(await ConfigSet.summary(name)),
-      config: redactForClient(await loadFile(ConfigSet.filePath(name))),
+  export async function domainGet(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
+    const parsed = ConfigDomain.Id.parse(id)
+    await migrateLegacyGlobalConfig()
+    const filepath = ConfigDomain.filepath(parsed, root)
+    const config = await loadFile(filepath, { addSchema: false })
+    ConfigDomain.validateKeys(config as Record<string, unknown>, parsed)
+    return config
+  }
+
+  export async function domainUpdate(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    const parsed = ConfigDomain.Id.parse(id)
+    ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
+    const stored = await domainGet(parsed, options.root)
+    const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
+    const next = mergeDomainConfig(stored, mergedPatch, options.mode ?? ConfigDomain.byId.get(parsed)!.mergePolicy)
+
+    const aggregate = mergeConfigConcatArrays(await globalRaw(), next as Info)
+    Info.parse(aggregate)
+    await writeDomainFile(parsed, next, options.root)
+    global.reset()
+    await state.resetAll()
+    return redactForClient(await domainGet(parsed, options.root))
+  }
+
+  function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
+    if (mode === "replace-domain") return patch
+    if (mode === "append") {
+      const merged = mergeDeep(current, patch) as Info
+      if (current.plugin || patch.plugin) {
+        merged.plugin = Array.from(new Set([...(current.plugin ?? []), ...(patch.plugin ?? [])]))
+      }
+      return merged
     }
+    return mergeDeep(current, patch) as Info
   }
 
-  export async function configSetCreate(name: string, config?: Info) {
-    const filepath = await ConfigSet.create(name)
-    const initialConfig = config ?? (await globalRaw())
-    if (Object.keys(initialConfig).length > 0) {
-      await patchFile(filepath, initialConfig)
-    }
-    return configSetGet(name)
-  }
+  export const DomainImportPlanInput = z
+    .object({
+      config: Info,
+      only: z.array(ConfigDomain.Id).optional(),
+      mode: ConfigDomain.MergeMode.optional(),
+    })
+    .meta({ ref: "ConfigDomainImportPlanInput" })
+  export type DomainImportPlanInput = z.infer<typeof DomainImportPlanInput>
 
-  export async function configSetUpdate(name: string, config: Info) {
-    const parsed = await ConfigSet.assertExists(name)
-    const stored = await loadFile(ConfigSet.filePath(parsed))
-    const merged = mergeRedactedSecrets(config, stored)
-    await fs.mkdir(path.dirname(ConfigSet.filePath(parsed)), { recursive: true })
-    await patchFile(ConfigSet.filePath(parsed), merged)
-    return configSetGet(parsed)
-  }
+  export const DomainImportChange = z
+    .object({
+      key: z.string(),
+      before: z.unknown().optional(),
+      after: z.unknown().optional(),
+      conflict: z.boolean(),
+    })
+    .meta({ ref: "ConfigDomainImportChange" })
+  export const DomainImportPlan = z
+    .object({
+      domains: z.array(
+        z.object({
+          id: ConfigDomain.Id,
+          filename: z.string(),
+          path: z.string(),
+          mode: ConfigDomain.MergeMode,
+          changes: z.array(DomainImportChange),
+        }),
+      ),
+      conflicts: z.array(DomainImportChange),
+    })
+    .meta({ ref: "ConfigDomainImportPlan" })
+  export type DomainImportPlan = z.infer<typeof DomainImportPlan>
 
-  export async function configSetDelete(name: string) {
-    const summary = await ConfigSet.summary(name)
-    await ConfigSet.remove(name)
-    return summary
-  }
+  export async function domainImportPlan(input: DomainImportPlanInput): Promise<DomainImportPlan> {
+    const only = new Set(input.only ?? ConfigDomain.definitions.map((domain) => domain.id))
+    const split = ConfigDomain.split(input.config)
+    const domains: DomainImportPlan["domains"] = []
+    const conflicts: z.infer<typeof DomainImportChange>[] = []
 
-  export async function configSetActivate(name: string) {
-    const result = await ConfigSet.activate(name)
-    if (result.changed) {
-      GlobalBus.emit("event", {
-        directory: Instance.directory,
-        payload: {
-          type: Event.SetActivated.type,
-          properties: {
-            previous: result.previous,
-            active: result.active,
-          },
-        },
+    for (const [id, fragment] of split) {
+      if (!only.has(id)) continue
+      const definition = ConfigDomain.byId.get(id)!
+      if (!definition.importable) continue
+      const current = await domainGet(id)
+      const mode = input.mode ?? definition.mergePolicy
+      const next = mergeDomainConfig(current, fragment as Info, mode)
+      const changes = diffDomain(current, next).map((change) => ({
+        ...change,
+        conflict: change.before !== undefined && change.after !== undefined && !sameJson(change.before, change.after),
+      }))
+      conflicts.push(...changes.filter((change) => change.conflict))
+      domains.push({
+        id,
+        filename: definition.filename,
+        path: ConfigDomain.filepath(id),
+        mode,
+        changes,
       })
+    }
+    return { domains, conflicts }
+  }
+
+  export async function domainImportApply(input: DomainImportPlanInput & { yes?: boolean }) {
+    const plan = await domainImportPlan(input)
+    if (plan.conflicts.length && !input.yes) {
+      throw new InvalidError({
+        path: ConfigDomain.directory(),
+        message: `Config import has ${plan.conflicts.length} conflict(s). Re-run with confirmation to apply.`,
+      })
+    }
+    const split = ConfigDomain.split(input.config)
+    for (const domain of plan.domains) {
+      const fragment = split.get(domain.id)
+      if (!fragment) continue
+      await domainUpdate(domain.id, fragment, { mode: domain.mode })
+    }
+    return plan
+  }
+
+  function diffDomain(before: Info, after: Info) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+    return [...keys]
+      .filter((key) => !sameJson((before as any)[key], (after as any)[key]))
+      .map((key) => ({ key, before: (before as any)[key], after: (after as any)[key] }))
+  }
+
+  function sameJson(a: unknown, b: unknown) {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+
+  async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
+    const filepath = ConfigDomain.filepath(id, root)
+    await fs.mkdir(path.dirname(filepath), { recursive: true })
+    await Bun.write(filepath, serializeConfig(config))
+  }
+
+  function serializeConfig(config: Partial<Info>) {
+    return `${JSON.stringify(sortConfigKeys(config), null, 2)}\n`
+  }
+
+  function sortConfigKeys(config: Partial<Info>) {
+    const result: Record<string, unknown> = {}
+    for (const domain of ConfigDomain.definitions) {
+      for (const key of domain.ownedKeys) {
+        if ((config as Record<string, unknown>)[key] !== undefined) {
+          result[String(key)] = (config as Record<string, unknown>)[key]
+        }
+      }
     }
     return result
   }

@@ -107,7 +107,7 @@ test("merge - preserves rule order", () => {
 })
 
 test("merge - config permission overrides default ask", () => {
-  // Simulates: defaults have "*": "ask", config sets bash: "allow"
+  // Simulates: defaults have "*": "ask", config overrides bash: "allow"
   const defaults: PermissionNext.Ruleset = [{ permission: "*", pattern: "*", action: "ask" }]
   const config: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
   const merged = PermissionNext.merge(defaults, config)
@@ -119,7 +119,7 @@ test("merge - config permission overrides default ask", () => {
 })
 
 test("merge - config ask overrides default allow", () => {
-  // Simulates: defaults have bash: "allow", config sets bash: "ask"
+  // Simulates: defaults have bash: "allow", config overrides bash: "ask"
   const defaults: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
   const config: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "ask" }]
   const merged = PermissionNext.merge(defaults, config)

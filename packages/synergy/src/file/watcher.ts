@@ -6,7 +6,7 @@ import { Instance } from "../scope/instance"
 import { Log } from "../util/log"
 import { FileIgnore } from "./ignore"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
+import { Global } from "../global"
 import path from "path"
 // @ts-ignore
 import { createWrapper } from "@parcel/watcher/wrapper"
@@ -62,7 +62,7 @@ export namespace FileWatcher {
 
       // Global scope: watch the global config directory and emit via GlobalBus
       if (Instance.scope.type === "global") {
-        const globalConfigDir = path.dirname(ConfigSet.filePath(ConfigSet.activeNameSync()))
+        const globalConfigDir = Global.Path.config
         const globalSubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
           if (err) return
           for (const evt of evts) {

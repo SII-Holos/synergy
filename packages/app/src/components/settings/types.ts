@@ -1,4 +1,3 @@
-import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -126,14 +125,6 @@ export type ChannelSettings = {
 export function emptyMcp(): McpEntry {
   return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
 }
-
-export type RawValidationState = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-}
-
-export type SettingsEditMode = "form" | "raw"
 
 export type DialogSettingsProps = {
   initialTab?: string

@@ -7,6 +7,11 @@ export const PluginLockEntry = z
     resolved: z.string(),
     integrity: z.string().optional(),
     dependencies: z.record(z.string(), z.string()).optional(),
+    signature: z.object({ algorithm: z.string(), signature: z.string(), signer: z.string() }).optional(),
+    permissionsHash: z.string().optional(),
+    manifestHash: z.string().optional(),
+    approvalId: z.string().optional(),
+    runtimeMode: z.enum(["in-process", "worker", "process"]).optional(),
   })
   .strict()
 

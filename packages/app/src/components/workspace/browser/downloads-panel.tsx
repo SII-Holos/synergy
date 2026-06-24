@@ -6,6 +6,7 @@ const STATE_META: Record<DownloadEntry["state"], { label: string; color: string;
   completed: { label: "Complete", color: "text-green-400", bg: "bg-green-500/10" },
   cancelled: { label: "Cancelled", color: "text-text-weaker", bg: "bg-surface-inset-base" },
   interrupted: { label: "Interrupted", color: "text-amber-400", bg: "bg-amber-500/10" },
+  blocked: { label: "Blocked", color: "text-red-400", bg: "bg-red-500/10" },
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const
@@ -64,7 +65,10 @@ export function DownloadsPanel() {
                       {meta.label}
                     </span>
                   </span>
-                  <span class="w-32 shrink-0 text-text-strong truncate" title={`${entry.fileName} (${entry.mimeType})`}>
+                  <span
+                    class="w-32 shrink-0 text-text-strong truncate"
+                    title={entry.warning ?? `${entry.fileName} (${entry.mimeType})`}
+                  >
                     {entry.fileName || "—"}
                   </span>
                   <span class="w-16 shrink-0 text-text-weaker tabular-nums">

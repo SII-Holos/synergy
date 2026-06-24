@@ -218,7 +218,7 @@ test("global permission config applies to all agents", async () => {
   })
 })
 
-test("agent steps/maxSteps config sets steps property", async () => {
+test("agent steps/maxSteps config overrides steps property", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {

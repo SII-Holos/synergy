@@ -1,20 +1,20 @@
 import { createContext, useContext, type JSX } from "solid-js"
 
-export interface PluginHost {
+export interface SandboxPluginHostValue {
   pluginId: string
   serverUrl: string
   UIApiVersion: string
   theme: () => "light" | "dark"
 }
 
-const PluginHostContext = createContext<PluginHost>()
+const SandboxPluginHostContext = createContext<SandboxPluginHostValue>()
 
-export function PluginHostProvider(props: { value: PluginHost; children: JSX.Element }) {
-  return <PluginHostContext.Provider value={props.value}>{props.children}</PluginHostContext.Provider>
+export function SandboxPluginHostProvider(props: { value: SandboxPluginHostValue; children: JSX.Element }) {
+  return <SandboxPluginHostContext.Provider value={props.value}>{props.children}</SandboxPluginHostContext.Provider>
 }
 
-export function usePluginHost(): PluginHost {
-  const ctx = useContext(PluginHostContext)
-  if (!ctx) throw new Error("usePluginHost must be used within a PluginHostProvider")
+export function useSandboxPluginHost(): SandboxPluginHostValue {
+  const ctx = useContext(SandboxPluginHostContext)
+  if (!ctx) throw new Error("useSandboxPluginHost must be used within a SandboxPluginHostProvider")
   return ctx
 }

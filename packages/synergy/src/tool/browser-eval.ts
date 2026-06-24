@@ -25,26 +25,36 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
     }
 
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-    const start = Date.now()
+    const activityKind = params.mode === "trusted" ? "acting" : "reading"
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      activityKind,
+      "browser_eval",
+      `Evaluating ${params.mode} script`,
+      async () => {
+        const start = Date.now()
 
-    const isReadonly = params.mode === "readonly"
-    const evalPayload = isReadonly
-      ? BrowserEval.buildReadonlyEval(params.expression)
-      : BrowserEval.buildTrustedEval(params.expression)
+        const isReadonly = params.mode === "readonly"
+        const evalPayload = isReadonly
+          ? BrowserEval.buildReadonlyEval(params.expression)
+          : BrowserEval.buildTrustedEval(params.expression)
 
-    // Readonly eval routes through Playwright CDP session Runtime.evaluate with throwOnSideEffect
-    // Trusted eval uses Playwright page.evaluate (buildPageEval) when permission is granted.
-    // For backward compatibility, tab.evaluate forwards to page.evaluate.
-    const raw = await tab.evaluate(evalPayload.expression, {
-      throwOnSideEffect: isReadonly ? true : undefined,
-    })
-    const duration = Date.now() - start
-    const output = BrowserEval.sanitizeEvalResult(raw, params.maxBytes)
+        // Readonly eval routes through Playwright CDP session Runtime.evaluate with throwOnSideEffect
+        // Trusted eval uses Playwright page.evaluate (buildPageEval) when permission is granted.
+        // For backward compatibility, tab.evaluate forwards to page.evaluate.
+        const raw = await tab.evaluate(evalPayload.expression, {
+          throwOnSideEffect: isReadonly ? true : undefined,
+        })
+        const duration = Date.now() - start
+        const output = BrowserEval.sanitizeEvalResult(raw, params.maxBytes)
 
-    return {
-      title: `Eval result (${params.mode}, ${duration}ms)`,
-      output,
-      metadata: { mode: params.mode, duration },
-    }
+        return {
+          title: `Eval result (${params.mode}, ${duration}ms)`,
+          output,
+          metadata: { mode: params.mode, duration },
+        }
+      },
+    )
   },
 })

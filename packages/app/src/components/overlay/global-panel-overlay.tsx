@@ -6,7 +6,6 @@ import { usePanel } from "@/context/panel"
 import { useLayout } from "@/context/layout"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { getGlobalPanel, loadPluginExport, getPluginContribution } from "@/plugin"
 import "./global-panel-overlay.css"
 interface GlobalPanelOverlayProps {
   panelContent: () => JSX.Element

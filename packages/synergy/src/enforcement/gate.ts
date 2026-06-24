@@ -36,17 +36,27 @@ import {
   type RuleMatch,
 } from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
+import { PluginToolId } from "../plugin/ids.js"
+import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 
 export interface Capability {
   class: string
   nonBypassable: boolean
   reason?: string
   opaque?: boolean
+  approved?: boolean
   paths?: string[]
 }
 
 export interface ClassifyResult {
   capabilities: Capability[]
+}
+
+export interface PluginToolCapabilityMap {
+  /** Capability strings from the plugin manifest (e.g. "filesystem:read", "shell", "network") */
+  capabilities: string[]
+  /** Risk level from manifest */
+  risk: "low" | "medium" | "high"
 }
 
 export interface AuditRecord {
@@ -80,6 +90,10 @@ export interface GateOptions {
   interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
+  /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
+  pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
+  /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
+  pluginApprovals?: Record<string, PluginApprovalRecord>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -202,6 +216,19 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_cancel",
   "agenda_trigger",
 ])
+
+/** Maps gate.ts capability class names to plugin manifest capability strings. */
+const GATE_TO_MANIFEST_CAP: Record<string, string> = {
+  plugin_file_read: "filesystem:read",
+  plugin_file_write: "filesystem:write",
+  plugin_shell: "shell",
+  plugin_network: "network",
+  plugin_session_read: "session_data",
+  plugin_workspace_read: "workspace_data",
+  plugin_config_read: "config:read",
+  plugin_config_write: "config:write",
+  plugin_secret_read: "secrets",
+}
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
@@ -336,6 +363,8 @@ export namespace EnforcementGate {
       interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
+      pluginToolCapabilities = {},
+      pluginApprovals,
       originalCheckout,
       readRoots,
       execPolicy,
@@ -369,10 +398,82 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Plugin tools: plugin__plugin__action
-      if (toolName.startsWith("plugin__")) {
-        const opaque = !registeredPluginTools.has(toolName)
-        caps.push({ class: "plugin_invoke", nonBypassable: true, opaque })
+      // Local tools: local__fileName__exportName
+      if (toolName.startsWith("local__")) {
+        caps.push({ class: "local_tool_invoke", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Plugin tools: plugin__pluginId__toolId
+      if (PluginToolId.is(toolName)) {
+        const entry = pluginToolCapabilities[toolName]
+        const known = registeredPluginTools.has(toolName) || !!entry
+        const opaque = !known
+
+        // Always emit plugin_invoke as the base capability
+        caps.push({
+          class: "plugin_invoke",
+          nonBypassable: true,
+          opaque,
+        })
+
+        // If we have resolved capabilities from the plugin manifest, decompose them
+        if (entry) {
+          const manifestCaps = entry.capabilities
+          const hasCap = (c: string) => manifestCaps.includes(c)
+
+          if (hasCap("filesystem:read")) {
+            caps.push({ class: "plugin_file_read", nonBypassable: false })
+          }
+          if (hasCap("filesystem:write")) {
+            caps.push({ class: "plugin_file_write", nonBypassable: true })
+          }
+          if (hasCap("shell")) {
+            caps.push({ class: "plugin_shell", nonBypassable: true })
+          }
+          if (hasCap("network")) {
+            caps.push({ class: "plugin_network", nonBypassable: true })
+          }
+          if (hasCap("session_data")) {
+            caps.push({ class: "plugin_session_read", nonBypassable: false })
+          }
+          if (hasCap("workspace_data")) {
+            caps.push({ class: "plugin_workspace_read", nonBypassable: false })
+          }
+          if (hasCap("config:read")) {
+            caps.push({ class: "plugin_config_read", nonBypassable: false })
+          }
+          if (hasCap("config:write")) {
+            caps.push({ class: "plugin_config_write", nonBypassable: true })
+          }
+          if (hasCap("secrets")) {
+            caps.push({ class: "plugin_secret_read", nonBypassable: true })
+          }
+        } else if (opaque) {
+          // Tool is undeclared — opaque and high risk
+          caps[0].opaque = true
+        }
+
+        // Approval check: mark sub-capabilities that haven't been approved by the user
+        if (pluginApprovals) {
+          const parsed = PluginToolId.parse(toolName)
+          if (parsed) {
+            const approval = pluginApprovals[parsed.pluginId]
+            const approvedSet = new Set(approval?.approvedCapabilities ?? [])
+            for (let i = 1; i < caps.length; i++) {
+              const cap = caps[i]
+              const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
+              if (manifestCap && !approvedSet.has(manifestCap)) {
+                cap.opaque = true
+                cap.approved = false
+                cap.reason = "unapproved"
+              } else {
+                cap.approved = true
+              }
+            }
+          }
+        }
+
         return { capabilities: caps }
       }
 

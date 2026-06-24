@@ -25,6 +25,15 @@ const CAPABILITY_PERMISSIONS = [
   "network_request",
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_session_read",
+  "plugin_workspace_read",
+  "plugin_config_read",
+  "plugin_config_write",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -50,6 +59,11 @@ const HIGH_RISK_PERMISSIONS = [
 
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -102,7 +116,7 @@ function autonomousRules() {
     if (permission === "browser_interact") return rule(permission, "allow")
     if (permission === "browser_inspect") return rule(permission, "allow")
     if (permission === "mcp_invoke") return rule(permission, "allow")
-    if (permission === "plugin_invoke") return rule(permission, "allow")
+    if (permission.startsWith("plugin_")) return rule(permission, "ask", true)
     if (permission === "identity_act") return rule(permission, "allow")
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")

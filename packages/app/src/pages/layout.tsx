@@ -31,8 +31,8 @@ import { AgendaPanel } from "@/components/agenda"
 
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
-import { getGlobalPanel, loadPluginExport, getPluginContribution } from "@/plugin"
-import { SandboxShell } from "@/plugin/sandbox"
+import { getGlobalPanel } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
@@ -503,17 +503,15 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
       setLoading(false)
       return
     }
-    if (e.pluginId && e.exportName) {
-      const contrib = getPluginContribution(e.pluginId)
-      if (contrib) {
-        loadPluginExport(contrib, e.exportName)
-          .then((c) => {
-            setComp(() => c as Component)
-            setLoading(false)
-          })
-          .catch(() => setLoading(false))
-        return
-      }
+    if (e.loader) {
+      e.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
     }
     setLoading(false)
   })
@@ -537,7 +535,7 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
             </div>
           )}
         >
-          <SandboxShell src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>

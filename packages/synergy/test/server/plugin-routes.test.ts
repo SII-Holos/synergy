@@ -1,12 +1,13 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import path from "path"
+import fs from "fs"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/scope/instance"
 import { Server } from "../../src/server/server"
 import { Plugin } from "../../src/plugin"
 import { Config } from "../../src/config/config"
-import { Global } from "../../src/global"
 import { Log } from "../../src/util/log"
+import { Global } from "../../src/global"
 
 Log.init({ print: false })
 
@@ -41,7 +42,8 @@ function buildManifest(overrides: Record<string, any> = {}): Record<string, any>
 const _origPlugin = {
   get: Plugin.get,
   manifest: Plugin.manifest,
-  loaded: Plugin.loaded,
+  loaded: Plugin.getLoaded,
+  add: Plugin.add,
 }
 
 const _origConfig = {
@@ -53,9 +55,34 @@ afterEach(() => {
   ;(Plugin as any).get = _origPlugin.get
   ;(Plugin as any).manifest = _origPlugin.manifest
   ;(Plugin as any).loaded = _origPlugin.loaded
+  ;(Plugin as any).add = _origPlugin.add
+  ;(Plugin as any).getStatus = _origPluginStatus.getStatus
   ;(Config as any).get = _origConfig.get
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
 })
+
+async function withRegistryFile<T>(content: unknown, fn: () => Promise<T>): Promise<T> {
+  const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
+  let previous: string | undefined
+  try {
+    previous = await Bun.file(registryPath).text()
+  } catch {
+    previous = undefined
+  }
+
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true })
+  await Bun.write(registryPath, JSON.stringify(content, null, 2))
+
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) {
+      fs.rmSync(registryPath, { force: true })
+    } else {
+      await Bun.write(registryPath, previous)
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 1. Path containment — test the pure function directly since the wildcard
@@ -129,15 +156,48 @@ describe("GET /plugin/assets/:pluginId/:versionHash/* — asset edge cases", () 
 })
 
 // ---------------------------------------------------------------------------
-// 3. Plugin status — trust tier
+// 3. Plugin status — enriched comprehensive status
 // ---------------------------------------------------------------------------
+const _origPluginStatus = {
+  getStatus: Plugin.getStatus,
+}
+function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any {
+  return {
+    id: "test-plugin",
+    name: "Test Plugin",
+    version: "1.0.0",
+    source: "local",
+    trust: {
+      tier: "trusted-import",
+      source: "local",
+      userTrusted: true,
+      verifiedIntegrity: false,
+      reason: "local plugin",
+    },
+    loaded: true,
+    manifestValid: true,
+    integrity: "unverified",
+    permissions: {
+      base: ["plugin_invoke"],
+      tools: {},
+      overallRisk: "low",
+      warnings: [],
+    },
+    routes: [],
+    tools: [],
+    ui: { contributions: 0, errors: [] },
+    stores: { config: true, secrets: "none" },
+    warnings: [{ type: "integrity", message: "Plugin integrity has not been verified against a lockfile hash." }],
+    ...overrides,
+  }
+}
 
-describe("GET /plugin/:pluginId/status — trust tier", () => {
-  test("returns trusted for file:// plugin (outside cache)", async () => {
+describe("GET /plugin/:pluginId/status — comprehensive status", () => {
+  test("returns enriched status for a loaded plugin", async () => {
     await using tmp = await tmpdir({ git: true })
-    const plugin = buildLoadedPlugin({ pluginDir: "/home/user/dev/my-plugin" })
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Plugin as any).getStatus = mock(async () =>
+      buildStatusResponse({ source: "local", trust: { ...buildStatusResponse().trust, tier: "trusted-import" } }),
+    )
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -146,21 +206,34 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.pluginId).toBe("test-plugin")
+        expect(body.id).toBe("test-plugin")
         expect(body.loaded).toBe(true)
-        expect(body.trustTier).toBe("trusted")
-        expect(body.hasManifest).toBe(true)
+        expect(body.source).toBe("local")
+        expect(body.trust.tier).toBe("trusted-import")
+        expect(body.manifestValid).toBe(true)
         expect(body.version).toBe("1.0.0")
+        expect(body.permissions).toBeDefined()
+        expect(body.tools).toBeDefined()
+        expect(body.stores).toBeDefined()
+        expect(body.warnings).toBeDefined()
       },
     })
   })
 
-  test("returns sandbox for cached npm plugin (inside cache)", async () => {
+  test("returns sandbox trust for npm plugins", async () => {
     await using tmp = await tmpdir({ git: true })
-    const cachedDir = path.join(Global.Path.cache, "node_modules", "some-plugin")
-    const plugin = buildLoadedPlugin({ pluginDir: cachedDir })
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Plugin as any).getStatus = mock(async () =>
+      buildStatusResponse({
+        source: "npm",
+        trust: {
+          tier: "sandbox",
+          source: "npm",
+          userTrusted: false,
+          verifiedIntegrity: false,
+          reason: "npm plugin requires explicit user trust and verified integrity",
+        },
+      }),
+    )
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -169,16 +242,15 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.trustTier).toBe("sandbox")
+        expect(body.trust.tier).toBe("sandbox")
+        expect(body.source).toBe("npm")
       },
     })
   })
 
-  test("returns hasManifest=false and manifest=null when manifest is unavailable", async () => {
+  test("returns manifestValid=false when manifest is unavailable", async () => {
     await using tmp = await tmpdir({ git: true })
-    const plugin = buildLoadedPlugin()
-    ;(Plugin as any).get = mock(async () => plugin)
-    ;(Plugin as any).manifest = mock(async () => null)
+    ;(Plugin as any).getStatus = mock(async () => buildStatusResponse({ manifestValid: false, version: undefined }))
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -187,15 +259,15 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         const res = await app.request("/plugin/test-plugin/status", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.hasManifest).toBe(false)
-        expect(body.manifest).toBeNull()
+        expect(body.manifestValid).toBe(false)
+        expect(body.version).toBeUndefined()
       },
     })
   })
 
   test("returns 404 for a plugin that does not exist", async () => {
     await using tmp = await tmpdir({ git: true })
-    ;(Plugin as any).get = mock(async () => undefined)
+    ;(Plugin as any).getStatus = mock(async () => null)
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -207,6 +279,50 @@ describe("GET /plugin/:pluginId/status — trust tier", () => {
         expect(body.message).toContain("Plugin not found")
       },
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 3a. Registry install — consent must not be bypassed
+// ---------------------------------------------------------------------------
+
+describe("POST /api/plugins/install-from-registry", () => {
+  test("does not pass skipConsent when installing from the registry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const addMock = mock(async () => {
+      throw new Error("Plugin registry-plugin requires approval before installation.")
+    })
+    ;(Plugin as any).add = addMock
+
+    await withRegistryFile(
+      {
+        plugins: [
+          {
+            id: "registry-plugin",
+            name: "registry-plugin-package",
+            versions: [{ version: "1.0.0" }],
+          },
+        ],
+      },
+      async () => {
+        await Instance.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const app = Server.App()
+            const res = await app.request("/api/plugins/install-from-registry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+            })
+
+            expect(res.status).toBe(409)
+            expect(addMock).toHaveBeenCalledTimes(1)
+            expect((addMock as any).mock.calls[0][0]).toBe("registry-plugin-package")
+            expect((addMock as any).mock.calls[0][1]).toEqual({ autoReload: true })
+          },
+        })
+      },
+    )
   })
 })
 
@@ -287,8 +403,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     ;(Config as any).get = mock(async () => ({
       pluginConfig: { "test-plugin": currentConfig },
     }))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -302,8 +418,9 @@ describe("PATCH /plugin/:pluginId/config", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body).toEqual({ theme: "light", refreshInterval: 30 })
-        expect(updateGlobalSpy).toHaveBeenCalledTimes(1)
-        const updateArg = (updateGlobalSpy as any).mock.calls[0][0]
+        expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+        expect((domainUpdateSpy as any).mock.calls[0][0]).toBe("plugins")
+        const updateArg = (domainUpdateSpy as any).mock.calls[0][1]
         expect(updateArg).toEqual({
           pluginConfig: { "test-plugin": { theme: "light", refreshInterval: 30 } },
         })
@@ -316,8 +433,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Config as any).get = mock(async () => ({}))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -369,8 +486,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Config as any).get = mock(async () => ({}))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     // Build a payload under 65536 bytes when re-stringified by the validator
     const valueLen = 65520
@@ -388,7 +505,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
           body: serialized,
         })
         expect(res.status).toBe(200)
-        expect(updateGlobalSpy).toHaveBeenCalledTimes(1)
+        expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+        expect((domainUpdateSpy as any).mock.calls[0][0]).toBe("plugins")
       },
     })
   })

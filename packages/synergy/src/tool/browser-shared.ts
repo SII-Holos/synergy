@@ -46,6 +46,56 @@ export namespace BrowserToolHelper {
     await BrowserRuntime.ensure()
     return getTab(BrowserOwner.fromToolContext(ctx), tabId)
   }
+
+  export async function markActivity(
+    ctx: Tool.Context,
+    tab: BrowserTab,
+    kind: "reading" | "acting",
+    tool: string,
+    label: string,
+  ): Promise<void> {
+    const session = await getOrCreateSession(BrowserOwner.fromToolContext(ctx))
+    await session.notifyAgentActivity({
+      tabId: tab.id,
+      url: tab.url,
+      title: tab.title,
+      kind,
+      tool,
+      label,
+    })
+  }
+
+  export async function markIdle(ctx: Tool.Context, tab: BrowserTab, tool: string): Promise<void> {
+    const session = await getOrCreateSession(BrowserOwner.fromToolContext(ctx))
+    setTimeout(() => {
+      session
+        .notifyAgentActivity({
+          tabId: tab.id,
+          url: tab.url,
+          title: tab.title,
+          kind: "idle",
+          tool,
+          label: "Idle",
+        })
+        .catch(() => {})
+    }, 450)
+  }
+
+  export async function withActivity<T>(
+    ctx: Tool.Context,
+    tab: BrowserTab,
+    kind: "reading" | "acting",
+    tool: string,
+    label: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    await markActivity(ctx, tab, kind, tool, label)
+    try {
+      return await fn()
+    } finally {
+      await markIdle(ctx, tab, tool)
+    }
+  }
 }
 
 // ── Snapshot text formatter ──────────────────────────────────────────

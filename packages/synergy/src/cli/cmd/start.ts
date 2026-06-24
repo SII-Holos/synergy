@@ -1,4 +1,4 @@
-import { ConfigSet } from "../../config/set"
+import { ConfigDomain } from "../../config/domain"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { withNetworkOptions } from "../network"
@@ -52,7 +52,16 @@ export const StartCommand = cmd({
     const interactive = !args.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
     // Check if this is a first-run with no config — launch wizard
-    const configExists = await Bun.file(ConfigSet.defaultFilePath()).exists()
+    const configExists = await Promise.any(
+      ConfigDomain.definitions.map((domain) =>
+        Bun.file(ConfigDomain.filepath(domain.id))
+          .exists()
+          .then((exists) => {
+            if (!exists) throw new Error("missing")
+            return true
+          }),
+      ),
+    ).catch(() => false)
     if (!configExists && interactive) {
       const { runConfigWizard } = await import("./config")
       const configured = await runConfigWizard()

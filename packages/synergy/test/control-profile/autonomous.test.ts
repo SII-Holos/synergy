@@ -54,14 +54,15 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
-  test("autonomous allows mcp_invoke and plugin_invoke", async () => {
+  test("autonomous allows mcp_invoke, asks for plugin_invoke", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
         expect(rule(profile, "mcp_invoke")?.action).toBe("allow")
-        expect(rule(profile, "plugin_invoke")?.action).toBe("allow")
+        expect(rule(profile, "plugin_invoke")?.action).toBe("ask")
+        expect(rule(profile, "plugin_invoke")?.nonBypassable).toBe(true)
       },
     })
   })

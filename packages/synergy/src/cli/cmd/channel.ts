@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
+import { ConfigDomain } from "../../config/domain"
 import { Instance } from "../../scope/instance"
 import { Scope } from "@/scope"
 import { attachOption, ensureServer, fetchChannelApi, startChannelIfServerRunning } from "./channel-server"
@@ -338,9 +339,8 @@ async function addFeishuChannel(printOnly: boolean, serverUrl: string): Promise<
     prompts.log.message(JSON.stringify(config, null, 2))
   } else {
     await Config.updateGlobal(config)
-    prompts.log.success(`Added feishu/${accountId} to the active global Config Set`)
-    prompts.log.info(`Config file: ${await Config.globalPath()}`)
-    prompts.log.info(`Edit with: synergy config edit`)
+    prompts.log.success(`Added feishu/${accountId} to global channel config`)
+    prompts.log.info(`Config file: ${ConfigDomain.filepath("channels")}`)
 
     const connection = await startChannelIfServerRunning({
       serverUrl,

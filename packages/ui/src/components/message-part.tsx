@@ -223,6 +223,59 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
 
+const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
+  browser_navigate: { icon: "globe", title: "Navigate" },
+  browser_snapshot: { icon: "binoculars", title: "Snapshot" },
+  browser_screenshot: { icon: "image", title: "Screenshot" },
+  browser_click: { icon: "mouse-pointer-2", title: "Click" },
+  browser_type: { icon: "text-select", title: "Type" },
+  browser_scroll: { icon: "arrow-down", title: "Scroll" },
+  browser_wait: { icon: "hourglass", title: "Wait" },
+  browser_inspect: { icon: "scan-eye", title: "Inspect" },
+  browser_read: { icon: "glasses", title: "Read" },
+  browser_console: { icon: "file-terminal", title: "Console" },
+  browser_network: { icon: "cable", title: "Network" },
+  browser_download: { icon: "download", title: "Download" },
+  browser_downloads: { icon: "download", title: "Downloads" },
+  browser_tab: { icon: "panel-right", title: "Tab" },
+  browser_annotate: { icon: "square-pen", title: "Annotate" },
+  browser_action: { icon: "mouse-pointer-2", title: "Action" },
+  browser_clipboard: { icon: "copy", title: "Clipboard" },
+  browser_eval: { icon: "code", title: "Eval" },
+  browser_list: { icon: "list", title: "Browser Sessions" },
+  browser_assets: { icon: "package", title: "Assets" },
+  browser_view: { icon: "panel-right", title: "Browser View" },
+  browser_navigation: { icon: "repeat", title: "Navigation" },
+  browser_viewport: { icon: "maximize", title: "Viewport" },
+}
+
+function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
+  const info = browserToolLabels[tool]
+  if (!info) return undefined
+
+  const args: string[] = []
+  pushArg(args, metadata?.entryCount != null ? `${metadata.entryCount} console` : undefined)
+  pushArg(args, metadata?.requestCount != null ? `${metadata.requestCount} requests` : undefined)
+  pushArg(args, metadata?.assetCount != null ? `${metadata.assetCount} assets` : undefined)
+  pushArg(args, metadata?.elementsCount != null ? `${metadata.elementsCount} elements` : undefined)
+  pushArg(args, metadata?.captureKind)
+
+  return {
+    icon: info.icon,
+    title: info.title,
+    subtitle: firstString(
+      metadata?.url,
+      input?.url,
+      metadata?.title,
+      input?.tabId,
+      metadata?.tabId,
+      input?.action,
+      input?.type,
+    ),
+    args: args.length ? args : undefined,
+  }
+}
+
 function qzScopeLabel(input: any = {}) {
   return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
 }
@@ -458,6 +511,8 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
 export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
   const qz = getQzToolInfo(tool, input, metadata)
   if (qz) return qz
+  const browser = getBrowserToolInfo(tool, input, metadata)
+  if (browser) return browser
 
   switch (tool) {
     case "read":

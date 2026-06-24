@@ -12,42 +12,50 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "reading",
+      "browser_console",
+      "Reading console entries",
+      async () => {
+        const entries = await tab.consoleEntries(params.maxEntries ?? 50)
 
-    const entries = await tab.consoleEntries(params.maxEntries ?? 50)
+        let filtered = entries
+        if (params.filter) {
+          let filterRegex: RegExp
+          try {
+            filterRegex = new RegExp(params.filter, "i")
+          } catch {
+            throw new Error(`Invalid regex filter: ${params.filter}`)
+          }
+          filtered = entries.filter((e) => filterRegex.test(e.text))
+        }
 
-    let filtered = entries
-    if (params.filter) {
-      let filterRegex: RegExp
-      try {
-        filterRegex = new RegExp(params.filter, "i")
-      } catch {
-        throw new Error(`Invalid regex filter: ${params.filter}`)
-      }
-      filtered = entries.filter((e) => filterRegex.test(e.text))
-    }
+        if (filtered.length === 0) {
+          return {
+            title: `Console entries (0, tab: ${tab.id})`,
+            output: "No console entries found.",
+            metadata: { entryCount: 0 },
+          }
+        }
 
-    if (filtered.length === 0) {
-      return {
-        title: `Console entries (0, tab: ${tab.id})`,
-        output: "No console entries found.",
-        metadata: { entryCount: 0 },
-      }
-    }
+        const lines = filtered.map((entry) => {
+          const ts = new Date(entry.timestamp).toISOString()
+          const level = entry.type.toUpperCase().padEnd(5)
+          let line = `[${ts}] ${level} ${entry.text}`
+          if (entry.stackTrace) {
+            line += `\n  stack: ${entry.stackTrace}`
+          }
+          return line
+        })
 
-    const lines = filtered.map((entry) => {
-      const ts = new Date(entry.timestamp).toISOString()
-      const level = entry.type.toUpperCase().padEnd(5)
-      let line = `[${ts}] ${level} ${entry.text}`
-      if (entry.stackTrace) {
-        line += `\n  stack: ${entry.stackTrace}`
-      }
-      return line
-    })
-
-    return {
-      title: `Console entries (${filtered.length}, tab: ${tab.id})`,
-      output: lines.join("\n"),
-      metadata: { entryCount: filtered.length },
-    }
+        return {
+          title: `Console entries (${filtered.length}, tab: ${tab.id})`,
+          output: lines.join("\n"),
+          metadata: { entryCount: filtered.length },
+        }
+      },
+    )
   },
 })

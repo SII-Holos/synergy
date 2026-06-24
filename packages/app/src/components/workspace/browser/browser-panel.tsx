@@ -5,8 +5,7 @@ import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
 import { TabStrip } from "./tab-strip"
 import { AddressBar } from "./address-bar"
-import { DevToolbar } from "./dev-toolbar"
-import { ScreenshotCanvas } from "./screenshot-canvas"
+import { BrowserSurface } from "./browser-surface"
 import { ConsolePanel } from "./console-panel"
 import { NetworkPanel } from "./network-panel"
 import { ElementsPanel } from "./elements-panel"
@@ -14,7 +13,6 @@ import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { DownloadsPanel } from "./downloads-panel"
 import { AssetsPanel } from "./assets-panel"
-import { ViewportSelector } from "./viewport-selector"
 
 export function BrowserPanel() {
   const params = useParams()
@@ -80,7 +78,7 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
         <div class="flex flex-col h-full bg-surface-inset-base">
           <TabStrip
             tabs={browser.session.tabs}
-            activeTabId={browser.session.activeTabId}
+            activeTabId={browser.activeTabId()}
             onSwitch={browser.switchTab}
             onClose={browser.closeTab}
             onAddTab={() => browser.createTab()}
@@ -88,14 +86,17 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
           <AddressBar
             activeUrl={() => activeTab()?.url ?? ""}
             isLoading={() => activeTab()?.isLoading ?? false}
+            onHistory={(direction) => browser.send({ type: "history", direction, tabId: browser.activeTabId() })}
+            onReload={() => browser.send({ type: "reload", tabId: browser.activeTabId() })}
+            onStop={() => browser.send({ type: "stop", tabId: browser.activeTabId() })}
             onNavigate={(url) => {
               const tab = activeTab()
               if (!tab) return
+              browser.setFollowAgent(false)
               browser.setTabLoading(tab.id, true)
-              ws.send({ type: "navigate", url, tabId: tab.id })
+              ws.send({ type: "navigate", source: "user", url, tabId: tab.id })
             }}
           />
-          <ViewportSelector />
           <div class="flex-1 relative bg-background-stronger">
             <Show
               when={showDevPanel()}
@@ -106,13 +107,13 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
                     <div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>
                   }
                 >
-                  <ScreenshotCanvas />
+                  <BrowserSurface />
                 </Show>
               }
             >
               <DevPanelContent panel={browser.devPanel()!} />
             </Show>
-            <AgentAssistant action={browser.agentActivity()} />
+            <AgentAssistant />
             <Show when={showAnnotation()}>
               {(() => {
                 const target = browser.annotationTarget()!
@@ -127,7 +128,6 @@ function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStor
               })()}
             </Show>
           </div>
-          <DevToolbar />
         </div>
       </BrowserStoreProvider>
     </Show>
