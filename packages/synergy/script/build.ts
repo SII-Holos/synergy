@@ -135,6 +135,7 @@ for (const item of targets) {
     conditions: ["browser"],
     tsconfig: "./tsconfig.json",
     sourcemap: "external",
+    external: ["chromium-bidi", "chromium-bidi/*"],
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
