@@ -577,7 +577,10 @@ export namespace NoteMarkdown {
           .join("")}</tr>`
       })
       .join("")
-    const overflow = rows.length > visibleRows.length ? `<div class="note-preview-table-more">+${rows.length - visibleRows.length} rows</div>` : ""
+    const overflow =
+      rows.length > visibleRows.length
+        ? `<div class="note-preview-table-more">+${rows.length - visibleRows.length} rows</div>`
+        : ""
     return `<div class="note-preview-table-wrap"><table>${html}</table>${overflow}</div>`
   }
 
