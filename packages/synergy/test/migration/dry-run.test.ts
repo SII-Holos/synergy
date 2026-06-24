@@ -70,9 +70,17 @@ describe("runMigrations dry run", () => {
 
     MigrationRegistry.register(TEST_DOMAIN, [testMigration])
 
-    await runMigrations({ dryRun: false, targetDomain: TEST_DOMAIN })
+    const summary = await runMigrations({ dryRun: false, targetDomain: TEST_DOMAIN })
 
     expect(upWasCalled).toBe(true)
+    expect(summary).toEqual(
+      expect.objectContaining({
+        totalDomains: 1,
+        completed: 1,
+        dryRun: 0,
+        failed: 0,
+      }),
+    )
 
     const p = trackingPath(TEST_DOMAIN)
     expect(existsSync(p)).toBe(true)
@@ -114,5 +122,31 @@ describe("runMigrations dry run", () => {
 
     const p = trackingPath(TEST_DOMAIN)
     expect(existsSync(p)).toBe(false)
+  })
+
+  test("silent output returns summary without writing to stderr", async () => {
+    const testMigration: Migration = {
+      id: "20260605-silent-summary",
+      description: "Silent summary",
+      async up(_progress) {},
+    }
+    MigrationRegistry.register(TEST_DOMAIN, [testMigration])
+
+    const originalWrite = process.stderr.write.bind(process.stderr)
+    const output: string[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.stderr.write = ((chunk: any) => {
+      output.push(String(chunk))
+      return true
+    }) as any
+
+    try {
+      const summary = await runMigrations({ output: "silent", targetDomain: TEST_DOMAIN })
+      expect(summary.totalDomains).toBe(1)
+      expect(summary.completed).toBe(1)
+      expect(output.join("")).toBe("")
+    } finally {
+      process.stderr.write = originalWrite
+    }
   })
 })

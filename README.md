@@ -102,9 +102,7 @@ Background service management currently supports:
 - Linux via `systemd --user`
 - Windows via `schtasks`
 
-`synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
-
-Start prints a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+`synergy start`, `synergy status`, `synergy stop`, and `synergy logs` print a compact terminal summary with the service state, server URL, log file location, and suggested next commands. The managed service keeps structured logs in the daemon log file instead of mixing them into the startup UI. For foreground debugging, use `synergy server --print-logs` when you want live structured logs alongside the startup summary.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 

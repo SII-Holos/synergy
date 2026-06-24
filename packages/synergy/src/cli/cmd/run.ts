@@ -318,7 +318,7 @@ export const SendCommand = cmd({
     }
 
     await bootstrap(process.cwd(), async () => {
-      await runMigrations()
+      await runMigrations({ output: "silent" })
       const server = Server.listen({ port: args.port ?? 0, hostname: "127.0.0.1" })
       const sdk = createSynergyClient({ baseUrl: `http://${server.hostname}:${server.port}` })
 

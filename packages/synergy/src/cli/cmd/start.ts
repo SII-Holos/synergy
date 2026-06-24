@@ -38,14 +38,16 @@ export const StartCommand = cmd({
     }
 
     if (status.runtime === "unknown") {
-      UI.error("Another Synergy process is already active on the configured address")
-      UI.println(`  URL:       ${status.url}`)
-      if (status.detail) UI.println(`  Detail:    ${status.detail}`)
-      UI.println()
-      UI.println("  Next:")
-      UI.println("    Stop the other Synergy instance before starting the background service")
-      UI.println("    synergy status")
-      UI.println("    synergy stop")
+      DaemonOutput.printStartFailure({
+        message: "Another Synergy process is already active on the configured address",
+        manager: status.manager,
+        runtime: status.runtime,
+        url: status.url,
+        logFile: status.logFile,
+        detail: status.detail,
+        notes: ["Stop the other Synergy instance before starting the background service."],
+        next: ["synergy status", "synergy stop"],
+      })
       process.exit(1)
     }
 

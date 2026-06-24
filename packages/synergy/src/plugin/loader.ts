@@ -14,9 +14,9 @@ import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
 import { Instance } from "../scope/instance"
-import { UI } from "../cli/ui"
 import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
+import { StartupReporter } from "../cli/startup-reporter"
 
 const log = Log.create({ service: "plugin.loader" })
 // ---------------------------------------------------------------------------
@@ -98,9 +98,6 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
     $: Bun.$,
   }
 
-  let installedCount = 0
-  let failedCount = 0
-
   for (const configPath of pluginPaths) {
     log.info("loading plugin", { path: configPath })
     const name = PluginSpec.displayName(configPath)
@@ -113,25 +110,19 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
       const { pkg, version } = PluginSpec.parse(configPath)
 
       if (showInstallUI) {
-        UI.println(`  Loading plugin: ${name}${UI.Style.TEXT_DIM}...${UI.Style.TEXT_NORMAL}`)
+        StartupReporter.active()?.plugin({ name, status: "loaded" })
       }
       const result = await BunProc.install(pkg, version).catch((err) => {
         if (showInstallUI) {
-          UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${name} failed: ${err.message ?? err}`)
+          StartupReporter.active()?.plugin({ name, status: "failed", error: err.message ?? String(err) })
         }
         log.warn("plugin install failed, skipping", { name, error: err.message ?? err })
-        failedCount++
         return undefined
       })
 
       if (!result) continue
       if (showInstallUI) {
-        installedCount++
-        UI.println(
-          result.cached
-            ? `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} ${UI.Style.TEXT_DIM}(cached)${UI.Style.TEXT_NORMAL}`
-            : `  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${name} installed`,
-        )
+        StartupReporter.active()?.plugin({ name, status: result.cached ? "cached" : "installed" })
       }
       importPath = result.entryPath
       pluginDir = findPackageRoot(importPath)
@@ -180,17 +171,10 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
 
       if (showLoadedUI) {
         printedPluginIds.add(pluginId)
-        UI.println(`  ${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${descriptor.name ?? pluginId} loaded`)
+        StartupReporter.active()?.plugin({ name: descriptor.name ?? pluginId, status: "loaded" })
       }
       log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
     }
-  }
-
-  if (installedCount > 0 || failedCount > 0) {
-    const parts: string[] = []
-    if (installedCount > 0) parts.push(`${installedCount} installed`)
-    if (failedCount > 0) parts.push(`${failedCount} failed`)
-    UI.println(`  Plugins: ${parts.join(", ")}`)
   }
 
   return { loaded }

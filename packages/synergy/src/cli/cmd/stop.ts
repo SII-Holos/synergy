@@ -1,5 +1,4 @@
 import { cmd } from "./cmd"
-import { UI } from "../ui"
 import { Daemon } from "../../daemon"
 import { DaemonHealth } from "../../daemon/health"
 import { DaemonOutput } from "../../daemon/output"
@@ -11,19 +10,10 @@ export const StopCommand = cmd({
     const status = await Daemon.status()
     if (!status.installed) {
       if (status.runtime === "unknown") {
-        UI.error("No managed Synergy background service is installed")
-        UI.println("  Observed:  the configured address is still active")
-        UI.println("  URL:       " + status.url)
-        UI.println()
-        UI.println("  Next:")
-        UI.println("    Stop the other process using this address, or change Synergy's server port")
-        UI.println("    synergy status")
+        DaemonOutput.printNoService({ activeUrl: status.url })
         process.exit(1)
       }
-      UI.println("No Synergy background service is installed")
-      UI.println()
-      UI.println("  Next:")
-      UI.println("    synergy start")
+      DaemonOutput.printNoService()
       return
     }
 
@@ -45,19 +35,6 @@ export const StopCommand = cmd({
       process.exit(1)
     }
 
-    UI.println("Synergy background service stopped")
-    UI.println()
-    UI.println("  Next:")
-    UI.println("    synergy start")
-    UI.println("    synergy status")
-    if (!portStopped) {
-      UI.println()
-      UI.println(
-        UI.Style.TEXT_DIM +
-          "  Note: the configured address is still active, which may indicate another process is listening there" +
-          UI.Style.TEXT_NORMAL,
-      )
-      UI.println(UI.Style.TEXT_DIM + "  URL:   ", UI.Style.TEXT_NORMAL, spec.url)
-    }
+    DaemonOutput.printStopSuccess({ portStopped, url: spec.url })
   },
 })

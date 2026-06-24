@@ -55,7 +55,13 @@ export namespace Log {
     return logpath
   }
 
+  let initialized = false
+  const buffered: string[] = []
   let write = (msg: string) => {
+    if (!initialized) {
+      buffered.push(msg)
+      return
+    }
     process.stderr.write(msg)
   }
 
@@ -64,12 +70,27 @@ export namespace Log {
   export async function init(options: Options) {
     if (options.level) level = options.level
     cleanup(Global.Path.log).catch(() => {})
-    if (options.print) return
+    if (options.print) {
+      write = (msg: string) => {
+        process.stderr.write(msg)
+      }
+      initialized = true
+      flushBuffered()
+      return
+    }
     logpath = path.join(
       Global.Path.log,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
     await openWriter(logpath)
+    initialized = true
+    flushBuffered()
+  }
+
+  function flushBuffered() {
+    if (buffered.length === 0) return
+    const pending = buffered.splice(0)
+    for (const msg of pending) write(msg)
   }
 
   async function openWriter(filePath: string) {

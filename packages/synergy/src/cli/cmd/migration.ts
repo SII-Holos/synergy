@@ -55,6 +55,7 @@ export const MigrationCommand = cmd({
           await runMigrations({
             dryRun: args.dryRun as boolean,
             targetDomain: args.domain as string | undefined,
+            output: "interactive",
           })
         },
       )

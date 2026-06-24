@@ -22,7 +22,7 @@ export const AcpCommand = cmd({
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
-      await runMigrations()
+      await runMigrations({ output: "silent" })
       const opts = await resolveNetworkOptions(args)
       const server = Server.listen(opts)
 
